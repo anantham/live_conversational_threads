@@ -7,6 +7,7 @@ import RecordingTranscriptFiles from '../components/recording/RecordingTranscrip
 import PrivateRetentionNotice from '../components/PrivateRetentionNotice.jsx';
 import RecordingConversationMap from '../components/recording/RecordingConversationMap.jsx';
 import { createRecordingTranscript } from '../services/cloud/recordingTranscript.js';
+import RecordingConsentDialog from '../components/recording/RecordingConsentDialog.jsx';
 
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
 const primary = `${button} border-slate-900 bg-slate-900 text-white`;
@@ -26,13 +27,13 @@ async function abortable(signal, work) {
 
 export default function SitesNewConversation() {
   const [capabilities, setCapabilities] = useState(null), [setup, setSetup] = useState({ startedAt: Date.now() });
-  const [activity, setActivity] = useState(null), [elapsed, setElapsed] = useState(0), [consent, setConsent] = useState(false);
+  const [activity, setActivity] = useState(null), [elapsed, setElapsed] = useState(0), [pendingRecording, setPendingRecording] = useState(null);
   const [audio, setAudio] = useState(null), [audioURL, setAudioURL] = useState(''), [transcript, setTranscript] = useState(emptyTranscript);
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [saving, setSaving] = useState(false);
   const [saveStartedAt, setSaveStartedAt] = useState(null);
   const [recording, setRecording] = useState(null), [saveSubject, setSaveSubject] = useState('Audio');
   const [generating, setGenerating] = useState(false);
-  const session = useRef(null), setupRequest = useRef(null), saveRequest = useRef(null), alive = useRef(true);
+  const session = useRef(null), setupRequest = useRef(null), saveRequest = useRef(null), alive = useRef(true), stopControl = useRef(null);
 
   const checkCapabilities = useCallback(async () => {
     setupRequest.current?.abort();
@@ -78,9 +79,15 @@ export default function SitesNewConversation() {
     return () => URL.revokeObjectURL(url);
   }, [audio]);
 
-  async function start(transcribe) {
-    if (!consent || ACTIVE.has(activity?.stage) || saving || generating) return;
+  function requestRecording(transcribe) {
+    if (!supported || ACTIVE.has(activity?.stage) || saving || generating || (transcribe && !live)) return;
     if ((audio || transcript.finalTokens.length) && !window.confirm('Start another recording? Download or save the current audio and transcript first. Starting again replaces them in this tab.')) return;
+    setPendingRecording({ transcribe });
+  }
+
+  async function start(transcribe) {
+    if (!supported || ACTIVE.has(activity?.stage) || saving || generating || (transcribe && !live)) return;
+    setPendingRecording(null);
     const id = globalThis.crypto?.randomUUID?.();
     if (!id) { setError('This browser could not create a recording identifier. Retry in a supported browser.'); return; }
     session.current?.cancel(); setAudio(null); setTranscript(emptyTranscript); setError(''); setNotice('');
@@ -124,6 +131,7 @@ export default function SitesNewConversation() {
   }
 
   const active = ACTIVE.has(activity?.stage), live = capabilities?.transcription?.enabled;
+  useEffect(() => { if (active) stopControl.current?.focus(); }, [active]);
   const privateSaving = capabilities?.storage?.enabled && capabilities?.storage?.configured && !capabilities?.storage?.synthetic_only;
   const supported = Boolean(navigator.mediaDevices?.getUserMedia && globalThis.MediaRecorder);
   const complete = Boolean(audio?.complete && activity?.stage === 'stopped');
@@ -137,19 +145,18 @@ export default function SitesNewConversation() {
   return <main className="mx-auto w-full max-w-3xl px-5 py-10 text-slate-900">
     <nav className="mb-10 flex flex-wrap gap-x-5 gap-y-3 text-sm"><Link to="/">Home</Link><Link to="/public">Public conversations</Link><Link to="/private-files">Private files</Link></nav>
     <h1 className="text-3xl font-semibold tracking-tight">New conversation</h1>
-    <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">Record audio in this tab without signing in. Transcription sends audio to Soniox after your permission. Nothing is published automatically.</p>
-    <section aria-label="Recording controls" className="mt-8 rounded-xl border border-slate-200 bg-white p-5">
-      <label className="flex items-start gap-3 text-sm leading-6"><input className="mt-1" type="checkbox" checked={consent} disabled={active || saving || generating} onChange={event => setConsent(event.target.checked)} />I have permission to record everyone included, and to send this audio to Soniox if I choose transcription.</label>
-      <p className="mt-3 text-xs leading-5 text-slate-600">Local recordings stop within 5 minutes or 2 MiB. Keep this tab open until you download or save your audio.</p>
+    <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">Record audio without signing in. Nothing is published automatically.</p>
+    <section aria-label="Recording controls" className="mt-8">
       {!supported && <p className="mt-3 text-sm text-rose-800">This browser needs HTTPS, microphone access and audio-recording support.</p>}
-      <div className="mt-5 flex flex-wrap gap-3"><button className={primary} disabled={!consent || !supported || active || saving || generating} onClick={() => void start(false)}>Record audio locally</button><button className={button} disabled={!consent || !supported || !live || active || saving || generating} onClick={() => void start(true)}>Record and transcribe</button>{active && <><button className={button} onClick={() => void session.current?.stop()}>Stop recording</button><button className={button} onClick={() => session.current?.cancel()}>Cancel session</button></>}</div>
-      {!live && <p className="mt-4 text-sm leading-6 text-slate-600">Live transcription is waiting for confirmed spending limits and provider setup. Local recording uses no transcription credits.</p>}
-      {live && <p className="mt-4 text-sm text-slate-600">Transcription sessions have a {capabilities.transcription.max_session_seconds}-second connection limit, including finalization. Shared session limits also apply.</p>}
+      <div className="flex flex-wrap gap-3">{active ? <><button ref={stopControl} className={primary} onClick={() => void session.current?.stop()}>Stop recording</button><button className={button} onClick={() => session.current?.cancel()}>Cancel session</button></> : <><button className={primary} disabled={!supported || saving || generating} onClick={() => requestRecording(false)}>Record audio locally</button><button className={button} disabled={!supported || !live || saving || generating} onClick={() => requestRecording(true)}>Record and transcribe</button></>}</div>
+      {!active && !live && <p className="mt-3 text-xs leading-5 text-slate-600">Live transcription is not available yet. Local recording uses no transcription credits.</p>}
+      {active && <p className="mt-3 text-xs leading-5 text-slate-600">Keep this tab open until you download or save your audio.</p>}
     </section>
+    {pendingRecording && <RecordingConsentDialog transcribe={pendingRecording.transcribe} maxSeconds={capabilities?.transcription?.max_session_seconds} onCancel={() => setPendingRecording(null)} onConfirm={() => void start(pendingRecording.transcribe)} />}
     {(setup || activity || saving) && <div className="mt-5"><p role="status" className="text-sm">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : setup ? 'Checking transcription and private storage' : activity.message}</p>{(setup || active || saving) && <p className="mt-1 text-xs text-slate-600">{elapsed} s elapsed · Time remaining unknown</p>}{setup && <button className={`${button} mt-3`} onClick={() => setupRequest.current?.abort()}>Cancel setup</button>}{saving && <button className={`${button} mt-3`} onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</div>}
     {error && <p role="alert" className="mt-5 rounded-lg bg-rose-50 p-4 text-sm leading-6 text-rose-900">{error}</p>}{notice && <p role="status" className="mt-5 text-sm">{notice}</p>}
     {!setup && !active && <button className={`${button} mt-4`} onClick={() => void checkCapabilities()}>Retry cloud setup</button>}
-    {audioURL && <section className="mt-8" aria-label="Recorded audio"><h2 className="text-lg font-medium">Your audio</h2><audio className="mt-3 w-full" controls src={audioURL} /><p className="mt-3 text-sm text-slate-600">{audio.complete ? 'Recording complete.' : 'Partial audio preserved.'} This copy is only in this tab.</p><PrivateRetentionNotice id="audio-private-retention" /><div className="mt-4 flex flex-wrap gap-3"><a className={button} href={audioURL} download={`recording-${recording.id}.${audio.mimeType.startsWith('audio/ogg') ? 'ogg' : audio.mimeType.startsWith('audio/mp4') ? 'm4a' : 'webm'}`}>Download audio</a><button className={button} aria-describedby="audio-private-retention" disabled={!privateSaving || active || saving || generating} onClick={() => void saveAudio()}>Save audio privately</button></div>{!privateSaving && <p className="mt-3 text-sm text-slate-600">Personal cloud uploads are still being connected. You can keep or download this local recording.</p>}<Link className="mt-4 inline-block text-sm underline" to="/private-files">Browse your private files</Link></section>}
+    {audio && audioURL && <section className="mt-8" aria-label="Recorded audio"><h2 className="text-lg font-medium">Your audio</h2><audio className="mt-3 w-full" controls src={audioURL} /><p className="mt-3 text-sm text-slate-600">{audio.complete ? 'Recording complete.' : 'Partial audio preserved.'} This copy is only in this tab.</p><PrivateRetentionNotice id="audio-private-retention" /><div className="mt-4 flex flex-wrap gap-3"><a className={button} href={audioURL} download={`recording-${recording.id}.${audio.mimeType.startsWith('audio/ogg') ? 'ogg' : audio.mimeType.startsWith('audio/mp4') ? 'm4a' : 'webm'}`}>Download audio</a><button className={button} aria-describedby="audio-private-retention" disabled={!privateSaving || active || saving || generating} onClick={() => void saveAudio()}>Save audio privately</button></div>{!privateSaving && <p className="mt-3 text-sm text-slate-600">Personal cloud uploads are still being connected. You can keep or download this local recording.</p>}<Link className="mt-4 inline-block text-sm underline" to="/private-files">Browse your private files</Link></section>}
     {(transcript.finalText || transcript.partialText) && <section className="mt-8" aria-label="Live transcript"><h2 className="text-lg font-medium">Transcript</h2><p className="mt-3 whitespace-pre-wrap leading-7">{transcript.finalText}<span className="text-slate-500">{transcript.partialText}</span></p><label htmlFor="final-transcript" className="mt-4 block text-sm">Final text — select to copy</label><textarea id="final-transcript" readOnly value={transcript.finalText} rows={5} className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm" /></section>}
     <RecordingTranscriptFiles artifact={recordingArtifact} privateEnabled={privateSaving} saving={saving || generating} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />
     {recordingArtifact?.source && <RecordingConversationMap source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}

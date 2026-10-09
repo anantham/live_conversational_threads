@@ -1,6 +1,12 @@
 # LCT Sites migration — staged delivery
 
-## Current slice — OpenRouter cloud generation and public reopen — 2026-10-09
+## Current slice — compact recording and dismissible access — 2026-10-09 18:55 IST
+
+User approved the proposed UI repair. Outcome: guest starts recording through a permission dialog, sees compact active controls, and can dismiss/reopen the access notice. Root owns integration in `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, base `472443909011f0fa4c977c50ef1eedd7641dc751`. No identity/provider activation, paid calls, storage writes, recovery or domain cutover belongs to this slice.
+
+Finite acceptance: no auto-capture; local/transcription destinations are distinct; cancellation/Escape/navigation make no start; participant permission is fresh each time; only the introduction is remembered and blocked preference storage works; active stage/elapsed/Stop/Cancel remain usable; replacement preserves or replaces the correct audio without a stale-URL crash; access close preserves identity and private-page links reopen/focus it. Existing setup/private/map refusal and cancellation behavior must remain intact. Focused/adjacent90/90 checks pass; independent AGY review, full required push hook, native build/publication and bounded browser inspection follow. Remaining dependency is verification/publication infrastructure, not another user approval. Next checkpoint: independently reviewed exact UI diff and preserved inactive native publication. Implementation is largely complete; review wait is unknown, native build/deployment comparable runs usually take under two minutes, integration/browser work remains an estimate of10–25 minutes. Full migration remains incomplete with provider/STT/Google/private/custom-domain journeys below.
+
+## Prior slice — OpenRouter cloud generation and public reopen — 2026-10-09
 
 ## Current checkpoint — reviewed hierarchy request refinement served OFF — 2026-10-09 08:31 IST
 

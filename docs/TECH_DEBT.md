@@ -1,5 +1,9 @@
 # TECH_DEBT
 
+## 2026-10-09 — Sites UI regression suite boundaries
+
+SitesNewConversation.test.jsx combines consent, recording, private file and generated-map journeys (>400lines); SitesAccessPanel.test.jsx combines presentation, session and sign-out journeys (>300lines). The compact-controls slice extracts the production permission dialog while preserving focused behavioral coverage. Consider a separate test-only split into journey files with a small shared synthetic setup; no backend/runtime refactor is needed here.
+
 ## 2026-09-08 — ConversationNode presentation size
 
 ConversationNode remains ~580 lines of marker, metric, and action rendering.

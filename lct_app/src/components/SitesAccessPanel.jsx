@@ -6,6 +6,15 @@ import { recordAuthUiTiming, requestWithin } from "./sitesAuthUi";
 const SESSION_TIMEOUT_MS = 10_000;
 const TIMING_KEY = "lct.sites_session_check_timing.v1";
 const TIMING_OUTCOMES = new Set(["guest", "signed-in", "error", "timeout", "cancelled"]);
+const DISMISSED_KEY = "lct.sites_access_dismissed.v1";
+
+function wasDismissed() {
+  try {
+    return window.localStorage.getItem(DISMISSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 // Keep only small, payload-free samples; storage may be unavailable in private browsing.
 function recordTiming(durationMs, outcome, retryCount) {
@@ -31,8 +40,14 @@ function recordTiming(durationMs, outcome, retryCount) {
 }
 
 export default function SitesAccessPanel() {
-  const { pathname, search } = useLocation();
+  const { pathname, search, hash } = useLocation();
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
+  const [expanded, setExpanded] = useState(() => !wasDismissed() || hash === "#site-access");
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const panelRef = useRef(null);
+  const focusOnOpen = useRef(false);
+  const focusOnDismiss = useRef(false);
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState("checking");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -44,6 +59,49 @@ export default function SitesAccessPanel() {
   const mountedRef = useRef(true);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
+
+  const openPanel = useCallback(() => {
+    if (expandedRef.current) {
+      panelRef.current?.focus();
+      return;
+    }
+    focusOnOpen.current = true;
+    setExpanded(true);
+  }, []);
+
+  useEffect(() => {
+    if (expanded && focusOnOpen.current) {
+      panelRef.current?.focus();
+      focusOnOpen.current = false;
+    } else if (!expanded && focusOnDismiss.current) {
+      panelRef.current?.querySelector("button")?.focus();
+      focusOnDismiss.current = false;
+    }
+  }, [expanded]);
+
+  function dismissPanel() {
+    focusOnDismiss.current = true;
+    setExpanded(false);
+    try {
+      window.localStorage.setItem(DISMISSED_KEY, "true");
+    } catch {
+      // A storage refusal affects this browser preference only.
+    }
+  }
+
+  useEffect(() => {
+    if (hash === "#site-access") openPanel();
+  }, [hash, openPanel]);
+
+  useEffect(() => {
+    // Repeated clicks on an unchanged hash do not fire hashchange.
+    const onAccessLink = (event) => {
+      const link = event.target.closest?.('a[href="#site-access"]');
+      if (link) openPanel();
+    };
+    document.addEventListener("click", onAccessLink);
+    return () => document.removeEventListener("click", onAccessLink);
+  }, [openPanel]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -167,9 +225,11 @@ export default function SitesAccessPanel() {
   }, [attempt]);
 
   return (
-    <aside id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : "fixed bottom-4 right-4 z-50 max-h-[45dvh] overflow-y-auto"} w-[min(22rem,calc(100vw-2rem))] rounded-xl bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
+    <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit px-3 py-2"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
+      {!expanded ? <button type="button" className="text-sm font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}>{status === "guest" ? "Sign in" : "Account"}</button> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-800">Public access</p>
+        <button type="button" className="text-xs text-slate-600 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}>Close</button>
         {status === "checking" && (
           <span role="status" className="text-xs tabular-nums text-slate-600">
             Checking sign-in · {elapsedSeconds}s elapsed · Time remaining unknown
@@ -201,6 +261,7 @@ export default function SitesAccessPanel() {
       </div>}
       {signOutError && <p role="alert" className="mt-2 text-xs text-rose-700">{signOutError}</p>}
       {status === "error" && <p className="mt-2 text-xs text-slate-600">You can keep browsing public content and browser-local files.</p>}
+      </>}
     </aside>
   );
 }

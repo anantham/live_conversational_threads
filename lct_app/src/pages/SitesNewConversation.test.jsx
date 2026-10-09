@@ -1,4 +1,4 @@
-// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md and sites-recording-map.md; synthetic audio/tokens only.
+// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md, sites-recording-map.md and sites-compact-recording.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
@@ -15,6 +15,7 @@ import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
 import { readGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 
 let root, container, transcribe, privateUploads, generation, createURL, revokeURL;
+const dialogMethods = Object.fromEntries(['showModal', 'close'].map(name => [name, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name)]));
 const jsonResponse = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
 function generated(source) {
   return createRecordingThreads({ ...source, graph: { metadata: { conversation_title: 'Synthetic generated recording' }, nodes: [
@@ -26,6 +27,8 @@ function LocationProbe() { return <output data-testid="location">{JSON.stringify
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; transcribe = false; privateUploads = false; generation = false;
   localStorage.clear(); createURL = vi.fn(() => 'blob:synthetic-audio'); revokeURL = vi.fn();
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn(function () { this.open = true; }) });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: vi.fn(function () { this.open = false; }) });
   const NativeURL = globalThis.URL;
   vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = createURL; static revokeObjectURL = revokeURL; });
   window.history.replaceState(null, '', '/new?autostart=true');
@@ -38,7 +41,14 @@ beforeEach(() => {
     : { enabled: true, configured: true, synthetic_only: !privateUploads }), { status: 200 })));
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
 });
-afterEach(async () => { if (root) await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(async () => {
+  if (root) await act(async () => root.unmount()); container?.remove();
+  for (const [name, descriptor] of Object.entries(dialogMethods)) {
+    if (descriptor) Object.defineProperty(HTMLDialogElement.prototype, name, descriptor);
+    else delete HTMLDialogElement.prototype[name];
+  }
+  vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers();
+});
 const button = name => [...container.querySelectorAll('button')].find(element => element.textContent === name);
 async function click(name) { await act(async () => button(name).click()); }
 async function mount(browser = false) {
@@ -46,6 +56,9 @@ async function mount(browser = false) {
   await act(async () => root.render(<Router {...(browser ? {} : { initialEntries: ['/new?autostart=true'] })}><SitesNewConversation /><LocationProbe /></Router>));
 }
 async function consent() { await act(async () => container.querySelector('input[type=checkbox]').click()); }
+async function record(name = 'Record audio locally') {
+  await click(name); await consent(); await click(name === 'Record and transcribe' ? 'Start transcription' : 'Start recording');
+}
 const transcript = {
   finalText: 'Hello there. Again.', partialText: ' provisional',
   finalTokens: [
@@ -73,15 +86,88 @@ describe('Sites recording page', () => {
     await mount();
     expect(container.textContent).toContain('without signing in');
     expect(container.textContent).toContain('Nothing is published automatically');
-    expect(button('Record audio locally').disabled).toBe(true);
+    expect(button('Record audio locally').disabled).toBe(false);
     expect(button('Record and transcribe').disabled).toBe(true);
     expect(fixture.sessions).toHaveLength(0);
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status']);
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   });
 
+  it('asks for fresh local permission only on Record, and cancelling or Escape never starts capture', async () => {
+    await mount();
+    expect(container.querySelector('dialog')).toBeNull();
+    button('Record audio locally').focus(); await click('Record audio locally');
+    expect(container.querySelector('dialog').open).toBe(true);
+    expect(document.activeElement).toBe(container.querySelector('dialog input'));
+    expect(container.querySelector('dialog').textContent).not.toContain('Soniox');
+    expect(button('Start recording').disabled).toBe(true);
+    await click('Start recording'); expect(fixture.sessions).toHaveLength(0);
+    await consent(); await click('Cancel');
+    expect(container.querySelector('dialog')).toBeNull();
+    expect(document.activeElement).toBe(button('Record audio locally'));
+    expect(localStorage.getItem('lct.recording_intro.v1')).toBeNull();
+    await click('Record audio locally');
+    expect(container.querySelector('dialog input').checked).toBe(false);
+    await act(async () => container.querySelector('dialog').dispatchEvent(new Event('cancel', { cancelable: true })));
+    expect(container.querySelector('dialog')).toBeNull(); expect(fixture.sessions).toHaveLength(0);
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(fetch.mock.calls.map(call => call[1]?.method).filter(Boolean)).not.toContain('POST');
+  });
+
+  it('remembers only the introduction, then asks again after stopping without replacing audio on cancellation', async () => {
+    await mount(); await record();
+    expect(localStorage.getItem('lct.recording_intro.v1')).toBe('seen');
+    expect(container.querySelector('dialog')).toBeNull();
+    expect(container.querySelector('input[type=checkbox]')).toBeNull();
+    expect(button('Record audio locally')).toBeUndefined();
+    expect(button('Cancel session')).toBeTruthy();
+    expect(document.activeElement).toBe(button('Stop recording'));
+    expect(container.textContent).not.toContain('Live transcription is not available yet');
+    await click('Stop recording');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await click('Record audio locally');
+    expect(container.querySelector('dialog input').checked).toBe(false);
+    expect(container.querySelector('dialog').textContent).not.toContain('Your recording stays in this tab');
+    expect(container.querySelector('dialog').textContent).toContain('5 minutes or 2 MiB');
+    await click('Cancel');
+    expect(container.querySelector('audio').getAttribute('src')).toBe('blob:synthetic-audio');
+    expect(fixture.sessions).toHaveLength(1);
+    await record(); expect(fixture.sessions).toHaveLength(2);
+  });
+
+  it('requires fresh Soniox permission even with the introduction remembered', async () => {
+    transcribe = true; localStorage.setItem('lct.recording_intro.v1', 'seen'); await mount();
+    await click('Record and transcribe');
+    expect(container.querySelector('dialog').textContent).toContain('Audio streams to Soniox');
+    expect(container.querySelector('dialog').textContent).toContain('send this audio to Soniox for transcription');
+    expect(container.querySelector('dialog input').checked).toBe(false);
+    expect(button('Start transcription').disabled).toBe(true); expect(fixture.sessions).toHaveLength(0);
+    await consent(); await click('Start transcription');
+    expect(fixture.sessions[0].options.transcribe).toBe(true);
+  });
+
+  it('keeps Stop focused and Cancel reachable while recording finalizes', async () => {
+    await mount(); await record();
+    await act(async () => fixture.sessions[0].callbacks.onStage({ stage: 'finalizing', message: 'Finalizing recording.', startedAt: Date.now() }));
+    expect(button('Stop recording').disabled).toBe(false);
+    expect(document.activeElement).toBe(button('Stop recording'));
+    expect(button('Cancel session').disabled).toBe(false);
+    expect(container.textContent).toContain('Finalizing recording.');
+    expect(container.textContent).toContain('Time remaining unknown');
+    await click('Cancel session'); expect(fixture.sessions[0].cancelled).toBe(true);
+  });
+
+  it('works with blocked browser storage and cancels a pending dialog on navigation', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Storage blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage blocked'); });
+    await mount(); await record(); expect(fixture.sessions).toHaveLength(1);
+    await failWithoutAudio(); await click('Record audio locally'); await consent();
+    await act(async () => root.unmount()); root = null;
+    expect(fixture.sessions).toHaveLength(1); expect(container.querySelector('dialog')).toBeNull();
+  });
+
   it('records locally after consent and exposes bounded audio with cloud save inactive', async () => {
-    await mount(); await consent(); await click('Record audio locally');
+    await mount(); await record();
     expect(fixture.sessions[0].options).toEqual({ transcribe: false, maxSessionSeconds: 300 });
     expect(container.textContent).toContain('Recording locally');
     await click('Stop recording');
@@ -92,7 +178,7 @@ describe('Sites recording page', () => {
   });
 
   it('shows live/final transcript output without publishing it automatically', async () => {
-    transcribe = true; await mount(); await consent(); await click('Record and transcribe');
+    transcribe = true; await mount(); await record('Record and transcribe');
     expect(fixture.sessions[0].options.transcribe).toBe(true);
     await act(async () => fixture.sessions[0].callbacks.onTranscript({ finalText: 'Final words.', partialText: ' tentative', finalTokens: [], partialTokens: [] }));
     expect(container.textContent).toContain('Final words. tentative');
@@ -101,7 +187,7 @@ describe('Sites recording page', () => {
   });
 
   it('saves audio through the existing authenticated private-file API only after a deliberate choice', async () => {
-    privateUploads = true; await mount(); await consent(); await click('Record audio locally'); await click('Stop recording');
+    privateUploads = true; await mount(); await record(); await click('Stop recording');
     const describedBy = button('Save audio privately').getAttribute('aria-describedby');
     expect(container.querySelector(`#${describedBy}`)?.textContent).toBe('Private cloud copies stay until you delete them. Saving privately does not publish them.');
     expect(fetch.mock.calls.map(call => call[1]?.method).filter(Boolean)).not.toContain('POST');
@@ -137,7 +223,7 @@ describe('Sites recording page', () => {
   });
 
   it('keeps local audio and warns about uncertain private-save outcome after cancellation', async () => {
-    privateUploads = true; await mount(); await consent(); await click('Record audio locally'); await click('Stop recording');
+    privateUploads = true; await mount(); await record(); await click('Stop recording');
     fetch.mockImplementationOnce(() => new Promise(() => {}));
     await click('Save audio privately'); expect(container.textContent).toContain('Saving audio to your private files');
     await click('Cancel private save');
@@ -146,7 +232,7 @@ describe('Sites recording page', () => {
   });
 
   it('cancels on navigation and releases local playback URLs without late callback leakage', async () => {
-    await mount(); await consent(); await click('Record audio locally'); await click('Stop recording');
+    await mount(); await record(); await click('Stop recording');
     const active = fixture.sessions[0];
     await act(async () => root.unmount()); root = null;
     expect(active.cancelled).toBe(true); expect(revokeURL).toHaveBeenCalledWith('blob:synthetic-audio');
@@ -158,7 +244,7 @@ describe('Sites recording page', () => {
   });
 
   it('offers one matching audio and finalized transcript pair only after stopping, without publishing', async () => {
-    transcribe = true; await mount(); await consent(); await click('Record and transcribe');
+    transcribe = true; await mount(); await record('Record and transcribe');
     await deliverTranscript();
     expect(container.querySelector('[aria-label="Transcript file"]')).toBeNull();
     expect(createURL).not.toHaveBeenCalled();
@@ -185,7 +271,7 @@ describe('Sites recording page', () => {
   });
 
   it('sends the actual JSON File through the same-origin private API only on explicit save', async () => {
-    transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
+    transcribe = true; privateUploads = true; await mount(); await record('Record and transcribe');
     await deliverTranscript(); await click('Stop recording');
     const expected = transcriptJSON();
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status', '/api/cloud/openrouter/status']);
@@ -205,7 +291,7 @@ describe('Sites recording page', () => {
   });
 
   it('keeps transcript download available while synthetic storage disables private save', async () => {
-    transcribe = true; await mount(); await consent(); await click('Record and transcribe');
+    transcribe = true; await mount(); await record('Record and transcribe');
     await deliverTranscript(); await click('Stop recording');
     expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
     expect(button('Save transcript privately').disabled).toBe(true);
@@ -213,7 +299,7 @@ describe('Sites recording page', () => {
   });
 
   it('retains partial transcript JSON without audio after cancelling a private save', async () => {
-    transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
+    transcribe = true; privateUploads = true; await mount(); await record('Record and transcribe');
     await deliverTranscript(); await failWithoutAudio();
     expect(container.querySelector('audio')).toBeNull();
     expect(transcriptJSON().transcription_complete).toBe(false);
@@ -228,7 +314,7 @@ describe('Sites recording page', () => {
   });
 
   it('bounds a transcript-only private save and preserves its local download', async () => {
-    transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
+    transcribe = true; privateUploads = true; await mount(); await record('Record and transcribe');
     await deliverTranscript(); await failWithoutAudio();
     vi.useFakeTimers(); fetch.mockImplementationOnce(() => new Promise(() => {}));
     await click('Save transcript privately');
@@ -241,14 +327,14 @@ describe('Sites recording page', () => {
   it('confirms replacement after transcript-only failure and releases both artifact URLs on navigation', async () => {
     transcribe = true; privateUploads = true;
     createURL.mockImplementationOnce(() => 'blob:transcript-old').mockImplementationOnce(() => 'blob:transcript-new');
-    await mount(); await consent(); await click('Record and transcribe'); await deliverTranscript(); await failWithoutAudio();
+    await mount(); await record('Record and transcribe'); await deliverTranscript(); await failWithoutAudio();
     const oldName = container.querySelector('a[download$=".transcript.json"]').getAttribute('download');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     await click('Record and transcribe');
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(container.querySelector('a[download$=".transcript.json"]').getAttribute('download')).toBe(oldName);
     expect(fixture.sessions).toHaveLength(1);
-    await click('Record and transcribe');
+    await record('Record and transcribe');
     expect(fixture.sessions).toHaveLength(2);
     expect(container.querySelector('[aria-label="Transcript file"]')).toBeNull();
     expect(revokeURL).toHaveBeenCalledWith('blob:transcript-old');
@@ -264,7 +350,7 @@ describe('Sites recording page', () => {
 
   async function readyMap(partial = false, browser = false) {
     transcribe = true; generation = true;
-    await mount(browser); await consent(); await click('Record and transcribe'); await deliverTranscript();
+    await mount(browser); await record('Record and transcribe'); await deliverTranscript();
     expect(container.querySelector('[aria-label="Conversation map"]')).toBeNull();
     if (partial) await failWithoutAudio(); else await click('Stop recording');
   }
@@ -325,7 +411,7 @@ describe('Sites recording page', () => {
   });
 
   it('keeps audio/transcript usable when map status fails and refuses an inactive map without a POST', async () => {
-    transcribe = true; await mount(); await consent(); await click('Record and transcribe'); await deliverTranscript();
+    transcribe = true; await mount(); await record('Record and transcribe'); await deliverTranscript();
     fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture unavailable' }, 503)); await click('Stop recording');
     expect(container.textContent).toContain('Generation setup is unavailable');
     expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();

@@ -45,6 +45,83 @@ afterEach(async () => {
 describe("SitesAccessPanel", () => {
   // Test intent: Google remains unavailable until runtime configuration; failures and cancellation
   // leave public browsing usable; sign-out revokes the app session before platform navigation.
+  // Dismissal only changes local presentation; private-page access links reopen the same panel.
+  it("keeps focus on the current access control after rapid close and repeated reopen", async () => {
+    fetch.mockResolvedValue({ status: 401 }); await mount();
+    const close = container.querySelector('[aria-label="Close site access"]');
+    await act(async () => { close.click(); close.click(); });
+    expect(document.activeElement).toBe(container.querySelector("button"));
+    await act(async () => container.querySelector("button").click());
+    expect(document.activeElement).toBe(container.querySelector("#site-access"));
+    await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+    expect(document.activeElement).toBe(container.querySelector("button"));
+    expect(container.textContent).toBe("Sign in");
+  });
+
+  it('uses neutral Account wording while the compact session check is pending or failed', async () => {
+    localStorage.setItem("lct.sites_access_dismissed.v1", "true");
+    vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
+    await mount(); expect(container.textContent).toBe("Account");
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(container.textContent).toBe("Account");
+    await act(async () => container.querySelector("button").click());
+    expect(container.textContent).toContain("Retry sign-in check");
+  });
+
+  it("dismisses to a compact control, remembers the choice, and keeps authentication unchanged", async () => {
+    fetch.mockResolvedValue({ status: 401 });
+    await mount();
+    expect(container.textContent).toContain("Opening browser-local files does not publish them.");
+    await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+    expect(container.textContent).toBe("Sign in");
+    expect(localStorage.getItem("lct.sites_access_dismissed.v1")).toBe("true");
+    expect(fetch.mock.calls.filter(([path]) => path === "/api/auth/session")).toHaveLength(1);
+    expect(fetch.mock.calls.some(([path]) => path === "/api/auth/logout")).toBe(false);
+    await act(async () => root.unmount());
+    root = null;
+    container.remove();
+    await mount();
+    expect(container.textContent).toBe("Sign in");
+    await act(async () => container.querySelector("button").click());
+    expect(container.textContent).toContain("Browsing as guest");
+    expect(document.activeElement).toBe(container.querySelector("#site-access"));
+  });
+
+  it("reopens on a private access link even when the hash is already set", async () => {
+    localStorage.setItem("lct.sites_access_dismissed.v1", "true");
+    fetch.mockResolvedValue({ status: 401 });
+    await mount("/private-files");
+    const panel = container.querySelector("#site-access");
+    expect(panel.classList.contains("fixed")).toBe(false);
+    const link = document.createElement("a");
+    link.href = "#site-access";
+    document.body.appendChild(link);
+    await act(async () => link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
+    expect(panel.textContent).toContain("Browsing as guest");
+    expect(document.activeElement).toBe(panel);
+    await act(async () => panel.querySelector('[aria-label="Close site access"]').click());
+    await act(async () => link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
+    expect(panel.textContent).toContain("Browsing as guest");
+    expect(fetch.mock.calls.filter(([path]) => path === "/api/auth/session")).toHaveLength(1);
+    link.remove();
+  });
+
+  it("opens for an initial access hash and tolerates unavailable preference storage", async () => {
+    localStorage.setItem("lct.sites_access_dismissed.v1", "true");
+    fetch.mockResolvedValue({ status: 401 });
+    await mount("/private-files#site-access");
+    expect(container.textContent).toContain("Browsing as guest");
+    await act(async () => root.unmount());
+    root = null;
+    container.remove();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("storage blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("storage blocked"); });
+    await mount();
+    expect(container.textContent).toContain("Browsing as guest");
+    await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+    expect(container.textContent).toBe("Sign in");
+    vi.restoreAllMocks();
+  });
   it("keeps Google sign-in inactive until the runtime config is enabled and configured", async () => {
     localStorage.setItem("lct.sites_auth_ui_timing.v1", JSON.stringify([
       { stage: "config", durationMs: 1, outcome: "complete", retryCount: 0, credential: "must-drop" },
@@ -284,6 +361,8 @@ describe("SitesAccessPanel", () => {
     expect(localStorage.getItem("lct.sites_session_check_timing.v1")).not.toContain("private-id");
     const signOut = [...container.querySelectorAll("button")].find((button) => button.textContent === "Sign out");
     expect(signOut).toBeTruthy();
+    await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+    expect(container.textContent).toBe("Account");
   });
 
   it("offers retry after a malformed successful response and recovers to guest", async () => {
@@ -292,7 +371,7 @@ describe("SitesAccessPanel", () => {
     await mount();
     expect(container.textContent).toContain("Sign-in check failed");
     expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy and data use");
-    await act(async () => container.querySelector("button").click());
+    await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry sign-in check").click());
     expect(container.textContent).toContain("Browsing as guest");
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(JSON.parse(localStorage.getItem("lct.sites_session_check_timing.v1"))).toEqual([
@@ -350,7 +429,7 @@ describe("SitesAccessPanel", () => {
     fetch.mockResolvedValue({ status: 500 });
     await mount();
     for (let index = 0; index < 9; index += 1) {
-      await act(async () => container.querySelector("button").click());
+      await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry sign-in check").click());
     }
     const history = JSON.parse(localStorage.getItem("lct.sites_session_check_timing.v1"));
     expect(history).toHaveLength(8);
