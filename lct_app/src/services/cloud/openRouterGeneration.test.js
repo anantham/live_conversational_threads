@@ -36,8 +36,11 @@ const generatedGraph = () => ({
   ],
   edges: [{ id: 'edge-1', from_node_id: 'moment-a', to_node_id: 'moment-b',
     relation_type: 'responds_to', edge_kind: 'semantic', explanation: 'A reply.', relation_text: '' }],
-  conversation_threads: [{ id: 'path-1', title: 'Path',
-    steps: [{ moment_id: 'moment-a', evidence_utterance_ids: ['utterance-0001'] }] }],
+  conversation_threads: [{ id: 'path-1', title: 'Idea and response',
+    steps: [
+      { moment_id: 'moment-a', evidence_utterance_ids: ['utterance-0001'] },
+      { moment_id: 'moment-b', evidence_utterance_ids: ['utterance-0002'] },
+    ] }],
 });
 const responseFor = (graph) => ({
   choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(graph) } }],
@@ -111,6 +114,19 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(JSON.stringify(source)).toBe(before);
   });
 
+  it('requests meaningful nonempty thread paths with exact authored-node and source references', () => {
+    const request = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
+    const steps = request.response_format.json_schema.schema.properties.conversation_threads.items.properties.steps;
+    expect(steps.minItems).toBe(1);
+    const prompt = request.messages[0].content;
+    expect(prompt).toContain('unique thread id');
+    expect(prompt).toContain('distinct moment_id');
+    expect(prompt).toContain('authored node id');
+    expect(prompt).toContain('supplied utterance IDs');
+    expect(prompt).toContain('meaningful ordered');
+    expect(prompt).toContain('conversation_threads array when no path is defensible');
+  });
+
   it('keeps partial transcription explicit and rejects missing model, cap and oversized input', () => {
     const request = buildOpenRouterGenerationRequest({ source: { ...source, complete: false },
       model: 'provider/selected-model', maxTokens: 1 });
@@ -154,11 +170,23 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(JSON.parse(json)).toEqual(bundle);
     expect(opened.graph_data.map((item) => item.semantic_level)).toEqual([1, 1, 2, 3, 4, 5]);
     expect(opened.edges).toEqual(graph.edges);
+    expect(opened.conversation_threads).toEqual(graph.conversation_threads);
     expect(opened.full_transcript).toBe('A careful idea. A response.');
     expect(opened.argument_topology.status).toBe('not_run');
     const discussion = buildDiscussionModel(opened.graph_data, opened.utterances);
     expect(discussion.utterancesByMoment.get('moment-a')).toEqual(['utterance-0001']);
     expect(discussion.utterancesByMoment.get('moment-b')).toEqual(['utterance-0002']);
+  });
+
+  it.each([
+    (graph) => { graph.conversation_threads[0].steps = []; },
+    (graph) => { graph.conversation_threads[0].steps[1].moment_id = 'missing'; },
+    (graph) => { graph.conversation_threads[0].steps[1].moment_id = 'moment-a'; },
+    (graph) => { graph.conversation_threads[0].steps[1].evidence_utterance_ids = ['missing']; },
+  ])('keeps invalid thread paths behind the existing validation boundary', (mutate) => {
+    const graph = generatedGraph(); mutate(graph);
+    expect(() => recordingThreadsFromOpenRouterResponse({ source, response: responseFor(graph) }))
+      .toThrow(expect.objectContaining({ validationStage: 'threads' }));
   });
 
   it.each([
