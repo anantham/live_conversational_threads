@@ -1,5 +1,9 @@
 # ISSUES
 
+## 2026-10-09 19:12 IST — Compact UI published; rendered acceptance still unavailable
+
+The persistent consent/access clutter and second-recording crash are repaired in source133d2aa and served cloud preview29/native35e4899/env27. Final AGY/Anthropic PASS,850/850full tests, actual build/payload preservation and hosted client/status/refusal checks pass. Participant consent is fresh per recording; introduction/display preferences only are remembered, access notice closes/reopens and identity stays intact. This closes source/publication work for the issue below. Remaining verification blocker is CUA webview attachment/navigation/CDP failure; no desktop/mobile screenshot or actual browser interaction is claimed. Local preview responds200 and was stopped after bounded failed control attempts. Next: one bounded browser confirmation once the controller works; no duplicate source/privacy/provider approval is needed. Full migration/provider/private/domain issues remain separate and unaccepted.
+
 ## 2026-10-09 18:55 IST — Persistent recording/access clutter; replacement crash
 
 User reported consent and access explanations permanently occupying screen space. Approved repair is implemented locally: fresh per-recording dialog, remembered general intro and dismissible/reopenable access notice. New replacement regression additionally reproduces a stale playback URL rendering after its audio object is cleared, causing a null read; requiring audio and URL together fixes the crash. Impact is a second local recording failing to start; it is covered in the same finite recording journey. These fixes still await independent review and inactive preview publication; no full migration completion is claimed. Next: exact bounded review/build/publication with existing provider, private-storage and identity boundaries unchanged.
