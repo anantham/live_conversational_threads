@@ -163,7 +163,7 @@ export default function SitesNewConversation() {
       </div>
       {!hasContent && <div className="flex min-h-20 flex-1 flex-col items-center justify-center px-6 py-8 text-center">
         <p className="text-sm font-medium text-slate-600">{active ? 'Your conversation is recording.' : 'Tap the mic below to start a session'}</p>
-        <p className="mt-2 max-w-[40ch] text-xs leading-5 text-slate-600">Record audio without signing in. Nothing is published automatically.</p>
+        <p className="mt-2 max-w-[40ch] text-xs leading-5 text-slate-600">Record audio without signing in.</p>
       </div>}
       {hasContent && <div className="mx-auto w-full max-w-3xl shrink-0 px-5 pt-2 pb-8">
     {error && <p role="alert" className="rounded-lg bg-rose-50 p-4 text-sm leading-6 text-rose-900">{error}</p>}{notice && <p role="status" className="text-sm">{notice}</p>}
@@ -174,8 +174,7 @@ export default function SitesNewConversation() {
       </div>}
     </section>
     <footer className="relative shrink-0 border-t border-gray-100 bg-white/80 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-4">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-4 sm:justify-between">
-        <p className="hidden text-xs text-slate-600 sm:block">Nothing is published automatically.</p>
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-4 sm:justify-end">
         <CloudRecordingToolbar active={active} supported={supported} live={Boolean(live)} busy={saving || generating} stage={activity?.stage} stopRef={stopControl} onRecordLocal={() => requestRecording(false)} onRecordTranscribe={() => requestRecording(true)} onStop={() => void session.current?.stop()} onCancel={() => session.current?.cancel()} />
       </div>
     </footer>

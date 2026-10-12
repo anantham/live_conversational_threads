@@ -5,3 +5,4 @@
 - Recorded audio, transcript, map generation and explicit private/public actions stay reachable inside the canvas without moving the bottom controls off screen.
 - Setup, recording, saving and failure/retry keep stage, elapsed time and cancellation readable. The account panel must not cover the toolbar.
 - Use isolated synthetic sessions and data only. Validate public behavior and the layout contract; real desktop/mobile rendering is a separate evidence boundary.
+- 2026-10-12 copy-only request: remove “Nothing is published automatically.” from the canvas, footer and dialog introduction. Preserve guest capture, mode-specific participant/provider permission and explicit saving; keep the footer's mobile-center/desktop-right alignment after deleting its left text. Adjust existing copy assertions; no new feature or test fixture is needed.

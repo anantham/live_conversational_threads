@@ -122,7 +122,7 @@ describe('Sites recording page', () => {
   it('opens publicly without auto microphone/start or legacy backend requests', async () => {
     await mount();
     expect(container.textContent).toContain('without signing in');
-    expect(container.textContent).toContain('Nothing is published automatically');
+    expect(container.textContent).not.toContain('Nothing is published automatically');
     expect(button('Record audio locally').disabled).toBe(false);
     expect(button('Record and transcribe').disabled).toBe(true);
     expect(button('Retry cloud setup').closest('details')).toBeNull();
@@ -136,6 +136,7 @@ describe('Sites recording page', () => {
     expect(container.querySelector('dialog')).toBeNull();
     button('Record audio locally').focus(); await click('Record audio locally');
     expect(container.querySelector('dialog').open).toBe(true);
+    expect(container.querySelector('dialog').textContent).not.toContain('Nothing is published automatically');
     expect(document.activeElement).toBe(container.querySelector('dialog input'));
     expect(container.querySelector('dialog').textContent).not.toContain('Soniox');
     expect(button('Start recording').disabled).toBe(true);
