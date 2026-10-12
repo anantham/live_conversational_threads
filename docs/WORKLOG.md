@@ -7498,3 +7498,25 @@ User observed an empty desktop transcript until node selection, with only the cu
   commit and explicitly labels its failed replay. It is not covered by the
   approved backend review or counted as passing evidence; it must be corrected,
   validated and reviewed after the permitted manual walkthrough. Goal is active.
+
+### 2026-10-12 — Actual CLI/HTTP boundary verified while browser gate is pending
+
+- Previous goal turn made progress (reviewed source and unfinished browser probe
+  preserved as two local commits). Current checkout d7094fd was clean. Five new
+  disposable synthetic cases exercised the actual command-line process, real JS
+  compiler, shared extractor, localhost HTTP transport and atomic file replacement
+  without replacing provider helpers: cited success, explicit empty success,
+  uncited refusal, HTTP503 and unapproved-provider refusal all passed.
+- Exact synthetic source texts/IDs reached the HTTP server; the cited response
+  exported m3→m1/u1,u3 alongside the unchanged existing edge. Failures retained
+  previous bytes; unapproved provider received zero requests. Cache disabled,
+  credentials removed only from child environment, task-owned persistence roots
+  assigned before imports, localhost server shut down. No live model, production
+  service or paid inference used. Receipt:
+  docs/reviews/semantic-cli-transport-verification-2026-10-12.json.
+- Static source tracing agrees with the browser snapshot: card click focuses
+  relationships; its Source control calls the details action. This explains the
+  last probe's unsupported expectation, but does not verify that interaction in
+  a browser. The pending human-guided manual walkthrough was not resumed, nor
+  were browser assertions weakened. Goal remains active; same viewer guidance
+  dependency has now appeared in two consecutive goal turns.

@@ -2132,4 +2132,8 @@ approved with no findings and zero tools. Receipt:
 `docs/reviews/semantic-authoring-consolidation-2026-10-12.json`.
 Reviewed source committed locally as 8ef8161; nothing pushed, merged
 or deployed. Browser acceptance and public artifact regeneration remain unverified.
-Next evidence checkpoint: independent verdict and human-guided viewer inspection.
+Additional checkpoint: five actual CLI/localhost HTTP cases pass with no helper
+replacement; receipt docs/reviews/semantic-cli-transport-verification-2026-10-12.json.
+Next evidence checkpoint: human-guided Source/details inspection and browser
+acceptance. Static wiring shows the candidate test expected details from the
+card-focus action; no browser retry has been authorized after the stop.

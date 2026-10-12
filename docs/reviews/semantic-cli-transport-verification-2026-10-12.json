@@ -1,0 +1,24 @@
+{
+  "source_commit": "8ef8161",
+  "method": "Actual Python CLI to JS compiler to shared extractor to localhost HTTP to atomic artifact export",
+  "boundary": "Synthetic OpenAI-compatible HTTP server on 127.0.0.1; no provider-helper replacement",
+  "cases": [
+    {"name": "cited-success", "exit_code": 0, "http_calls": 1, "passed": true},
+    {"name": "uncited-refusal", "exit_code": 1, "http_calls": 1, "passed": true},
+    {"name": "http-failure", "exit_code": 1, "http_calls": 1, "passed": true},
+    {"name": "provider-refusal", "exit_code": 1, "http_calls": 0, "passed": true},
+    {"name": "valid-empty", "exit_code": 0, "http_calls": 1, "passed": true}
+  ],
+  "verified": [
+    "Provider received all three synthetic exact texts and their IDs",
+    "New cited edge retained m3 to m1 direction and u1/u3 citations",
+    "Existing edge and utterances remained unchanged in export",
+    "Invalid evidence and HTTP failure retained previous output bytes",
+    "Provider without owner-private trust received no HTTP request",
+    "Successful empty payload retained original edge and marked required-window completion",
+    "CLI reports initial and terminal stage"
+  ],
+  "isolation": "Task-owned temp roots before imports, cache disabled, no credentials, no model inference, no production data or services; server closed on completion",
+  "local_evidence": "tmp/semantic-cli-http-20261012/receipt.json and per-case stdout/stderr; disposable probe tmp/probe_semantic_cli_http.py",
+  "limitations": "Synthetic protocol evidence; does not prove model semantic quality, browser acceptance or deployment"
+}
