@@ -427,6 +427,7 @@ async def extract_graph_for_conversation(
     try:
         semantic_edges, enrichment_telemetry = await run_edge_enrichment(
             nodes=existing,
+            utterances=utterances,
             query_summary="",
             llm_config=llm_config,
             providers=local_providers,

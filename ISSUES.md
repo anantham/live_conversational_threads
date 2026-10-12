@@ -2106,3 +2106,30 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
+# Semantic authoring consolidation — 2026-10-12 (ACTIVE)
+
+Outcome: imports and `.threads` experiments share the existing transcript-grounded
+relationship extractor; compiler preserves validated relationships; automatic
+citation fallback removed. Owner Codex; authoritative checkout is
+`C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`,
+branch `codex/semantic-authoring-consolidation-20261012`, base bda16e5.
+
+Acceptance: exact endpoint passages in provider request; omitted/unshown evidence
+rejected; supported directed edges survive extraction, compilation, export/reload
+and viewing; extraction failure retains previous graph; focused/adjacent checks
+and different-family read-only review pass. Existing transcript/node identities
+and memberships remain stable. Optional retrieval and hierarchy redesign deferred.
+Checkpoint: implementation in the isolated checkout; 49 focused backend tests,
+30 adjacent live STT tests, seven compiler tests and 35 viewer contract tests
+pass. Exact shared extraction/compile/export/reload uses synthetic speech and a
+provider transport stub. Real graph planning covers 100 nodes in 23 windows;
+this is not a semantic-recall or whole-transcript inference claim.
+Remaining dependency: browser acceptance is stopped at the repository's three
+failed-attempt limit; human guidance requested for a manual walkthrough. The
+graph renders both directed fixture edges, but card focus alone does not expose
+relationship details. Independent Google Gemini review of staged tree a934fe9
+approved with no findings and zero tools. Receipt:
+`docs/reviews/semantic-authoring-consolidation-2026-10-12.json`.
+Reviewed source is ready for a local task-branch commit; nothing pushed, merged
+or deployed. Browser acceptance and public artifact regeneration remain unverified.
+Next evidence checkpoint: independent verdict and human-guided viewer inspection.

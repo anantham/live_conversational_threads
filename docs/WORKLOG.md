@@ -7415,3 +7415,77 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Final coherent source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; mandatory hook524/524 in86files passed32.87s, unchanged React act warnings. Google Gemini3.1ProHigh via authenticated AGY approved exact five-file diff and bounded helper/final-hook context at2026-10-03T13:58:24.081Z; no findings, zero tool attempts. Packet20471bytes SHA256703a8f18c5f282686bbf1c5bf2fd3b4ec81797210bc681d7235f7833875afb40, inventoried/inspected/scanned; excluded credentials, artifacts/pilot, transcripts/participants, personal AGENTS, private reasoning and unrelated content. Existing subscription, same deny-all PreToolUse guard and neutral plan+sandbox reviewer.
 - Sanitized receipt docs/reviews/viewer-key-replay-2026-10-03.json supersedes the earlier source-key-only verdict for final runtime scope. No source/test edits follow this review. Repository convenience scripts support Grok/Claude and broader egress, so the bounded AGY adapter is used; exact reviewed files must be identical through final PR head and CI before merge.
 - Owner Codex; authoritative viewer-source-and-controls checkout and codex/viewer-source-speaker-legend branch unchanged. Remaining dependency exact-head CI, production deployment and actual served1440/390 speaker-key/card proof. Six-label local pilot ready; no public wording or grouping changes. Original30-60 active-minute follow-up estimate was extended by the deterministic replay race repair and required second review. Revised integration/verification planning range10-20 active minutes, CI/deploy waits separate and unknown. Next evidence checkpoint PR checks plus verified served runtime identity.
+# 2026-10-12 — Shared semantic authoring consolidation
+
+- User activated the explicit consolidation goal. A1 implementation in isolated
+  `codex/semantic-authoring-consolidation-20261012`, integration owner Codex,
+  authoritative checkout
+  `C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`.
+  Fresh origin/main is bda16e5; primary checkout and prior personal AGENTS edits
+  preserved. No production restart, regeneration, disclosure or new paid use.
+- Hypothesis H1: experiment compilation replaces valid authored relations with
+  thread returns; H2: summary/ID-only prompts and fallback citations accept
+  ungrounded output. Predicted tests: seeded relations disappear in old compiler;
+  provider input omits exact source text; missing citations acquire a source ID.
+  Shared path plus explicit evidence should reverse these outcomes. Confidence
+  0.9 in mechanism; semantic recall remains empirical. Failure retains prior graph.
+- Test intent recorded before source edits at
+  `lct_python_backend/tests/intent/semantic_authoring_consolidation.md`.
+  Finite acceptance: exact provider input, refusal/invalid/empty/failure cases,
+  directed citations through compile/export/reload, reader inspection, adjacent
+  callers and eligible non-OpenAI review. Next checkpoint small synthetic fixture.
+
+### 2026-10-12 — Shared authoring implementation and validation checkpoint
+
+- Shared extractor now resolves exact source IDs/text, uses one deduplicated
+  speech table per existing bounded window, and rejects missing evidence instead
+  of supplying citations. Import, repair and consented owner-private local STT
+  supply persisted source records. The compiler retains canonical edges and
+  leaves thread returns as metadata. A file adapter uses the shared extractor
+  and replaces output atomically only after successful required windows.
+- Validation: 49 focused backend tests and 30 adjacent live STT tests pass with
+  isolated persistence/temp roots; compiler seven tests and frontend edge,
+  artifact and detail 35 tests pass. Synthetic extraction→real JS compiler→file
+  reload preserves both directed edges/citations and prior output on refusal.
+  No real provider inference or production data mutation was performed.
+- Exact-text input exposed a size boundary in the real 100-node graph. Existing
+  planner now also bounds rendered source size: 23 windows fit 21,000 input
+  characters each, with a 3,000-character reserve. Planning took 59–69ms in five
+  local read-only runs. Twelve disclosed turns per node remain; exhaustive=false.
+- Browser attempts: (1) viewer refused a missing synthetic thread title;
+  compiler now rejects that input and fixture has a title; (2) incomplete fixture
+  semantic metadata caused legacy rendering; fixture now supplies semantic_type;
+  (3) clicking a card focuses relationships rather than opening details. Snapshot
+  shows explicit m1→m3 and m3→m1 edges, but relationship inspection acceptance
+  remains unverified. Stopped this sequence per three-attempt rule and requested
+  human guidance for a manual walkthrough. Preserved screenshots/error contexts
+  under lct_app/test-results; pending browser test is excluded from review.
+- Source review: authenticated AGY Google Gemini3.1ProHigh, tool-free plan/sandbox
+  with existing deny-all hook; exact staged tree a934fe9, 15 technical files plus
+  bounded shared extractor/planner context; packet SHA256 f722acbe…834f2b08,
+  123,437 bytes. Packet scanned for secrets/participant data; real artifacts,
+  transcripts, personal docs and credentials excluded. Verdict pending.
+- Refactor measurements: edge_enrichment 804→763 LOC (-5.1%); planner 305→327
+  (+7.2%); compiler 87→107 (+23.0%, including stdin bridge and validation).
+  Additional source-input/file/CLI adapters are explicit shared-path plumbing;
+  no new inference stage. AST decision-count proxy (not Radon): parser42→44,
+  call24→30, run24→25, planner14→20, pack10→12. Full metrics in ignored
+  tmp/semantic-metrics.json. Before/after coverage and provider latency are
+  unavailable; no frontend runtime/dependency/bundle change, no any types removed.
+- Owner/checkout unchanged. Public regeneration, push/PR/merge/restart are not
+  performed. Remaining independent review wait and browser guidance are separate
+  from implementation effort; no credible calendar ETA before those checkpoints.
+
+### 2026-10-12 — Independent source review approved
+
+- Google Gemini3.1ProHigh via authenticated AGY approved exact staged source
+  tree a934fe9ce4cacf31e31f017769ac5ce5ec6daf13, with no findings and zero tool
+  attempts. Review conversation 0a0f4701-f843-41b8-8132-882459424ad5; receipt at
+  docs/reviews/semantic-authoring-consolidation-2026-10-12.json. Source unchanged
+  since review; subsequent edits only record intent/evidence. Browser candidate
+  test was excluded and remains unfinished; no approved viewer acceptance claim.
+- Finite implemented source slice is being preserved locally. New scope has no
+  specific publication/CI or production restart authority recorded; under the
+  Autonomy and Authority policy, no push/PR/merge/deploy is inferred from earlier
+  frontend release approval. Complete the viewer check before a concrete release
+  approval request. Persistent goal remains active.
