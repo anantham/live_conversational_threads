@@ -7520,3 +7520,20 @@ User observed an empty desktop transcript until node selection, with only the cu
   a browser. The pending human-guided manual walkthrough was not resumed, nor
   were browser assertions weakened. Goal remains active; same viewer guidance
   dependency has now appeared in two consecutive goal turns.
+
+### 2026-10-12 — Third viewer-guidance blocker audit
+
+- Previous goal turn was progress: actual CLI/HTTP boundary yielded five passing
+  outcomes and cbfd87c preserved the evidence. Current checkout is clean; no
+  runtime source differs from reviewed 8ef8161. Reviewer and CLI handles are
+  terminal successes, not ongoing waits.
+- Completion remains unproven: desktop/phone viewing must inspect direction,
+  citations and source speech after reload. The candidate probe still expects
+  details from card focus. Static wiring is evidence of the incorrect action,
+  not browser success. Human guidance for the materially different manual
+  walkthrough remains pending under the explicit three-attempt stop.
+- Same guidance dependency appeared in three consecutive goal turns. No other
+  necessary authorized work remains independent of it; do not repeat passing
+  tests, rerun the stopped browser sequence, infer approval from an automatic
+  continuation, or mark completion. Goal is to be marked blocked at this audit.
+  Preserve all commits and the original objective. No publication or deployment.

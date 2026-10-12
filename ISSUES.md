@@ -2106,7 +2106,7 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
-# Semantic authoring consolidation — 2026-10-12 (ACTIVE)
+# Semantic authoring consolidation — 2026-10-12 (BLOCKED: viewer guidance)
 
 Outcome: imports and `.threads` experiments share the existing transcript-grounded
 relationship extractor; compiler preserves validated relationships; automatic
@@ -2137,3 +2137,11 @@ replacement; receipt docs/reviews/semantic-cli-transport-verification-2026-10-12
 Next evidence checkpoint: human-guided Source/details inspection and browser
 acceptance. Static wiring shows the candidate test expected details from the
 card-focus action; no browser retry has been authorized after the stop.
+
+Third consecutive goal-turn audit: worktree cbfd87c is clean; reviewed runtime
+source is unchanged from 8ef8161, and the independent reviewer and CLI probe are
+terminal successes. All authorized independent verification is finished. The
+remaining required desktop/phone Source/details interaction is unproven; the
+three-attempt stop requires human guidance before switching to the proposed
+manual browser walkthrough. No such answer has arrived. Mark the goal blocked,
+preserve the full objective, and resume this exact checkout after that guidance.
