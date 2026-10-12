@@ -7537,3 +7537,65 @@ User observed an empty desktop transcript until node selection, with only the cu
   tests, rerun the stopped browser sequence, infer approval from an automatic
   continuation, or mark completion. Goal is to be marked blocked at this audit.
   Preserve all commits and the original objective. No publication or deployment.
+
+### 2026-10-12 — Approved manual walkthrough and browser acceptance
+
+- User explicitly said “Proceed with the manual walkthrough”; this resumes the
+  stopped sequence without another product/permission request. Cua exposed no
+  browsers or apps, so used the existing Playwright Chromium setup interactively
+  against task-owned Vite port51893, with isolated browser storage and synthetic
+  shared-authoring.threads. No production backend, model, request mocks or
+  production artifact changes. Local runtime checkout abfd045; runtime source
+  remains identical to reviewed8ef8161.
+- [instrument] Card body focuses related nodes. Its Open exact source utterances
+  control opens Passage3 details; outgoing clarifies relation points to Passage1,
+  shows the explanation and exact citation title u1 newline u3. Details evidence
+  Source opens exact original speech. At390px details are a scrolling sheet and
+  Source replaces it; screenshot confirms readable relations and speech. At1440px
+  Source and details coexist. Both have document width equal to viewport width.
+- Reloading temporary /view returns to file opener; Library's saved local entry
+  navigates to /view/synthetic-consolidation-overlap-v1. That route reloads the
+  remembered artifact without reupload. Library's separate private backend calls
+  returned500 because this is Vite-only; explicit unavailable/retry states shown.
+  Logged adjacent non-blocking setup issue in ISSUES.md; no library repair added.
+- Changed lct_app/tests/e2e/shared-semantic-authoring.spec.ts:1-87. Test intent
+  now records the observed public interaction and saved-route reload boundary;
+  checks actual canonical from_node_id/to_node_id fields, both rendered directed
+  edges, exact citations, on-screen relation/source text, no overflow, and zero
+  browser page/console errors/warnings or5xx. Does not count missing-fixture skip
+  as proof. Final focused Chromium2/2 passed in32.0s at1440/390; source/relations
+  screenshots under lct_app/test-results and manual screenshots under tmp.
+- Independent review pending: bounded exact test diff only, staged tree e2fbc3f,
+  test blob645167e, packet7310bytes SHA256160ace56…905afb93a. Authenticated AGY
+  Google Gemini3.1ProHigh, tool-free plan/sandbox with verified deny-all hook;
+  excluded real speech, participant data, artifacts, images, credentials, DBs,
+  unrelated code and private reasoning. No new paid service. Earlier approved
+  backend review remains valid because runtime source is unchanged.
+- Remaining work: final reviewer verdict, then local commit/completion audit.
+  No browser guidance or product decision remains blocked on the user. No push,
+  merge or deploy authority is inferred for this backend slice. Public artifact
+  regeneration and broader UX/hierarchy work remain deferred.
+
+### 2026-10-12 16:14 IST — Final browser review approved; local handoff
+
+- AGY/Google Gemini3.1ProHigh approved exact staged tree
+  e2fbc3f820f0f02d70db2b0de65073a3f8bc49da, test blob
+  645167e64365816336c2fbfb4572a9567ac49f1a. No findings, zero tool attempts;
+  conversation dd563815-3bcb-4f41-9242-773008d6d7d8. Packet7310bytes,
+  transport11256bytes SHA25691f71489…626150d6. Receipt:
+  docs/reviews/semantic-viewer-review-2026-10-12.json. Reviewer did not run tests.
+- A reviewer coverage sentence loosely groups temporary upload and saved-route
+  reload; actual evidence is narrower: /view itself returns to the opener on
+  reload; /view/:conversationId reloads the browser-local artifact. Receipt and
+  acceptance assertions retain that distinction. No disputed finding or human
+  arbitration remains. No substantive post-review source/test edits.
+- Finite local outcome complete: previously passing121 backend/compiler/viewer
+  contract checks, five actual CLI/HTTP outcomes, and new browser2/2. Reused
+  evidence for unchanged source rather than rerunning optional suites. No local
+  pre-commit hook is installed; no required hook bypassed. No global UX or model
+  recall claim. Recorded adjacent library setup dependency without scope expansion.
+- Preparing one local commit for corrected acceptance and technical receipts.
+  This branch is unpushed: the specific publication/CI authority policy requires
+  a new envelope for this backend slice, despite general push-hygiene guidance.
+  Public regeneration was deferred in approved scope. No product choice or
+  browser guidance remains required for the local consolidation outcome.

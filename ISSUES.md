@@ -2106,7 +2106,7 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
-# Semantic authoring consolidation — 2026-10-12 (BLOCKED: viewer guidance)
+# Semantic authoring consolidation — 2026-10-12 (LOCAL COMPLETE; independently reviewed)
 
 Outcome: imports and `.threads` experiments share the existing transcript-grounded
 relationship extractor; compiler preserves validated relationships; automatic
@@ -2124,24 +2124,48 @@ Checkpoint: implementation in the isolated checkout; 49 focused backend tests,
 pass. Exact shared extraction/compile/export/reload uses synthetic speech and a
 provider transport stub. Real graph planning covers 100 nodes in 23 windows;
 this is not a semantic-recall or whole-transcript inference claim.
-Remaining dependency: browser acceptance is stopped at the repository's three
-failed-attempt limit; human guidance requested for a manual walkthrough. The
-graph renders both directed fixture edges, but card focus alone does not expose
-relationship details. Independent Google Gemini review of staged tree a934fe9
+Independent Google Gemini review of staged tree a934fe9
 approved with no findings and zero tools. Receipt:
 `docs/reviews/semantic-authoring-consolidation-2026-10-12.json`.
 Reviewed source committed locally as 8ef8161; nothing pushed, merged
-or deployed. Browser acceptance and public artifact regeneration remain unverified.
+or deployed. Browser acceptance subsequently passed below; public artifact
+regeneration remains explicitly deferred.
 Additional checkpoint: five actual CLI/localhost HTTP cases pass with no helper
 replacement; receipt docs/reviews/semantic-cli-transport-verification-2026-10-12.json.
-Next evidence checkpoint: human-guided Source/details inspection and browser
-acceptance. Static wiring shows the candidate test expected details from the
-card-focus action; no browser retry has been authorized after the stop.
+Resume checkpoint: user explicitly approved the manual walkthrough. No browser
+connector surfaces were available; interactive Playwright observation on the
+isolated frontend established the actual card→Source/details→evidence Source
+path. Both directed relationships, exact u1/u3 citations and original speech
+are inspectable at 1440/390px, including saved conversation-route reload.
+Corrected browser acceptance passed 2/2 with no mocks, no captured page/console
+errors or warnings, no network5xx and no document overflow. This proves this
+synthetic extraction/export/view journey, not model semantic recall or full UX.
+Final review: authenticated AGY/Google Gemini3.1ProHigh approved the substantive
+browser-test diff (staged tree e2fbc3f; blob645167e) with no findings and zero tools.
+Receipt docs/reviews/semantic-viewer-review-2026-10-12.json. Reused unchanged
+source validation/review plus passing new browser cases; finite local acceptance
+is complete. Owner/checkout unchanged. Next evidence checkpoint, if publication
+is separately approved: exact pushed/merged/served source identity.
+Publication/CI, merge/restart and public artifact regeneration are not
+performed or inferred from prior frontend authority; public regeneration is
+explicitly deferred from this slice.
 
-Third consecutive goal-turn audit: worktree cbfd87c is clean; reviewed runtime
+Historical third goal-turn audit, before manual approval: worktree cbfd87c is clean; reviewed runtime
 source is unchanged from 8ef8161, and the independent reviewer and CLI probe are
 terminal successes. All authorized independent verification is finished. The
 remaining required desktop/phone Source/details interaction is unproven; the
 three-attempt stop requires human guidance before switching to the proposed
 manual browser walkthrough. No such answer has arrived. Mark the goal blocked,
 preserve the full objective, and resume this exact checkout after that guidance.
+
+### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
+
+During the approved walkthrough, Back to library reached /browse and its local
+saved-file entry opened /view/synthetic-consolidation-overlap-v1 successfully.
+The same screen separately requested /conversations/ and
+/api/indrasnet/audio-sources from a Vite-only server with no private backend,
+returning500 and rendering explicit unavailable/retry states. Impact: server
+recordings/history are unavailable in this isolated setup; browser-local files
+still work. No change to library/backend configuration is part of consolidation.
+Recommended next step for a full library audit: use the existing authorized
+backend configuration and verify history/recording success plus refusal/retry.
