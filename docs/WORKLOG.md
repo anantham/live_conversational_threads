@@ -7489,3 +7489,12 @@ User observed an empty desktop transcript until node selection, with only the cu
   Autonomy and Authority policy, no push/PR/merge/deploy is inferred from earlier
   frontend release approval. Complete the viewer check before a concrete release
   approval request. Persistent goal remains active.
+
+### 2026-10-12 — Local preservation before viewer guidance
+
+- Reviewed source/evidence committed locally as 8ef8161 on
+  codex/semantic-authoring-consolidation-20261012. No push/PR/merge/deployment.
+- The unfinished browser acceptance probe is preserved in a separate local
+  commit and explicitly labels its failed replay. It is not covered by the
+  approved backend review or counted as passing evidence; it must be corrected,
+  validated and reviewed after the permitted manual walkthrough. Goal is active.

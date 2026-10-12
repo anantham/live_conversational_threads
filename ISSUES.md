@@ -2130,6 +2130,6 @@ graph renders both directed fixture edges, but card focus alone does not expose
 relationship details. Independent Google Gemini review of staged tree a934fe9
 approved with no findings and zero tools. Receipt:
 `docs/reviews/semantic-authoring-consolidation-2026-10-12.json`.
-Reviewed source is ready for a local task-branch commit; nothing pushed, merged
+Reviewed source committed locally as 8ef8161; nothing pushed, merged
 or deployed. Browser acceptance and public artifact regeneration remain unverified.
 Next evidence checkpoint: independent verdict and human-guided viewer inspection.
