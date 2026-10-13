@@ -1,5 +1,13 @@
 # LCT Sites migration — staged delivery
 
+## Current checkpoint — Soniox enabled and real adapter transcription verified — 2026-10-13 14:28 IST
+
+Delivered: approved exacttwo-row lease recovery, real temporary-key issuance and incremental/final transcription. Root/canonical `501983bf0561bec196f26728509105c0a07797f3` committed/pushed, required872/872tests106files40.56s, final AGY/Anthropic PASS/no findings. Native `26c215a16a915a35e5b2036b60347aa6e712b6df` saved32/env29, final deployment `appgdep_6acdf1dfc8d48191a77b3747f7e9bddb` serves the same public Site; journal/newSQL/snapshot only,306other files/nine prior migrations and exact Worker/client bytes preserved. Fresh OFF recovery changes only two lease fields and preserves all history/settings/data.
+
+Actual single pilot:6.684seconds computer-synthesized speech, one mint,14frames,25incremental callbacks before EOF,26final tokens, all3fixture keywords,14.305seconds to completion. No key/text persistence or additional retry. Soniox enabled/public/budgetconfirmed, debugOFF; same20lifetime/300sec/two-concurrent caps,5records/15remaining, one new known lease and priorfour preserved. OpenRouter/GoogleOFF, private storage synthetic; all other data/settings unchanged. Final hosted readiness, consent403/no-reservation, guest/public/private boundary and served identity pass08:57UTC.
+
+Acceptance distinction: provider+existing client adapter delivered; rendered microphone recording/Stop/cancel/download remains unverified because browser focus/attach failed twice. Cloud preview is the served destination; main-domain cutover, real private two-account storage and map inference remain incomplete. No missing human approval for delivered work. Next evidence checkpoint is browser Transcribe on cloud `/new` once control is available.29minutes from13:59 is within20–40minute forecast; browser repair and full-goal effort/ETA unknown. Optional redesign/refactoring deferred.
+
 ## Current checkpoint — Soniox recovery and pilot reviewed — 2026-10-13 14:17 IST
 
 Root/canonical basea96ceab integrates the exact8-path slice.70focused/adjacent behavioral checks and scoped lint pass; generated snapshot schema unchanged. Authenticated AGY/Anthropic PASS/no findings/zero tools, packetSHA `9f450721ed3ac8bb2da55cc8d791b67127d4d6d0656f02a5a656d99c15656afc`. Source is reviewed, not yet committed/pushed/served; runtime acceptance is pending. One exclusive-guarded6.684-second computer-synthesized clip will prove temporary-key issuance, live incremental text and final keyword match through the existing adapter. Local CLI has bounded deadlines, safe failure codes and stage/elapsed/unknown remaining status; no personal audio or transcript persistence.
