@@ -1,0 +1,65 @@
+{
+  "checked_at": "2026-10-14T16:12:35.688833+00:00",
+  "source_sha": "41c648a24abd95947f6091645a9ae262d8fd4721",
+  "state": "committed locally; pending push, independent review and integration",
+  "validation": {
+    "frontend_unit": {
+      "passed": 529,
+      "files": 87,
+      "seconds": 34.65
+    },
+    "focused_viewer_unit_passed": 13,
+    "production_preview_browser_passed": 4,
+    "python_passed": 58,
+    "python_skipped": 2,
+    "python_skip_reason": "Existing POSIX mode cases on Windows",
+    "build": "passed; existing size warning",
+    "lint_touched": "passed",
+    "diff_check": "passed"
+  },
+  "independent_review": {
+    "status": "BLOCKED_AUTHENTICATION",
+    "packet_bytes": 78685,
+    "packet_sha256": "3d79f7968e9da50f705bc795c7e06c2faf76b88b9288c0d8c5211e4f89398792",
+    "attempted_provider": "Google Gemini3.8FlashHigh via AGY",
+    "verdict": null,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "tool_attempts": 0,
+    "alternatives": "Claude auth status loggedIn=false; Grok model catalog says not authenticated. Standalone Gemini has expired cache; no safe tool-free review session established.",
+    "reusable_prior_review": "Exact complete-passage slice d871841 previously approved by Google Gemini, zero findings. This does not approve new viewer/build changes."
+  },
+  "actual_public_browser": {
+    "source_sha": "2acf515be7d667d08eddb27ea6bb30c2ed4a91cc",
+    "initial_render": true,
+    "details_timestamp_link_seconds": 949,
+    "escape_closes_details": true,
+    "speaker_name_propagation": {
+      "source_rows": 250,
+      "graph_nodes": 37,
+      "synthetic_name_restored_by_original_artifact_reload": true
+    },
+    "narrow_viewport": {
+      "width": 390,
+      "height": 844,
+      "source_panel_readable": true,
+      "override_reset": true
+    },
+    "actual_playback": "UNVERIFIED: ready timeout; direct nocookie embed also blank; no app root cause confirmed",
+    "full_ux_audit": "INCOMPLETE; only scoped journey interactions observed"
+  },
+  "semantic_acceptance": {
+    "full_regeneration": false,
+    "artifact_unchanged": true,
+    "private_controls_passed": 4,
+    "real_window_with_prompt_clarification": "failed meaning: heading-derived support",
+    "no_heading_counterfactual": "failed structural contract: all3 authored edges self-linked; all rejected",
+    "diagnostic_method": "stopped after bounded real-window diagnostics; no prompt/input product edits"
+  },
+  "backend": {
+    "database": "Stopped",
+    "runtime": "not started",
+    "administrator_action": "existing PostgreSQL service start pending"
+  },
+  "next_checkpoint": "Authenticated independent verdict and CI/preview; meaning repair and runtime verification remain separate acceptance gates"
+}

@@ -2309,6 +2309,20 @@ the pending one-time credential-containment ruling, then guarded integration/CI,
 private meaning acceptance and public interactive verification. No new delivery
 date can be supported while those dependencies remain unresolved.
 
+Active release goal,2026-10-14: user explicitly authorized token rotation,
+frontend credential removal and redeploy, and delegated implementation/review/
+integration/verification. Integration owner Codex; authoritative checkout is
+semantic-authoring-consolidation on codex/semantic-grounding-check-20261014.
+Backend token rotated without displaying its value; other configuration bytes
+unchanged. Frontend token cleared and clean rebuild dpl_73zdC7VYKbj3iPY1277ALad5r2uN
+is READY at existing released SHA2acf515; served asset containment check next.
+Finite acceptance: semantic meaning plus complete source/citation preservation;
+review/CI/merge/served identity; desktop/narrow Source, timestamp, rename, all
+threads, navigation visibility and details dismissal. Existing architecture and
+private provider/resource boundaries persist. Database Administrator start is
+still pending; viewer and model-quality work can continue independently.
+Next checkpoint: served containment receipt and public initial-render evidence.
+
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 
 During the approved walkthrough, Back to library reached /browse and its local
@@ -2320,3 +2334,27 @@ recordings/history are unavailable in this isolated setup; browser-local files
 still work. No change to library/backend configuration is part of consolidation.
 Recommended next step for a full library audit: use the existing authorized
 backend configuration and verify history/recording success plus refusal/retry.
+
+### 2026-10-14 — Current release acceptance checkpoint
+
+Owner/integration: Codex; authoritative isolated semantic-authoring-consolidation
+checkout, branch codex/semantic-grounding-check-20261014. Source41c648a includes
+complete coverage, browser credential refusal and viewer history/Escape repairs.
+529frontend tests,13focused units,4production-preview browser checks pass; prior
+Python58pass/2POSIX skips reused. Not merged or served. Production remains
+contained2acf515 (new clean asset index-4gUOrqrw.js), artifact unchanged.
+
+Remaining dependencies: existing PostgreSQL Administrator start; independent
+review sign-in (AGY refused before inference; Claude/Grok also signed out); actual
+YouTube playback; semantic meaning repair (real-window prompt-only and no-heading
+diagnostics failed, method stopped). Private positive/negative controls4pass do
+not satisfy actual-data acceptance. Full regeneration/public artifact replacement
+remain held. Larger hierarchy/labels and broad UX audit remain deferred.
+
+Finite next checkpoint: preserve/push source and draft PR, inspect CI/preview;
+obtain independent final-diff approval before merge, then check served identity
+and desktop/narrow navigation. Source coverage is approved structurally, meaning
+is not accepted. See docs/reviews/viewer-release-progress-2026-10-14.json.
+Forecast: implementation slice locally complete; review wait depends on existing
+account authentication, backend wait on Windows privilege; semantic effort and
+actual playback effort unknown. Prior ETA is preserved, no calendar promise.

@@ -7855,3 +7855,123 @@ User observed an empty desktop transcript until node selection, with only the cu
   Prior forecast remains preserved above; new61-request generation effort is
   unknown until meaning controls pass. Backend service and public blank-root
   acceptance remain distinct outstanding dependencies.
+
+## 2026-10-14 — Approved release goal and credential containment
+
+- User set the active goal to finish and deploy the current viewer/pipeline
+  consolidation and explicitly authorized credential rotation, frontend removal
+  and redeployment. This supersedes the previous containment authority hold.
+- Integration owner: Codex. Authoritative source checkout remains
+  `C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`,
+  branch `codex/semantic-grounding-check-20261014`. Unrelated dirty work in the
+  primary deploy checkout remains preserved.
+- Backend AUTH_TOKEN rotated in its existing private configuration, preserving
+  every other byte and existing file permissions. No secret value was printed,
+  committed or sent to a reviewer. Backend remains stopped pending database
+  readiness. Vercel production VITE_AUTH_TOKEN cleared; production rebuilt from
+  already released source 2acf515 as dpl_73zdC7VYKbj3iPY1277ALad5r2uN, READY
+  with custom-domain alias assigned. Served-bundle verification is next.
+- Hypothesis (0.99): build-time VITE_AUTH_TOKEN injection caused the public
+  credential exposure. Clearing it removes the value from a fresh bundle;
+  rotation is needed because old cached bundles remain available. Add a build
+  refusal for nonempty browser-token configuration to prevent recurrence.
+  Predicted checks: normal build succeeds, sentinel credential builds fail
+  before output without printing the value; clean served assets contain neither
+  retired nor current credential. Fallback: keep backend offline if containment
+  verification fails. No new authentication system is selected in this slice.
+- Finite release acceptance: accurate bounded relationship generation with exact
+  source/citations and safe failed-run retention; reviewed source plus CI merged
+  and served; browser Source/timestamp/rename/thread/navigation/details journey
+  on desktop and narrow screens; selected card visible after history restore.
+  Larger hierarchy redesign and broad label rollout stay deferred.
+- One bounded gpt-6-sol agent owns viewer navigation/details/YouTube lifecycle
+  diagnosis and focused repairs. Root owns credential/build policy, pipeline,
+  review and release integration. Shared docs are root-owned.
+- Remaining dependency: Windows Administrator must start the existing database
+  after containment is verified. Next evidence checkpoint: redacted served
+  containment receipt and real public initial-render diagnostic.
+- Served containment now verified: public HTML/script200, new asset
+  index-4gUOrqrw.js, one empty token configuration occurrence, zero nonempty
+  token values and no current backend credential. Redacted receipt:
+  docs/reviews/credential-containment-2026-10-14.json. Connected Chrome renders
+  the actual conversation; timeline and evidence drawer interactions succeed.
+  Earlier empty root is no longer reproduced, causal diagnosis unconfirmed.
+- Build guard red/green: initial test setup had an incorrect config path;
+  corrected it, then observed the intended two credential-refusal failures
+  against unchanged config with positive build/dev controls passing. Added
+  configResolved refusal and5focused+adjacent tests pass; normal build passes.
+  Existing large-bundle warning persists; no broad bundling work added.
+- Meaning diagnostic hypothesis (0.75): transition/reference confusion persists
+  because the generic positive-example taxonomy does not make the abstention
+  boundary concrete. A private synthetic-only probe adds explicit negative
+  examples and source-overlap distinctions to the existing instruction in
+  memory. Predict no edges for topic shift/shared-word cases and correctly
+  directed support/reference for explicit positive cases. Same approved M5
+  Qwen model only; no full regeneration until these controls pass. Fallback:
+  retain old artifact and inspect failed evidence, bounded by investigation
+  limits. First launch failed before imports because tmp script lacked repo
+  import path; fixed harness, no provider had been called.
+
+### 2026-10-14 — Release meaning and real browser checkpoint
+
+- Same approved private Qwen model: unambiguous controls passed4/4 (topic
+  transition and independent facts abstained; explicit support/reference retained).
+  Earlier shared-word case is preserved as ambiguous because its speech explicitly
+  announces a subject change, which the existing tangent taxonomy allows. No
+  semantic oracle was silently changed.
+- The real first complete-passage window (20nodes,61planned windows,20866chars)
+  took47.0s and returned3edges. At least its h01→p01 supports explanation invokes
+  generated heading claims/inquiry rather than an uttered supporting argument.
+  Structural validity does not establish meaning. No full regeneration/public
+  artifact write. Hypothesis0.8: labels/hierarchy prime false semantic arguments.
+  Counterfactual now removes only model-input name/level fields in a disposable
+  formatter, preserving IDs, exact speech, memberships and original window.
+  Prediction: heading-based claims disappear while explicit speech remains
+  available. This is the final bounded diagnostic of this prompt/input method;
+  if unsupported edges persist, retain artifact and report the concrete limit.
+- Actual public browser: renamed a speaker with a synthetic test name; observed
+  immediate updates in250 Source rows and37 graph nodes. Blank input correctly
+  refuses renaming; reloaded the original public artifact for restoration. Narrow
+  verification in progress. Source evidence15:49 opened correct YouTube fallback;
+  actual player readiness timed out on initial load plus one retry. HTTP SDK and
+  embed200 do not prove browser playback. No further identical retry.
+- Viewer subagent handoff:13focused unit and4production-preview browser cases
+  pass, plus build/ESLint. Covers history offscreen restoration, manual-pan
+  preservation, tooltip-first Escape, pending YouTube SDK lifecycle. Stub evidence
+  does not establish actual playback. Final scoped diff awaits independent review.
+
+### 2026-10-14 — Coherent source committed; review authentication boundary
+
+- New source commits8c65023 (build refusal) and41c648a (viewer reliability).
+  Full frontend87files/529tests pass in34.65s. Touched build config/new test ESLint
+  initially found two unchanged process-global errors; explicit node:process
+  import fixes the touched file without changing behavior. Lint now passes.
+  Prior agent13unit/4production-preview browser, build and Python58pass/2POSIX
+  skips are reused for unchanged source. No changed acceptance threshold.
+- Final no-heading real-window counterfactual55.0s produced3self-edges; parser
+  correctly rejected all with no_grounded_edge_evidence. This is a failed scan,
+  not valid-empty or an improvement claim. Stopped this bounded diagnostic
+  method. Keep prior public artifact; no prompt/input source repair or full run.
+  Meaning remains an engineering dependency requiring a materially different
+  safe investigation, not permission to fabricate links or loosen the parser.
+- Exact final technical review packet78685bytes SHA256
+  3d79f7968e9da50f705bc795c7e06c2faf76b88b9288c0d8c5211e4f89398792;
+  15committed source/test/intent files plus bounded committed technical context.
+  Scanned exact bytes for current backend credential and generic secret patterns.
+  Excluded operational history, credentials/env/DB/media/transcript/participant
+  data, generated artifacts, unrelated files and private reasoning. AGY Gemini
+  refused authentication before inference (0tokens/0tools); no review verdict.
+  Claude CLI loggedIn=false; Grok catalog unauthenticated. Standalone Gemini's
+  expired cache is not proof of an authenticated safe review session. No paid
+  API fallback or small local reviewer. Independent review remains a merge gate.
+- Public390px Source is readable below toolbar; temporary viewport reset.
+  Original artifact reload removed synthetic speaker name. Direct nocookie
+  embed stayed blank independently of viewer, with extension console errors;
+  this is evidence against assuming the React component is the sole cause, not
+  confirmation of a network/browser root cause. Actual playback unverified.
+  These interactions are a scoped walkthrough, not a complete ux-audit PASS.
+- Database still Stopped with no43181listener. User asked for ELI5; explained
+  existing Administrator Start-Service action, no new product approval.
+  Durable receipt: docs/reviews/viewer-release-progress-2026-10-14.json.
+  Next checkpoint: publish review-ready source branch/PR and CI; never merge
+  without eligible independent approval. Goal remains active and incomplete.
