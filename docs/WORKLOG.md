@@ -8274,3 +8274,63 @@ User observed an empty desktop transcript until node selection, with only the cu
   Windows privilege and human decision waits are separate from implementation.
   This post-merge checkpoint changes only operational notes/receipts and will be
   preserved on the task branch; it changes no reviewed behavior or test coverage.
+
+### 2026-10-15 — Production media readiness boundary investigation
+
+- Previous goal turn is progress: reviewed source merged/served with credential
+  containment, actual literal-search/Source/Back evidence and explicit remaining
+  holds. Current checkout is clean at52a03af; PostgreSQL still stopped. No service
+  start retry or private-model selection without the pending human action/ruling.
+- Current bounded journey: public reader opens Source and gets native playback.
+  Owner Root Codex; authoritative isolated checkout unchanged. No production
+  source edit. H1deployment security-header blocking was falsified: public and
+  owned local document HEAD both200 with no CSP/referrer/COEP/COOP/CORP/frame or
+  permission headers. Evidence tmp/media-response-boundary-20261015.json.
+- H2origin-specific initial embed refusal is unsupported: two public embed HTML
+  requests with explicit public/loopback context each200 in1.178/0.864s,140393/
+  140398bytes; neither embeds playability data. This proves only HTTP entry
+  availability, not browser requests, player readiness or playback. No media was
+  downloaded. Private diagnostic HTML remains under tmp/, excluded from review.
+- H3the app's20s readiness timer destroys a valid slow player before it can
+  become ready. Confidence0.55; no fix proposed without stronger evidence.
+  Counterfactual: one isolated owned loopback fixture uses the same public video,
+  SDK/host/options/no-autoplay but waits up to120s with elapsed/status/cancellation.
+  Predict onReady after20s if deadline is premature; before20s would not establish
+  it, and no readiness by120s would leave the cause unresolved. Cache/context are
+  confounds; no product timeout/architecture change or production retry loop.
+  Finite next checkpoint is that single measured outcome, then stop this method.
+- [instrument] H3 counterfactual completed: SDK ready at0.412s, but no player
+  onReady by120.014s. The fixture reached its terminal stop state, destroyed the
+  instance and cleared its clock; its browser tab and owned50118server were
+  closed. Private terminal screenshot: tmp/media-readiness-probe-20261015/terminal.jpg.
+  This does not support increasing the20s product timeout. Header inspection,
+  entry HTML and delayed-readiness methods are bounded and stopped; the media
+  cause remains unresolved, with no further production retry or source change.
+- Same-model search delivery assessment: the existing feature-extraction/q8
+  pipeline requires config.json, tokenizer.json, tokenizer_config.json and
+  onnx/model_quantized.onnx from already-pinned revision751bff37182d3f1213fa05d7196b954e230abad9.
+  The public model repository labels it Apache-2.0. Published model size22972370
+  and SHA256afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1
+  were identified; no model inference or private input was sent to that host.
+  The installed ONNX runtime1.31.0-dev.20260914-8d85527a0 defaults to jsDelivr
+  despite Vite already emitting26861777bytes of identical asyncify WASM. An
+  explicit local runtime path and complete model mirror could remove those
+  external initialization dependencies while retaining on-device inference.
+  This is a proposed delivery repair, not proof of the browser error's cause.
+  Safari below26 has a separate non-asyncify fallback that must be preserved.
+- A0 acquisition precondition: one materially different short-range probe for
+  the same public pinned model timed out after25.469s with no verified range.
+  No concurrent/full acquisition ran, no retry, no complete model was obtained,
+  and no assets were added to the product. This method is stopped after the
+  earlier failed browser/full-stream methods. Evidence remains ignored at
+  tmp/search-assets-20261015/probe.json. Same-origin implementation is deferred
+  until verified assets are available; no half-mirror or remote fallback change.
+- Current scope is operational evidence only; source/runtime remain0e1fb3b.
+  Goal stays incomplete. Owner/integration Root Codex, authoritative isolated
+  checkout unchanged. Next checkpoints: Administrator starts the existing DB;
+  separately pending human ruling on the bounded installed private-model
+  comparison; verified search assets and a materially different media diagnostic
+  before their respective actual browser acceptance. Network/model effort is
+  unknown, with no new calendar ETA. No new privilege, hosting service, provider,
+  paid API, dependency, model selection, transcript disclosure or public artifact
+  change occurred. User's ELI5 request answered with the single Windows command.
