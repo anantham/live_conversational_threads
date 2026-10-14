@@ -299,15 +299,17 @@ async def test_compiler_timeout_reports_failure_and_preserves_previous_output(mo
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission mode contract")
+@pytest.mark.parametrize("initial_mode", [None, 0o640])
 @pytest.mark.asyncio
-async def test_replacement_preserves_existing_artifact_permissions(monkeypatch, tmp_path):
+async def test_artifact_permissions_are_private_or_preserved(monkeypatch, tmp_path, initial_mode):
     destination = tmp_path / "previous.threads"
-    destination.write_text(json.dumps(artifact_fixture()), encoding="utf-8")
-    destination.chmod(0o640)
+    if initial_mode is not None:
+        destination.write_text(json.dumps(artifact_fixture()), encoding="utf-8")
+        destination.chmod(initial_mode)
     transport(monkeypatch, {"edges": []}, [])
     await write_authored_experiment(artifact_fixture(), output_path=destination,
                                    providers=LOCAL_PROVIDER)
-    assert stat.S_IMODE(destination.stat().st_mode) == 0o640
+    assert stat.S_IMODE(destination.stat().st_mode) == (0o600 if initial_mode is None else initial_mode)
     assert json.loads(destination.read_text(encoding="utf-8"))["argument_topology"]["status"] == "complete"
 
 

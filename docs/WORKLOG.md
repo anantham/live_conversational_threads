@@ -7681,3 +7681,10 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Re-review of cbd99927 is in progress with bounded tracked context for F1/F5;
   record its result before requesting review of this final assertion update.
   No merge while either independent review or CI remains unresolved.
+
+- Re-review returned APPROVED for cbd99927, zero tool attempts, but included
+  two advisory findings, so the strict no-findings merge gate remains unmet.
+  Added the missing new-file0600 POSIX case beside existing-mode preservation.
+  Remaining resumed-session question is falsifiable from the current-session
+  hierarchy-consolidation function (no prior graph reads); include that tracked
+  function in final review. Earlier ORM/reconnect findings were withdrawn.
