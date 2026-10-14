@@ -2106,7 +2106,7 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
-# Semantic authoring consolidation — 2026-10-12 (LOCAL COMPLETE; independently reviewed)
+# Semantic authoring consolidation — 2026-10-14 (RELEASE AUTHORIZED; readiness)
 
 Outcome: imports and `.threads` experiments share the existing transcript-grounded
 relationship extractor; compiler preserves validated relationships; automatic
@@ -2157,6 +2157,22 @@ remaining required desktop/phone Source/details interaction is unproven; the
 three-attempt stop requires human guidance before switching to the proposed
 manual browser walkthrough. No such answer has arrived. Mark the goal blocked,
 preserve the full objective, and resume this exact checkout after that guidance.
+
+Release envelope,2026-10-14: user said to do the four remaining steps. This
+specifically authorizes task-branch publication/PR/CI/merge, backend deployment,
+regeneration of the already-public overlapping.threads using the existing local
+provider, relationship quality checks and public desktop/phone verification.
+No new spend, external transcript recipient or unrelated redesign is authorized.
+Owner/integration checkout remains Codex in the isolated task worktree above.
+Finite acceptance: exact-head independent review and CI; existing transcript,
+node IDs and memberships preserved; real model yields grounded relationships or
+an honest refusal; generated file validated and inspected before publication;
+merged source matches running backend and served public artifact; actual Source
+details/citations/reload work at1440/390. Preserve old artifact for rollback.
+Next evidence checkpoint: local provider/backend readiness and one real window.
+Remaining dependencies: reachable existing provider, review/CI and deploy waits.
+No further human decision is presently required; report a concrete blocker if
+credentials, provider access, privacy or new cost exceed this envelope.
 
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 

@@ -7599,3 +7599,23 @@ User observed an empty desktop transcript until node selection, with only the cu
   a new envelope for this backend slice, despite general push-hygiene guidance.
   Public regeneration was deferred in approved scope. No product choice or
   browser guidance remains required for the local consolidation outcome.
+
+### 2026-10-14 — Release and real artifact verification authorized
+
+- User explicitly authorized the four remaining steps: release the reviewed
+  source, regenerate the existing public experiment, inspect actual grounded
+  relationships, and verify the public URL at desktop/phone widths. Prior
+  publication deferral is superseded for this bounded journey; no repeat ask.
+- Authoritative checkout/owner unchanged, starting clean2877c95; remote main
+  remains bda16e5 and task branch is not published. Existing source/test review
+  and unchanged validation can be reused, with exact PR-head gate at integration.
+- Story: existing public conversation→shared local source-grounded authoring→
+  validated atomic artifact→public viewer relations/citations/Source/reload.
+  Probe readiness and one real model window before a full regeneration. Keep
+  prior artifact bytes and identifiers for rollback; no new spend or recipient.
+- Independent bounded read-only readiness investigation delegated to GPT6Sol:
+  current backend identity, dirty deploy-checkout risks and approved local model
+  metadata/health only. It may not infer, restart, mutate or disclose source.
+- Next evidence checkpoint: provider/backend readiness plus real-window result.
+  Estimates for model work remain unknown until measured; review/CI/deploy waits
+  reported separately. Goal is release proof, not a synthetic pass count.
