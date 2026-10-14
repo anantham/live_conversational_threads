@@ -7664,3 +7664,20 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Next checkpoint: corrected real-window result; relevant combined validation,
   exact updated-head independent review/CI, then merge only with an approved
   verdict. Full23-window model duration still unknown; no false ETA from one run.
+
+### 2026-10-14 10:12 IST — Corrected real window and cross-platform assertion
+
+- Corrected canonical example passed the real first window6raw/6kept in55.6s.
+  A complete new scan is running; first two windows passed in26.7s/157.8s.
+  Output remains staged privately; neither these counts nor the syntax check
+  establish semantic quality. Public bytes remain unchanged.
+- Final focused synthetic backend59passed/1POSIX-only skip and CLI/HTTP5/5
+  passed. Required push frontend524/524 passed again. Remote unit CI then
+  reported1failed/2085passed/5skipped: new diagnostic test assumed Node stderr
+  was one line. Linux emits a multiline source excerpt while Windows tail
+  truncation happened to remove it. Replaced the fragile regex with two exact
+  diagnostic substring assertions; same failure behavior/source retention checks.
+  This is a test portability repair, not a weakened runtime gate.
+- Re-review of cbd99927 is in progress with bounded tracked context for F1/F5;
+  record its result before requesting review of this final assertion update.
+  No merge while either independent review or CI remains unresolved.

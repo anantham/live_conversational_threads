@@ -272,9 +272,11 @@ async def test_compiler_failure_reports_reason_and_preserves_previous_output(mon
     base["edges"][0]["to_node_id"] = "missing-node"
     seen = []
     transport(monkeypatch, {"edges": []}, seen)
-    with pytest.raises(ValueError, match="previous artifact retained:.*missing-node"):
+    with pytest.raises(ValueError) as failure:
         await write_authored_experiment(base, interpretation=interpretation_fixture(),
                                        output_path=destination, providers=LOCAL_PROVIDER)
+    assert "Experiment compilation failed; previous artifact retained:" in str(failure.value)
+    assert "unknown to_node_id: missing-node" in str(failure.value)
     assert destination.read_bytes() == previous
     assert not seen
 
