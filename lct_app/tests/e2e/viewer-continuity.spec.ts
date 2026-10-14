@@ -68,6 +68,20 @@ async function selectFirst(page) {
   await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
 }
 
+test('Escape dismisses focused history help before closing details', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  await open(page);
+  await selectFirst(page);
+  const back=page.getByRole('button',{name:'Back',exact:true});
+  await back.focus();
+  await expect(page.getByRole('tooltip')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
 for (const width of [1440,390,1024]) test(`navigation hints explain history and reading scope at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});const evidence=await open(page);
   const back=page.getByRole('button',{name:'Back',exact:true});
@@ -250,4 +264,32 @@ test('hierarchy and manually panned camera return through Back/Forward',async({p
   await expect.poll(()=>transform(page)).toBe(saved);
   await page.getByRole('button',{name:'Forward',exact:true}).click();await expect(page.locator('.react-flow__node')).toContainText('Synthetic topic');
   expect(evidence.errors).toEqual([]);expect(evidence.backend).toEqual([]);
+});
+
+test('Back reveals an offscreen selected moment after a programmatic Center', async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  await open(page);
+  for (let depth=0;depth<4;depth+=1) {
+    await page.locator('.react-flow__node').getByRole('button',{name:/^Expand \d+ items?$/}).click();
+  }
+  await expect(page.locator('.react-flow__node')).toHaveCount(21);
+  await page.getByRole('button',{name:'Show thread timeline'}).click();
+  const timeline=page.getByTestId('timeline-lane-viewport');
+  await timeline.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+  await timeline.getByRole('button',{name:/Fixture moment 21/}).click();
+  await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 21');
+  await page.getByRole('button',{name:'Center',exact:true}).click();
+  const card=page.locator('.react-flow__node').filter({hasText:'Fixture moment 21'});
+  await expect.poll(async()=>card.evaluate(el=>{
+    const box=el.getBoundingClientRect(), canvas=el.closest('.react-flow').getBoundingClientRect();
+    return box.bottom<=canvas.top || box.top>=canvas.bottom;
+  })).toBe(true);
+  await page.getByRole('navigation',{name:'Conversation reading controls'}).getByRole('button',{name:'Previous moment in conversation'}).click();
+  await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 20');
+  await page.getByRole('button',{name:'Back',exact:true}).click();
+  await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 21');
+  await expect.poll(async()=>card.evaluate(el=>{
+    const box=el.getBoundingClientRect(), canvas=el.closest('.react-flow').getBoundingClientRect();
+    return box.bottom>canvas.top && box.top<canvas.bottom;
+  })).toBe(true);
 });

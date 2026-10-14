@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 // - Invalid YouTube metadata offers an explanation without loading an untrusted URL.
 // - Playback controls live inside the video, with no duplicate app Play/Pause.
 // - A stalled embed shows loading/error/retry and retains its selected cue.
+// - Closing and reopening during player readiness retires the old instance without app warnings.
 // - The opt-in network journey proves native iframe clicks change the real clock.
 
 // Synthetic timing contract, explicitly not evidence of transcription quality.
@@ -69,6 +70,43 @@ async function open(page, mockPlayer = true, testBundle = fixture) {
     await page.getByRole("button", { name: "Center", exact: true }).click();
   }
 }
+
+test("rapid Source close and reopen retires the pending player", async ({ page }) => {
+  const appWarnings: string[] = [];
+  page.on("console", message => {
+    if (["warning", "error"].includes(message.type()) && /\[(?:YouTubeSourcePanel|ThreadsViewer|MinimalGraph)\]/.test(message.text())) appWarnings.push(message.text());
+  });
+  await page.addInitScript(() => {
+    window.__sourceLifecycle = { created: 0, destroyed: 0, ready: 0 };
+    window.YT = { Player: class {
+      iframe: HTMLIFrameElement;
+      state = -1;
+      constructor(host, options) {
+        window.__sourceLifecycle.created += 1;
+        this.iframe = document.createElement("iframe");
+        host.replaceWith(this.iframe);
+        setTimeout(() => { window.__sourceLifecycle.ready += 1; options.events.onReady(); }, 80);
+      }
+      getIframe() { return this.iframe; }
+      getPlayerState() { return this.state; }
+      getCurrentTime() { return 0; }
+      cueVideoById() { this.state = 5; }
+      seekTo() {}
+      destroy() { window.__sourceLifecycle.destroyed += 1; this.iframe.remove(); }
+    } };
+  });
+  await page.goto("/view");
+  await page.locator('input[type="file"]').setInputFiles({ name: "rapid-source.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__sourceLifecycle.created)).toBe(1);
+  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__sourceLifecycle.destroyed)).toBe(1);
+  await page.getByRole("button", { name: "Source", exact: true }).click();
+  const source = page.getByRole("complementary", { name: "YouTube source" });
+  await expect(source.locator('iframe[title="Conversation recording"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__sourceLifecycle)).toMatchObject({ created: 2, destroyed: 1, ready: 2 });
+  expect(appWarnings).toEqual([]);
+});
 
 test("desktop node selection seeks queued and ready playback; reviewed artifact round trips", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });

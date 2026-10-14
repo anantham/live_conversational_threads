@@ -433,3 +433,11 @@ hierarchy packing; current actual100-node planning takes8.165s for61requests.
 The caller now offloads this pure preparation so the CLI status loop can run.
 Avoid caching or a parallel planner in this coverage repair; any optimization should preserve
 exact formatted-budget checks, complete associations and boundary visibility.
+
+### 2026-10-14 — Viewer graph navigation boundaries
+
+`MinimalGraph.jsx` exceeds 2,300 lines and owns tier selection, viewport motion,
+history restoration, keyboard navigation and rendering. A later bounded refactor
+could extract viewport restore/visibility decisions and motion coordination into
+a dedicated graph-navigation module. The current reliability repair keeps the
+existing ownership to avoid changing tier behavior during this release slice.

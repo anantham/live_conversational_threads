@@ -34,3 +34,11 @@ it("rejects invalid paths and cameras without altering graph meaning", () => {
   const panned = graphNavigationSnapshot({ ...restored, viewport: { x: 40, y: 20, zoom: 1 } });
   expect(graphNavigationMeaning(first)).toBe(graphNavigationMeaning(panned));
 });
+
+it("retains whether a camera was deliberately panned without adding a history step", () => {
+  const base = graphNavigationSnapshot({ lockedLevel: 1, drilldownPath: [],
+    viewport: { x: 0, y: 0, zoom: 1 }, manualCamera: false });
+  const panned = graphNavigationSnapshot({ ...base, viewport: { x: -400, y: 20, zoom: 1 }, manualCamera: true });
+  expect(restoreGraphNavigationState(panned, nodes).manualCamera).toBe(true);
+  expect(graphNavigationMeaning(base)).toBe(graphNavigationMeaning(panned));
+});
