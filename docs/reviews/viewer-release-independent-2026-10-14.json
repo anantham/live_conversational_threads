@@ -179,5 +179,89 @@
     "backend": "Not deployed: primary checkout remains2acf515 with unrelated dirty work preserved; PostgreSQL stopped, Administrator action pending",
     "semanticArtifact": "Held unchanged; actual-model citation sufficiency is not accepted; private model-comparison ruling pending",
     "goalComplete": false
+  },
+  "selectedCardCameraRelease": {
+    "pullRequest": "https://github.com/anantham/live_conversational_threads/pull/217",
+    "reviewedHead": "b06eb2e1d398c318cac775cdcae79f1e57fbb6d8",
+    "baseCommit": "0e1fb3b318d7b180d88d61aea93018cd4db344ad",
+    "provider": "Google Gemini via existing AGY account",
+    "model": "gemini-3.8-flash-high",
+    "completedAt": "2026-10-14T20:42:14.854Z",
+    "files": [
+      "lct_app/src/components/MinimalGraph.jsx",
+      "lct_app/src/components/MinimalGraph.navigation.test.jsx"
+    ],
+    "excludedOperationalFiles": [
+      "ISSUES.md",
+      "docs/WORKLOG.md",
+      "docs/reviews/viewer-release-independent-2026-10-14.json"
+    ],
+    "packetBytes": 38315,
+    "packetSha256": "316683cd5af6a4a3dbe7690e3ba0c247537ead6a9f28f0e91f6be26f7241c186",
+    "outgoingBytes": 42595,
+    "outgoingSha256": "d79effbb1cb3727a4805a6cead11573b15b33793dd1d891aace10f7a310d1f9d",
+    "secretScan": "Exact serialized bytes scanned privately before invocation; current credential absent",
+    "capability": "Isolated plan+sandbox with unchanged verified deny-all PreToolUse hook; actual init request-review mode disclosed",
+    "execution": {
+      "exitCode": 0,
+      "status": "SUCCESS",
+      "toolAttempts": 0
+    },
+    "verdict": "APPROVED",
+    "findings": [],
+    "fixedFindings": [],
+    "rejectedFindings": [],
+    "unresolvedOverclaims": [],
+    "limitations": "bounded inline packet; tests not rerun",
+    "mergeCommit": "747a1a115990853e837b1cb3cd9dead027f4e66d",
+    "mergedAt": "2026-10-14T20:44:06Z",
+    "productionDeployment": "dpl_MNwrJLLdoJFgYmkHFPJwRm1Nvc9X",
+    "productionReady": true,
+    "publicHttp": {
+      "checkedAt": "2026-10-14T20:47:46.556Z",
+      "sourceCommit": "747a1a115990853e837b1cb3cd9dead027f4e66d",
+      "deploymentId": "dpl_MNwrJLLdoJFgYmkHFPJwRm1Nvc9X",
+      "html": {
+        "path": "/view?src=%2Fexperiments%2Foverlapping.threads",
+        "status": 200,
+        "bytes": 477,
+        "sha256": "31831d6f39871b560eb2262c19532dd89911a5d2a796681abf09bb48dff25c43"
+      },
+      "assets": [
+        {
+          "path": "/assets/index-zmBwk3D_.js",
+          "status": 200,
+          "bytes": 1361832,
+          "sha256": "b39b228f4541417f510488c6569c22e01c9a5c28da96fb3ecf0557bfc06d01b7",
+          "credentialOccurrences": 1,
+          "nonemptyCredentials": 0,
+          "currentPrivateCredentialAbsent": true,
+          "searchWorkerReferences": [
+            "conversationSearch.worker-C3PV6wx8.js"
+          ]
+        }
+      ],
+      "artifact": {
+        "path": "/experiments/overlapping.threads",
+        "status": 200,
+        "bytes": 2621266,
+        "sha256": "386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19",
+        "matchesHeldArtifact": true
+      },
+      "uiVerified": false
+    },
+    "validation": {
+      "focusedNavigationChecks": 30,
+      "frontendPushChecks": 537,
+      "frontendFiles": 88,
+      "requiredCi": "Exact-head unit, real Postgres, browser smoke and Vercel preview pass; optional skipped checks not acceptance",
+      "lint": "Touched ESLint pass",
+      "build": "Pass; existing large-bundle warning",
+      "publicBrowser": "All7selected thread moments remain fully inside map and clear of desktop details after settling; keyboard next/back and end refusal verified",
+      "localFinalBrowser": "Source/details clearance, history Back/Forward, phone Source/detail handoff and keyboard stepping; phone detail intentionally covers map",
+      "fullUxAudit": "INCOMPLETE; scoped interaction evidence only"
+    },
+    "remaining": "Administrator database start/backend runtime verification; pending bounded private-model comparison choice and meaning acceptance; real search-model delivery and reliable public playback",
+    "goalComplete": false
   }
 }

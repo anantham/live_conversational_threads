@@ -8380,3 +8380,42 @@ User observed an empty desktop transcript until node selection, with only the cu
   single row click after observing expanded UI works. This could be tool/layout
   settling; no app defect or acceptance claim for that fast sequence is inferred.
   Independent exact-diff review, full push gate and served walkthrough remain.
+
+
+### 2026-10-15 — Selected-card framing reviewed, merged and served
+
+- Coherent sourceb06eb2e reviewed by authenticated Google Gemini
+  gemini-3.8-flash-high: APPROVED/no findings, exit0/SUCCESS, zero tool attempts.
+  Two technical files plus bounded tracked camera context only; three operational
+  files excluded. Packet38315bytes SHA316683cd5af6a4a3dbe7690e3ba0c247537ead6a9f28f0e91f6be26f7241c186;
+  exact serialized42595bytes SHAd79effbb1cb3727a4805a6cead11573b15b33793dd1d891aace10f7a310d1f9d.
+  Exact bytes scanned privately before egress. Existing subscription, isolated
+  plan+sandbox plus verified deny-all hook; init reports request-review, disclosed.
+  No fixed/rejected findings or unresolved overclaims. Reviewer did not rerun tests.
+- Required pre-push537/537across88files in50.38s,30focused checks, touched ESLint,
+  production build and diff checks pass. Existing act/bundle warnings retained.
+  Exact-head unit, real-Postgres, browser smoke and Vercel preview CI pass; optional
+  skipped checks not counted. Required merge helper accepted exact PR217 receipt,
+  fresh base/head and CI, pinned gh merge to reviewed head, and merged as747a1a1
+  at2026-10-14T20:44:06Z. PR217 is attached to the task.
+- Productiondpl_MNwrJLLdoJFgYmkHFPJwRm1Nvc9X READY, main747a1a1, public domain
+  alias verified. HTTP200 index-zmBwk3D_.js SHA
+  b39b228f4541417f510488c6569c22e01c9a5c28da96fb3ecf0557bfc06d01b7,
+  zero nonempty browser credentials/current private token absent. Held artifact
+  SHA386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19unchanged.
+- Actual new production browser repeated the original thread/tier reproduction:
+  all7selected cards fully inside map and clear of desktop details after settling,
+  ArrowRight advances, last Next disabled, ArrowLeft returns. Final local build
+  also covered Source/details, Back/Forward and phone panel handoff/navigation.
+  Source/speaker implementation unchanged; earlier actual rename proof reused.
+  Private evidence tmp/thread-camera-20261015/; tracked receipt stores only
+  technical release facts. Full UX audit remains INCOMPLETE, not a gate waiver.
+- Owner Root Codex, same isolated checkout/branch. PostgreSQL still stopped;
+  the user received ELI5 steps for the existing Administrator-only start. No
+  privilege workaround, backend startup or private-model change. Semantic meaning,
+  generated replacement, actual model search and reliable public playback remain
+  unaccepted. Goal stays active/incomplete. Remaining effort for unresolved
+  model/network work is unknown; human privilege/model decision waits are separate.
+  Next checkpoints are the existing dependencies, not further failed-method retries.
+  This post-merge record is mechanical operational documentation only and changes
+  no reviewed behavior or coverage; preserved in a separate pushed commit.
