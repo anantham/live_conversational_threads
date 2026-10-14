@@ -8062,3 +8062,74 @@ User observed an empty desktop transcript until node selection, with only the cu
   dependency. Focused history+snapshot8/8pass with no warnings; ESLint passes.
   Hook-required full suite will run again at push. Source4ba70c8remains local
   until that required gate succeeds; no repeated push without a material repair.
+
+### 2026-10-14 — Evidence-first citation diagnostic
+
+- Previous goal turn made progress: grouping context4ba70c8and controlled-frame
+  regressioncbb4ed6are pushed. Required local529/529frontend gate passed; current
+  PR216head matches cbb4ed6. Unit/Postgres CI and preview succeed; browser smoke
+  still running at the first fresh observation. Database remains stopped.
+- Current bounded outcome: preserve the accepted relationship contract while
+  making citations justify the complete explanation. Owner Root Codex, same
+  authoritative isolated checkout. No new relationship layer or architecture.
+- Hypothesis0.75: the output example writes an explanation before selecting
+  citations, encouraging sparse post-hoc citations to a richer narrative.
+  Alternative: model capacity/turn fragmentation still defeats the contract.
+  Diagnostic selects existing supporting_utterance_ids first, then relation and
+  explanation strictly from that cited speech; same fields/model/source/window,
+  private cache-off configuration and budgets. Temporary prompt copy only.
+- Predicted outcomes: an explicitly spoken cause remains; chronology-only case
+  abstains; actual page's explanation loses uncited details or cites the needed
+  source. Inspect all returned predicates, not parse success alone. One actual
+  page per method attempt; no full regeneration/public write until meaning passes.
+  Fallback: retain artifact and stop this method if it still overclaims. No new
+  human decision requested for this existing-contract diagnostic.
+
+- Outcome: both manufactured controls pass (chronology abstains; explicit cause
+  retained with both citations). Actual page24 completes in195.72s with one edge,
+  but its explanation again includes details absent from the four cited turns.
+  Evidence-first ordering does not repair citation sufficiency. Method stopped;
+  no canonical prompt edit, full regeneration or public artifact replacement.
+  Latest PR216head cbb4ed6 has green unit, real-Postgres and browser-smoke CI.
+
+### 2026-10-14 — Search preparation and retry boundary
+
+- Outcome: a reader can distinguish worker startup from model loading, observe
+  measured loaded bytes, cancel and retry without an old worker failing the new
+  attempt. Integration owner Root Codex; authoritative isolated checkout and
+  codex/semantic-grounding-check-20261014 branch unchanged.
+- [instrument] The public fresh Source iframe has a324x210box, controls=1,
+  strict-origin-when-cross-origin and the correct origin; embedded document
+  inspection times out. No supported root-cause claim or playback pass. Browser
+  navigation timeout resolved by observing the same created tab, not reopening.
+- Read-only peer/source inspection confirms model status begins before Worker
+  construction; pipeline has no progress callback, and onerror lacks active
+  worker/request identity. Hypothesis0.9: a late old-worker error can abort retry;
+  this does not explain the actual model-loading wait. Falsify with a captured
+  cancelled-worker error and a successful second result through the Find UI.
+- Bounded repair: guard all callbacks with active worker/request identity,
+  handle unreadable messages, show startup and vendor-reported model byte counts
+  through existing status presentation. No new provider/dependency/telemetry
+  payload, invented percentage or download-time estimate. Vendor4.3 callback
+  performs best-effort public model metadata reads; it cannot prove WASM health.
+- Test intent added before implementation. Acceptance: stale-error retry,
+  message-error recovery, no-history status, actual worker progress/result
+  contract using synthetic transport; adjacent timing/search tests and build.
+  Independent exact-diff review still required. Fallback: retain text search and
+  explicit cancellation; do not call synthetic worker tests actual model success.
+- [instrument] All three new UI regressions fail on the prior source, including
+  an old cancelled worker aborting its retry. Repair passes18focused search,
+  timing and worker-boundary checks; the realistic two-document worker fixture
+  verifies both ranked scores. Touched ESLint, design detector and production
+  build pass. Existing large-chunk warning remains. Built main asset
+  index-CxbNNjG7.js; worker conversationSearch.worker-C3PV6wx8.js.
+- Actual built browser run reaches model loading, advancing1.6MB at56s to7.6MB
+  at295s. This proves measured loading progresses; it does not prove readiness
+  or search quality. Desktop and390x844status remain legible, Cancel reachable;
+  viewport reset. Private screenshots tmp/search-boundary-20261014/. Keep the
+  same live attempt, do not restart a progressing download to manufacture speed.
+- Vendor-source inspection also shows default jsDelivr WASM dependencies despite
+  a local emitted binary; this is a dependency observation, not the wait's cause.
+  No CDN/runtime change made without a decisive need. Remaining acceptance:
+  actual model/result/source journey and independent final-diff review. Review
+  authentication requested asynchronously while authorized verification continues.

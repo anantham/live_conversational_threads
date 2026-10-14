@@ -6,6 +6,8 @@ import ViewerFindMenu from "./ViewerFindMenu";
 // Test intent:
 // - Real typing returns lexical matches immediately and semantic requests receive indexed documents.
 // - Semantic progress, cancellation, close cleanup, errors, retry, and result selection remain understandable.
+// - Startup and measured model bytes are distinct; cancelled workers cannot fail a retry.
+// - An unreadable worker response offers recovery while text matches remain usable.
 let container;
 let root;
 let workers;
@@ -61,6 +63,46 @@ afterEach(() => {
 });
 
 describe("ViewerFindMenu", () => {
+  it("reports worker startup separately from measured model loading", () => {
+    renderFind();
+    type(openFind(), "launch");
+    submit();
+    expect(container.textContent).toContain("Starting on-device search");
+    workers[0].emit({ type: "progress", stage: "model", loadedBytes: 1500000 });
+    expect(container.textContent).toContain("Loading the search model");
+    expect(container.textContent).toContain("1.5 MB loaded");
+    expect(container.textContent).toContain("Time remaining unknown");
+    expect(container.textContent).not.toContain("100%");
+  });
+
+  it("ignores a cancelled worker's late failure while a retry completes", () => {
+    renderFind();
+    type(openFind(), "launch");
+    submit();
+    const oldError = workers[0].onerror;
+    act(() => [...container.querySelectorAll("button")].find(button => button.textContent === "Cancel preparation").click());
+    submit();
+    expect(workers).toHaveLength(2);
+    act(() => oldError({ message: "late failure from cancelled worker" }));
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(workers[1].terminate).not.toHaveBeenCalled();
+    workers[1].emit({ type: "results", results: [{ ...documents[0], title: "Recovered meaning result" }], timings: [] });
+    expect(container.textContent).toContain("Related passages · 1");
+    expect(container.textContent).toContain("Recovered meaning result");
+  });
+
+  it("recovers from an unreadable worker message without losing text search", () => {
+    renderFind();
+    type(openFind(), "launch");
+    submit();
+    act(() => workers[0].onmessageerror?.({}));
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("could not read a response");
+    expect(container.textContent).toContain("Text matches · 2");
+    submit();
+    workers[1].emit({ type: "results", results: [], timings: [] });
+    expect(container.textContent).toContain("Related passages · 0");
+  });
+
   it("shows lexical results while typing and reports semantic progress until cancelled", () => {
     renderFind();
     const input = openFind();

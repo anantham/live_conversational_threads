@@ -2377,6 +2377,29 @@ Next checkpoint: resolve citation sufficiency under the existing evidence
 contract and obtain authenticated independent source review. No new human
 product decision is requested for the routine input-context repair.
 
+Evidence-first diagnostic,2026-10-14:2/2synthetic controls pass; actual page24
+still includes uncited explanation details after195.72s. This method is stopped,
+canonical prompt unchanged, public replacement held. PR216head cbb4ed6 is pushed
+with required529/529local frontend checks and green unit/Postgres/browser CI.
+Remaining semantic effort unknown; separate authentication and Windows privilege
+waits unchanged. Next semantic checkpoint requires a materially different safe
+method or a concrete model/contract decision, not another prompt wording retry.
+
+### 2026-10-14 — On-device search preparation hides the loading boundary
+
+Public model preparation remained pending for192s; cancellation and literal
+search recovery worked. Source shows no model progress callback and the same
+label even before Worker construction, so download vs initialization is unknown.
+A cancelled worker's unguarded late error can also abort the next attempt.
+Root Codex owns the bounded status/retry repair in the current isolated checkout.
+Finite next checkpoint: behavioural stale-error/message-error/progress checks,
+build, then actual model loading in browser. Synthetic worker success alone does
+not establish on-device model readiness. Exact-diff independent review remains.
+Local follow-up: three red UI regressions become green;18focused checks, lint,
+design detector and production build pass. Actual browser advances1.6MB/56s to
+7.6MB/295s with readable desktop/phone status. Continue that same download;
+readiness/search-result acceptance remains pending. Source not yet served.
+
 ### Deferred — reasoning configuration is absent from completion-cache identity
 
 Found2026-10-14 by direct source inspection. The synchronous client passes only
