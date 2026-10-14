@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "fs";
+import process from "node:process";
 import { publicDrivePlugin } from "./dev/publicDrivePlugin.js";
 
 // Backend port discovery: read from .backend-port (written by the repo launchers),
@@ -21,7 +22,19 @@ const backendPort = resolveBackendPort();
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [publicDrivePlugin(), react(), tailwindcss()],
+  plugins: [
+    {
+      name: 'reject-browser-credentials',
+      configResolved(config) {
+        if (config.command === 'build' && config.env.VITE_AUTH_TOKEN) {
+          throw new Error(
+            'VITE_AUTH_TOKEN must be empty for browser builds. Remove the private backend credential from build configuration.'
+          );
+        }
+      },
+    },
+    publicDrivePlugin(), react(), tailwindcss(),
+  ],
   // Defense-in-depth: strip console.* and debugger from production bundles.
   // App diagnostics are already gated (utils/debug.js, default OFF), but this
   // guarantees no stray console.log can leak conversation content from the
