@@ -2400,6 +2400,23 @@ design detector and production build pass. Actual browser advances1.6MB/56s to
 7.6MB/295s with readable desktop/phone status. Continue that same download;
 readiness/search-result acceptance remains pending. Source not yet served.
 
+Follow-up checkpoint2026-10-14: source61912d2is pushed; required534/534frontend
+checks and exact-head unit/Postgres/browser CI plus preview pass. Actual model
+download advances then reports network error. Text recovery returns3matches;
+one offered retry advances3.1MB/197s and remains pending. Actual on-device search
+is not accepted. Owner/integration and authoritative checkout unchanged. Review
+authentication, actual model/result/source journey and merge/served identity
+remain separate dependencies. No calendar ETA supported for network/auth waits.
+
+Semantic smaller-window follow-up2026-10-14:202bounded diagnostic requests retain
+1263/1263turns and7099/7099associations. One actual page returns an enables edge
+whose two citations do not establish the relation or the full explanation;
+equipment detail is also attributed to the wrong endpoint. Diagnostic stopped,
+product budgets/prompt/artifact unchanged. Do not try further wording/window-size
+variants. Meaning acceptance needs a causally different model/contract decision;
+current full regeneration/public replacement remains held. Private evidence is
+tmp/smaller-windows-20261014/real/, no external review disclosure of that data.
+
 ### Deferred — reasoning configuration is absent from completion-cache identity
 
 Found2026-10-14 by direct source inspection. The synchronous client passes only

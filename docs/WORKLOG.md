@@ -8133,3 +8133,45 @@ User observed an empty desktop transcript until node selection, with only the cu
   No CDN/runtime change made without a decisive need. Remaining acceptance:
   actual model/result/source journey and independent final-diff review. Review
   authentication requested asynchronously while authorized verification continues.
+
+### 2026-10-14 — Smaller-window source diagnostic (no product budget change)
+
+- Search repair61912d2is committed; required push gate running. Actual browser
+  model download is progressing, so preserve that same attempt. Source meaning
+  remains a required dependency of the existing release, not optional expansion.
+- Hypothesis0.7: competing endpoint context in29-node/20K requests prevents the
+  private model from keeping explanations within their citations. Test the same
+  approved planner/extractor with18nodes/9Kchars in an ignored diagnostic only,
+  without changing prompt, relation semantics, provider, source bytes or product
+  defaults. This changes input granularity rather than adding another filter.
+- First prove all7099node-turn associations and1263turns still reach complete
+  bounded requests, then inspect the first actual page containing both implicated
+  moments. Refuse before inference if its evidence cannot test the hypothesis.
+  One actual page at most for this method; if it still overclaims, stop and retain
+  the artifact. A passing page would remain narrow evidence, not a full scan or
+  authority to replace the public file. Owner/integration Root Codex, same checkout.
+
+- [instrument] Offline smaller-window plan covers7099/7099associations and
+  1263/1263turns across202requests, max9000chars/18nodes. Actual window103
+  finishes195.19s with one edge. Its two cited turns describe curiosity blocked
+  by a rat race and equipment hard to buy; they do not establish the claimed
+  enabling relationship or the shift to software. The explanation also assigns
+  equipment cost to the wrong endpoint. Smaller context therefore fails meaning
+  acceptance too. Stop this diagnostic method; no product budget/prompt change,
+  full regeneration or artifact replacement. Private evidence stays under
+  tmp/smaller-windows-20261014/real/. Next semantic step requires a concrete
+  model/contract diagnostic ruling, not another wording or window-size retry.
+- Search61912d2pushed successfully after534/534required frontend checks; exact-head
+  unit, real-Postgres, browser-smoke and Vercel preview all pass. Actual first
+  browser model download eventually reports a network error after observed byte
+  progress. Literal recovery returns3matches for advertisers. Offered Retry starts
+  a new worker and advances3.1MB/197s; preserve this same attempt while pending.
+  No actual semantic-search success is claimed. Independent final-diff review is
+  still blocked on existing reviewer authentication; no further login retries or
+  new account/project/spend. Database administrator action remains pending.
+- Prepared and secret-scanned exact technical review packet for61912d2,21files,
+  112076bytes, SHA256ff879f41dc35535dcff3b49448f9534bfcc7ca5c92121f85e8cbea98abf376e1.
+  No egress. It excludes operational history, credentials, env, databases,
+  transcripts, participant data, generated private probes and unrelated files.
+  Evidence packet will be refreshed for the final PR head before an authenticated
+  reviewer invocation. Not independently reviewed, merged, served or accepted.
