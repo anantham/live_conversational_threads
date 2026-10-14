@@ -2439,3 +2439,30 @@ Follow-up:100ms RAF delay decisively reproduces the original assertion. Final
 test reuses the controlled-frame fixture and settles frames under act before
 checking the same navigation outcomes; runtime unchanged. Eight focused checks
 and ESLint pass without new warnings. Required full pre-push suite remains next.
+
+### 2026-10-15 — Current bounded integration checkpoint
+
+Owner/integration Root Codex; authoritative isolated checkout and task branch
+unchanged. PR216head613de10 has green unit, real-Postgres, browser-smoke and
+preview CI. Authenticated Google Gemini independently approved its21technical
+files with no findings and zero tool attempts; exact receipt is
+docs/reviews/viewer-release-independent-2026-10-14.json. Not merged or served.
+Required merge helper lacks the policy-approved Gemini receipt route; a narrow
+adapter plus exact-head merge pin and refusal tests are being implemented.
+Finite next checkpoint: helper validation, updated exact-diff review, CI and
+served identity. The previous approval does not cover this new helper source.
+
+Actual search acceptance: second browser model download ended in network error;
+no further retry. Text fallback returned3matches and opened Source at986s.
+Separate model transfer received2359296/22972370bytes before95.797s budget ended;
+host HEAD success and partial transfer do not prove browser readiness or identify
+its error cause. Actual on-device meaning search and embedded playback remain
+unverified. Source/citation meaning still fails on the current private model;
+full regeneration/public artifact replacement remain held. PostgreSQL requires
+the pending Administrator service start. No supported ETA for those external or
+unresolved dependencies; the next evidence checkpoint is the reviewed integration.
+Local follow-up: the existing Source iframe subsequently loaded. Native Play,
+active playback, transcript seek to986.847141s, and native Pause all succeeded
+on built61912d2without player changes. Actual embedded playback is proven locally;
+verify the new production deployment after integration. Helper7/7isolated CLI
+checks pass; updated exact-diff independent review remains next.

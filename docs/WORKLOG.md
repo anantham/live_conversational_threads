@@ -8175,3 +8175,55 @@ User observed an empty desktop transcript until node selection, with only the cu
   transcripts, participant data, generated private probes and unrelated files.
   Evidence packet will be refreshed for the final PR head before an authenticated
   reviewer invocation. Not independently reviewed, merged, served or accepted.
+
+### 2026-10-15 00:03 IST — Review recovered; real search reaches a terminal failure
+
+- Integration owner Root Codex; authoritative isolated checkout and branch remain
+  semantic-authoring-consolidation / codex/semantic-grounding-check-20261014.
+  PR216head613de10 has green unit, real-Postgres, browser-smoke and preview CI.
+- Fresh AGY catalog succeeded, providing new authentication evidence. One bounded
+  Google Gemini gemini-3.8-flash-high review then completed SUCCESS/exit0 with
+  zero tool attempts and APPROVED/no findings for exact source613de10. Exact
+  outgoing121067bytes and file inventory/scan/capability receipt are recorded in
+  docs/reviews/viewer-release-independent-2026-10-14.json. No private transcript
+  or diagnostic artifact was disclosed; the deny-all tool hook stayed active.
+- [instrument] The second actual browser model download ended in network error
+  after observed13.4MB/664s. Stop retries. Text search still returned3matches;
+  selecting one opened Source and its exact YouTube timestamp986s. This proves
+  failure recovery and literal navigation, not actual meaning search or playback.
+  Desktop/narrow loading and terminal-error screenshots remain private in
+  tmp/search-boundary-20261014/.
+- Bounded public-asset diagnostics: model configuration and WASM HEAD requests
+  returned200. A separate Python transfer of the same pinned model asset received
+  2359296/22972370bytes in95.797s before its budget ended. Slow transfer therefore
+  also occurs outside the browser; this does not establish the browser error's
+  root cause, complete asset integrity or successful inference. No CDN/provider,
+  model dependency, public artifact or hosting change was made.
+- Integration boundary: required merge/review helpers accept only Grok/Claude,
+  while current policy explicitly permits Gemini. Bounded A1 repair consumes a
+  completed strict Gemini receipt, validates exact PR scope/head and pins merge
+  to that reviewed head while retaining required CI. One delegated owner changes
+  only those helpers and focused synthetic CLI-boundary tests/intent. Parent
+  owns operational notes. No new review egress route or relaxed acceptance.
+- Finite next checkpoint: validate the helper's positive and refusal/race cases,
+  review the updated exact technical diff with Gemini, then integrate the proven
+  source repairs and verify served identity. Source613de10 approval does not cover
+  the new helper. Semantic regeneration remains held pending the requested private
+  model diagnostic ruling; database privilege and actual playback remain separate
+  dependencies. Integration/review waits and unresolved model/network effort have
+  no supported calendar delivery date yet.
+- Helper acceptance:7/7isolated public CLI checks pass, including current-head
+  success with required checks and exact merge pin, missing receipt, malformed/
+  negative review, stale PR identity, forbidden source exclusion, a head change
+  during checks, and refusal to skip checks. Parent inspection found two initial
+  negative tests failed before reaching their intended boundary; both now assert
+  the actual stale-identity/exclusion messages. PowerShell parsing and diff check
+  pass. No live PR mutation occurs in these synthetic checks.
+- [instrument] The same existing built local61912d2Source player subsequently
+  loaded. Clicking native Play produced paused=false,readyState4,error=null.
+  Clicking the16:26transcript row sought the playing video to986.847141s. Native
+  controls auto-hide, so reveal and Pause were executed together; paused=true
+  confirmed. No player code/configuration change or third loading retry. Private
+  screenshots embedded-playing-after-transcript-seek.jpg and embedded-paused.jpg
+  under tmp/search-boundary-20261014/. This now proves actual local embedded
+  playback/seek/pause; new production identity and its journey remain to verify.
