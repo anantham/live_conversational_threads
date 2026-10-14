@@ -7782,3 +7782,57 @@ User observed an empty desktop transcript until node selection, with only the cu
   connected browser and pending Windows Administrator DB step are distinct.
   New docs-only checkpoint d3a44a9 was pushed; required frontend524/524 passed.
   No additional independent runtime review claimed for this read-only follow-up.
+
+### 2026-10-14 — Approved complete-passage implementation slice
+
+- User selected complete passage coverage. A1 implementation is now authorized:
+  replace the twelve-turn prefix with exact whole-turn pages inside the existing
+  extractor. Owner/integration: Codex, isolated semantic-authoring-consolidation
+  checkout, branch codex/semantic-grounding-check-20261014. No new extractor,
+  provider, spend, or public artifact disclosure. Test intent recorded first.
+- Hypothesis [instrument]: source attachment discards later referenced turns;
+  removing the cap alone overflows broad ancestor closures. Repair the selection
+  and window materialization together. Predict complete node/turn association
+  coverage with bounded requests, exact text, late citations, overlap and atomic
+  failure retention. Confidence0.9 for coverage, not semantic meaning. Fallback:
+  keep reviewed prior artifact and report any indivisible over-budget passage.
+- Acceptance: focused and adjacent isolated tests; offline actual-artifact
+  coverage/budget/nonmutation check; independent non-OpenAI review of bounded
+  technical diff; real private meaning checks before generation/publication.
+  Next checkpoint: source coverage evidence and reviewer-ready diff. DB remains
+  Stopped; Windows Administrator start is still a separate dependency.
+- Connected Chrome now rendered an empty root on the public route twice. This
+  is a rendering failure observation, not a diagnosed cause. Browser closed
+  before static-asset DOM inspection; evidence is in ignored
+  tmp/public-viewer-acceptance-20261014/browser-evidence.json. Public interaction
+  acceptance remains blocked; continue bounded asset diagnosis independently.
+
+- Security [instrument]: bounded static GETs served HTML/JS/CSS/favicon200.
+  Bundle inspection found a nonempty VITE_AUTH_TOKEN. Root compared its value
+  in memory against primary backend AUTH_TOKEN: equal. No value printed or
+  authenticated request made. Backend remains stopped. Policy S1/H1 requires
+  credential authority; asked for one-time rotation/removal/redeploy containment.
+  Hold backend restart, live generation and publication meanwhile; continue only
+  unrelated local source repair. Redacted receipt in ignored tmp. Agent's exact
+  JS-copy deletion was denied; no bypass/retry, local deletion unconfirmed.
+- Coverage implementation: removed prefix cap, sorted validated references in
+  source order, projected ancestor evidence onto complete whole-turn request
+  pages, preserved node closure/overlap and actual adjacent-moment speech.
+  Added complete node/turn association invariant and public-entry-point tests.
+  First test run41passed/1failure/2Windows skips: the new artifact fixture omitted
+  its required edge_schema, so it refused before reaching the target boundary.
+  Fixed fixture without weakening assertions. Rerun42passed/2POSIX skips in2.49s.
+  Offline actual-data plan:1263/1263 turns,7099/7099 associations,61windows
+  (18backbone/34local/9boundary),max20996chars/30nodes,8.165s planning; exact text
+  and prior artifact unchanged. Coverage is not a semantic-precision verdict.
+- The existing async caller now offloads the pure window planner to a worker:
+  the observed8.165s preparation must not freeze status/cancellation. This is
+  the only adjacent runtime edit, in edge_enrichment.py. Cancelled callers may
+  leave pure preparation finishing in the worker but cannot proceed to model
+  calls or artifact publication. No new asynchronous presentation is introduced.
+- Final focused+adjacent validation:58passed/2POSIX Windows skips in3.81s,
+  including real transport-boundary passage tests, cancellation during blocked
+  preparation, shared authoring, persisted repair, live-STT wiring and CLI status.
+  Existing Python3.9 deprecation/event-loop warnings remain. No DB or provider
+  contacted. Source/test slice is ready for bounded independent review; it is
+  not merged, served or semantically accepted. Public artifact remains unchanged.

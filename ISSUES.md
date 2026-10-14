@@ -2268,6 +2268,31 @@ be advertised as semantic accuracy. No new pipeline layer/provider or UI redesig
 User was asked for this source-selection choice and a connected browser tab;
 the existing Administrator database action remains pending.
 
+Approved implementation checkpoint,2026-10-14: user chose complete passage
+coverage. Codex owns this finite slice in the same isolated checkout/branch:
+edge_evidence.py + edge_enrichment_windows.py, focused behavioral tests and
+intent. Acceptance: all referenced node/turn associations visible, whole exact
+turns, bounded requests, adjacent moments and overlapping memberships, late
+citations, failure retention; offline actual-data coverage; independent review.
+Meaning quality remains a separate release gate; public artifact is held.
+Next evidence checkpoint: coverage/budget report and validated review packet.
+Connected browser observed a blank public root twice, then the tab closed;
+diagnostic cause unknown, public manual acceptance not achieved. This is now
+a concrete release blocker, tracked in the same slice without a UI redesign.
+
+Security containment hold,2026-10-14 [instrument]: the publicly served production
+JS contains a nonempty VITE_AUTH_TOKEN that matches the primary backend's
+configured AUTH_TOKEN (compared in memory, never printed; no authenticated probe).
+The backend is currently stopped. Impact: cached bundles disclose a backend
+credential; removing the frontend value alone does not invalidate old copies.
+Blocker: hold backend restart, live generation and release pending credential
+containment authority. Recommended next step: rotate backend token, remove the
+public build variable and redeploy; private API clients then need reauthentication.
+Requested the one-time credential/publication decision required by policy S1/H1.
+No credential changed. Redacted evidence remains under ignored
+tmp/public-viewer-acceptance-20261014. A downloaded JS copy may remain there;
+its exact-path deletion was denied, and no alternative deletion was attempted.
+
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 
 During the approved walkthrough, Back to library reached /browse and its local

@@ -5,9 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-MAX_EDGE_EVIDENCE_IDS_PER_NODE = 12
-
-
 def node_utterance_ids(node: dict[str, Any]) -> list[str]:
     source_ref = node.get("source_ref") or {}
     return list(dict.fromkeys(str(value) for value in [
@@ -31,6 +28,7 @@ def attach_source_turns(nodes: list[dict], utterances: list[dict]) -> list[dict]
             raise ValueError("edge_source_requires_unique_ids_and_exact_text")
         source[identifier] = {"id": identifier, "text": text}
 
+    source_order = {identifier: index for index, identifier in enumerate(source)}
     by_id = {str(node.get("id") or ""): node for node in nodes}
     children = {identifier: list(node.get("children_ids") or [])
                 for identifier, node in by_id.items()}
@@ -57,6 +55,7 @@ def attach_source_turns(nodes: list[dict], utterances: list[dict]) -> list[dict]
         ids = list(dict.fromkeys(ids))
         if any(value not in source for value in ids):
             raise ValueError("edge_source_unknown_utterance")
+        ids.sort(key=source_order.__getitem__)
         resolved[identifier] = ids
         return ids
 
@@ -64,7 +63,7 @@ def attach_source_turns(nodes: list[dict], utterances: list[dict]) -> list[dict]
     for node in nodes:
         ids = resolve(str(node.get("id") or ""), set())
         result.append({**node, "source_turns": [
-            source[value] for value in ids[:MAX_EDGE_EVIDENCE_IDS_PER_NODE]
+            source[value] for value in ids
             if source[value]["text"].strip()
         ]})
     if nodes and not any(node["source_turns"] for node in result):

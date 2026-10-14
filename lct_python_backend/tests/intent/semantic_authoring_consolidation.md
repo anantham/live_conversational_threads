@@ -25,3 +25,18 @@ Review follow-up, 2026-10-14:
   retains the temporary file's private default permissions.
 - The canonical prompt's output example includes required source citations, so
   a provider following that example produces the same contract the parser needs.
+
+Complete-passage repair approved, 2026-10-14:
+
+- Every nonblank referenced source turn, including evidence after turn twelve,
+  reaches the existing extractor with its exact text and endpoint association.
+  Broad ancestors share the passages in the current request; they cannot force
+  an unbounded prompt or a silent prefix cutoff.
+- Requests remain deterministic and within the existing node/text budgets,
+  preserve overlapping memberships, and show both sides of adjacent moments.
+  Whole turns are indivisible; an impossible budget fails before calls.
+- A late visible citation is accepted; a real but undisclosed citation is refused.
+  A failed later passage retains the previous artifact. A valid empty complete
+  scan remains successful.
+- Verify coverage separately from semantic precision. Hold public replacement
+  until real positive/negative meaning checks pass on the private provider.

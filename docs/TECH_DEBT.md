@@ -423,3 +423,13 @@ consolidation extracts the evidence boundary only where necessary for shared use
 keep retrieval/provider lifecycle decomposition separate. `stt_ws_session.py` is
 also a large lifecycle owner: reuse its existing utterance identity/text storage
 for edge input instead of creating a parallel transcript store.
+
+### 2026-10-14 — Bounded evidence planner
+
+`edge_enrichment_windows.py` grows from345 to roughly425 lines to page complete
+source evidence without a second extraction path. It remains one coherent pure
+planner. Future performance work can separate passage projection/budgeting from
+hierarchy packing; current actual100-node planning takes8.165s for61requests.
+The caller now offloads this pure preparation so the CLI status loop can run.
+Avoid caching or a parallel planner in this coverage repair; any optimization should preserve
+exact formatted-budget checks, complete associations and boundary visibility.

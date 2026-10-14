@@ -577,7 +577,9 @@ async def run_edge_enrichment(
     try:
         nodes = attach_source_turns(nodes, utterances or [])
         # Reserve space for scope instructions/context while preserving exact speech.
-        windows = plan_edge_windows(nodes, max_input_chars=MAX_EDGE_INPUT_CHARS - 3000)
+        windows = await asyncio.to_thread(
+            plan_edge_windows, nodes, max_input_chars=MAX_EDGE_INPUT_CHARS - 3000,
+        )
     except ValueError as exc:
         llm_telemetry = {
             "parse_status": "invalid",
