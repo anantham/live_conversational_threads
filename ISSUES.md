@@ -2482,3 +2482,22 @@ still pending and regeneration remains held. Overall goal is not complete.
 Finite next evidence checkpoint: resolve the pending service/model dependencies,
 run the approved private diagnostic and verify backend identity; model/network
 effort remains unknown. No fresh calendar ETA or claim of full UX acceptance.
+
+Bounded diagnostic checkpoint2026-10-15: Root Codex, same authoritative isolated
+checkout. Public/local headers do not supply a blocking security policy; both
+contextual YouTube entry HTML requests returned200. An isolated fixture reached
+SDK readiness at0.412s but no player readiness by120.014s, then stopped and was
+closed. Raising the20s app timeout is not supported; no player source change or
+further production retry. Media cause and actual public playback remain open.
+
+The existing on-device model's four required files, public license and published
+weight hash are known. Serving those same assets with explicit local runtime
+paths is a candidate bounded delivery repair, not an established root cause.
+The already-built asyncify WASM is26.86MB; the pinned model adds22.97MB plus small
+config/tokenizer files. Preserve the library's older-Safari runtime fallback.
+One short-range public-asset probe timed out after25.469s; no verified full model
+or product assets resulted. Acquisition method stopped, no automatic retries.
+Finite next search check requires complete verified assets before real browser
+inference/result/Source acceptance; existing synthetic checks are not that proof.
+Administrator database start and the separate installed-model diagnostic ruling
+remain pending. No new human authorization or ETA is invented by this checkpoint.
