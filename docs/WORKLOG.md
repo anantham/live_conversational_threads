@@ -8227,3 +8227,50 @@ User observed an empty desktop transcript until node selection, with only the cu
   screenshots embedded-playing-after-transcript-seek.jpg and embedded-paused.jpg
   under tmp/search-boundary-20261014/. This now proves actual local embedded
   playback/seek/pause; new production identity and its journey remain to verify.
+
+### 2026-10-15 00:38 IST — Reviewed source merged and served; acceptance holds remain
+
+- Final exact25-file technical diff208a8f843dd2b06052c442c79488152c0434a157
+  independently APPROVED by Google Gemini gemini-3.8-flash-high with no findings,
+  no rejected findings/overclaims and zero tool attempts. Review completed
+  2026-10-14T18:52:05.291Z using the existing AGY account and verified deny-all
+  hook. Exact outgoing143932bytes SHA256
+  58271e62c3d534b0eb5b4aeb4d15cf14fc6be246d630b9830451dee92b54a36d;
+  packet132697bytes SHA256
+  8a8dcfb3306b2cba81a7e0ce9557b5c05fbf04a59bb139c808a98c82b077398c.
+  Full file inventory, eight excluded operational files, pre-egress scan,
+  validation and harness limitation are in the tracked independent-review receipt.
+  No credential/env/database/transcript/participant/private artifact was sent.
+- Seven isolated CLI checks, parse and diff checks pass. Required push gate
+  passes534/534frontend tests across88files in37.81s. Exact-head unit, real
+  Postgres, Playwright smoke and Vercel preview CI all pass. Skipped optional
+  checks are not acceptance evidence. No required hook/check was bypassed.
+- The required helper validated the completed exact-head receipt, retained CI,
+  rechecked PR identity and merged with --match-head-commit208a8f8. PR216 merged
+  at2026-10-14T18:53:06Z as0e1fb3b318d7b180d88d61aea93018cd4db344ad.
+  Production dpl_EoukQkxiXzrcs4FTz8VUjZDQ5jCE is READY and aliases the public
+  domain. HTTP200entry /assets/index-07NxGK4m.js has zero nonempty frontend
+  credentials and excludes the current private credential. Search worker is
+  conversationSearch.worker-C3PV6wx8.js. Held artifact SHA386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19
+  remains unchanged; no generated replacement was published.
+- Actual new production browser: map renders, text search returns3matches,
+  selected result opens Source986s, Back restores Graph/arcs and enables Forward.
+  Video initial readiness and one offered retry both timeout; no further retry.
+  The prior local native Play/seek/Pause success does not prove production
+  reliability. Scoped audit remains INCOMPLETE; no actual model inference success
+  or full UX/performance/a11y acceptance is claimed. Screenshots under
+  tmp/search-boundary-20261014/ include public-0e1fb3b-video-timeout.jpg and
+  public-0e1fb3b-map-after-back.jpg. The public viewer tab is kept as a deliverable.
+- Integration owner/root checkout unchanged. Primary remains2acf515 with its
+  unrelated dirty WORKLOG/observability work preserved; PostgreSQL is stopped.
+  No backend pull, restart or permission workaround. Backend runtime, revocation
+  probe and generation wait on the existing Administrator service-start step.
+  Meaning acceptance waits on the separately requested bounded private model
+  comparison ruling; full regeneration/public replacement held. On-device model
+  delivery and reliable public video remain unaccepted. Goal is not complete.
+- Next checkpoint: the concrete pending service/model dependencies, then bounded
+  private meaning checks and runtime verification; no further wording/window-size
+  retries or model-download loop. Remaining model/network effort is unknown;
+  Windows privilege and human decision waits are separate from implementation.
+  This post-merge checkpoint changes only operational notes/receipts and will be
+  preserved on the task branch; it changes no reviewed behavior or test coverage.
