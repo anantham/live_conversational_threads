@@ -2174,6 +2174,18 @@ Remaining dependencies: reachable existing provider, review/CI and deploy waits.
 No further human decision is presently required; report a concrete blocker if
 credentials, provider access, privacy or new cost exceed this envelope.
 
+Release checkpoint,2026-10-14 10:07 IST: PR215 head bcb19f0 is pushed; local
+pre-push524/524 and remote backend/browser/preview gates passed. Exact-head
+AGY/Anthropic review requested changes; supported context-budget/compiler/mode
+repairs are implemented and await final validation/re-review. First real M5
+scan refused missing citations and preserved the public file; diagnostic output
+confirmed the canonical example lacked its required citation field. Example
+corrected; next evidence is a real corrected window, then complete candidate
+quality checks. Owner/checkout unchanged; public artifact still original.
+Backend deployment additionally needs the existing Windows database service
+started by an Administrator; user received the exact one-command action.
+Unrelated dirty deploy files remain preserved. No new product decision needed.
+
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 
 During the approved walkthrough, Back to library reached /browse and its local

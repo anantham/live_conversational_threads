@@ -6,10 +6,14 @@ scan aggregation and artifact serialization are real. All speech is synthetic.
 
 import copy
 import json
+import os
+import stat
+import subprocess
 
 import pytest
 
 from lct_python_backend.services.edge_enrichment import run_edge_enrichment
+from lct_python_backend.services import edge_enrichment, threads_semantic_authoring
 from lct_python_backend.services.transcript import transcript_llm_callers
 from lct_python_backend.services.threads_semantic_authoring import (
     author_threads_artifact, write_authored_experiment,
@@ -131,6 +135,21 @@ async def test_valid_empty_response_has_distinct_success_status(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_provider_following_demonstrated_output_shape_can_author_cited_edge(monkeypatch):
+    def provider(**kwargs):
+        example = kwargs["system_prompt"].split("OUTPUT JSON SHAPE:\n", 1)[1].split("\n\nReturn only JSON", 1)[0]
+        keys = json.loads(example)["edges"][0]
+        return {"edges": [{key: relation()[key] for key in keys}]}, None
+
+    monkeypatch.setattr(transcript_llm_callers, "_call_local_chat_json_with_fallback", provider)
+    nodes, utterances = source_fixture()
+    edges, telemetry = await run_edge_enrichment(nodes=nodes, utterances=utterances,
+        query_summary="", providers=[], skip_context_lookup=True)
+    assert telemetry["llm_telemetry"]["parse_status"] == "valid"
+    assert len(edges) == 1 and edges[0]["supporting_utterance_ids"] == ["u1", "u3"]
+
+
+@pytest.mark.asyncio
 async def test_unknown_source_id_refuses_before_provider(monkeypatch):
     nodes, utterances = source_fixture()
     nodes[0]["utterance_ids"] = ["missing"]
@@ -177,6 +196,31 @@ async def test_source_text_budget_splits_existing_windows_without_dropping_turns
     assert edges == []
 
 
+@pytest.mark.parametrize("context_size,retained", [(20, True), (4000, False)])
+@pytest.mark.asyncio
+async def test_optional_retrieval_cannot_crowd_out_exact_source(monkeypatch, context_size, retained):
+    nodes, utterances = source_fixture()
+    utterances[0]["text"] = "Exact synthetic speech. " * 750
+    context_title = "Supplementary context " + "x" * context_size
+
+    async def retrieval(**_kwargs):
+        return {"items": [{"title": context_title, "text": "Optional reference"} for _ in range(8)]}
+
+    monkeypatch.setattr(edge_enrichment, "retrieval_search", retrieval)
+    seen = []
+    transport(monkeypatch, {"edges": [relation()]}, seen)
+    edges, telemetry = await run_edge_enrichment(
+        nodes=nodes, utterances=utterances, query_summary="synthetic access",
+        providers=[], participant_external_llm_ok_set=set(),
+    )
+    assert len(seen) == 1 and len(edges) == 1
+    assert telemetry["llm_telemetry"]["parse_status"] == "valid"
+    prompt = seen[0]["prompt"]
+    assert len(prompt) <= 24000
+    assert all(turn["text"] in prompt for turn in utterances)
+    assert (context_title in prompt) is retained
+
+
 @pytest.mark.asyncio
 async def test_compile_shared_extract_export_and_reload_keep_direction_citations_and_returns(monkeypatch, tmp_path):
     base = artifact_fixture()
@@ -217,6 +261,52 @@ async def test_failed_scan_retains_previous_output_bytes_and_reports_failure(mon
                                        providers=LOCAL_PROVIDER)
     assert destination.read_bytes() == previous
     assert list(tmp_path.iterdir()) == [destination]
+
+
+@pytest.mark.asyncio
+async def test_compiler_failure_reports_reason_and_preserves_previous_output(monkeypatch, tmp_path):
+    destination = tmp_path / "previous.threads"
+    previous = b"previous reviewed artifact"
+    destination.write_bytes(previous)
+    base = artifact_fixture()
+    base["edges"][0]["to_node_id"] = "missing-node"
+    seen = []
+    transport(monkeypatch, {"edges": []}, seen)
+    with pytest.raises(ValueError, match="previous artifact retained:.*missing-node"):
+        await write_authored_experiment(base, interpretation=interpretation_fixture(),
+                                       output_path=destination, providers=LOCAL_PROVIDER)
+    assert destination.read_bytes() == previous
+    assert not seen
+
+
+@pytest.mark.asyncio
+async def test_compiler_timeout_reports_failure_and_preserves_previous_output(monkeypatch, tmp_path):
+    destination = tmp_path / "previous.threads"
+    previous = b"previous reviewed artifact"
+    destination.write_bytes(previous)
+
+    def expired(command, **kwargs):
+        assert kwargs["timeout"] == 30
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(threads_semantic_authoring.subprocess, "run", expired)
+    with pytest.raises(ValueError, match="timed out after 30s; previous artifact retained"):
+        await write_authored_experiment(artifact_fixture(), interpretation=interpretation_fixture(),
+                                       output_path=destination, providers=LOCAL_PROVIDER)
+    assert destination.read_bytes() == previous
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission mode contract")
+@pytest.mark.asyncio
+async def test_replacement_preserves_existing_artifact_permissions(monkeypatch, tmp_path):
+    destination = tmp_path / "previous.threads"
+    destination.write_text(json.dumps(artifact_fixture()), encoding="utf-8")
+    destination.chmod(0o640)
+    transport(monkeypatch, {"edges": []}, [])
+    await write_authored_experiment(artifact_fixture(), output_path=destination,
+                                   providers=LOCAL_PROVIDER)
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o640
+    assert json.loads(destination.read_text(encoding="utf-8"))["argument_topology"]["status"] == "complete"
 
 
 @pytest.mark.parametrize("providers", [[], [{"base_url": "https://remote.example", "trust_scope": "owner_private"}],

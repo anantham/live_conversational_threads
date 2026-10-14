@@ -258,7 +258,11 @@ async def _call_enrich_llm(
         )
     context_block = _format_context_pack(context_items)
     if context_block:
-        user_input = f"{user_input}\n\n{context_block}"
+        if len(user_input) + 2 + len(context_block) <= MAX_EDGE_INPUT_CHARS:
+            user_input = f"{user_input}\n\n{context_block}"
+        else:
+            telemetry["optional_context_omitted"] = True
+            logger.info("[edge_enrichment] optional context omitted to preserve exact source budget")
 
     if len(user_input) > MAX_EDGE_INPUT_CHARS:
         telemetry.update(parse_status="invalid", error="edge_source_window_too_large")

@@ -14,3 +14,14 @@ existing relationship extractor. Preserve source identities and graph membership
   failure preserves the previous artifact/relationships and is reported explicitly.
 - Exercise the real adapters with synthetic source data and a boundary provider
   stub; isolate all storage before imports. No production DB or provider calls.
+
+Review follow-up, 2026-10-14:
+
+- Optional retrieved context must never crowd out exact source evidence; omit
+  context that will not fit and still perform the grounded scan.
+- Compiler failures expose a bounded diagnostic and finish within a bounded
+  timeout; compilation does not block the CLI status loop.
+- Replacing an existing artifact preserves its permission mode. A new artifact
+  retains the temporary file's private default permissions.
+- The canonical prompt's output example includes required source citations, so
+  a provider following that example produces the same contract the parser needs.

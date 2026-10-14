@@ -7,8 +7,10 @@ to shared extraction and commits an artifact only after the required scan passes
 from __future__ import annotations
 
 import copy
+import asyncio
 import json
 import os
+import stat
 from pathlib import Path
 import subprocess
 import tempfile
@@ -77,13 +79,17 @@ async def author_threads_artifact(
 def compile_experiment(base: dict, interpretation: dict) -> dict:
     """Run the existing deterministic JS compiler, with JSON as data over stdin."""
     compiler = Path(__file__).resolve().parents[2] / "scripts" / "compile_thread_experiment.mjs"
-    completed = subprocess.run(
-        ["node", str(compiler), "--stdin"],
-        input=json.dumps({"base": base, "interpretation": interpretation}),
-        text=True, encoding="utf-8", capture_output=True, check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["node", str(compiler), "--stdin"],
+            input=json.dumps({"base": base, "interpretation": interpretation}),
+            text=True, encoding="utf-8", capture_output=True, check=False, timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Experiment compilation timed out after 30s; previous artifact retained") from exc
     if completed.returncode:
-        raise ValueError("Experiment compilation failed; previous artifact retained")
+        detail = completed.stderr.strip()[-1000:] or f"exit code {completed.returncode}"
+        raise ValueError(f"Experiment compilation failed; previous artifact retained: {detail}")
     return json.loads(completed.stdout)
 
 
@@ -92,7 +98,7 @@ async def write_authored_experiment(
     interpretation: dict | None = None, llm_config: dict | None = None,
 ) -> dict:
     """Compile optionally, scan, then atomically replace only the requested file."""
-    staged = compile_experiment(base, interpretation) if interpretation is not None else base
+    staged = await asyncio.to_thread(compile_experiment, base, interpretation) if interpretation is not None else base
     result = await author_threads_artifact(staged, providers=providers, llm_config=llm_config)
     temporary_path = None
     try:
@@ -101,6 +107,8 @@ async def write_authored_experiment(
             prefix=f".{output_path.name}.", suffix=".tmp", delete=False,
         ) as stream:
             temporary_path = Path(stream.name)
+            if output_path.exists():
+                os.chmod(temporary_path, stat.S_IMODE(output_path.stat().st_mode))
             json.dump(result, stream, ensure_ascii=False, indent=2)
             stream.flush()
             os.fsync(stream.fileno())

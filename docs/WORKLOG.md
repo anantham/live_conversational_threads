@@ -7619,3 +7619,48 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Next evidence checkpoint: provider/backend readiness plus real-window result.
   Estimates for model work remain unknown until measured; review/CI/deploy waits
   reported separately. Goal is release proof, not a synthetic pass count.
+
+### 2026-10-14 10:07 IST — Published release; review and real-model boundary
+
+- Branch bcb19f0 pushed; PR215 opened against bda16e5. Required frontend
+  pre-push gate524/524, backend unit/integration CI, Playwright CI and preview
+  deployment passed. No merge/backend restart/public artifact change yet.
+- Native database service is stopped; Start-Service was denied by Windows.
+  Requested the single Administrator service-start action, explained it in
+  plain language, and continued independent release work. No elevation bypass.
+  Primary deploy checkout has four unrelated dirty files; preserved untouched.
+- M5 Ollama metadata identifies existing installed models. Historical explicit
+  owner_private classification plus owned-service registry establishes the
+  existing private boundary; CLI needs no database settings. No external model,
+  new model download, paid usage or transcript review disclosure used.
+- AGY catalog retired the previous model. One repeated old-model invocation
+  resulted from an unavailable bare Python edit command; corrected using the
+  canonical venv and catalog-verified Claude Opus5.5Medium. AGY review succeeded
+  tool-free on exact PR head bcb19f0 and requested changes (five findings).
+  Standard helper accounts are unauthenticated; no helper approval is claimed.
+- Review triage: F2 confirmed optional context can exceed the fixed reserve;
+  omit context that will not fit, preserving every exact source character.
+  F3 preserve existing output permission mode; directory crash durability is
+  outside the atomic-replacement promise. F4 expose bounded compiler stderr,
+  enforce30s timeout, offload compilation so CLI status can continue.
+- F1/F5 production-path premises falsified by read-only call-site tracing:
+  imports/repair already serialize ORM turns, nodes have canonical id; reconnect
+  protects prior node IDs without restoring prior graph into the new processor.
+  Current persisted turn IDs feed current graph and scan. Send these exact
+  tracked code excerpts in re-review; do not broaden malformed-input behavior
+  or silently change reconnect architecture to satisfy an overclaim.
+- Real inference: first13-node window passed5/5 syntactic grounding checks in
+  57.2s; this did not establish semantic quality. Full run then refused its
+  first window (5raw/0kept) and wrote no candidate. Diagnostic second call
+  returned6edges with no supporting_utterance_ids. The canonical output example
+  omitted that required field, despite appended evidence instructions. Hypothesis
+  confirmed at request/response boundary; corrected the example, preserving
+  strict parser refusal. No minimum link count or citation fallback introduced.
+- Test intent expanded before repairs; focused synthetic regression58passed,
+  1POSIX permission test correctly skipped on Windows. Existing Python support
+  and pytest asyncio warnings remain. A first run using shared pytest temp
+  location emitted the already-recorded cleanup PermissionError after exit0;
+  isolated --basetemp avoids it. No live persistence used by tests.
+- Next checkpoint: corrected real-window result; relevant combined validation,
+  exact updated-head independent review/CI, then merge only with an approved
+  verdict. Full23-window model duration still unknown; no false ETA from one run.
