@@ -1412,6 +1412,9 @@ function MinimalGraphInner({
     if (!compactViewer || displayNodes.length === 0) {
       return undefined;
     }
+    // Reading navigation owns the camera while its selected card is visible.
+    // Selection also cancels an overview frame that was already waiting.
+    if (selectedNode && displayNodes.some((node) => node.id === selectedNode)) return undefined;
     if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) return undefined;
     const key = displayNodes.map((node) => node.id).join(",");
     if (mobileFramedNodeSetRef.current === key) return undefined;
@@ -1433,7 +1436,7 @@ function MinimalGraphInner({
       }
     }, 180);
     return () => window.clearTimeout(id);
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken, selectedNode]);
 
   // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
   // projections move nodes without changing the controlled full-layout state.
@@ -1555,7 +1558,8 @@ function MinimalGraphInner({
     if (restoringRef.current) return;
     mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
-    if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) {
+    if ((selectedNode && displayNodes.some((node) => node.id === selectedNode))
+      || (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode))) {
       hasInitiallyFitRef.current=true;
       pendingFitViewRef.current=false;
       return;
@@ -1610,7 +1614,7 @@ function MinimalGraphInner({
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken, selectedNode]);
 
   const selectedLayoutNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedNode) || null,

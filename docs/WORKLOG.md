@@ -8334,3 +8334,49 @@ User observed an empty desktop transcript until node selection, with only the cu
   unknown, with no new calendar ETA. No new privilege, hosting service, provider,
   paid API, dependency, model selection, transcript disclosure or public artifact
   change occurred. User's ELI5 request answered with the single Windows command.
+
+### 2026-10-15 — Selected thread camera ownership repair begins
+
+- Current outcome/owner/acceptance/dependencies are recorded in ISSUES.md.
+  New branch codex/viewer-selected-card-framing starts from served main0e1fb3b;
+  two prior operational checkpoint commits were cherry-picked without changing
+  source. Primary dirty files remain preserved; no DB service-start retry.
+- [instrument] Two actual public thread selections show the correct first-of-seven
+  detail but a final selected-card rectangle wholly outside the map. A transient
+  centered card is later replaced by zoom0.85. Read-only gpt-6-sol investigation
+  confirms a180ms compact overview frame can follow selected-card RAF centering.
+  The minimally supported repair skips that frame for a visible selected node
+  and cancels a pending frame when selection changes. Confidence0.9; no speculative
+  coordinate reconciliation or camera coordinator refactor is included.
+- Test intent before implementation: exercise controlled public MinimalGraph
+  selection while overview framing is pending, assert final projected card
+  visibility after timers settle, retain unselected framing and saved history.
+  Source/speaker files are unchanged from the prior actual public rename proof,
+  so that evidence is reused. A fresh synthetic file upload hit a browser file-URL
+  permission boundary and was stopped without changing permission or real names.
+  No private data or generated artifacts are included in independent review.
+- Fixture precondition corrected before interpreting red evidence: React Flow's
+  mock now supplies measured300x210reading-card dimensions; missing measurements
+  previously produced NaN. With valid geometry the pending overview regression
+  decisively fails at right3300.4outside390px, while initial framing/history pass.
+  The visible-selection guard fixes it. A second public tier-change case then
+  exposes the separate two-RAF initial fit overwriting selection; the same
+  ownership condition now consumes that pending fit instead. Both camera paths
+  retain the existing restoration guard and allow framing when selection is
+  absent from the displayed tier. No new coordinator or layout algorithm.
+- Final local validation:30/30focused navigation/history/motion/toolbar checks,
+  touched ESLint and production build pass; unchanged large-bundle warning.
+  First guard's actual preview keyboard journey traverses all7agency moments,
+  all six inspected2-through7cards remain inside the map and outside details,
+  and Next is disabled at7of7. The final two-guard bundle index-Crtj18K4.js then
+  passes the actual initial tier-to-moment jump, Source beside details, keyboard
+  next, Back/Forward and phone Source/detail handoff plus keyboard next/back.
+  Phone details intentionally cover the map; readable selected detail and no
+  horizontal overflow were observed, not simultaneous unobscured phone cards.
+  Final desktop selected card x541.5/y281.71/w345/h241.5is fully inside the map;
+  with Source open x901.5clears Source's360px and details atx1428.33.
+  Private DOM/screenshot evidence remains tmp/thread-camera-20261015/.
+  Fast combined expansion/row-selection did not retain the row twice; a fresh
+  single row click after observing expanded UI works. This could be tool/layout
+  settling; no app defect or acceptance claim for that fast sequence is inferred.
+  Independent exact-diff review, full push gate and served walkthrough remain.
