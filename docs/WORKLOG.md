@@ -8419,3 +8419,40 @@ User observed an empty desktop transcript until node selection, with only the cu
   Next checkpoints are the existing dependencies, not further failed-method retries.
   This post-merge record is mechanical operational documentation only and changes
   no reviewed behavior or coverage; preserved in a separate pushed commit.
+
+### 2026-10-15 — Bounded remaining-gate investigation and blocked audit
+
+- Previous goal turn is progress: sourceb06eb2e reviewed/merged747a1a1and served,
+  all7thread cards verified publicly. Operational checkpoint565f4b3is pushed and
+  clean. Current service read still shows postgresql-x64-15Stopped; no new start,
+  elevation workaround or backend mutation. Existing authorization is sufficient;
+  Windows privilege is the mechanical boundary.
+- Hypothesis H1(0.3): output/context cutoff contributes to failed semantic meaning;
+  H2(0.7): a completed answer still exceeds its cited evidence. Read-only probe
+  inspects only recorded result/transport metadata and prints no source/answer.
+  Three actual-source records report finish_reason=stop, while input/output token
+  counts are null/unknown. This does not support an output-budget increase;
+  input-context loss remains unproven. No model call, changed prompt or product edit.
+  Evidence tmp/semantic-limit-metadata-20261015.json. One existing private-host
+  /v1/models metadata GET timed out after8.006s, then its actual handle92676exited0.
+  No inference/source bytes, retry or claim that the host is offline. Evidence
+  tmp/private-model-limit-metadata-20261015.json.
+- Materially different network-free search acquisition check: inspect only known
+  HuggingFace/Transformers model cache paths. No exact Xenova cache;9ONNX files in
+  the existing sentence-transformers cache all differ in length from the required
+ 22972370byte pinned asset, ruling out byte identity without conversion. No model
+  substitution, conversion, network download or browser-profile access. Evidence
+  tmp/search-model-cache-20261015.json. Verified exact assets remain a precondition
+  for the proposed delivery repair; no half-mirror or actual-inference claim.
+- Blocked audit: identical Administrator service-start and pending private-model
+  comparison boundaries persisted over the last3goal turns (bounded media/search
+  investigation, delivered camera slice, this boundary check). Useful independent
+  implementation/review/CI/public navigation work is delivered; no confirmed live
+  job remains. Current metadata/cache checks change the evidence but expose no
+  further authorized implementation path to the unmet meaning/search/media gates.
+  Mark goal blocked once this operational record is pushed. Do not call it
+  complete, start another prompt/download/playback loop or ask for repeat release
+  authority. Existing human decision/action and external readiness remain needed.
+  Owner Root Codex, same authoritative isolated checkout; effort unknown, wait
+  dependencies separate. This checkpoint changes operational docs only and does
+  not alter reviewed code, configuration, tests, coverage or served artifacts.

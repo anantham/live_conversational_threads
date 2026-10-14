@@ -2535,3 +2535,30 @@ incomplete: service/model/search/media holds above still apply. Next evidence
 checkpoint: pending Administrator starts existing DB, then backend verification;
 private meaning comparison awaits its separate ruling. No supported model/network
 ETA and no further retry loop. Owner/integration/authoritative checkout unchanged.
+
+### 2026-10-15 — Remaining release boundary audit
+
+Previous goal turn delivered the reviewed camera repair; current worktree is
+clean/pushed565f4b3and public runtime747a1a1. PostgreSQL remains Stopped. Recorded
+metadata for3failed actual-source runs reports finish_reason=stop, with unknown
+input/output token counts. This does not support raising the output budget and
+cannot rule out input-context loss. One metadata-only catalog GET to the existing
+private model host timed out after8.006s; its process exited0, no inference ran.
+No retry or host-offline claim. Ignored evidence: semantic-limit-metadata-20261015.json
+and private-model-limit-metadata-20261015.json under tmp/.
+
+An offline search of the known model caches found9ONNX files from the Python
+sentence-transformers cache; all have different byte lengths from the pinned
+Xenova q8asset. The exact Xenova cache is absent. No substitute, conversion or
+download ran. Evidence tmp/search-model-cache-20261015.json. Existing network
+acquisition methods remain stopped. Same-origin delivery requires verified exact
+assets before implementation and actual browser inference acceptance.
+
+At the remaining boundary, the same Administrator/model-choice blockers persisted
+through the media/search diagnostic turn, camera-release turn and current turn.
+Independent authorized source/review/integration work is delivered. No live job
+is being waited on. Mark goal blocked at this impasse, not complete. Existing
+pending actions: Administrator starts the named DB service; human resolves the
+already-present bounded installed private-model comparison choice. Media/search
+acceptance also needs a materially different evidenced route or external-state
+change; no invented ETA. Owner/integration/authoritative checkout unchanged.
