@@ -2106,7 +2106,7 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
-# Semantic authoring consolidation — 2026-10-14 (RELEASE AUTHORIZED; readiness)
+# Semantic authoring consolidation — 2026-10-14 (SOURCE MERGED; real-data acceptance blocked)
 
 Outcome: imports and `.threads` experiments share the existing transcript-grounded
 relationship extractor; compiler preserves validated relationships; automatic
@@ -2185,6 +2185,52 @@ quality checks. Owner/checkout unchanged; public artifact still original.
 Backend deployment additionally needs the existing Windows database service
 started by an Administrator; user received the exact one-command action.
 Unrelated dirty deploy files remain preserved. No new product decision needed.
+
+Release checkpoint,2026-10-14: PR215 final head
+`d229f788a059444f62599fafa6edae6835adff47` passed final CI and independent
+AGY/Anthropic Claude Opus5.5Medium review (APPROVED, no findings, zero tools).
+Squash merge/main is `2acf515be7d667d08eddb27ea6bb30c2ed4a91cc`.
+Vercel production deployment `dpl_BMMNQ1SwRbHLGsb65aDqosaRhy3P` is READY at
+that SHA and lists threads.adityaarpitha.com as its alias. This is deployment
+metadata, not a completed public browser walkthrough. Primary backend checkout
+was fast-forwarded to the same SHA after byte-verified preservation of its four
+unrelated dirty files; none were staged or published. Backend is not running:
+postgresql-x64-15 remains stopped and Windows denied service-start permission.
+User received the Administrator PowerShell command, with a plain explanation.
+
+Real-data quality blocks regeneration/publication. The corrected first window
+produced six structurally valid cited edges, but manual inspection found topic
+transitions mislabeled as logical support. Full regeneration was cancelled
+after16/23 windows; no candidate was written. The original2,681,468-byte public
+artifact is unchanged (SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed).
+Do not present valid citation IDs or nonempty edge counts as semantic accuracy.
+
+Bounded quality-repair attempts: (1) actual Qwen window failed manual meaning
+inspection; (2) stronger prompt still made Qwen invent a references_back link
+between two synthetic topic-change passages (6.87s); (3) existing private Muse
+returned invalid_edge_payload for that negative case (9.69s), not a valid empty
+result. Positive-case inference was not reached. Stop further model/prompt
+trials under AGENTS.md's three-attempt rule; preserve private evidence locally.
+The failed prompt-only experiment was saved privately and restored to reviewed
+main, so no unreviewed runtime change is pending. No new provider, model download,
+paid usage, or external transcript disclosure was used.
+
+Public walkthrough also stopped after two inconclusive browser timeouts; no
+public UI verdict or screenshots. Cua inventory exposes no browsers/apps.
+These observations do not prove a site defect. Existing synthetic1440/390px
+acceptance remains valid only for its tested local journey.
+
+Owner remains Codex. Integration/evidence checkout is the same isolated path;
+follow-up branch `codex/semantic-grounding-check-20261014` starts at merged main.
+Finite remaining checks: database Running and exact backend runtime SHA; inspect
+actual selected passages/model claims before any new full generation; preserve
+IDs/transcript/memberships and inspect candidate meaning; then public desktop/
+phone Source/details/citations/reload from a reachable browser. Next evidence
+checkpoint: user service-start result plus guidance for a bounded read-only
+passage-selection trace, rather than another generation retry. Effort for the
+semantic repair and public verification is unknown; prior scan timing is not a
+credible delivery ETA. Review/CI/merge waits for the source slice are finished.
+Receipt: docs/reviews/semantic-release-checkpoint-2026-10-14.json.
 
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 

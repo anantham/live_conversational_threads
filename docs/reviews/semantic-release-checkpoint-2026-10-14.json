@@ -1,0 +1,66 @@
+{
+  "recorded_date": "2026-10-14",
+  "owner": "Codex",
+  "source_release": {
+    "pr": "https://github.com/anantham/live_conversational_threads/pull/215",
+    "reviewed_head": "d229f788a059444f62599fafa6edae6835adff47",
+    "merged_main": "2acf515be7d667d08eddb27ea6bb30c2ed4a91cc",
+    "merged_at_utc": "2026-10-14T04:50:27Z",
+    "ci": "unit/integration, Playwright and preview passed"
+  },
+  "independent_review": {
+    "family": "Anthropic",
+    "model": "claude-opus-5-5-medium",
+    "transport": "authenticated AGY existing subscription",
+    "verdict": "APPROVED",
+    "findings": [],
+    "tool_attempts": 0,
+    "prior_full_diff_head": "cbd99927a2d86e87eac79fabcb3712ef25d3a755",
+    "final_packet_bytes": 19605,
+    "final_packet_sha256": "a354194461d9fb715018deea1e4a5021bd34aa6ead3e80a0f60c28cf1920394b",
+    "scope": "Final delta plus bounded tracked context and verified unchanged runtime/config after prior full-diff review",
+    "exclusions": "Credentials, tokens, env, databases, recordings, transcripts, participant information, generated private artifacts, private reasoning and unrelated files",
+    "limitation": "Reviewer did not run tests or inspect real conversation data. Standard helper has no AGY adapter and its supported reviewer accounts were unauthenticated; no standard-helper receipt is claimed.",
+    "resolved_findings": "Optional context budget, bounded compiler errors/timeout, output permission preservation and new-file POSIX mode test fixed. ORM/reconnect premises falsified and withdrawn."
+  },
+  "frontend_deployment": {
+    "id": "dpl_BMMNQ1SwRbHLGsb65aDqosaRhy3P",
+    "source_sha": "2acf515be7d667d08eddb27ea6bb30c2ed4a91cc",
+    "state": "READY",
+    "target": "production",
+    "alias": "threads.adityaarpitha.com",
+    "public_browser_verified": false
+  },
+  "backend": {
+    "checkout_sha": "2acf515be7d667d08eddb27ea6bb30c2ed4a91cc",
+    "unrelated_dirty_files_preserved": true,
+    "runtime_verified": false,
+    "blocker": "Existing postgresql-x64-15 service stopped; Windows denied Start-Service. User Administrator service-start action pending."
+  },
+  "public_artifact": {
+    "path": "lct_app/public/experiments/overlapping.threads",
+    "bytes": 2681468,
+    "sha256": "7088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed",
+    "changed": false,
+    "candidate_written": false,
+    "regeneration_completed_windows": 16,
+    "regeneration_planned_windows": 23,
+    "regeneration_outcome": "Cancelled after manual inspection found topic transitions mislabeled as logical support despite valid citations."
+  },
+  "bounded_quality_followup": {
+    "attempt_1": "Actual Qwen source window failed manual meaning inspection.",
+    "attempt_2": "Stronger prompt: Qwen invented references_back on synthetic topic change; 6.87 seconds.",
+    "attempt_3": "Existing private Muse: invalid_edge_payload on same negative case; 9.69 seconds. Not a valid empty result.",
+    "positive_control_reached": false,
+    "status": "Stopped under repository retry limit; guidance required before further trials.",
+    "failed_prompt_trial": "Preserved privately; runtime prompt restored to reviewed main.",
+    "recommended_next_diagnostic": "Read-only trace of selected source passages and semantic sufficiency before another generation retry."
+  },
+  "public_walkthrough": {
+    "status": "Incomplete",
+    "attempts": ["Node REPL browser deadline", "Chromium DOM-content navigation timeout at 20 seconds"],
+    "connected_cua_surfaces": 0,
+    "remaining": "Reachable browser and guidance after two inconclusive attempts; actual desktop/phone Source/details/citations/reload acceptance."
+  },
+  "completion": "Source released; backend runtime, semantic data quality and public acceptance remain incomplete."
+}

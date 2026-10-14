@@ -7688,3 +7688,61 @@ User observed an empty desktop transcript until node selection, with only the cu
   Remaining resumed-session question is falsifiable from the current-session
   hierarchy-consolidation function (no prior graph reads); include that tracked
   function in final review. Earlier ORM/reconnect findings were withdrawn.
+
+### 2026-10-14 — Source released; real-data and public acceptance held
+
+- Final exact PR215 head d229f788a059444f62599fafa6edae6835adff47 approved by
+  authenticated AGY/Anthropic Claude Opus5.5Medium with no findings and zero tool
+  attempts. Earlier supported optional-context/compiler/permission findings were
+  fixed; ORM/reconnect premises falsified and withdrawn; missing POSIX new-file
+  mode test added. Final packet19,605bytes SHA256
+  a354194461d9fb715018deea1e4a5021bd34aa6ead3e80a0f60c28cf1920394b;
+  prior full updated-diff review cbd99927. Only bounded scanned technical source,
+  tests and context were sent, excluding real speech/artifacts, participant data,
+  credentials, DBs and private reasoning. Reviewer did not execute tests.
+- Final CI unit/integration and Playwright passed; preview passed. Focused backend
+  59passed/1POSIX skip before final test parameterization; final adapter module
+  22passed/2POSIX skips on Windows; Linux CI exercised the POSIX cases. Required
+  frontend push gate524/524 and five actual CLI/local HTTP outcomes passed.
+  PR215 squash-merged2026-10-14T04:50:27Z; main/source
+  2acf515be7d667d08eddb27ea6bb30c2ed4a91cc. Vercel deployment
+  dpl_BMMNQ1SwRbHLGsb65aDqosaRhy3P is production READY at that SHA with the
+  public domain alias. Do not infer browser or backend acceptance from metadata.
+- Primary checkout fast-forwarded7b33b6e→2acf515 after ignored byte-verified
+  backups. Restored its private2,933-byte WORKLOG append and verified the three
+  unrelated dirty observability files unchanged; nothing unrelated staged or
+  published. Native PostgreSQL remains Stopped; service start denied by Windows.
+  No elevation bypass. Asked user to run Start-Service postgresql-x64-15 in an
+  Administrator PowerShell and explained that this starts the existing DB only.
+  No backend listener or runtime-source acceptance yet.
+- [instrument] Real corrected window6raw/6kept had real citation IDs but manual
+  inspection found logical-support labels on ordinary topic transitions. Full
+  scan was intentionally cancelled after16/23 windows (~1,061s); no candidate
+  written. Kept original artifact bytes/hash unchanged. This invalidates a
+  semantic-quality claim, not the parser/atomic-output tests. Never manufacture
+  acceptance by counting IDs, filling links, filtering a hand-edited artifact,
+  or presenting an invalid model payload as an empty success.
+- Bounded follow-up trial in prompts.json added evidence-first wording, explicit
+  valid-empty instruction and removed conflicting retrieved-context guidance.
+  Actual private Qwen synthetic topic-change case still invented references_back
+  (6.87s). Alternative already-installed private Muse returned invalid_edge_payload
+  (9.69s), not valid empty. Positive control was not reached. Three failed quality
+  methods now require a stop/guidance under AGENTS.md. Saved exact trial patch and
+  synthetic reports privately under tmp; restored prompts.json to reviewed main.
+  No post-review runtime changes remain. Cause of poor semantic precision is not
+  established; selected-source sufficiency versus model behavior remains open.
+- Two public browser attempts were inconclusive timeouts (node REPL deadline,
+  then Chromium DOM-content navigation20s). Stopped that method per two-cycle
+  rule. Read-only public fetch also timed out; Cua inventory has no surfaces.
+  No public screenshot, UI pass or app-defect claim. Prior local synthetic
+  1440/390px browser evidence is unchanged and narrower than public acceptance.
+- Updated ISSUES.md milestone with owner, exact source/runtime states, finite
+  outstanding checks, blockers and next checkpoint. Follow-up evidence branch
+  codex/semantic-grounding-check-20261014 starts at merged main. No new spend or
+  transcript recipient; all model work stayed on the existing owner-private
+  service. Semantic-repair and public-verification ETA is unknown. Recommended
+  next diagnostic, pending guidance: inspect actual selected passages before any
+  further model/prompt retry; resume backend only after the service-start result.
+- Changed technical checkpoint documentation only: ISSUES.md milestone and this
+  append; machine-readable source/review/deployment/blocker receipt below. No
+  optional hierarchy, library or UI work opened.
