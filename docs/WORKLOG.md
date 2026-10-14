@@ -7746,3 +7746,39 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Changed technical checkpoint documentation only: ISSUES.md milestone and this
   append; machine-readable source/review/deployment/blocker receipt below. No
   optional hierarchy, library or UI work opened.
+
+### 2026-10-14 12:16 IST — Resumed read-only trace and actual public bytes
+
+- User explicitly approved resuming the bounded read-only investigation, then
+  said go on. No model request or product/config/test edit after that ruling.
+  Disposable replay of attach_source_turns and format_node_list proved12-turn
+  prefix selection:656/1,263 unique turns visible across23 windows;607 omitted;
+  93/100 nodes clipped. First topic12/159, second12/132. All six saved first-window
+  edge citations exist and were endpoint-visible. Exact IDs do not establish
+  the claimed support meaning. The prior two-turn negative failure means source
+  clipping is not proven to be the sole cause of model semantic error.
+- Counterfactual removed the cap in the disposable process only: existing planner
+  refused p01 plus ancestor closure. Largest complete ancestor102,015chars versus
+  21,000budget; largest complete L1 input7,019chars. No source file changed.
+  A one-line cap deletion is not a valid repair. Private trace/examples/summary
+  remain under tmp/source-selection-trace-20261014, excluded from review egress.
+- Delegated one independent bounded transport-only probe to GPT6Sol low. DNS,
+  TCP and TLS succeeded; custom root/view HEAD200. Deployment host HEAD302 to
+  Vercel SSO, never followed. Agent made4HEAD requests against a3-request limit,
+  disclosed the overrun and made no more. Recorded the procedural miss; do not
+  portray it as a compliant3-request run. No product edits or response bodies.
+- Root's separate static-artifact GET had20s absolute abort/4MiB limits and
+  completed200 in2.366s,2,621,266bytes. SHA256386ef09b…58b7d19 equals committed
+  Git blob. Different Windows working-file SHA7088642a…e763fed is fully explained
+  by60,202CRLF pairs; normalized bytes equal Git. Distinguish these identities in
+  receipt. This proves served old-artifact identity, not viewer interactions.
+- Cua documentation refreshed; getBrowser returned No browser is available;
+  createBrowserTab(iab) returned Browser is not available. No native/UI bypass.
+  Requested a connected browser tab. No public Source/details/navigation pass.
+- Recorded concrete bounded source-selection proposal/acceptance/files in existing
+  milestone. AGENTS reserves architecture selection, so asked the user whether
+  to replace the12-turn prefix with complete passages across existing bounded
+  requests, retaining one extractor and exact citations. Implementation choice,
+  connected browser and pending Windows Administrator DB step are distinct.
+  New docs-only checkpoint d3a44a9 was pushed; required frontend524/524 passed.
+  No additional independent runtime review claimed for this read-only follow-up.

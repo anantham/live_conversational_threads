@@ -39,8 +39,14 @@
   },
   "public_artifact": {
     "path": "lct_app/public/experiments/overlapping.threads",
-    "bytes": 2681468,
-    "sha256": "7088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed",
+    "worktree_bytes": 2681468,
+    "worktree_sha256": "7088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed",
+    "git_blob_bytes": 2621266,
+    "git_blob_sha256": "386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19",
+    "served_bytes_match_git_blob": true,
+    "served_http_status": 200,
+    "served_get_elapsed_ms": 2366,
+    "line_ending_difference": "Windows worktree contains 60202 CRLF pairs; LF-normalized bytes equal committed Git blob and public response.",
     "changed": false,
     "candidate_written": false,
     "regeneration_completed_windows": 16,
@@ -52,7 +58,7 @@
     "attempt_2": "Stronger prompt: Qwen invented references_back on synthetic topic change; 6.87 seconds.",
     "attempt_3": "Existing private Muse: invalid_edge_payload on same negative case; 9.69 seconds. Not a valid empty result.",
     "positive_control_reached": false,
-    "status": "Stopped under repository retry limit; guidance required before further trials.",
+    "status": "User authorized resumed read-only investigation; completed without further model/prompt retries. Source-selection implementation choice pending.",
     "failed_prompt_trial": "Preserved privately; runtime prompt restored to reviewed main.",
     "recommended_next_diagnostic": "Read-only trace of selected source passages and semantic sufficiency before another generation retry."
   },
@@ -60,7 +66,28 @@
     "status": "Incomplete",
     "attempts": ["Node REPL browser deadline", "Chromium DOM-content navigation timeout at 20 seconds"],
     "connected_cua_surfaces": 0,
-    "remaining": "Reachable browser and guidance after two inconclusive attempts; actual desktop/phone Source/details/citations/reload acceptance."
+    "resumed_transport": "Custom root and view HEAD200; DNS/TCP/TLS pass. Public artifact GET200 and exact committed blob hash verified. Deployment-specific host redirects to SSO, not followed.",
+    "request_budget_deviation": "Delegated metadata probe made four HEAD requests against a three-request limit; disclosed, stopped and logged. Root separately performed one explicitly bounded artifact GET.",
+    "browser_precondition": "Cua getBrowser: No browser is available. createBrowserTab(iab): Browser is not available.",
+    "remaining": "Connected browser surface; actual desktop/phone Source/details/citations/reload acceptance."
+  },
+  "resumed_source_trace": {
+    "model_calls": 0,
+    "product_edits": 0,
+    "nodes": 100,
+    "windows": 23,
+    "transcript_turns": 1263,
+    "unique_visible_turns": 656,
+    "omitted_turns": 607,
+    "nodes_clipped": 93,
+    "per_node_prefix_cap": 12,
+    "all_selections_are_prefixes": true,
+    "uncapped_existing_planner": "Refuses first node plus ancestor closure; complete ancestor input exceeds budget.",
+    "largest_ancestor_input_chars": 102015,
+    "largest_L1_input_chars": 7019,
+    "request_input_budget_chars": 21000,
+    "causal_limit": "Clipping is proven but not the sole proven cause; model also failed a complete two-turn synthetic negative case.",
+    "proposed_repair": "Complete passages across existing bounded requests; same shared extractor, exact citations and refusal/retention. Awaiting source-selection architecture choice."
   },
   "completion": "Source released; backend runtime, semantic data quality and public acceptance remain incomplete."
 }

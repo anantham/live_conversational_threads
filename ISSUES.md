@@ -2232,6 +2232,42 @@ semantic repair and public verification is unknown; prior scan timing is not a
 credible delivery ETA. Review/CI/merge waits for the source slice are finished.
 Receipt: docs/reviews/semantic-release-checkpoint-2026-10-14.json.
 
+Resumed read-only checkpoint,2026-10-14: user explicitly approved the recommended
+investigation, then said go on. Replayed source attachment/window formatting
+without model calls, DB access or product edits. [instrument] All100 nodes are
+included in23 windows, but only656/1,263 unique transcript turns are visible;
+607 turns are omitted,93/100 nodes clipped. Every selected set is the first12
+referenced turns. First broad topic has12/159 turns, second12/132. Citation IDs
+on all six saved edges really exist and were visible: the missing guarantee is
+semantic sufficiency, not fabricated IDs. Prior two-turn synthetic model failure
+falsifies the claim that clipping is the sole cause or that more speech alone
+will ensure good relationships. Removing the cap in a disposable process makes
+the existing planner refuse its first ancestor closure; largest ancestor input
+102,015chars exceeds21,000. Largest complete L1 input7,019chars. No unbounded
+prompt, inference retry or new public artifact was produced.
+
+Read-only HTTP: public root and /view route return200; DNS/TCP/TLS pass. One
+bounded artifact GET completed in2.366s,200,2,621,266bytes, SHA256
+386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19,
+exactly equal to the committed Git blob. Local file differs only by60,202CRLF
+pairs. Deployment-specific host redirects to Vercel SSO; do not bypass it or
+infer that the custom public domain is protected. Cua getBrowser reports no
+browser; createBrowserTab(iab) reports unavailable. Public UI remains unverified;
+needs a connected browser surface, independently of database readiness.
+
+Next proposed bounded repair, awaiting architecture choice: replace prefix-only
+source attachment with complete passages apportioned across existing bounded
+requests, preserving one extractor, strict exact citations and failure retention.
+Primary files: services/edge_evidence.py and services/edge_enrichment_windows.py
+under lct_python_backend; add focused public-entry-point source-coverage tests.
+Acceptance must include a decisive passage beyond turn12, every referenced turn
+visible somewhere, unchanged exact source strings, per-request budget, overlapping
+memberships, valid-empty versus failed-window retention, and actual positive/
+negative meaning checks before publication. Full source coverage will not itself
+be advertised as semantic accuracy. No new pipeline layer/provider or UI redesign.
+User was asked for this source-selection choice and a connected browser tab;
+the existing Administrator database action remains pending.
+
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 
 During the approved walkthrough, Back to library reached /browse and its local
