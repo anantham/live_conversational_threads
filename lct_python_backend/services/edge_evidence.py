@@ -77,15 +77,42 @@ def visible_turn_ids(node: dict | None) -> list[str]:
             and turn["text"].strip()]
 
 
+def _visible_parents(nodes: list[dict]) -> dict[str, list[str]]:
+    """Describe authored grouping, never infer it from shared source or meaning."""
+    parents = {str(node.get("id") or ""): [] for node in nodes}
+
+    def add(child, parent):
+        if child in parents and parent in parents and child != parent:
+            if parent not in parents[child]:
+                parents[child].append(parent)
+
+    for node in nodes:
+        identifier = str(node.get("id") or "")
+        declared = [node.get("parent_id"), *[
+            item.get("parent_id") for item in node.get("memberships") or []
+            if isinstance(item, dict)
+        ], *[
+            edge.get("to") for edge in node.get("edges_out") or []
+            if isinstance(edge, dict) and edge.get("relationship_type") == "member_of"
+        ]]
+        for parent in declared:
+            add(identifier, str(parent or ""))
+        for child in node.get("children_ids") or []:
+            add(str(child), identifier)
+    return parents
+
+
 def format_node_list(nodes: list[dict]) -> str:
     """Use JSON string escaping so source speech remains clearly delimited data."""
     lines = ["NODES (source_turn_ids refer to exact SOURCE TURNS below):"]
+    parents = _visible_parents(nodes)
     turns = {}
     for node in nodes:
         lines.append(json.dumps({
             "id": node.get("id"),
             "level": node.get("semantic_level") or node.get("level") or 1,
             "name": node.get("node_name") or "(unnamed)",
+            "parent_ids": parents[str(node.get("id") or "")],
             "source_turn_ids": visible_turn_ids(node),
         }, ensure_ascii=False))
         for turn in node.get("source_turns") or []:

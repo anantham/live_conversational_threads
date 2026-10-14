@@ -2358,3 +2358,32 @@ is not accepted. See docs/reviews/viewer-release-progress-2026-10-14.json.
 Forecast: implementation slice locally complete; review wait depends on existing
 account authentication, backend wait on Windows privilege; semantic effort and
 actual playback effort unknown. Prior ETA is preserved, no calendar promise.
+
+Structural-context slice,2026-10-14: Root Codex owns implementation in the same
+authoritative isolated checkout. The extractor now receives visible structural
+parent IDs and explicitly distinguishes inherited grouping from spoken argument.
+Provider-boundary red/green passes;64focused/adjacent Python checks pass with2
+existing POSIX skips. Real offline coverage is1263/1263turns and7099/7099node-turn
+associations across62bounded requests (max20982chars/30nodes). Three private
+synthetic meaning controls pass, including a grouping-only negative and a spoken
+cross-level positive. Actual-source meaning preflight is still pending; no public
+artifact replacement or release-acceptance claim. Next checkpoint: adjudicate
+that actual-source output, then review the coherent exact diff before integration.
+Actual-source follow-up,2026-10-14: the private model completed page24in266.09s,
+valid JSON with one plausible causal edge and none of the three earlier ancestor
+echoes. Cited passages do not support every detail of its explanation, so this is
+partial meaning progress, not a precision pass. Full regeneration stays held.
+Next checkpoint: resolve citation sufficiency under the existing evidence
+contract and obtain authenticated independent source review. No new human
+product decision is requested for the routine input-context repair.
+
+### Deferred — reasoning configuration is absent from completion-cache identity
+
+Found2026-10-14 by direct source inspection. The synchronous client passes only
+messages/sampling/prompt/model names to llm_cache.cache_key; provider
+reasoning_effort is applied later to transport. A reasoning-only configuration
+change can therefore replay a previous completion when caching is enabled.
+Impact: misleading comparisons or stale output after changing that setting.
+Non-blocking for this slice: all private probes explicitly disable the cache.
+Recommended next step: a separate cache-contract test and bounded repair covering
+answer-affecting provider settings. No cache deletion or broader repair here.

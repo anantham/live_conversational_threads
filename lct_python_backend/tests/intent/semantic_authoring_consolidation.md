@@ -40,3 +40,15 @@ Complete-passage repair approved, 2026-10-14:
   scan remains successful.
 - Verify coverage separately from semantic precision. Hold public replacement
   until real positive/negative meaning checks pass on the private provider.
+
+Structural context clarification, 2026-10-14:
+
+- The provider sees the existing structural parents of each visible node,
+  including overlapping memberships and inverse child declarations. Only IDs
+  in the current request are exposed; semantic outgoing edges are not parents.
+- Inherited speech or an existing grouping alone does not establish a semantic
+  relationship. Cross-level relationships remain possible when distinct spoken
+  claims establish them; do not impose a blanket ancestor filter.
+- Recheck exact complete-passage coverage and request budgets after adding these
+  headers. Provider-boundary tests prove input fidelity, not model precision;
+  private real-source meaning checks remain required before publication.

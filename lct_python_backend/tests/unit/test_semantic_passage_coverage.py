@@ -53,6 +53,48 @@ async def scan(nodes, turns):
 
 
 @pytest.mark.asyncio
+async def test_provider_sees_actual_grouping_and_cross_level_edges_remain_possible(monkeypatch):
+    turns = [{"id": "u1", "text": "We need independent checks because one test can miss a defect."},
+             {"id": "u2", "text": "The prototype is painted green."},
+             {"id": "u3", "text": "We should verify results independently."}]
+    nodes = [
+        {"id": "m1", "level": 1, "utterance_ids": ["u1"], "parent_id": "p1",
+         "memberships": [{"parent_id": "p2"}, {"parent_id": "p1"}, {"parent_id": "absent"}],
+         "edges_out": [{"relationship_type": "member_of", "to": "p3"},
+                       {"relationship_type": "supports", "to": "p5"}]},
+        {"id": "m2", "level": 1, "utterance_ids": ["u2"]},
+        {"id": "p1", "level": 3},
+        {"id": "p2", "level": 3, "utterance_ids": ["u3"]},
+        {"id": "p3", "level": 3, "utterance_ids": ["u3"]},
+        {"id": "p4", "level": 3, "children_ids": ["m1", "m2"]},
+        {"id": "p5", "level": 3, "utterance_ids": ["u3"]},
+    ]
+    before = copy.deepcopy((nodes, turns))
+    seen = []
+
+    def provider(**kwargs):
+        shown, speech = request_data(kwargs["prompt"])
+        seen.append(shown)
+        assert speech == {turn["id"]: turn["text"] for turn in turns}
+        assert shown["m1"]["parent_ids"] == ["p1", "p2", "p3", "p4"]
+        assert shown["m2"]["parent_ids"] == ["p4"]
+        assert all(not shown[identifier]["parent_ids"] for identifier in ("p1", "p2", "p3", "p4", "p5"))
+        assert all(set(node["parent_ids"]) <= shown.keys() for node in shown.values())
+        return {"edges": [{"from_node_id": "m1", "to_node_id": "p2",
+                           "relation_type": "supports",
+                           "explanation": "A single test missing defects is a reason for independent checks.",
+                           "supporting_utterance_ids": ["u1", "u3"]}]}, None
+
+    monkeypatch.setattr(transcript_llm_callers, "_call_local_chat_json_with_fallback", provider)
+    edges, telemetry = await scan(nodes, turns)
+    assert len(seen) == 1 and telemetry["llm_telemetry"]["parse_status"] == "valid"
+    assert [(edge["from_node_id"], edge["to_node_id"], edge["relation_type"])
+            for edge in edges] == [("m1", "p2", "supports")]
+    assert edges[0]["supporting_utterance_ids"] == ["u1", "u3"]
+    assert (nodes, turns) == before
+
+
+@pytest.mark.asyncio
 async def test_every_endpoint_passage_reaches_bounded_deterministic_requests(monkeypatch):
     nodes, turns, expected = passage_fixture()
     before = copy.deepcopy((nodes, turns))
@@ -76,6 +118,9 @@ async def test_every_endpoint_passage_reaches_bounded_deterministic_requests(mon
         for identifier, node in shown_nodes.items():
             actual[identifier].update(node["source_turn_ids"])
             assert set(node["source_turn_ids"]) <= expected[identifier]
+            assert set(node["parent_ids"]) <= shown_nodes.keys()
+            if identifier == "m1":
+                assert node["parent_ids"] == ["i1", "pB"]
         for identifier, text in shown_turns.items():
             assert text == next(turn["text"] for turn in turns if turn["id"] == identifier)
         if "m1" in shown_nodes:

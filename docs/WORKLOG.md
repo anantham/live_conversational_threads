@@ -7975,3 +7975,65 @@ User observed an empty desktop transcript until node selection, with only the cu
   Durable receipt: docs/reviews/viewer-release-progress-2026-10-14.json.
   Next checkpoint: publish review-ready source branch/PR and CI; never merge
   without eligible independent approval. Goal remains active and incomplete.
+
+### 2026-10-14 — Structural context hypothesis and bounded repair
+
+- Same release owner and authoritative worktree. Outcome for this slice: give
+  the existing extractor the grouping context it needs to distinguish hierarchy
+  from authored semantic relationships. No new extractor or ancestor postfilter.
+- [instrument] format_node_list currently omits parent/membership identifiers;
+  attach_source_turns legitimately inherits speech into ancestors. The model
+  therefore cannot directly inspect the grouping the prompt tells it not to
+  mistake for an argument. Parser source checks already require both endpoints;
+  an earlier empty-endpoint suspicion was disproved without a code change.
+- Hypothesis0.8: explicit bounded parent IDs plus the existing abstention rule
+  reduce ancestor-heading echoes. Alternative: the approved private model still
+  cannot reliably discriminate these relations. Predicted checks: request input
+  preserves actual hierarchy, exact source and complete coverage within budgets;
+  actual-source negative grouping echoes disappear while a spoken positive
+  relation remains. The synthetic transport test cannot prove that last claim.
+- Test intent recorded before implementation in
+  lct_python_backend/tests/intent/semantic_authoring_consolidation.md. Finite
+  acceptance: focused/adjacent isolated checks, real coverage recalculation,
+  bounded private-model meaning preflight, then eligible independent diff review.
+  Fallback: retain the prior public artifact and stop this method if meaning
+  fails. No full regeneration or public replacement based on structural tests.
+- Existing dependencies remain database Administrator start and authenticated
+  independent review. Windows permission denial is not bypassed. Source edits
+  remain separate from merged/served/accepted states; next evidence checkpoint
+  is provider-input red/green plus recalculated coverage.
+- Validation: intended red failed because provider input lacked parent_ids;
+  after implementation6focused checks pass. Combined adjacent checks total64pass,
+  2existing POSIX skips. A first runner used pytest's shared temporary root and
+  encountered an exit cleanup permission error; subsequent runs assign a fresh
+  owned basetemp before imports and finish cleanly. Existing Python3.9/dependency
+  and pytest event-loop deprecation warnings remain, no test threshold changed.
+- Real offline plan now62requests (19backbone/34local/9boundary), all1263/1263
+  turns and7099/7099associations, exact text, max20982chars/30nodes,13.04s pure
+  preparation. Prior61request/8.165s measurement remains above. Added header
+  context has a measurable preparation/request cost; async cancellation behavior
+  remains passing. No optimizer or alternate planner added.
+- Same private model with explicitly supported low reasoning and cache disabled:
+  actual edited production instruction, no diagnostic prompt append. Synthetic
+  grouping-only case abstains (13.48s), distinct spoken cross-level support is
+  retained (19.23s), explicit callback correctly points backward (21.91s). No
+  extra predicates in these three results. Actual local page selected by both
+  anchors having visible speech, not a hardcoded old index: now24of62,20730chars.
+  Real meaning output still requires adjudication; no full run or public write.
+- Preexisting issue captured in ISSUES.md: reasoning configuration is omitted
+  from synchronous completion-cache identity. Direct source confirms the omitted
+  argument; private probes use cache off. Impact/potential replay and separate
+  regression repair recorded; non-blocking and not expanded into this slice.
+- Actual local page24finished in266.09s, HTTP200/model pin correct/final stop,
+  valid JSON,1raw/1kept causal edge. The three earlier ancestor echoes are absent.
+  Only transport metadata/answer JSON retained privately; no reasoning text saved.
+  Manual source inspection: the wider passage plausibly supports the causal
+  connection, but its three citations are target-side and omit details used in
+  the full explanation. Do not equate parse/citation-ID validity with citation
+  sufficiency or declare real-source precision accepted. Full regeneration and
+  public artifact replacement remain held. No retry or prompt fishing this turn.
+- Source grouping repair itself is coherent and validated; independent review
+  of its final diff remains blocked by previously observed reviewer sign-in
+  failures. No new authentication evidence, so no blind reviewer retry. Existing
+  Gemini approval covers the earlier source-coverage slice only. This new slice
+  has no eligible final verdict yet; no merge or deployment of it is requested.
