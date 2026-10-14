@@ -8227,3 +8227,156 @@ User observed an empty desktop transcript until node selection, with only the cu
   screenshots embedded-playing-after-transcript-seek.jpg and embedded-paused.jpg
   under tmp/search-boundary-20261014/. This now proves actual local embedded
   playback/seek/pause; new production identity and its journey remain to verify.
+
+### 2026-10-15 00:38 IST — Reviewed source merged and served; acceptance holds remain
+
+- Final exact25-file technical diff208a8f843dd2b06052c442c79488152c0434a157
+  independently APPROVED by Google Gemini gemini-3.8-flash-high with no findings,
+  no rejected findings/overclaims and zero tool attempts. Review completed
+  2026-10-14T18:52:05.291Z using the existing AGY account and verified deny-all
+  hook. Exact outgoing143932bytes SHA256
+  58271e62c3d534b0eb5b4aeb4d15cf14fc6be246d630b9830451dee92b54a36d;
+  packet132697bytes SHA256
+  8a8dcfb3306b2cba81a7e0ce9557b5c05fbf04a59bb139c808a98c82b077398c.
+  Full file inventory, eight excluded operational files, pre-egress scan,
+  validation and harness limitation are in the tracked independent-review receipt.
+  No credential/env/database/transcript/participant/private artifact was sent.
+- Seven isolated CLI checks, parse and diff checks pass. Required push gate
+  passes534/534frontend tests across88files in37.81s. Exact-head unit, real
+  Postgres, Playwright smoke and Vercel preview CI all pass. Skipped optional
+  checks are not acceptance evidence. No required hook/check was bypassed.
+- The required helper validated the completed exact-head receipt, retained CI,
+  rechecked PR identity and merged with --match-head-commit208a8f8. PR216 merged
+  at2026-10-14T18:53:06Z as0e1fb3b318d7b180d88d61aea93018cd4db344ad.
+  Production dpl_EoukQkxiXzrcs4FTz8VUjZDQ5jCE is READY and aliases the public
+  domain. HTTP200entry /assets/index-07NxGK4m.js has zero nonempty frontend
+  credentials and excludes the current private credential. Search worker is
+  conversationSearch.worker-C3PV6wx8.js. Held artifact SHA386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19
+  remains unchanged; no generated replacement was published.
+- Actual new production browser: map renders, text search returns3matches,
+  selected result opens Source986s, Back restores Graph/arcs and enables Forward.
+  Video initial readiness and one offered retry both timeout; no further retry.
+  The prior local native Play/seek/Pause success does not prove production
+  reliability. Scoped audit remains INCOMPLETE; no actual model inference success
+  or full UX/performance/a11y acceptance is claimed. Screenshots under
+  tmp/search-boundary-20261014/ include public-0e1fb3b-video-timeout.jpg and
+  public-0e1fb3b-map-after-back.jpg. The public viewer tab is kept as a deliverable.
+- Integration owner/root checkout unchanged. Primary remains2acf515 with its
+  unrelated dirty WORKLOG/observability work preserved; PostgreSQL is stopped.
+  No backend pull, restart or permission workaround. Backend runtime, revocation
+  probe and generation wait on the existing Administrator service-start step.
+  Meaning acceptance waits on the separately requested bounded private model
+  comparison ruling; full regeneration/public replacement held. On-device model
+  delivery and reliable public video remain unaccepted. Goal is not complete.
+- Next checkpoint: the concrete pending service/model dependencies, then bounded
+  private meaning checks and runtime verification; no further wording/window-size
+  retries or model-download loop. Remaining model/network effort is unknown;
+  Windows privilege and human decision waits are separate from implementation.
+  This post-merge checkpoint changes only operational notes/receipts and will be
+  preserved on the task branch; it changes no reviewed behavior or test coverage.
+
+### 2026-10-15 — Production media readiness boundary investigation
+
+- Previous goal turn is progress: reviewed source merged/served with credential
+  containment, actual literal-search/Source/Back evidence and explicit remaining
+  holds. Current checkout is clean at52a03af; PostgreSQL still stopped. No service
+  start retry or private-model selection without the pending human action/ruling.
+- Current bounded journey: public reader opens Source and gets native playback.
+  Owner Root Codex; authoritative isolated checkout unchanged. No production
+  source edit. H1deployment security-header blocking was falsified: public and
+  owned local document HEAD both200 with no CSP/referrer/COEP/COOP/CORP/frame or
+  permission headers. Evidence tmp/media-response-boundary-20261015.json.
+- H2origin-specific initial embed refusal is unsupported: two public embed HTML
+  requests with explicit public/loopback context each200 in1.178/0.864s,140393/
+  140398bytes; neither embeds playability data. This proves only HTTP entry
+  availability, not browser requests, player readiness or playback. No media was
+  downloaded. Private diagnostic HTML remains under tmp/, excluded from review.
+- H3the app's20s readiness timer destroys a valid slow player before it can
+  become ready. Confidence0.55; no fix proposed without stronger evidence.
+  Counterfactual: one isolated owned loopback fixture uses the same public video,
+  SDK/host/options/no-autoplay but waits up to120s with elapsed/status/cancellation.
+  Predict onReady after20s if deadline is premature; before20s would not establish
+  it, and no readiness by120s would leave the cause unresolved. Cache/context are
+  confounds; no product timeout/architecture change or production retry loop.
+  Finite next checkpoint is that single measured outcome, then stop this method.
+- [instrument] H3 counterfactual completed: SDK ready at0.412s, but no player
+  onReady by120.014s. The fixture reached its terminal stop state, destroyed the
+  instance and cleared its clock; its browser tab and owned50118server were
+  closed. Private terminal screenshot: tmp/media-readiness-probe-20261015/terminal.jpg.
+  This does not support increasing the20s product timeout. Header inspection,
+  entry HTML and delayed-readiness methods are bounded and stopped; the media
+  cause remains unresolved, with no further production retry or source change.
+- Same-model search delivery assessment: the existing feature-extraction/q8
+  pipeline requires config.json, tokenizer.json, tokenizer_config.json and
+  onnx/model_quantized.onnx from already-pinned revision751bff37182d3f1213fa05d7196b954e230abad9.
+  The public model repository labels it Apache-2.0. Published model size22972370
+  and SHA256afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1
+  were identified; no model inference or private input was sent to that host.
+  The installed ONNX runtime1.31.0-dev.20260914-8d85527a0 defaults to jsDelivr
+  despite Vite already emitting26861777bytes of identical asyncify WASM. An
+  explicit local runtime path and complete model mirror could remove those
+  external initialization dependencies while retaining on-device inference.
+  This is a proposed delivery repair, not proof of the browser error's cause.
+  Safari below26 has a separate non-asyncify fallback that must be preserved.
+- A0 acquisition precondition: one materially different short-range probe for
+  the same public pinned model timed out after25.469s with no verified range.
+  No concurrent/full acquisition ran, no retry, no complete model was obtained,
+  and no assets were added to the product. This method is stopped after the
+  earlier failed browser/full-stream methods. Evidence remains ignored at
+  tmp/search-assets-20261015/probe.json. Same-origin implementation is deferred
+  until verified assets are available; no half-mirror or remote fallback change.
+- Current scope is operational evidence only; source/runtime remain0e1fb3b.
+  Goal stays incomplete. Owner/integration Root Codex, authoritative isolated
+  checkout unchanged. Next checkpoints: Administrator starts the existing DB;
+  separately pending human ruling on the bounded installed private-model
+  comparison; verified search assets and a materially different media diagnostic
+  before their respective actual browser acceptance. Network/model effort is
+  unknown, with no new calendar ETA. No new privilege, hosting service, provider,
+  paid API, dependency, model selection, transcript disclosure or public artifact
+  change occurred. User's ELI5 request answered with the single Windows command.
+
+### 2026-10-15 — Selected thread camera ownership repair begins
+
+- Current outcome/owner/acceptance/dependencies are recorded in ISSUES.md.
+  New branch codex/viewer-selected-card-framing starts from served main0e1fb3b;
+  two prior operational checkpoint commits were cherry-picked without changing
+  source. Primary dirty files remain preserved; no DB service-start retry.
+- [instrument] Two actual public thread selections show the correct first-of-seven
+  detail but a final selected-card rectangle wholly outside the map. A transient
+  centered card is later replaced by zoom0.85. Read-only gpt-6-sol investigation
+  confirms a180ms compact overview frame can follow selected-card RAF centering.
+  The minimally supported repair skips that frame for a visible selected node
+  and cancels a pending frame when selection changes. Confidence0.9; no speculative
+  coordinate reconciliation or camera coordinator refactor is included.
+- Test intent before implementation: exercise controlled public MinimalGraph
+  selection while overview framing is pending, assert final projected card
+  visibility after timers settle, retain unselected framing and saved history.
+  Source/speaker files are unchanged from the prior actual public rename proof,
+  so that evidence is reused. A fresh synthetic file upload hit a browser file-URL
+  permission boundary and was stopped without changing permission or real names.
+  No private data or generated artifacts are included in independent review.
+- Fixture precondition corrected before interpreting red evidence: React Flow's
+  mock now supplies measured300x210reading-card dimensions; missing measurements
+  previously produced NaN. With valid geometry the pending overview regression
+  decisively fails at right3300.4outside390px, while initial framing/history pass.
+  The visible-selection guard fixes it. A second public tier-change case then
+  exposes the separate two-RAF initial fit overwriting selection; the same
+  ownership condition now consumes that pending fit instead. Both camera paths
+  retain the existing restoration guard and allow framing when selection is
+  absent from the displayed tier. No new coordinator or layout algorithm.
+- Final local validation:30/30focused navigation/history/motion/toolbar checks,
+  touched ESLint and production build pass; unchanged large-bundle warning.
+  First guard's actual preview keyboard journey traverses all7agency moments,
+  all six inspected2-through7cards remain inside the map and outside details,
+  and Next is disabled at7of7. The final two-guard bundle index-Crtj18K4.js then
+  passes the actual initial tier-to-moment jump, Source beside details, keyboard
+  next, Back/Forward and phone Source/detail handoff plus keyboard next/back.
+  Phone details intentionally cover the map; readable selected detail and no
+  horizontal overflow were observed, not simultaneous unobscured phone cards.
+  Final desktop selected card x541.5/y281.71/w345/h241.5is fully inside the map;
+  with Source open x901.5clears Source's360px and details atx1428.33.
+  Private DOM/screenshot evidence remains tmp/thread-camera-20261015/.
+  Fast combined expansion/row-selection did not retain the row twice; a fresh
+  single row click after observing expanded UI works. This could be tool/layout
+  settling; no app defect or acceptance claim for that fast sequence is inferred.
+  Independent exact-diff review, full push gate and served walkthrough remain.
