@@ -61,9 +61,32 @@ describe('one-attempt synthetic OpenRouter pilot', () => {
       'X-LCT-OpenRouter-Consent': 'generate-v1' });
     expect(f.posts()[0][1].redirect).toBe('error');
     expect(JSON.parse(f.posts()[0][1].body)).toEqual({ source: SYNTHETIC_SOURCE });
-    expect(f.stages.map(value => value.stage)).toEqual(['preflight', 'generating', 'verifying']);
+    expect(f.stages.filter((value, index, all) => index === 0 || value.stage !== all[index - 1].stage)
+      .map(value => value.stage)).toEqual(['preflight', 'generating', 'verifying']);
+    expect(f.stages.every(value => Number.isFinite(value.elapsedMs) && value.elapsedMs >= 0)).toBe(true);
+    expect(f.stages.map(value => value.elapsedMs)).toEqual(f.stages.map(value => value.elapsedMs).sort((a, b) => a - b));
     expect(f.stages.every(value => value.remaining === 'Time remaining unknown')).toBe(true);
     expect(JSON.stringify({ result, stages: f.stages })).not.toContain(SYNTHETIC_SOURCE.finalTokens[0].text);
+  });
+  it('updates elapsed preflight during slow loading and stops status updates after completion', async () => {
+    const f = await fixture();
+    let ready;
+    f.deps.consumers = new Promise(resolveReady => { ready = resolveReady; });
+    vi.useFakeTimers();
+    try {
+      const pending = runPilot(f.options, f.deps);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(f.stages).toHaveLength(3);
+      expect(f.stages.every(value => value.stage === 'preflight' && value.remaining === 'Time remaining unknown')).toBe(true);
+      expect(f.stages.map(value => value.elapsedMs)).toEqual([0, 1000, 2000]);
+      expect(f.posts()).toHaveLength(0);
+      ready(consumers);
+      expect((await pending).outcome).toBe('verified');
+      const completedUpdates = f.stages.length;
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(f.stages).toHaveLength(completedUpdates);
+      expect(f.posts()).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
   });
   it('refuses source hash, arm, origin, and all readiness drift before a claim or POST', async () => {
     for (const change of [{ arm: '' }, { origin: 'https://wrong.invalid' }, { adapterSha256: '0'.repeat(64) }]) {

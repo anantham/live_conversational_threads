@@ -5,5 +5,6 @@
 - Exercise the actual browser client with intercepted fetch, then read its portable `.threads` file and verify exact synthetic source and usable Discussion utterance links. An empty or mock-only result must fail.
 - Accept a usable map with an empty optional conversation-path list, matching the production contract. Trigger timeout only after a bounded observed POST-start checkpoint to avoid a load-dependent fixture race.
 - Output only fixed outcome codes, stage names, counts, and timings; never expose request IDs, raw response/error text, the synthetic transcript, or generated map content.
+- Slow loading repeats the current stage with measured elapsed time. Validate ordered stage transitions, continuing elapsed updates with unknown remaining time, and no further updates after completion; do not assume a single event per stage.
 
 The test never opens a network connection or writes a generated artifact. A separately approved live run would use the fixed preview origin and a caller-supplied hash of the current adapter source.
