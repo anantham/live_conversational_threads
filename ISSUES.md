@@ -2466,3 +2466,19 @@ active playback, transcript seek to986.847141s, and native Pause all succeeded
 on built61912d2without player changes. Actual embedded playback is proven locally;
 verify the new production deployment after integration. Helper7/7isolated CLI
 checks pass; updated exact-diff independent review remains next.
+
+Release checkpoint2026-10-15: Root Codex integrated reviewed208a8f8 through the
+required exact-head/CI merge helper. Google Gemini approved the final25technical
+files with no findings/tool attempts;7CLI checks,534frontend checks and all actual
+required CI gates pass. PR216merged as0e1fb3b; production
+dpl_EoukQkxiXzrcs4FTz8VUjZDQ5jCE is READY at the existing public domain.
+Served index-07NxGK4m.js has zero nonempty credentials; held data file unchanged.
+Actual public text search/Source986s/Back-to-Graph pass. Public embedded video
+initial load and one retry still timeout, so playback is not accepted despite
+the local success. Two prior on-device model downloads failed; no third attempt.
+Backend runtime remains2acf515/stopped pending the Administrator database start;
+unrelated primary edits preserved. Semantic meaning/model comparison ruling is
+still pending and regeneration remains held. Overall goal is not complete.
+Finite next evidence checkpoint: resolve the pending service/model dependencies,
+run the approved private diagnostic and verify backend identity; model/network
+effort remains unknown. No fresh calendar ETA or claim of full UX acceptance.
