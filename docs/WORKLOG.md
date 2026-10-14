@@ -8037,3 +8037,28 @@ User observed an empty desktop transcript until node selection, with only the cu
   failures. No new authentication evidence, so no blind reviewer retry. Existing
   Gemini approval covers the earlier source-coverage slice only. This new slice
   has no eligible final verdict yet; no merge or deployment of it is requested.
+
+### 2026-10-14 — Required push gate exposed navigation test timing assumption
+
+- New grouping-source commit4ba70c8saved locally. Required pre-push frontend gate
+  failed1/529 (528pass): forward-history truncation asserted before async replay
+  settled. Push stopped; no bypass. The same5history tests pass when run alone.
+- Hypothesis0.85: a fixed60ms interaction flush assumes two browser frames and
+  the coalesced history write have finished, which is not guaranteed under load.
+  Runtime already has a controlled-frame queued-jump regression; do not change
+  runtime based on this correlation alone. Disconfirming probe: delay actual
+  test RAF callbacks100ms each and retain the original immediate assertion.
+  Predict deterministic failure, followed by success when awaiting the same
+  visible Forward-disabled and restored-node outcomes through bounded polling.
+- Test intent recorded in the test header before the repair. No reduced oracle,
+  skipped test, increased timeout or hook bypass. Keep this test reliability
+  repair separate from the relationship-input commit; independent review of
+  the substantive final test diff remains required.
+- [instrument] Delaying RAF100ms reproduces the exact failed Forward assertion;
+  a bounded public-state poll passes but adds an act warning. Final repair reuses
+  the existing controlled-frame fixture, holds navigation genuinely unsettled,
+  then settles frames under act before asserting the same Forward-disabled and
+  restored-node outcomes. No runtime change, wall-clock enlargement or new
+  dependency. Focused history+snapshot8/8pass with no warnings; ESLint passes.
+  Hook-required full suite will run again at push. Source4ba70c8remains local
+  until that required gate succeeds; no repeated push without a material repair.

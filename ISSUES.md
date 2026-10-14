@@ -2387,3 +2387,15 @@ Impact: misleading comparisons or stale output after changing that setting.
 Non-blocking for this slice: all private probes explicitly disable the cache.
 Recommended next step: a separate cache-contract test and bounded repair covering
 answer-affecting provider settings. No cache deletion or broader repair here.
+
+### Navigation history test assumes browser frames finish within a fixed sleep
+
+Found2026-10-14 in required pre-push gate:1/529frontend tests failed; the same
+5history tests pass in isolation. Impact: branch publication blocked by an
+unsettled Forward assertion. Investigating with delayed RAF callbacks and public
+UI outcomes; no runtime conclusion or gate waiver. Owner Root Codex, same task
+worktree. Next step: decisive timing reproduction and bounded outcome-based wait.
+Follow-up:100ms RAF delay decisively reproduces the original assertion. Final
+test reuses the controlled-frame fixture and settles frames under act before
+checking the same navigation outcomes; runtime unchanged. Eight focused checks
+and ESLint pass without new warnings. Required full pre-push suite remains next.
