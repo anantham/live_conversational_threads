@@ -1,5 +1,5 @@
 /** Keep history state compact and independent of source text and node titles. */
-export function graphNavigationSnapshot({ lockedLevel, unlockedSemanticLevel, unlockedLegacyLevel, drilldownPath, neighborhoodFocusId, viewport }) {
+export function graphNavigationSnapshot({ lockedLevel, unlockedSemanticLevel, unlockedLegacyLevel, drilldownPath, neighborhoodFocusId, viewport, manualCamera }) {
   return {
     lockedLevel: Number.isInteger(lockedLevel) ? lockedLevel : null,
     unlockedSemanticLevel: Number.isInteger(unlockedSemanticLevel) ? unlockedSemanticLevel : null,
@@ -7,6 +7,7 @@ export function graphNavigationSnapshot({ lockedLevel, unlockedSemanticLevel, un
     drilldownPath: (Array.isArray(drilldownPath) ? drilldownPath : []).map(({ nodeId, level }) => ({ nodeId: String(nodeId), level: Number(level) })),
     neighborhoodFocusId: neighborhoodFocusId == null ? null : String(neighborhoodFocusId),
     viewport: validGraphViewport(viewport),
+    manualCamera: Boolean(manualCamera),
   };
 }
 
@@ -36,6 +37,7 @@ export function restoreGraphNavigationState(snapshot, nodes) {
     drilldownPath: path,
     neighborhoodFocusId: focusId && byId.has(focusId) ? focusId : null,
     viewport: validGraphViewport(snapshot?.viewport),
+    manualCamera: Boolean(snapshot?.manualCamera),
   };
 }
 

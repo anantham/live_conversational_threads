@@ -9,6 +9,8 @@ import { useViewerHistory } from "./useViewerHistory";
 // outgoing entry's reading position; replay restores both positions exactly.
 // A user jump while Back's animation frames are settling must be recorded once
 // after settling, truncate Forward, and remain reachable through Back/Forward.
+// Delayed browser frames must still truncate Forward; await the visible settled
+// state rather than assuming the fixed interaction flush finishes navigation.
 let container, root;
 function Harness() {
   const rootRef = useRef(null);
@@ -42,6 +44,21 @@ function Harness() {
 const button = (label) => [...container.querySelectorAll("button")].find((b) => b.textContent === label);
 const flush = () => new Promise((resolve) => setTimeout(resolve, 30));
 const click = async (label) => { await act(async () => { button(label).click(); await flush(); }); await act(flush); };
+const holdAnimationFrames = () => {
+  const frames = new Map();
+  let frameId = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback) => { frames.set(++frameId, callback); return frameId; });
+  vi.stubGlobal("cancelAnimationFrame", (id) => frames.delete(id));
+  const settleFrames = async () => {
+    for (let frame = 0; frames.size && frame < 10; frame += 1) {
+      const pending = [...frames.values()]; frames.clear();
+      await act(async () => { pending.forEach((callback) => callback(performance.now())); });
+    }
+    expect(frames.size).toBe(0);
+    await act(flush);
+  };
+  return { frames, settleFrames };
+};
 beforeEach(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   window.history.replaceState({ idx: 0 }, "", "/view");
@@ -67,26 +84,19 @@ it("restores node/view/camera with browser Back and Forward without reverting a 
   expect(button("Back").disabled).toBe(true);
 });
 
-it("discards the forward exploration when a different jump follows Back", async () => {
+it("discards the forward exploration when a different jump follows Back with delayed frames", async () => {
+  const { frames, settleFrames } = holdAnimationFrames();
   await click("A"); await click("B"); await click("Back"); await click("C");
+  expect(frames.size).toBeGreaterThan(0);
+  await settleFrames();
   expect(button("Forward").disabled).toBe(true);
   await click("Back");
+  await settleFrames();
   expect(container.querySelector("output").textContent).toBe("A:graph:Original:0");
 });
 
 it("records a new jump made while Back is still settling its animation frames", async () => {
-  const frames = new Map();
-  let frameId = 0;
-  vi.stubGlobal("requestAnimationFrame", (callback) => { frames.set(++frameId, callback); return frameId; });
-  vi.stubGlobal("cancelAnimationFrame", (id) => frames.delete(id));
-  const settleFrames = async () => {
-    for (let frame = 0; frames.size && frame < 10; frame += 1) {
-      const pending = [...frames.values()]; frames.clear();
-      await act(async () => { pending.forEach((callback) => callback(performance.now())); });
-    }
-    expect(frames.size).toBe(0);
-    await act(flush);
-  };
+  const { frames, settleFrames } = holdAnimationFrames();
   await click("A"); await click("B"); await click("Back");
   await expect.poll(() => container.querySelector("output").textContent).toBe("A:graph:Original:0");
   expect(frames.size).toBeGreaterThan(0); // Back genuinely has not settled yet.

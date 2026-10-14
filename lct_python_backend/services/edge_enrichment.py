@@ -61,6 +61,11 @@ EDGE EVIDENCE CONTRACT:
   the smallest exact set of source turn IDs from its endpoints that supports it.
 - Do not treat headings, summaries, shared membership or a brief acknowledgement
   as proof of support/agreement. Thread return, context and argument are distinct.
+- parent_ids describe existing grouping, including overlapping memberships.
+  Ancestors can inherit the same speech. Repeating that grouping or shared speech
+  alone is not an exemplifies, generalizes or supports relationship. A cross-level
+  edge needs distinct spoken claims and speech establishing the relationship,
+  independently of their grouping or headings.
 - Omit a relationship when the supplied speech does not establish it. Never
   invent a turn ID or return an uncited relationship. A valid empty edges list is OK.
 """.strip()
@@ -577,7 +582,9 @@ async def run_edge_enrichment(
     try:
         nodes = attach_source_turns(nodes, utterances or [])
         # Reserve space for scope instructions/context while preserving exact speech.
-        windows = plan_edge_windows(nodes, max_input_chars=MAX_EDGE_INPUT_CHARS - 3000)
+        windows = await asyncio.to_thread(
+            plan_edge_windows, nodes, max_input_chars=MAX_EDGE_INPUT_CHARS - 3000,
+        )
     except ValueError as exc:
         llm_telemetry = {
             "parse_status": "invalid",

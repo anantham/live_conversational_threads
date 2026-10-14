@@ -19,7 +19,16 @@ self.onmessage = ({ data }) => {
       if (!extractor) {
         const started = performance.now();
         send({ type: 'progress', stage: 'model' });
-        extractor = await pipeline('feature-extraction', MODEL, { revision: '751bff37182d3f1213fa05d7196b954e230abad9', device: 'wasm', dtype: 'q8' });
+        extractor = await pipeline('feature-extraction', MODEL, {
+          revision: '751bff37182d3f1213fa05d7196b954e230abad9', device: 'wasm', dtype: 'q8',
+          progress_callback: progress => {
+            // Aggregate bytes are measured, not an estimate of total readiness.
+            // Do not forward vendor file paths, URLs, or document/query content.
+            if (progress.status === 'progress_total' && Number.isFinite(progress.loaded) && progress.loaded >= 0) {
+              send({ type: 'progress', stage: 'model', loadedBytes: progress.loaded });
+            }
+          },
+        });
         timings.push({ stage: 'model', durationMs: performance.now() - started });
       }
       if (!vectors) {

@@ -134,6 +134,7 @@ function MinimalGraphInner({
   speakerDisplayNames,
 }) {
   const reactFlow = useReactFlow();
+  const graphRootRef = useRef(null);
   const nodesInitialized = useNodesInitialized();
   const restoringRef = useRef(Boolean(navigationState));
   const appliedRestoreKeyRef = useRef(navigationState ? null : navigationRestoreKey);
@@ -141,6 +142,9 @@ function MinimalGraphInner({
   const reportedMeaningRef = useRef(null);
   const reportedSnapshotRef = useRef(null);
   const autoFollowRef = useRef(true);
+  const manualCameraRef = useRef(Boolean(navigationState?.manualCamera));
+  const restoredManualCameraRef = useRef(false);
+  const previousSelectedNodeRef = useRef(selectedNode);
   const reactFlowRef = useRef(reactFlow);
   reactFlowRef.current = reactFlow;
   const viewportMotionRef = useRef(null);
@@ -282,6 +286,8 @@ function MinimalGraphInner({
     const restored = restoreGraphNavigationState(navigationState, normalizedChunk);
     restoringRef.current = Boolean(restored.viewport);
     restoreTargetRef.current = restored.viewport;
+    restoredManualCameraRef.current = restored.manualCamera;
+    manualCameraRef.current = restored.manualCamera;
     appliedRestoreKeyRef.current = navigationRestoreKey;
     initialLockedAppliedRef.current = true;
     userOverrodeTierRef.current = true;
@@ -1111,6 +1117,7 @@ function MinimalGraphInner({
       drilldownPath,
       neighborhoodFocusId,
       viewport: validGraphViewport(viewportOverride) || reactFlow.getViewport?.(),
+      manualCamera: manualCameraRef.current,
     });
     const meaning = graphNavigationMeaning(snapshot);
     const serialized = JSON.stringify(snapshot);
@@ -1497,6 +1504,31 @@ function MinimalGraphInner({
       raf2 = requestAnimationFrame(() => {
         if (!restoringRef.current || restoreTargetRef.current !== viewport) return;
         viewportMotion.run(() => reactFlow.setViewport(viewport, { duration: 0 }), { expectedZoom: viewport.zoom, duration: 0 });
+        // A history entry can be captured before the selected-card animation
+        // finishes. Preserve a manually panned camera when its selection is
+        // visible, but recover a selection stranded outside the usable map.
+        const selected = displayNodes.find((node) => node.id === selectedNode);
+        const root = graphRootRef.current;
+        const x = selected?.position?.x;
+        const y = selected?.position?.y;
+        if (root && Number.isFinite(x) && Number.isFinite(y)) {
+          const width = selected.measured?.width ?? selected.width ?? 180;
+          const height = selected.measured?.height ?? selected.height ?? 96;
+          const left = viewport.x + x * viewport.zoom;
+          const top = viewport.y + y * viewport.zoom;
+          const right = left + width * viewport.zoom;
+          const bottom = top + height * viewport.zoom;
+          const usableLeft = Math.min(root.clientWidth, Math.max(0, sidebarWidth));
+          const hidden = right <= usableLeft || left >= root.clientWidth || bottom <= 0 || top >= root.clientHeight;
+          if (hidden && !restoredManualCameraRef.current) {
+            const centerX = x + width / 2 + usableLeft / (2 * viewport.zoom);
+            const centerY = y + height / 2;
+            viewportMotion.run(
+              () => reactFlow.setCenter(centerX, centerY, { zoom: viewport.zoom, duration: 0 }),
+              { expectedZoom: viewport.zoom, duration: 0 },
+            );
+          }
+        }
         viewportMotion.updateSettledZoom(viewport.zoom);
         setZoomLevel(viewport.zoom);
         pendingFitViewRef.current = false;
@@ -1507,7 +1539,7 @@ function MinimalGraphInner({
       });
     });
     return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
-  }, [displayNodes, layoutedDisplayNodes, nodesInitialized, reactFlow, restoreVersion, viewportMotion]);
+  }, [displayNodes, layoutedDisplayNodes, nodesInitialized, reactFlow, restoreVersion, selectedNode, sidebarWidth, viewportMotion]);
 
   // Run fitView after React has committed the new nodes to DOM and ReactFlow
   // has measured their positions. A single rAF isn't enough â€” ReactFlow's
@@ -1584,6 +1616,13 @@ function MinimalGraphInner({
     () => displayNodes.find((node) => node.id === selectedNode) || null,
     [displayNodes, selectedNode]
   );
+  useEffect(() => {
+    if (previousSelectedNodeRef.current === selectedNode) return;
+    previousSelectedNodeRef.current = selectedNode;
+    if (restoringRef.current) return;
+    manualCameraRef.current = false;
+    emitNavigationSnapshot(true);
+  }, [emitNavigationSnapshot, selectedNode]);
 
   const centerViewportOnNode = useCallback(
     (nodeId, options = {}) => {
@@ -1684,6 +1723,7 @@ function MinimalGraphInner({
     // the drag, so the fit cannot finish later and replace the user's pan.
     const interruptedCamera = event && viewportMotion.isActive()
       ? validGraphViewport(reactFlow.getViewport?.()) : null;
+    if (event && !restoringRef.current) manualCameraRef.current = true;
     viewportMotion.interruptForUserGesture(event);
     if (interruptedCamera) reactFlow.setViewport(interruptedCamera, { duration: 0 });
   }, [reactFlow, viewportMotion]);
@@ -2076,7 +2116,7 @@ function MinimalGraphInner({
     />
   );
   return (
-    <div className={`relative w-full h-full${chromeless ? " lct-graph-chromeless" : ""}`}>
+    <div ref={graphRootRef} className={`relative w-full h-full${chromeless ? " lct-graph-chromeless" : ""}`}>
       {/* Weakness lenses — one-click "where is the argument weak" filters.
           Dim everything except the matching claims (+ their ancestors so
           coarser tiers stay meaningful). Hidden during argument trace. */}

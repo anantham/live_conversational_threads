@@ -2106,7 +2106,7 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
-# Semantic authoring consolidation — 2026-10-14 (RELEASE AUTHORIZED; readiness)
+# Semantic authoring consolidation — 2026-10-14 (SOURCE MERGED; real-data acceptance blocked)
 
 Outcome: imports and `.threads` experiments share the existing transcript-grounded
 relationship extractor; compiler preserves validated relationships; automatic
@@ -2186,6 +2186,143 @@ Backend deployment additionally needs the existing Windows database service
 started by an Administrator; user received the exact one-command action.
 Unrelated dirty deploy files remain preserved. No new product decision needed.
 
+Release checkpoint,2026-10-14: PR215 final head
+`d229f788a059444f62599fafa6edae6835adff47` passed final CI and independent
+AGY/Anthropic Claude Opus5.5Medium review (APPROVED, no findings, zero tools).
+Squash merge/main is `2acf515be7d667d08eddb27ea6bb30c2ed4a91cc`.
+Vercel production deployment `dpl_BMMNQ1SwRbHLGsb65aDqosaRhy3P` is READY at
+that SHA and lists threads.adityaarpitha.com as its alias. This is deployment
+metadata, not a completed public browser walkthrough. Primary backend checkout
+was fast-forwarded to the same SHA after byte-verified preservation of its four
+unrelated dirty files; none were staged or published. Backend is not running:
+postgresql-x64-15 remains stopped and Windows denied service-start permission.
+User received the Administrator PowerShell command, with a plain explanation.
+
+Real-data quality blocks regeneration/publication. The corrected first window
+produced six structurally valid cited edges, but manual inspection found topic
+transitions mislabeled as logical support. Full regeneration was cancelled
+after16/23 windows; no candidate was written. The original2,681,468-byte public
+artifact is unchanged (SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed).
+Do not present valid citation IDs or nonempty edge counts as semantic accuracy.
+
+Bounded quality-repair attempts: (1) actual Qwen window failed manual meaning
+inspection; (2) stronger prompt still made Qwen invent a references_back link
+between two synthetic topic-change passages (6.87s); (3) existing private Muse
+returned invalid_edge_payload for that negative case (9.69s), not a valid empty
+result. Positive-case inference was not reached. Stop further model/prompt
+trials under AGENTS.md's three-attempt rule; preserve private evidence locally.
+The failed prompt-only experiment was saved privately and restored to reviewed
+main, so no unreviewed runtime change is pending. No new provider, model download,
+paid usage, or external transcript disclosure was used.
+
+Public walkthrough also stopped after two inconclusive browser timeouts; no
+public UI verdict or screenshots. Cua inventory exposes no browsers/apps.
+These observations do not prove a site defect. Existing synthetic1440/390px
+acceptance remains valid only for its tested local journey.
+
+Owner remains Codex. Integration/evidence checkout is the same isolated path;
+follow-up branch `codex/semantic-grounding-check-20261014` starts at merged main.
+Finite remaining checks: database Running and exact backend runtime SHA; inspect
+actual selected passages/model claims before any new full generation; preserve
+IDs/transcript/memberships and inspect candidate meaning; then public desktop/
+phone Source/details/citations/reload from a reachable browser. Next evidence
+checkpoint: user service-start result plus guidance for a bounded read-only
+passage-selection trace, rather than another generation retry. Effort for the
+semantic repair and public verification is unknown; prior scan timing is not a
+credible delivery ETA. Review/CI/merge waits for the source slice are finished.
+Receipt: docs/reviews/semantic-release-checkpoint-2026-10-14.json.
+
+Resumed read-only checkpoint,2026-10-14: user explicitly approved the recommended
+investigation, then said go on. Replayed source attachment/window formatting
+without model calls, DB access or product edits. [instrument] All100 nodes are
+included in23 windows, but only656/1,263 unique transcript turns are visible;
+607 turns are omitted,93/100 nodes clipped. Every selected set is the first12
+referenced turns. First broad topic has12/159 turns, second12/132. Citation IDs
+on all six saved edges really exist and were visible: the missing guarantee is
+semantic sufficiency, not fabricated IDs. Prior two-turn synthetic model failure
+falsifies the claim that clipping is the sole cause or that more speech alone
+will ensure good relationships. Removing the cap in a disposable process makes
+the existing planner refuse its first ancestor closure; largest ancestor input
+102,015chars exceeds21,000. Largest complete L1 input7,019chars. No unbounded
+prompt, inference retry or new public artifact was produced.
+
+Read-only HTTP: public root and /view route return200; DNS/TCP/TLS pass. One
+bounded artifact GET completed in2.366s,200,2,621,266bytes, SHA256
+386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19,
+exactly equal to the committed Git blob. Local file differs only by60,202CRLF
+pairs. Deployment-specific host redirects to Vercel SSO; do not bypass it or
+infer that the custom public domain is protected. Cua getBrowser reports no
+browser; createBrowserTab(iab) reports unavailable. Public UI remains unverified;
+needs a connected browser surface, independently of database readiness.
+
+Next proposed bounded repair, awaiting architecture choice: replace prefix-only
+source attachment with complete passages apportioned across existing bounded
+requests, preserving one extractor, strict exact citations and failure retention.
+Primary files: services/edge_evidence.py and services/edge_enrichment_windows.py
+under lct_python_backend; add focused public-entry-point source-coverage tests.
+Acceptance must include a decisive passage beyond turn12, every referenced turn
+visible somewhere, unchanged exact source strings, per-request budget, overlapping
+memberships, valid-empty versus failed-window retention, and actual positive/
+negative meaning checks before publication. Full source coverage will not itself
+be advertised as semantic accuracy. No new pipeline layer/provider or UI redesign.
+User was asked for this source-selection choice and a connected browser tab;
+the existing Administrator database action remains pending.
+
+Approved implementation checkpoint,2026-10-14: user chose complete passage
+coverage. Codex owns this finite slice in the same isolated checkout/branch:
+edge_evidence.py + edge_enrichment_windows.py, focused behavioral tests and
+intent. Acceptance: all referenced node/turn associations visible, whole exact
+turns, bounded requests, adjacent moments and overlapping memberships, late
+citations, failure retention; offline actual-data coverage; independent review.
+Meaning quality remains a separate release gate; public artifact is held.
+Next evidence checkpoint: coverage/budget report and validated review packet.
+Connected browser observed a blank public root twice, then the tab closed;
+diagnostic cause unknown, public manual acceptance not achieved. This is now
+a concrete release blocker, tracked in the same slice without a UI redesign.
+
+Security containment hold,2026-10-14 [instrument]: the publicly served production
+JS contains a nonempty VITE_AUTH_TOKEN that matches the primary backend's
+configured AUTH_TOKEN (compared in memory, never printed; no authenticated probe).
+The backend is currently stopped. Impact: cached bundles disclose a backend
+credential; removing the frontend value alone does not invalidate old copies.
+Blocker: hold backend restart, live generation and release pending credential
+containment authority. Recommended next step: rotate backend token, remove the
+public build variable and redeploy; private API clients then need reauthentication.
+Requested the one-time credential/publication decision required by policy S1/H1.
+No credential changed. Redacted evidence remains under ignored
+tmp/public-viewer-acceptance-20261014. A downloaded JS copy may remain there;
+its exact-path deletion was denied, and no alternative deletion was attempted.
+
+Local implementation/review checkpoint,2026-10-14: source d871841 exposes
+1263/1263 turns and7099/7099 endpoint associations in61bounded requests (max
+20996source-input chars/30nodes); source text/artifact unchanged.58focused and
+adjacent checks pass,2existing POSIX cases skip on Windows. Pure planning is
+offloaded so preparation does not freeze cancellation/status. Anthropic AGY
+attempt was quota-refused before inference; permitted Google Gemini3.8FlashHigh
+via authenticated AGY approved the exact40,254-byte bounded code/test/intent
+packet with no findings or tool use. No independent-review overclaim remains.
+Receipt: docs/reviews/complete-passage-coverage-2026-10-14.json. Source is locally
+committed, not pushed/merged/served. Security hold deliberately prevents pushes
+that could trigger another credential-bearing preview. No publication, backend
+restart or model generation followed the exposure finding. Next checkpoint is
+the pending one-time credential-containment ruling, then guarded integration/CI,
+private meaning acceptance and public interactive verification. No new delivery
+date can be supported while those dependencies remain unresolved.
+
+Active release goal,2026-10-14: user explicitly authorized token rotation,
+frontend credential removal and redeploy, and delegated implementation/review/
+integration/verification. Integration owner Codex; authoritative checkout is
+semantic-authoring-consolidation on codex/semantic-grounding-check-20261014.
+Backend token rotated without displaying its value; other configuration bytes
+unchanged. Frontend token cleared and clean rebuild dpl_73zdC7VYKbj3iPY1277ALad5r2uN
+is READY at existing released SHA2acf515; served asset containment check next.
+Finite acceptance: semantic meaning plus complete source/citation preservation;
+review/CI/merge/served identity; desktop/narrow Source, timestamp, rename, all
+threads, navigation visibility and details dismissal. Existing architecture and
+private provider/resource boundaries persist. Database Administrator start is
+still pending; viewer and model-quality work can continue independently.
+Next checkpoint: served containment receipt and public initial-render evidence.
+
 ### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
 
 During the approved walkthrough, Back to library reached /browse and its local
@@ -2197,3 +2334,135 @@ recordings/history are unavailable in this isolated setup; browser-local files
 still work. No change to library/backend configuration is part of consolidation.
 Recommended next step for a full library audit: use the existing authorized
 backend configuration and verify history/recording success plus refusal/retry.
+
+### 2026-10-14 — Current release acceptance checkpoint
+
+Owner/integration: Codex; authoritative isolated semantic-authoring-consolidation
+checkout, branch codex/semantic-grounding-check-20261014. Source41c648a includes
+complete coverage, browser credential refusal and viewer history/Escape repairs.
+529frontend tests,13focused units,4production-preview browser checks pass; prior
+Python58pass/2POSIX skips reused. Not merged or served. Production remains
+contained2acf515 (new clean asset index-4gUOrqrw.js), artifact unchanged.
+
+Remaining dependencies: existing PostgreSQL Administrator start; independent
+review sign-in (AGY refused before inference; Claude/Grok also signed out); actual
+YouTube playback; semantic meaning repair (real-window prompt-only and no-heading
+diagnostics failed, method stopped). Private positive/negative controls4pass do
+not satisfy actual-data acceptance. Full regeneration/public artifact replacement
+remain held. Larger hierarchy/labels and broad UX audit remain deferred.
+
+Finite next checkpoint: preserve/push source and draft PR, inspect CI/preview;
+obtain independent final-diff approval before merge, then check served identity
+and desktop/narrow navigation. Source coverage is approved structurally, meaning
+is not accepted. See docs/reviews/viewer-release-progress-2026-10-14.json.
+Forecast: implementation slice locally complete; review wait depends on existing
+account authentication, backend wait on Windows privilege; semantic effort and
+actual playback effort unknown. Prior ETA is preserved, no calendar promise.
+
+Structural-context slice,2026-10-14: Root Codex owns implementation in the same
+authoritative isolated checkout. The extractor now receives visible structural
+parent IDs and explicitly distinguishes inherited grouping from spoken argument.
+Provider-boundary red/green passes;64focused/adjacent Python checks pass with2
+existing POSIX skips. Real offline coverage is1263/1263turns and7099/7099node-turn
+associations across62bounded requests (max20982chars/30nodes). Three private
+synthetic meaning controls pass, including a grouping-only negative and a spoken
+cross-level positive. Actual-source meaning preflight is still pending; no public
+artifact replacement or release-acceptance claim. Next checkpoint: adjudicate
+that actual-source output, then review the coherent exact diff before integration.
+Actual-source follow-up,2026-10-14: the private model completed page24in266.09s,
+valid JSON with one plausible causal edge and none of the three earlier ancestor
+echoes. Cited passages do not support every detail of its explanation, so this is
+partial meaning progress, not a precision pass. Full regeneration stays held.
+Next checkpoint: resolve citation sufficiency under the existing evidence
+contract and obtain authenticated independent source review. No new human
+product decision is requested for the routine input-context repair.
+
+Evidence-first diagnostic,2026-10-14:2/2synthetic controls pass; actual page24
+still includes uncited explanation details after195.72s. This method is stopped,
+canonical prompt unchanged, public replacement held. PR216head cbb4ed6 is pushed
+with required529/529local frontend checks and green unit/Postgres/browser CI.
+Remaining semantic effort unknown; separate authentication and Windows privilege
+waits unchanged. Next semantic checkpoint requires a materially different safe
+method or a concrete model/contract decision, not another prompt wording retry.
+
+### 2026-10-14 — On-device search preparation hides the loading boundary
+
+Public model preparation remained pending for192s; cancellation and literal
+search recovery worked. Source shows no model progress callback and the same
+label even before Worker construction, so download vs initialization is unknown.
+A cancelled worker's unguarded late error can also abort the next attempt.
+Root Codex owns the bounded status/retry repair in the current isolated checkout.
+Finite next checkpoint: behavioural stale-error/message-error/progress checks,
+build, then actual model loading in browser. Synthetic worker success alone does
+not establish on-device model readiness. Exact-diff independent review remains.
+Local follow-up: three red UI regressions become green;18focused checks, lint,
+design detector and production build pass. Actual browser advances1.6MB/56s to
+7.6MB/295s with readable desktop/phone status. Continue that same download;
+readiness/search-result acceptance remains pending. Source not yet served.
+
+Follow-up checkpoint2026-10-14: source61912d2is pushed; required534/534frontend
+checks and exact-head unit/Postgres/browser CI plus preview pass. Actual model
+download advances then reports network error. Text recovery returns3matches;
+one offered retry advances3.1MB/197s and remains pending. Actual on-device search
+is not accepted. Owner/integration and authoritative checkout unchanged. Review
+authentication, actual model/result/source journey and merge/served identity
+remain separate dependencies. No calendar ETA supported for network/auth waits.
+
+Semantic smaller-window follow-up2026-10-14:202bounded diagnostic requests retain
+1263/1263turns and7099/7099associations. One actual page returns an enables edge
+whose two citations do not establish the relation or the full explanation;
+equipment detail is also attributed to the wrong endpoint. Diagnostic stopped,
+product budgets/prompt/artifact unchanged. Do not try further wording/window-size
+variants. Meaning acceptance needs a causally different model/contract decision;
+current full regeneration/public replacement remains held. Private evidence is
+tmp/smaller-windows-20261014/real/, no external review disclosure of that data.
+
+### Deferred — reasoning configuration is absent from completion-cache identity
+
+Found2026-10-14 by direct source inspection. The synchronous client passes only
+messages/sampling/prompt/model names to llm_cache.cache_key; provider
+reasoning_effort is applied later to transport. A reasoning-only configuration
+change can therefore replay a previous completion when caching is enabled.
+Impact: misleading comparisons or stale output after changing that setting.
+Non-blocking for this slice: all private probes explicitly disable the cache.
+Recommended next step: a separate cache-contract test and bounded repair covering
+answer-affecting provider settings. No cache deletion or broader repair here.
+
+### Navigation history test assumes browser frames finish within a fixed sleep
+
+Found2026-10-14 in required pre-push gate:1/529frontend tests failed; the same
+5history tests pass in isolation. Impact: branch publication blocked by an
+unsettled Forward assertion. Investigating with delayed RAF callbacks and public
+UI outcomes; no runtime conclusion or gate waiver. Owner Root Codex, same task
+worktree. Next step: decisive timing reproduction and bounded outcome-based wait.
+Follow-up:100ms RAF delay decisively reproduces the original assertion. Final
+test reuses the controlled-frame fixture and settles frames under act before
+checking the same navigation outcomes; runtime unchanged. Eight focused checks
+and ESLint pass without new warnings. Required full pre-push suite remains next.
+
+### 2026-10-15 — Current bounded integration checkpoint
+
+Owner/integration Root Codex; authoritative isolated checkout and task branch
+unchanged. PR216head613de10 has green unit, real-Postgres, browser-smoke and
+preview CI. Authenticated Google Gemini independently approved its21technical
+files with no findings and zero tool attempts; exact receipt is
+docs/reviews/viewer-release-independent-2026-10-14.json. Not merged or served.
+Required merge helper lacks the policy-approved Gemini receipt route; a narrow
+adapter plus exact-head merge pin and refusal tests are being implemented.
+Finite next checkpoint: helper validation, updated exact-diff review, CI and
+served identity. The previous approval does not cover this new helper source.
+
+Actual search acceptance: second browser model download ended in network error;
+no further retry. Text fallback returned3matches and opened Source at986s.
+Separate model transfer received2359296/22972370bytes before95.797s budget ended;
+host HEAD success and partial transfer do not prove browser readiness or identify
+its error cause. Actual on-device meaning search and embedded playback remain
+unverified. Source/citation meaning still fails on the current private model;
+full regeneration/public artifact replacement remain held. PostgreSQL requires
+the pending Administrator service start. No supported ETA for those external or
+unresolved dependencies; the next evidence checkpoint is the reviewed integration.
+Local follow-up: the existing Source iframe subsequently loaded. Native Play,
+active playback, transcript seek to986.847141s, and native Pause all succeeded
+on built61912d2without player changes. Actual embedded playback is proven locally;
+verify the new production deployment after integration. Helper7/7isolated CLI
+checks pass; updated exact-diff independent review remains next.

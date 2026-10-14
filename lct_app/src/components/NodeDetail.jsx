@@ -428,6 +428,10 @@ export default function NodeDetail({
     if (!safeNode) return undefined;
     const handleKeydown = (event) => {
       if (event.key === "Escape") {
+        // Focused toolbar help gets the first Escape. Its document capture
+        // listener can stop propagation before this panel's window listener.
+        const tooltipId = document.querySelector('[role="tooltip"]')?.id;
+        if (tooltipId && document.activeElement?.getAttribute("aria-describedby")?.split(/\s+/).includes(tooltipId)) return;
         // Escape cancels an open rename editor first, then closes the panel.
         if (editingUtteranceId) {
           setEditingUtteranceId(null);
@@ -436,8 +440,8 @@ export default function NodeDetail({
         }
       }
     };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+    document.addEventListener("keydown", handleKeydown, true);
+    return () => document.removeEventListener("keydown", handleKeydown, true);
   }, [safeNode, onClose, editingUtteranceId]);
 
   useEffect(() => {

@@ -12,7 +12,12 @@ export default function useConversationSearch(documents) {
     if (operation.current) recordSearchTiming({ count: documents.length, outcome,
       retries: attempts.current - 1, elapsedMs: performance.now() - operation.current.started });
     operation.current = null;
-    worker.current?.terminate(); worker.current = null;
+    const stoppedWorker = worker.current;
+    worker.current = null;
+    if (stoppedWorker) {
+      stoppedWorker.onmessage = stoppedWorker.onerror = stoppedWorker.onmessageerror = null;
+      stoppedWorker.terminate();
+    }
   }, [documents]);
   useEffect(() => () => stop(), [stop]);
   const cancel = useCallback(() => { stop(); setStatus({ stage: 'cancelled' }); }, [stop]);
@@ -22,11 +27,13 @@ export default function useConversationSearch(documents) {
     const requestId = ++request.current;
     const started = performance.now();
     operation.current = { started, requestId };
-    setResults([]); setStatus({ stage: 'model', started, stageStarted: started });
+    setResults([]); setStatus({ stage: 'starting', started, stageStarted: started });
     try {
       if (!worker.current) worker.current = new Worker(new URL('../services/conversationSearch.worker.js', import.meta.url), { type: 'module' });
+      const activeWorker = worker.current;
+      const isCurrent = () => worker.current === activeWorker && operation.current?.requestId === requestId;
       worker.current.onmessage = ({ data }) => {
-        if (data.requestId !== operation.current?.requestId) return;
+        if (!isCurrent() || data.requestId !== requestId) return;
         if (data.type === 'progress') setStatus(previous => ({ ...data, started,
           stageStarted: previous.stage === data.stage ? previous.stageStarted : performance.now() }));
         if (data.type === 'results') {
@@ -37,7 +44,14 @@ export default function useConversationSearch(documents) {
         }
         if (data.type === 'error') { stop('error'); setStatus({ stage: 'error', message: data.message }); }
       };
-      worker.current.onerror = event => { stop('error'); setStatus({ stage: 'error', message: `On-device search could not start: ${event.message}. Text search remains available.` }); };
+      worker.current.onerror = event => {
+        if (!isCurrent()) return;
+        stop('error'); setStatus({ stage: 'error', message: `On-device search could not start: ${event.message}. Text search remains available.` });
+      };
+      worker.current.onmessageerror = () => {
+        if (!isCurrent()) return;
+        stop('error'); setStatus({ stage: 'error', message: 'On-device search could not read a response. Retry meaning search or keep using text search.' });
+      };
       worker.current.postMessage({ requestId, query, documents });
     } catch (error) { stop('error'); setStatus({ stage: 'error', message: `On-device search could not start: ${error.message}. Text search remains available.` }); }
   }, [documents, stop]);

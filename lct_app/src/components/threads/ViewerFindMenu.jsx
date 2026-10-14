@@ -7,7 +7,7 @@ import { estimateSearchRemaining } from '../../services/searchTiming';
 import { mediaOffsetLabel } from '../../services/mediaSeek';
 
 const EMPTY = [];
-const busyStages = ['model', 'index', 'query'];
+const busyStages = ['starting', 'model', 'index', 'query'];
 const control = 'min-h-11 rounded px-3 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700';
 
 function SearchProgress({ status, count, onCancel }) {
@@ -22,9 +22,10 @@ function SearchProgress({ status, count, onCancel }) {
   if (!busy) return null;
   const elapsed = Math.max(0, now - status.started);
   const estimate = estimateSearchRemaining(status.stage, count, status.completed || 0, Math.max(0, now - status.stageStarted));
-  const stage = { model: 'Preparing the search model', index: 'Indexing the conversation', query: 'Finding related passages' }[status.stage];
+  const stage = { starting: 'Starting on-device search', model: status.loadedBytes > 0 ? 'Loading the search model' : 'Preparing the search model', index: 'Indexing the conversation', query: 'Finding related passages' }[status.stage];
   return <div className="my-3 rounded bg-slate-50 p-3 text-xs text-slate-700">
     <p role="status" aria-live="polite">{stage}{status.stage === 'index' ? ` · ${status.completed} of ${status.total} passages` : ''}</p>
+    {status.stage === 'model' && status.loadedBytes > 0 && <p className="mt-1 tabular-nums">{`${(status.loadedBytes / 1e6).toFixed(1)} MB loaded`}</p>}
     <p className="mt-1 tabular-nums" aria-hidden="true">{Math.floor(elapsed / 1000)}s elapsed · {estimate ? `Estimated ${estimate.low}–${estimate.high}s remaining` : 'Time remaining unknown'}</p>
     <button type="button" className={`${control} mt-1 px-0 underline underline-offset-4`} onClick={onCancel}>Cancel preparation</button>
   </div>;
