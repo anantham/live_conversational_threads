@@ -415,3 +415,11 @@ presentation, provenance metrics, dimension/rhetoric chips and control styles.
 A future split can extract metric/chip presentation from the card renderer.
 The approved color-only change is a small visibility repair; extracting those
 concerns now would enlarge review and legacy-consumer risk without improving it.
+# 2026-10-12 — Relationship authoring boundary
+
+`edge_enrichment.py` (~800 lines) mixes retrieval, prompt/evidence rendering,
+provider calls, parsing, compatibility adaptation and scan aggregation. The current
+consolidation extracts the evidence boundary only where necessary for shared use;
+keep retrieval/provider lifecycle decomposition separate. `stt_ws_session.py` is
+also a large lifecycle owner: reuse its existing utterance identity/text storage
+for edge input instead of creating a parallel transcript store.

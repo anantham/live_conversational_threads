@@ -1,8 +1,9 @@
 """ADR-032 Part C+D+E: semantic edge enrichment for a finalized graph.
 
 Runs the ``enrich_semantic_edges`` prompt (F3 — separate from
-``refine_conversation_subthreads``) against the consolidated node list
-PLUS retrieved IndrasNet context. Produces ONLY edges; no node mutation.
+``refine_conversation_subthreads``) against exact transcript text resolved from
+the consolidated nodes. Optional retrieved context is separate from evidence.
+Produces ONLY edges; no node mutation.
 
 This module is the canonical entry point for the post-flush + import
 enrichment pass that ships with ADR-032. The live STT pipeline calls
@@ -13,8 +14,8 @@ Privacy gate: retrieved items whose source participants have
 ``external_llm_ok=False`` are filtered out BEFORE they reach the LLM
 prompt. IndrasNet's retrieval endpoint doesn't enforce this; we must.
 
-Failure policy (per AGENTS.md): never silently produce zero edges. If
-the LLM fails to author edges, log loud + emit observability event but
+Failure policy: distinguish a valid empty edge list from a failed scan. If
+the LLM fails the evidence contract, log loud + emit observability event but
 do NOT block the parent persist. If IndrasNet is unreachable, run the
 LLM without retrieved context (banner the user).
 """
@@ -29,6 +30,9 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from lct_python_backend.services.edge_contract import canonical_relation_type
+from lct_python_backend.services.edge_evidence import (
+    attach_source_turns, format_node_list, visible_turn_ids,
+)
 from lct_python_backend.services.edge_enrichment_windows import plan_edge_windows
 from lct_python_backend.services.indrasnet_client import (
     IndrasNetError,
@@ -48,15 +52,17 @@ MAX_CONTEXT_ITEMS_DEFAULT = 8
 # Cap on edges per enrichment pass. The prompt instructs "be sparse";
 # this enforces it server-side too.
 MAX_EDGES_PER_PASS = 60
-MAX_EDGE_EVIDENCE_IDS_PER_NODE = 12
+MAX_EDGE_INPUT_CHARS = 24000
 
 EDGE_EVIDENCE_INSTRUCTION = """
 EDGE EVIDENCE CONTRACT:
-- Every node may list source_turn_ids. For each edge, return
-  supporting_utterance_ids containing the smallest exact set of source_turn_ids
-  from either endpoint that makes the relationship auditable.
-- Never invent a source turn id. Return an empty list only when neither endpoint
-  lists source_turn_ids.
+- Author relationships only from the exact source_turns text supplied below.
+- For every edge return an explanation and supporting_utterance_ids containing
+  the smallest exact set of source turn IDs from its endpoints that supports it.
+- Do not treat headings, summaries, shared membership or a brief acknowledgement
+  as proof of support/agreement. Thread return, context and argument are distinct.
+- Omit a relationship when the supplied speech does not establish it. Never
+  invent a turn ID or return an uncited relationship. A valid empty edges list is OK.
 """.strip()
 
 
@@ -203,61 +209,6 @@ def _format_context_pack(items: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _format_node_list(nodes: List[Dict[str, Any]]) -> str:
-    """Render the full node list as the prompt's primary input.
-
-    Compact form: each node one line with id, semantic_level, node_name,
-    and a short summary. The LLM uses the id values verbatim when
-    authoring edges.
-    """
-    lines = ["NODES (use id values verbatim when authoring edges):"]
-    for n in nodes:
-        if not isinstance(n, dict):
-            continue
-        nid = n.get("id") or n.get("node_id") or ""
-        level = n.get("semantic_level") or n.get("level") or 1
-        name = (n.get("node_name") or "").strip() or "(unnamed)"
-        summary = (n.get("summary") or "").strip().replace("\n", " ")
-        if len(summary) > 200:
-            summary = summary[:200] + "..."
-        lines.append(f"- [{nid}] L{level} {name}")
-        if summary:
-            lines.append(f"  summary: {summary}")
-        evidence_ids = _node_utterance_ids(n)
-        if evidence_ids:
-            shown_ids = _prompt_visible_utterance_ids(n)
-            suffix = (
-                f" (+{len(evidence_ids) - len(shown_ids)} more; prefer a lower-tier endpoint)"
-                if len(evidence_ids) > len(shown_ids)
-                else ""
-            )
-            lines.append(f"  source_turn_ids: {', '.join(shown_ids)}{suffix}")
-    return "\n".join(lines)
-
-
-def _node_utterance_ids(node: Any) -> List[str]:
-    if not isinstance(node, dict):
-        return []
-    source_ref = node.get("source_ref") if isinstance(node.get("source_ref"), dict) else {}
-    ordered = [
-        *(node.get("utterance_ids") if isinstance(node.get("utterance_ids"), list) else []),
-        *(source_ref.get("utterance_ids") if isinstance(source_ref.get("utterance_ids"), list) else []),
-    ]
-    seen: set[str] = set()
-    result: List[str] = []
-    for value in ordered:
-        identifier = str(value or "").strip()
-        if identifier and identifier not in seen:
-            seen.add(identifier)
-            result.append(identifier)
-    return result
-
-
-def _prompt_visible_utterance_ids(node: Any) -> List[str]:
-    """Return exactly the evidence IDs disclosed to the edge-authoring model."""
-    return _node_utterance_ids(node)[:MAX_EDGE_EVIDENCE_IDS_PER_NODE]
-
-
 async def _call_enrich_llm(
     *,
     nodes: List[Dict[str, Any]],
@@ -293,7 +244,7 @@ async def _call_enrich_llm(
         return [], telemetry
 
     system_prompt = f"{spec.get('template') or ''}\n\n{EDGE_EVIDENCE_INSTRUCTION}"
-    user_input = _format_node_list(nodes)
+    user_input = format_node_list(nodes)
     if window_count > 1:
         user_input = (
             "WINDOW SCOPE\n"
@@ -307,7 +258,15 @@ async def _call_enrich_llm(
         )
     context_block = _format_context_pack(context_items)
     if context_block:
-        user_input = f"{user_input}\n\n{context_block}"
+        if len(user_input) + 2 + len(context_block) <= MAX_EDGE_INPUT_CHARS:
+            user_input = f"{user_input}\n\n{context_block}"
+        else:
+            telemetry["optional_context_omitted"] = True
+            logger.info("[edge_enrichment] optional context omitted to preserve exact source budget")
+
+    if len(user_input) > MAX_EDGE_INPUT_CHARS:
+        telemetry.update(parse_status="invalid", error="edge_source_window_too_large")
+        return [], telemetry
 
     config = _resolve_llm_config(llm_config)
     config = dict(config)
@@ -382,7 +341,10 @@ async def _call_enrich_llm(
         raw_for_parser,
         nodes=nodes,
     )
-    telemetry["raw_edges"] = len(edges)
+    candidates = parsed.get("edges", []) if isinstance(parsed, dict) else parsed
+    telemetry["raw_edges"] = len(candidates) if isinstance(candidates, list) else 0
+    if telemetry["raw_edges"] and not edges and payload_shape_valid:
+        telemetry.update(parse_status="invalid", error="no_grounded_edge_evidence")
     if len(edges) > MAX_EDGES_PER_PASS:
         edges = edges[:MAX_EDGES_PER_PASS]
     telemetry["kept_edges"] = len(edges)
@@ -453,8 +415,8 @@ def _parse_edges_response(
             # Hallucinated reference; drop.
             continue
         endpoint_evidence = [
-            *_prompt_visible_utterance_ids(node_by_id.get(frm)),
-            *_prompt_visible_utterance_ids(node_by_id.get(to)),
+            *visible_turn_ids(node_by_id.get(frm)),
+            *visible_turn_ids(node_by_id.get(to)),
         ]
         allowed_evidence = set(endpoint_evidence)
         authored_evidence = edge.get("supporting_utterance_ids")
@@ -465,13 +427,11 @@ def _parse_edges_response(
                 for value in authored_evidence
                 if str(value).strip() in allowed_evidence
             ]
-        if not supporting_ids:
-            source_ids = _node_utterance_ids(node_by_id.get(frm))
-            # A short grounded leaf can safely fall back to all its source
-            # turns. A broad aggregate cannot: copying dozens of turns would
-            # manufacture the appearance of edge-specific evidence.
-            if len(source_ids) <= MAX_EDGE_EVIDENCE_IDS_PER_NODE:
-                supporting_ids = source_ids
+        explanation = str(edge.get("explanation") or "").strip()
+        if (not supporting_ids or not explanation
+                or not visible_turn_ids(node_by_id.get(frm))
+                or not visible_turn_ids(node_by_id.get(to))):
+            continue
         supporting_ids = list(dict.fromkeys(supporting_ids))
         try:
             confidence = float(edge.get("confidence")) if edge.get("confidence") is not None else None
@@ -495,7 +455,7 @@ def _parse_edges_response(
             "from_node_id": frm,
             "to_node_id": to,
             "relation_type": rel,
-            "explanation": str(edge.get("explanation") or "").strip(),
+            "explanation": explanation,
             "confidence": confidence,
             "supporting_utterance_ids": supporting_ids,
         }
@@ -566,6 +526,7 @@ def merge_semantic_edges_into_nodes(
 async def run_edge_enrichment(
     *,
     nodes: List[Dict[str, Any]],
+    utterances: Optional[List[Dict[str, Any]]] = None,
     query_summary: str,
     participant_external_llm_ok_set: Optional[set] = None,
     llm_config: Optional[Dict[str, Any]] = None,
@@ -614,7 +575,9 @@ async def run_edge_enrichment(
     overall["context_telemetry"] = context_telemetry
 
     try:
-        windows = plan_edge_windows(nodes)
+        nodes = attach_source_turns(nodes, utterances or [])
+        # Reserve space for scope instructions/context while preserving exact speech.
+        windows = plan_edge_windows(nodes, max_input_chars=MAX_EDGE_INPUT_CHARS - 3000)
     except ValueError as exc:
         llm_telemetry = {
             "parse_status": "invalid",

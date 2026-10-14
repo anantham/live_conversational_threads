@@ -1,9 +1,18 @@
 // Compile a source-pinned public interpretation, never regenerate quoted text.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { enrichGraphNodesWithProvenance } from '../lct_app/src/components/graphProvenance.js';
+import { EDGE_SCHEMA_VERSION, EDGE_ENDPOINT_SPACE, explicitEdgeKind,
+  validateExplicitEdgeContract } from '../lct_app/src/services/edgeContract.js';
 
 export function compileThreadExperiment(base, interpretation) {
+  // Legacy sources may lack the explicit contract. An explicit malformed field is never defaulted.
+  const edgeSchema = Object.hasOwn(base, 'edge_schema') ? base.edge_schema :
+    {version:EDGE_SCHEMA_VERSION,directed:true,endpoint_space:EDGE_ENDPOINT_SPACE};
+  const sourceEdges = Object.hasOwn(base, 'edges') ? base.edges : [];
+  validateExplicitEdgeContract(edgeSchema, sourceEdges, base.graph_data);
   const moments = base.graph_data.filter(n => n.semantic_level === 1).map(n => ({
     ...n, parent_id: null, memberships: [], thread_id: null, thread_label: null, thread_ids: [],
   }));
@@ -39,7 +48,8 @@ export function compileThreadExperiment(base, interpretation) {
   };
   const threadIds=new Set();
   const threads=interpretation.threads.map(t=>{
-    assert(t.id && !threadIds.has(t.id),'Duplicate thread');threadIds.add(t.id);
+    assert(typeof t.id==='string' && t.id && !threadIds.has(t.id),'Duplicate/invalid thread');threadIds.add(t.id);
+    assert(typeof t.title==='string' && t.title.trim(),'Missing thread title');
     assert(t.steps?.length,'Empty thread');
     const seen=new Set();let previous=-Infinity;
     const steps=t.steps.map(s=>{
@@ -64,24 +74,34 @@ export function compileThreadExperiment(base, interpretation) {
   }
   const enriched=enrichGraphNodesWithProvenance(nodes,base.utterances).map(n=>({...n,
     timestamp_start:n.provenance_metrics.timestamp_start,timestamp_end:n.provenance_metrics.timestamp_end}));
-  const edges=threads.flatMap(t=>t.returns.map((r,i)=>({id:`${t.id}-return-${i}`,from_node_id:r.from,to_node_id:r.to,
-    edge_kind:'semantic',relation_type:r.kind==='explicit_callback'?'return_to_thread':'contextual',
-    explanation:r.why,source_utterance_ids:r.evidence_utterance_ids})));
+  // Regrouping can remove a higher-tier node. Reject the entire compile if an edge would dangle.
+  // Thread returns remain independently validated reader metadata, not graph edges.
+  validateExplicitEdgeContract(edgeSchema, sourceEdges, enriched);
+  const edges=structuredClone(sourceEdges);
+  const semanticEdgeCount=edges.filter(e=>explicitEdgeKind(e)==='semantic').length;
   return {...base,conversation_id:`${base.conversation_id}-overlap-v1`,conversation_name:interpretation.title,
     conversation_title:interpretation.title,executive_summary:interpretation.summary,
-    graph_data:enriched,edges,conversation_threads:threads,reader_routes:[],open_questions:[],
+    graph_data:enriched,edge_schema:structuredClone(edgeSchema),edges,
+    conversation_threads:threads,reader_routes:[],open_questions:[],
     interpretation_schema:'overlapping-threads-v1',
     analysis_provenance:{...base.analysis_provenance,method:'Whole-public-conversation overlapping membership experiment',
       uncertainties:interpretation.uncertainties,quality_notes:interpretation.quality_notes},
-    argument_topology:{status:'partial',method:'Thread returns only; other relations not regenerated',semantic_edge_count:edges.length,exhaustive:false},
-    exported_at:new Date().toISOString()};
+    argument_topology:{status:'partial',method:'Canonical source edges retained; shared extraction pending',
+      semantic_edge_count:semanticEdgeCount,exhaustive:false}};
 }
 
-if(process.argv[1] && import.meta.url===new URL(`file://${process.argv[1]}`).href){
-  const [basePath,interpretationPath,outputPath]=process.argv.slice(2);
-  assert(basePath&&interpretationPath&&outputPath,'Pass base, interpretation, output paths');
-  const result=compileThreadExperiment(JSON.parse(fs.readFileSync(basePath)),JSON.parse(fs.readFileSync(interpretationPath)));
-  fs.writeFileSync(outputPath,JSON.stringify(result,null,2));
-  console.log(JSON.stringify({threads:result.conversation_threads.length,nodes:result.graph_data.length,
-    shared:result.graph_data.filter(n=>n.memberships.length>1).length}));
+if(process.argv[1] && fileURLToPath(import.meta.url)===path.resolve(process.argv[1])){
+  // --stdin accepts {base, interpretation} JSON and writes only compiled JSON to stdout.
+  // File mode retains the existing base/interpretation/output positional arguments.
+  if(process.argv[2]==='--stdin'){
+    const {base,interpretation}=JSON.parse(fs.readFileSync(0,'utf8'));
+    process.stdout.write(`${JSON.stringify(compileThreadExperiment(base,interpretation))}\n`);
+  } else {
+    const [basePath,interpretationPath,outputPath]=process.argv.slice(2);
+    assert(basePath&&interpretationPath&&outputPath,'Pass base, interpretation, output paths');
+    const result=compileThreadExperiment(JSON.parse(fs.readFileSync(basePath)),JSON.parse(fs.readFileSync(interpretationPath)));
+    fs.writeFileSync(outputPath,JSON.stringify(result,null,2));
+    console.log(JSON.stringify({threads:result.conversation_threads.length,nodes:result.graph_data.length,
+      shared:result.graph_data.filter(n=>n.memberships.length>1).length}));
+  }
 }

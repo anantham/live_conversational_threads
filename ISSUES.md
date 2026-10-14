@@ -2106,3 +2106,94 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   for this Forward failure; separate camera timing uncertainty remains open.
 
 - Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
+# Semantic authoring consolidation — 2026-10-14 (RELEASE AUTHORIZED; readiness)
+
+Outcome: imports and `.threads` experiments share the existing transcript-grounded
+relationship extractor; compiler preserves validated relationships; automatic
+citation fallback removed. Owner Codex; authoritative checkout is
+`C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`,
+branch `codex/semantic-authoring-consolidation-20261012`, base bda16e5.
+
+Acceptance: exact endpoint passages in provider request; omitted/unshown evidence
+rejected; supported directed edges survive extraction, compilation, export/reload
+and viewing; extraction failure retains previous graph; focused/adjacent checks
+and different-family read-only review pass. Existing transcript/node identities
+and memberships remain stable. Optional retrieval and hierarchy redesign deferred.
+Checkpoint: implementation in the isolated checkout; 49 focused backend tests,
+30 adjacent live STT tests, seven compiler tests and 35 viewer contract tests
+pass. Exact shared extraction/compile/export/reload uses synthetic speech and a
+provider transport stub. Real graph planning covers 100 nodes in 23 windows;
+this is not a semantic-recall or whole-transcript inference claim.
+Independent Google Gemini review of staged tree a934fe9
+approved with no findings and zero tools. Receipt:
+`docs/reviews/semantic-authoring-consolidation-2026-10-12.json`.
+Reviewed source committed locally as 8ef8161; nothing pushed, merged
+or deployed. Browser acceptance subsequently passed below; public artifact
+regeneration remains explicitly deferred.
+Additional checkpoint: five actual CLI/localhost HTTP cases pass with no helper
+replacement; receipt docs/reviews/semantic-cli-transport-verification-2026-10-12.json.
+Resume checkpoint: user explicitly approved the manual walkthrough. No browser
+connector surfaces were available; interactive Playwright observation on the
+isolated frontend established the actual card→Source/details→evidence Source
+path. Both directed relationships, exact u1/u3 citations and original speech
+are inspectable at 1440/390px, including saved conversation-route reload.
+Corrected browser acceptance passed 2/2 with no mocks, no captured page/console
+errors or warnings, no network5xx and no document overflow. This proves this
+synthetic extraction/export/view journey, not model semantic recall or full UX.
+Final review: authenticated AGY/Google Gemini3.1ProHigh approved the substantive
+browser-test diff (staged tree e2fbc3f; blob645167e) with no findings and zero tools.
+Receipt docs/reviews/semantic-viewer-review-2026-10-12.json. Reused unchanged
+source validation/review plus passing new browser cases; finite local acceptance
+is complete. Owner/checkout unchanged. Next evidence checkpoint, if publication
+is separately approved: exact pushed/merged/served source identity.
+Publication/CI, merge/restart and public artifact regeneration are not
+performed or inferred from prior frontend authority; public regeneration is
+explicitly deferred from this slice.
+
+Historical third goal-turn audit, before manual approval: worktree cbfd87c is clean; reviewed runtime
+source is unchanged from 8ef8161, and the independent reviewer and CLI probe are
+terminal successes. All authorized independent verification is finished. The
+remaining required desktop/phone Source/details interaction is unproven; the
+three-attempt stop requires human guidance before switching to the proposed
+manual browser walkthrough. No such answer has arrived. Mark the goal blocked,
+preserve the full objective, and resume this exact checkout after that guidance.
+
+Release envelope,2026-10-14: user said to do the four remaining steps. This
+specifically authorizes task-branch publication/PR/CI/merge, backend deployment,
+regeneration of the already-public overlapping.threads using the existing local
+provider, relationship quality checks and public desktop/phone verification.
+No new spend, external transcript recipient or unrelated redesign is authorized.
+Owner/integration checkout remains Codex in the isolated task worktree above.
+Finite acceptance: exact-head independent review and CI; existing transcript,
+node IDs and memberships preserved; real model yields grounded relationships or
+an honest refusal; generated file validated and inspected before publication;
+merged source matches running backend and served public artifact; actual Source
+details/citations/reload work at1440/390. Preserve old artifact for rollback.
+Next evidence checkpoint: local provider/backend readiness and one real window.
+Remaining dependencies: reachable existing provider, review/CI and deploy waits.
+No further human decision is presently required; report a concrete blocker if
+credentials, provider access, privacy or new cost exceed this envelope.
+
+Release checkpoint,2026-10-14 10:07 IST: PR215 head bcb19f0 is pushed; local
+pre-push524/524 and remote backend/browser/preview gates passed. Exact-head
+AGY/Anthropic review requested changes; supported context-budget/compiler/mode
+repairs are implemented and await final validation/re-review. First real M5
+scan refused missing citations and preserved the public file; diagnostic output
+confirmed the canonical example lacked its required citation field. Example
+corrected; next evidence is a real corrected window, then complete candidate
+quality checks. Owner/checkout unchanged; public artifact still original.
+Backend deployment additionally needs the existing Windows database service
+started by an Administrator; user received the exact one-command action.
+Unrelated dirty deploy files remain preserved. No new product decision needed.
+
+### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
+
+During the approved walkthrough, Back to library reached /browse and its local
+saved-file entry opened /view/synthetic-consolidation-overlap-v1 successfully.
+The same screen separately requested /conversations/ and
+/api/indrasnet/audio-sources from a Vite-only server with no private backend,
+returning500 and rendering explicit unavailable/retry states. Impact: server
+recordings/history are unavailable in this isolated setup; browser-local files
+still work. No change to library/backend configuration is part of consolidation.
+Recommended next step for a full library audit: use the existing authorized
+backend configuration and verify history/recording success plus refusal/retry.

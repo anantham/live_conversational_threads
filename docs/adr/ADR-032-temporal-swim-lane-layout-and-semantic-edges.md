@@ -722,3 +722,26 @@ never reruns transcript extraction, hierarchy generation, or consolidation.
 Structural membership, temporal, and contextual relationships remain intact.
 A required-window failure retains a previous complete topology and otherwise
 stores only a content-free failed marker, keeping recipient sharing fail closed.
+
+### 2026-10-12 — Approved shared relationship authoring consolidation
+
+Imports, repair and `.threads` experiments use `run_edge_enrichment` with exact
+persisted source IDs and text. Node labels and summaries are orientation, not
+evidence. Citations must be selected by the model from the text it received;
+this supersedes the earlier short-leaf automatic citation fallback. A nonempty
+response without an accepted cited edge fails; an explicit empty list is valid.
+
+The experiment compiler preserves canonical edges and validates thread returns
+as separate navigation metadata. It no longer turns returns into semantic edges.
+`python -m scripts.author_thread_experiment` is the authoring entry point: it
+optionally compiles, runs the shared scan, and replaces the requested file only
+after success. Providers must be explicitly owner-private and local. The live
+path additionally requires the existing local-LLM consent before sending text.
+
+The existing window planner now respects the rendered source-text budget as
+well as node count; oversized closures fail rather than truncate exact speech.
+The existing twelve-turn per-node disclosure cap remains. Successful scan
+completion means all planned windows passed, with `exhaustive: false`; it does
+not certify semantic recall or full-transcript coverage. Candidate retrieval,
+pair-state machinery, hierarchy redesign and public artifact regeneration are
+outside this approved slice.
