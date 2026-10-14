@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
+import { logOpenRouterFailure } from '../../../sites/openRouter.js';
 
 const SITE = 'https://fixture-diagnostics.example.chatgpt.site';
 const KEY = 'synthetic-diagnostic-secret';
@@ -41,6 +42,24 @@ function rejectedGraph(mutate) {
   return response;
 }
 
+function hierarchyGraph() {
+  const value = graph();
+  const makeNode = (id, semantic_level, parent_id, children_ids) => ({
+    id, semantic_level, semantic_type: ['chunk', 'idea', 'topic', 'theme', 'arc'][semantic_level - 1],
+    node_name: `Synthetic ${id}`, summary: '', source_excerpt: '', source_ref: { utterance_ids: semantic_level === 1 ? ['utterance-0001'] : [] },
+    parent_id, children_ids, thread_id: null, memberships: [],
+  });
+  value.nodes = [makeNode('synthetic-node', 1, 'idea', []), makeNode('idea', 2, 'topic', ['synthetic-node']),
+    makeNode('topic', 3, 'theme', ['idea']), makeNode('theme', 4, 'arc', ['topic']), makeNode('arc', 5, null, ['theme'])];
+  return value;
+}
+
+function hierarchyCompletion(mutate) {
+  const value = hierarchyGraph(); mutate(value);
+  const response = completion(); response.choices[0].message.content = JSON.stringify(value);
+  return response;
+}
+
 describe('redacted OpenRouter validation diagnostics through the public Worker', () => {
   it.each([
     ['response_envelope', () => ({ choices: [], error: { message: KEY } })],
@@ -60,12 +79,63 @@ describe('redacted OpenRouter validation diagnostics through the public Worker',
     fetch.mockResolvedValueOnce(new Response(JSON.stringify(makeResponse()), { status: 200 }));
     const response = await worker.fetch(request(), env), body = await response.json();
     expect(response.status).toBe(502); expect(body.code).toBe('invalid_completion'); expect(body.artifact).toBeUndefined();
-    expect(logged.mock.calls).toEqual([['[openrouter] generation failed', { code: 'invalid_completion', validationStage: stage }]]);
+    expect(logged.mock.calls).toEqual([['[openrouter] generation failed', { code: 'invalid_completion',
+      validationStage: stage, ...(stage === 'hierarchy' ? { validationRule: 'parent_missing' } : {}) }]]);
     expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toMatch(/synthetic-|utterance-0001|invented-|private-path|private-edge/);
     const rows = sqlite.prepare('SELECT * FROM lct_openrouter_attempts').all();
     expect(rows).toHaveLength(1); expect(rows[0].completed_at).toBeNull(); expect(fetch).toHaveBeenCalledTimes(1);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_public_threads').get().n).toBe(0);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+  });
+
+  it.each([
+    ['parent_missing', g => { g.nodes[0].parent_id = 'invented-' + KEY; }],
+    ['parent_level', g => { g.nodes[0].parent_id = 'synthetic-node'; }],
+    ['parent_backlink', g => { g.nodes[1].children_ids = []; }],
+    ['primary_mismatch', g => { g.nodes[0].memberships = [{ parent_id: 'topic', role: 'primary' }]; }],
+    ['membership_missing', g => { g.nodes[0].memberships = [{ parent_id: 'invented-' + KEY, role: 'secondary' }]; }],
+    ['membership_level', g => { g.nodes[1].memberships = [{ parent_id: 'synthetic-node', role: 'secondary' }]; }],
+    ['membership_backlink', g => { g.nodes[1].memberships = [{ parent_id: 'arc', role: 'secondary' }]; }],
+    ['secondary_duplicate', g => { g.nodes[0].memberships = [{ parent_id: 'idea', role: 'secondary' }]; }],
+    ['child_missing', g => { g.nodes[4].children_ids.push('invented-' + KEY); }],
+    ['child_level', g => { g.nodes[4].children_ids.push('arc'); }],
+    ['child_backlink', g => { g.nodes[4].children_ids.push('synthetic-node'); }],
+  ])('reports hierarchy rule %s without changing public refusal or admission', async (rule, mutate) => {
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify(hierarchyCompletion(mutate)), { status: 200 }));
+    const response = await worker.fetch(request(), env), body = await response.json();
+    expect(response.status).toBe(502);
+    expect(body).toEqual({ code: 'invalid_completion', error: 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.' });
+    expect(logged.mock.calls).toEqual([['[openrouter] generation failed', {
+      code: 'invalid_completion', validationStage: 'hierarchy', validationRule: rule,
+    }]]);
+    expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toMatch(/synthetic-|utterance-0001|invented-/);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts WHERE completed_at IS NULL AND recovery_released_at IS NULL').get().n).toBe(1);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_public_threads').get().n).toBe(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a valid overlapping hierarchy without logging or saving', async () => {
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify(hierarchyCompletion(g => {
+      g.nodes[1].memberships = [{ parent_id: 'topic', role: 'primary' }, { parent_id: 'topic-alt', role: 'secondary' }];
+      g.nodes.push({ ...g.nodes[2], id: 'topic-alt', children_ids: ['idea'] });
+      g.nodes[3].children_ids.push('topic-alt');
+    })), { status: 200 }));
+    const response = await worker.fetch(request(), env), body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.artifact.graph_data.find(node => node.id === 'idea').memberships).toEqual([
+      { parent_id: 'topic', role: 'primary' }, { parent_id: 'topic-alt', role: 'secondary' },
+    ]);
+    expect(logged).not.toHaveBeenCalled();
+    expect(sqlite.prepare('SELECT completed_at FROM lct_openrouter_attempts').get().completed_at).toBeGreaterThan(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_public_threads').get().n).toBe(0);
+  });
+
+  it('replaces untrusted diagnostic rules with a fixed unknown label', () => {
+    logOpenRouterFailure(env, 'invalid_completion', 'hierarchy', 'private-' + KEY);
+    expect(logged.mock.calls).toEqual([['[openrouter] generation failed', {
+      code: 'invalid_completion', validationStage: 'hierarchy', validationRule: 'unknown',
+    }]]);
   });
 
   it('keeps diagnostics off by default', async () => {

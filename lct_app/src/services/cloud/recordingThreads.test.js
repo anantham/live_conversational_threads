@@ -95,6 +95,25 @@ describe('createRecordingThreads', () => {
     expect(opened.graph_data.find((item) => item.id === 'idea').memberships).toEqual(graph.nodes[1].memberships);
   });
 
+  it.each([
+    ['parent_missing', g => { g.nodes[0].parent_id = 'invented-private-parent'; }],
+    ['parent_level', g => { g.nodes[0].parent_id = 'moment'; }],
+    ['parent_backlink', g => { g.nodes[1].children_ids = []; }],
+    ['primary_mismatch', g => { g.nodes[0].memberships = [{ parent_id: 'topic', role: 'primary' }]; }],
+    ['membership_missing', g => { g.nodes[0].memberships = [{ parent_id: 'invented-private-parent', role: 'secondary' }]; }],
+    ['membership_level', g => { g.nodes[1].memberships = [{ parent_id: 'moment', role: 'secondary' }]; }],
+    ['membership_backlink', g => { g.nodes[1].memberships = [{ parent_id: 'arc', role: 'secondary' }]; }],
+    ['secondary_duplicate', g => { g.nodes[0].memberships = [{ parent_id: 'idea', role: 'secondary' }]; }],
+    ['child_missing', g => { g.nodes[4].children_ids.push('invented-private-child'); }],
+    ['child_level', g => { g.nodes[4].children_ids.push('arc'); }],
+    ['child_backlink', g => { g.nodes[4].children_ids.push('moment'); }],
+  ])('identifies %s with fixed hierarchy metadata and no generated artifact', (rule, mutate) => {
+    const graph = baseGraph(); mutate(graph);
+    expect(() => createRecordingThreads({ ...source, graph })).toThrow(expect.objectContaining({
+      message: 'Invalid generated conversation graph.', validationStage: 'hierarchy', validationRule: rule,
+    }));
+  });
+
   it('projects supported semantic fields and detaches them from later generated-input mutations', () => {
     const graph = baseGraph();
     graph.nodes[0].summary = 'Generated summary';

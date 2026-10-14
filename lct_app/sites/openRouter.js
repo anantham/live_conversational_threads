@@ -8,12 +8,16 @@ const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_
   'choice_refusal', 'choice_tools_empty', 'choice_tools_present', 'choice_content', 'content_size', 'content_json',
   'required_shape', 'graph_shape', 'metadata', 'node_shape', 'node_evidence', 'node_excerpt', 'node_speaker',
   'node_provenance', 'memberships', 'hierarchy', 'edges', 'threads', 'bundle_validation', 'bundle_json', 'bundle_size']);
+const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backlink', 'primary_mismatch',
+  'membership_missing', 'membership_level', 'membership_backlink', 'secondary_duplicate',
+  'child_missing', 'child_level', 'child_backlink', 'cycle']);
 
-function logFailure(env, code, validationStage) {
+export function logOpenRouterFailure(env, code, validationStage, validationRule) {
   if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
   try {
-    console.error('[openrouter] generation failed', { code,
-      validationStage: VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown' });
+    const stage = VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown';
+    console.error('[openrouter] generation failed', { code, validationStage: stage,
+      ...(stage === 'hierarchy' ? { validationRule: HIERARCHY_RULES.has(validationRule) ? validationRule : 'unknown' } : {}) });
   } catch { /* Diagnostics must never replace the public result or release an attempt. */ }
 }
 
@@ -62,7 +66,7 @@ async function generate(request, env, policy) {
     const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
     try { return recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion }).bundle; }
     catch (error) {
-      logFailure(env, 'invalid_completion', error?.validationStage);
+      logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule);
       throw new OpenRouterError(502, 'invalid_completion', 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.');
     }
   });
@@ -94,7 +98,7 @@ export async function handleOpenRouter(request, env) {
     return await generate(request, env, policy);
   } catch (error) {
     if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code });
-    logFailure(env, 'generation_failed');
+    logOpenRouterFailure(env, 'generation_failed');
     return openRouterJSON(503, { error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved. Check admission storage and provider setup before retrying.', code: 'generation_failed' });
   }
 }

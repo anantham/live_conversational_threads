@@ -7,8 +7,9 @@ const MAX_EDGES = 8000;
 const TYPES = ['chunk', 'idea', 'topic', 'theme', 'arc'];
 const EDGE_SCHEMA = { version: 1, directed: true, endpoint_space: 'graph_data.id' };
 
-function invalid(validationStage = 'node_shape') {
-  return Object.assign(new Error('Invalid generated conversation graph.'), { validationStage });
+function invalid(validationStage = 'node_shape', validationRule) {
+  return Object.assign(new Error('Invalid generated conversation graph.'), { validationStage,
+    ...(validationRule == null ? {} : { validationRule }) });
 }
 
 function object(value) {
@@ -95,22 +96,29 @@ function normalizedGraph(graph, utterances) {
   for (const node of nodes) {
     if (node.parent_id != null) {
       const parent = nodeById.get(node.parent_id);
-      if (!parent || parent.semantic_level <= node.semantic_level
-        || !parent.children_ids?.includes(node.id)) throw invalid('hierarchy');
+      if (!parent) throw invalid('hierarchy', 'parent_missing');
+      if (parent.semantic_level <= node.semantic_level) throw invalid('hierarchy', 'parent_level');
+      if (!parent.children_ids?.includes(node.id)) throw invalid('hierarchy', 'parent_backlink');
     }
     const primary = (node.memberships || []).find((membership) => membership.role === 'primary');
-    if (primary && primary.parent_id !== node.parent_id) throw invalid('hierarchy');
+    if (primary && primary.parent_id !== node.parent_id) throw invalid('hierarchy', 'primary_mismatch');
     for (const membership of node.memberships || []) {
       const parent = nodeById.get(membership.parent_id);
-      if (!parent || parent.semantic_level <= node.semantic_level
-        || !parent.children_ids?.includes(node.id)
-        || (membership.role === 'secondary' && membership.parent_id === node.parent_id)) throw invalid('hierarchy');
+      if (!parent) throw invalid('hierarchy', 'membership_missing');
+      if (parent.semantic_level <= node.semantic_level) throw invalid('hierarchy', 'membership_level');
+      if (!parent.children_ids?.includes(node.id)) throw invalid('hierarchy', 'membership_backlink');
+      if (membership.role === 'secondary' && membership.parent_id === node.parent_id) {
+        throw invalid('hierarchy', 'secondary_duplicate');
+      }
     }
     for (const childId of node.children_ids || []) {
       const child = nodeById.get(childId);
-      if (!child || child.semantic_level >= node.semantic_level
-        || (child.parent_id !== node.id && !child.memberships?.some((membership) =>
-          membership.parent_id === node.id && membership.role === 'secondary'))) throw invalid('hierarchy');
+      if (!child) throw invalid('hierarchy', 'child_missing');
+      if (child.semantic_level >= node.semantic_level) throw invalid('hierarchy', 'child_level');
+      if (child.parent_id !== node.id && !child.memberships?.some((membership) =>
+        membership.parent_id === node.id && membership.role === 'secondary')) {
+        throw invalid('hierarchy', 'child_backlink');
+      }
     }
   }
   // Strictly descending semantic levels already preclude a hierarchy cycle;
@@ -119,7 +127,7 @@ function normalizedGraph(graph, utterances) {
     const seen = new Set();
     let current = node;
     while (current?.parent_id) {
-      if (seen.has(current.id)) throw invalid('hierarchy');
+      if (seen.has(current.id)) throw invalid('hierarchy', 'cycle');
       seen.add(current.id);
       current = nodeById.get(current.parent_id);
     }
