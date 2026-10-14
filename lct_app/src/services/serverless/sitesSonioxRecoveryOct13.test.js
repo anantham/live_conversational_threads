@@ -3,20 +3,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import worker from '../../../sites/worker.js';
 
 const tag = '0009_soniox_pilot_recovery_oct13';
 const journal = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
 const recovery = readFileSync(new URL(`../../../drizzle/${tag}.sql`, import.meta.url), 'utf8');
 const minute = 60_000;
 const origin = 'https://fixture-oct13.example.chatgpt.site';
-let sqlite, now;
+let sqlite, now, worker;
 
-beforeEach(() => {
+beforeEach(async () => {
   sqlite = new DatabaseSync(':memory:');
   expect(journal.entries.filter(entry => entry.tag === tag)).toHaveLength(1);
-  expect(journal.entries.at(-1).tag).toBe(tag);
-  for (const entry of journal.entries.slice(0, -1)) {
+  const recoveryIndex = journal.entries.findIndex(entry => entry.tag === tag);
+  expect(recoveryIndex).toBe(9);
+  expect(journal.entries[recoveryIndex]).toMatchObject({ idx: 9, tag });
+  expect(journal.entries.slice(0, recoveryIndex + 1).map(entry => entry.idx))
+    .toEqual(Array.from({ length: 10 }, (_, index) => index));
+  for (const entry of journal.entries.slice(0, recoveryIndex)) {
     sqlite.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
   }
   now = Date.now();
@@ -28,6 +31,8 @@ beforeEach(() => {
     (id, title, payload, byte_size, node_count, delete_hash, payload_hash, state, created_at)
     VALUES ('public-fixture', 'public', '{}', 2, 0, 'synthetic-delete', 'synthetic-payload', 'ready', ?)`)
     .run(now);
+  vi.stubGlobal('fetch', async () => { throw new Error('Unexpected provider call'); });
+  worker = (await import('../../../sites/worker.js')).default;
 });
 afterEach(() => { sqlite.close(); vi.unstubAllGlobals(); });
 

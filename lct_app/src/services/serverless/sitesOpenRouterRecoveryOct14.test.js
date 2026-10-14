@@ -23,12 +23,15 @@ let sqlite, now, worker, fetchMock;
 beforeEach(async () => {
   sqlite = new DatabaseSync(':memory:');
   expect(journal.entries.filter(entry => entry.tag === tag)).toHaveLength(1);
-  expect(journal.entries.at(-1)).toMatchObject({ idx: 10, tag });
-  expect(journal.entries.map(entry => entry.idx)).toEqual(Array.from({ length: 11 }, (_, i) => i));
+  const recoveryIndex = journal.entries.findIndex(entry => entry.tag === tag);
+  expect(recoveryIndex).toBe(10);
+  expect(journal.entries[recoveryIndex]).toMatchObject({ idx: 10, tag });
+  expect(journal.entries.slice(0, recoveryIndex + 1).map(entry => entry.idx))
+    .toEqual(Array.from({ length: 11 }, (_, i) => i));
   expect(snapshot.prevId).toBe(previous.id);
   expect(snapshot.id).not.toBe(previous.id);
   expect({ ...snapshot, id: previous.id, prevId: previous.prevId }).toEqual(previous);
-  for (const entry of journal.entries.slice(0, -1)) {
+  for (const entry of journal.entries.slice(0, recoveryIndex)) {
     sqlite.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
   }
   expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'lct_%' ORDER BY name").all()
