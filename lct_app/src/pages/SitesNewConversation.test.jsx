@@ -56,8 +56,13 @@ async function mount(browser = false) {
   await act(async () => root.render(<Router {...(browser ? {} : { initialEntries: ['/new?autostart=true'] })}><SitesNewConversation /><LocationProbe /></Router>));
 }
 async function consent() { await act(async () => container.querySelector('dialog input[type=checkbox]').click()); }
+const transcriptionSwitch = () => container.querySelector('input[role=switch]');
+async function chooseTranscription(enabled) {
+  if (transcriptionSwitch().checked !== enabled) await act(async () => transcriptionSwitch().click());
+}
 async function record(name = 'Record audio locally') {
-  await click(name); await consent(); await click(name === 'Record and transcribe' ? 'Start transcription' : 'Start recording');
+  const enabled = name === 'Record and transcribe';
+  await chooseTranscription(enabled); await click('Start session'); await consent(); await click(enabled ? 'Start transcription' : 'Start recording');
 }
 const transcript = {
   finalText: 'Hello there. Again.', partialText: ' provisional',
@@ -82,6 +87,61 @@ function readFile(file) {
 }
 
 describe('Sites recording page', () => {
+  it('uses one Start control for the selected mode without capturing or transmitting on a switch change', async () => {
+    transcribe = true; await mount();
+    expect(transcriptionSwitch().checked).toBe(true);
+    expect(container.querySelectorAll('[aria-label="Start session"]')).toHaveLength(1);
+    expect(container.textContent).toContain('Audio + live transcript');
+    await chooseTranscription(false);
+    expect(container.textContent).toContain('Audio only');
+    expect(fixture.sessions).toHaveLength(0);
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
+    await click('Start session');
+    expect(container.querySelector('dialog').textContent).not.toContain('Soniox');
+    await click('Cancel');
+    expect(transcriptionSwitch().checked).toBe(false);
+    await chooseTranscription(true); await click('Start session');
+    expect(container.querySelector('dialog').textContent).toContain('send this audio to Soniox');
+    expect(fixture.sessions).toHaveLength(0);
+    await consent(); await click('Start transcription');
+    expect(fixture.sessions[0].options.transcribe).toBe(true);
+    expect(transcriptionSwitch()).toBeNull();
+    expect(button('Start session')).toBeUndefined();
+    expect(document.activeElement).toBe(button('Stop recording'));
+  });
+
+  it('refuses unavailable selected transcription and keeps an explicit audio-only choice after recovery', async () => {
+    transcribe = true; await mount();
+    await click('Start session'); await click('Cancel');
+    transcribe = false; await click('Retry cloud setup');
+    expect(transcriptionSwitch().checked).toBe(true);
+    expect(transcriptionSwitch().disabled).toBe(false);
+    expect(button('Start session').disabled).toBe(true);
+    await click('Start session');
+    expect(container.querySelector('dialog')).toBeNull();
+    expect(fixture.sessions).toHaveLength(0);
+    await chooseTranscription(false);
+    expect(button('Start session').disabled).toBe(false);
+    transcribe = true; await click('Retry cloud setup');
+    expect(transcriptionSwitch().checked).toBe(false);
+    await click('Start session'); await consent(); await click('Start recording');
+    expect(fixture.sessions[0].options.transcribe).toBe(false);
+  });
+
+  it('keeps consent and selected mode fixed when setup completes after opening the audio-only dialog', async () => {
+    let finish;
+    fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await mount();
+    expect(transcriptionSwitch().checked).toBe(false);
+    await click('Start session');
+    await act(async () => finish(jsonResponse({ enabled: true, audience: 'public', max_session_seconds: 300 })));
+    expect(transcriptionSwitch().checked).toBe(false);
+    expect(container.querySelector('dialog').textContent).not.toContain('Soniox');
+    await consent(); await click('Start recording');
+    expect(fixture.sessions[0].options.transcribe).toBe(false);
+  });
+
   it('keeps the recording toolbar outside the scrolling canvas across idle, capture and local results', async () => {
     await mount();
     const canvas = container.querySelector('[aria-label="Conversation canvas"]');
@@ -92,7 +152,7 @@ describe('Sites recording page', () => {
     expect(container.querySelector('footer').contains(controls)).toBe(true);
     expect(canvas.textContent).toContain('Tap the mic below');
     expect(controls.textContent).toContain('Start');
-    expect(button('Record audio locally').querySelector('svg')).toBeTruthy();
+    expect(button('Start session').querySelector('svg')).toBeTruthy();
     expect(container.querySelector('h1').textContent).toBe('New conversation');
     await record();
     expect(container.querySelector('footer').contains(button('Stop recording'))).toBe(true);
@@ -100,7 +160,7 @@ describe('Sites recording page', () => {
     await click('Stop recording');
     expect(canvas.contains(container.querySelector('audio'))).toBe(true);
     expect(canvas.contains(container.querySelector('a[download$=".webm"]'))).toBe(true);
-    expect(container.querySelector('footer').contains(button('Record audio locally'))).toBe(true);
+    expect(container.querySelector('footer').contains(button('Start session'))).toBe(true);
     expect(container.querySelector('dialog')).toBeNull();
   });
 
@@ -116,15 +176,17 @@ describe('Sites recording page', () => {
     await click('Cancel setup');
     expect(canvas.contains(button('Retry cloud setup'))).toBe(true);
     expect(button('Retry cloud setup').closest('details')).toBeNull();
-    expect(footer.contains(button('Record audio locally'))).toBe(true);
+    expect(footer.contains(button('Start session'))).toBe(true);
   });
 
   it('opens publicly without auto microphone/start or legacy backend requests', async () => {
     await mount();
     expect(container.textContent).toContain('without signing in');
     expect(container.textContent).not.toContain('Nothing is published automatically');
-    expect(button('Record audio locally').disabled).toBe(false);
-    expect(button('Record and transcribe').disabled).toBe(true);
+    expect(button('Start session').disabled).toBe(false);
+    expect(transcriptionSwitch().checked).toBe(false);
+    expect(transcriptionSwitch().disabled).toBe(true);
+    expect(container.querySelectorAll('[aria-label="Start session"]')).toHaveLength(1);
     expect(button('Retry cloud setup').closest('details')).toBeNull();
     expect(fixture.sessions).toHaveLength(0);
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status']);
@@ -134,7 +196,7 @@ describe('Sites recording page', () => {
   it('asks for fresh local permission only on Record, and cancelling or Escape never starts capture', async () => {
     await mount();
     expect(container.querySelector('dialog')).toBeNull();
-    button('Record audio locally').focus(); await click('Record audio locally');
+    button('Start session').focus(); await click('Start session');
     expect(container.querySelector('dialog').open).toBe(true);
     expect(container.querySelector('dialog').textContent).not.toContain('Nothing is published automatically');
     expect(document.activeElement).toBe(container.querySelector('dialog input'));
@@ -143,9 +205,9 @@ describe('Sites recording page', () => {
     await click('Start recording'); expect(fixture.sessions).toHaveLength(0);
     await consent(); await click('Cancel');
     expect(container.querySelector('dialog')).toBeNull();
-    expect(document.activeElement).toBe(button('Record audio locally'));
+    expect(document.activeElement).toBe(button('Start session'));
     expect(localStorage.getItem('lct.recording_intro.v1')).toBeNull();
-    await click('Record audio locally');
+    await click('Start session');
     expect(container.querySelector('dialog input').checked).toBe(false);
     await act(async () => container.querySelector('dialog').dispatchEvent(new Event('cancel', { cancelable: true })));
     expect(container.querySelector('dialog')).toBeNull(); expect(fixture.sessions).toHaveLength(0);
@@ -158,13 +220,13 @@ describe('Sites recording page', () => {
     expect(localStorage.getItem('lct.recording_intro.v1')).toBe('seen');
     expect(container.querySelector('dialog')).toBeNull();
     expect(container.querySelector('input[type=checkbox]')).toBeNull();
-    expect(button('Record audio locally')).toBeUndefined();
+    expect(button('Start session')).toBeUndefined();
     expect(button('Cancel session')).toBeTruthy();
     expect(document.activeElement).toBe(button('Stop recording'));
     expect(container.textContent).not.toContain('Live transcription is not available yet');
     await click('Stop recording');
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    await click('Record audio locally');
+    await click('Start session');
     expect(container.querySelector('dialog input').checked).toBe(false);
     expect(container.querySelector('dialog').textContent).not.toContain('Your recording stays in this tab');
     expect(container.querySelector('dialog').textContent).toContain('5 minutes or 2 MiB');
@@ -176,7 +238,7 @@ describe('Sites recording page', () => {
 
   it('requires fresh Soniox permission even with the introduction remembered', async () => {
     transcribe = true; localStorage.setItem('lct.recording_intro.v1', 'seen'); await mount();
-    await click('Record and transcribe');
+    await click('Start session');
     expect(container.querySelector('dialog').textContent).toContain('Audio streams to Soniox');
     expect(container.querySelector('dialog').textContent).toContain('send this audio to Soniox for transcription');
     expect(container.querySelector('dialog input').checked).toBe(false);
@@ -200,7 +262,7 @@ describe('Sites recording page', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Storage blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage blocked'); });
     await mount(); await record(); expect(fixture.sessions).toHaveLength(1);
-    await failWithoutAudio(); await click('Record audio locally'); await consent();
+    await failWithoutAudio(); await click('Start session'); await consent();
     await act(async () => root.unmount()); root = null;
     expect(fixture.sessions).toHaveLength(1); expect(container.querySelector('dialog')).toBeNull();
   });
@@ -371,7 +433,7 @@ describe('Sites recording page', () => {
     await mount(); await record('Record and transcribe'); await deliverTranscript(); await failWithoutAudio();
     const oldName = container.querySelector('a[download$=".transcript.json"]').getAttribute('download');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
-    await click('Record and transcribe');
+    await click('Start session');
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(container.querySelector('a[download$=".transcript.json"]').getAttribute('download')).toBe(oldName);
     expect(fixture.sessions).toHaveLength(1);
@@ -472,7 +534,7 @@ describe('Sites recording page', () => {
     fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture unavailable' }, 503)); await click('Stop recording');
     expect(container.textContent).toContain('Generation setup is unavailable');
     expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
-    expect(button('Record audio locally').disabled).toBe(false);
+    expect(button('Start session').disabled).toBe(false);
     await click('Retry generation setup');
     expect(button('Generate conversation map').disabled).toBe(true);
     await click('Generate conversation map'); expect(generationCalls()).toHaveLength(0);
@@ -486,7 +548,8 @@ describe('Sites recording page', () => {
     const signal = generationCalls()[0][1].signal;
     await act(async () => vi.advanceTimersByTimeAsync(31_000));
     expect(container.textContent).toContain('Generating conversation map · 31s elapsed · Time remaining unknown');
-    expect(button('Record audio locally').disabled).toBe(true);
+    expect(button('Start session').disabled).toBe(true);
+    expect(transcriptionSwitch().disabled).toBe(true);
     expect(button('Save audio privately').disabled).toBe(true);
     expect(button('Save transcript privately').disabled).toBe(true);
     if (mode === 'navigation') { await act(async () => root.unmount()); root = null; }

@@ -34,6 +34,7 @@ export default function SitesNewConversation() {
   const [saveStartedAt, setSaveStartedAt] = useState(null);
   const [recording, setRecording] = useState(null), [saveSubject, setSaveSubject] = useState('Audio');
   const [generating, setGenerating] = useState(false);
+  const [transcriptionChoice, setTranscriptionChoice] = useState(null);
   const session = useRef(null), setupRequest = useRef(null), saveRequest = useRef(null), alive = useRef(true), stopControl = useRef(null);
 
   const checkCapabilities = useCallback(async () => {
@@ -83,6 +84,7 @@ export default function SitesNewConversation() {
   function requestRecording(transcribe) {
     if (!supported || ACTIVE.has(activity?.stage) || saving || generating || (transcribe && !live)) return;
     if ((audio || transcript.finalTokens.length) && !window.confirm('Start another recording? Download or save the current audio and transcript first. Starting again replaces them in this tab.')) return;
+    setTranscriptionChoice(transcribe);
     setPendingRecording({ transcribe });
   }
 
@@ -132,6 +134,7 @@ export default function SitesNewConversation() {
   }
 
   const active = ACTIVE.has(activity?.stage), live = capabilities?.transcription?.enabled;
+  const transcribe = transcriptionChoice ?? Boolean(live);
   useEffect(() => { if (active) stopControl.current?.focus(); }, [active]);
   const privateSaving = capabilities?.storage?.enabled && capabilities?.storage?.configured && !capabilities?.storage?.synthetic_only;
   const supported = Boolean(navigator.mediaDevices?.getUserMedia && globalThis.MediaRecorder);
@@ -175,7 +178,7 @@ export default function SitesNewConversation() {
     </section>
     <footer className="relative shrink-0 border-t border-gray-100 bg-white/80 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-4">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-center gap-4 sm:justify-end">
-        <CloudRecordingToolbar active={active} supported={supported} live={Boolean(live)} busy={saving || generating} stage={activity?.stage} stopRef={stopControl} onRecordLocal={() => requestRecording(false)} onRecordTranscribe={() => requestRecording(true)} onStop={() => void session.current?.stop()} onCancel={() => session.current?.cancel()} />
+        <CloudRecordingToolbar active={active} supported={supported} live={Boolean(live)} busy={saving || generating} stage={activity?.stage} stopRef={stopControl} transcribe={transcribe} onTranscribeChange={setTranscriptionChoice} onStart={() => requestRecording(transcribe)} onStop={() => void session.current?.stop()} onCancel={() => session.current?.cancel()} />
       </div>
     </footer>
     {pendingRecording && <RecordingConsentDialog transcribe={pendingRecording.transcribe} maxSeconds={capabilities?.transcription?.max_session_seconds} onCancel={() => setPendingRecording(null)} onConfirm={() => void start(pendingRecording.transcribe)} />}
