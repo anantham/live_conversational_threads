@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-const sql = readFileSync(new URL('../../../../docs/plans/2026-10-15-inference-diagnostic-recovery.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../../../drizzle/0012_inference_diagnostic_recovery_oct15.sql', import.meta.url), 'utf8');
 const journal = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
 let db, now;
 const rows = () => db.prepare('SELECT * FROM lct_openrouter_attempts ORDER BY id').all().map(r => ({...r}));
@@ -19,7 +19,7 @@ beforeEach(() => {
   db.exec("INSERT INTO lct_public_threads (id, title, payload, byte_size, node_count, delete_hash, payload_hash, state, created_at) VALUES ('synthetic', 'Synthetic', '{}', 2, 0, 'synthetic', 'synthetic', 'ready', 1792065000000)");
 });
 afterEach(() => db.close());
-describe('proposed bounded diagnostic recovery', () => {
+describe('approved bounded diagnostic recovery', () => {
   it('changes only two release timestamps, preserving lifetime history and unrelated rows, and is idempotent', () => {
     const before = rows(), other = db.prepare('SELECT * FROM lct_public_threads').all();
     db.exec(sql);
@@ -48,8 +48,13 @@ describe('proposed bounded diagnostic recovery', () => {
     now = Math.floor(1792069443366/1000) + 899;
     const before = rows(); db.exec(sql); expect(rows()).toEqual(before);
   });
-  it('remains outside the deployment journal until a new specific approval', () => {
-    expect(journal.entries.at(-1).tag).toBe('0011_inference_test_recovery_oct15');
-    expect(journal.entries.some(e => e.tag.includes('diagnostic_recovery'))).toBe(false);
+  it('appends only the approved exact operation with an unchanged schema', () => {
+    expect(journal.entries.at(-1)).toMatchObject({idx:12, tag:'0012_inference_diagnostic_recovery_oct15'});
+    const before = JSON.parse(readFileSync(new URL('../../../drizzle/meta/0011_snapshot.json', import.meta.url), 'utf8'));
+    const after = JSON.parse(readFileSync(new URL('../../../drizzle/meta/0012_snapshot.json', import.meta.url), 'utf8'));
+    expect(after.prevId).toBe(before.id); expect(after.id).not.toBe(before.id);
+    expect({...after, id:before.id, prevId:before.prevId}).toEqual(before);
+    const approved = readFileSync(new URL('../../../../docs/plans/2026-10-15-inference-diagnostic-recovery.sql', import.meta.url), 'utf8');
+    expect(sql.slice(sql.indexOf('UPDATE '))).toBe(approved.slice(approved.indexOf('UPDATE ')));
   });
 });

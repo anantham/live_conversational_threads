@@ -49,7 +49,7 @@ describe('approved bounded inference test recovery', () => {
     const before = rows(); db.exec(sql); expect(rows()).toEqual(before);
   });
   it('appends only the approved recovery and preserves the predecessor schema', () => {
-    expect(journal.entries.at(-1)).toMatchObject({idx:11, tag:'0011_inference_test_recovery_oct15'});
+    expect(journal.entries.find(e => e.idx === 11)).toMatchObject({idx:11, tag:'0011_inference_test_recovery_oct15'});
     const before = JSON.parse(readFileSync(new URL('../../../drizzle/meta/0010_snapshot.json', import.meta.url), 'utf8'));
     const after = JSON.parse(readFileSync(new URL('../../../drizzle/meta/0011_snapshot.json', import.meta.url), 'utf8'));
     expect(after.prevId).toBe(before.id); expect(after.id).not.toBe(before.id);
