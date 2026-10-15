@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PRIVATE_CONVERSATION_FIXTURE } from "../services/cloud/privateConversationFixture";
 vi.mock("./PrivateConversation", () => ({ default: ({ file, onClose }) => <section>Opened private copy: {file.filename}<button type="button" onClick={onClose}>Close private conversation</button></section> }));
+vi.mock("../components/SitesAccessPanel", () => ({ default: () => <aside id="site-access">Account controls</aside> }));
 import PrivateFiles from "./PrivateFiles";
 
 const limits = { maxFileBytes: 2097152 };

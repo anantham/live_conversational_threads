@@ -5,6 +5,7 @@ import { usePrivateFiles } from "../hooks/usePrivateFiles";
 import { formatBytes, validatePrivateFile } from "../services/privateFiles";
 import { PRIVATE_CONVERSATION_FIXTURE } from "../services/cloud/privateConversationFixture";
 import PrivateRetentionNotice from "../components/PrivateRetentionNotice";
+import SitesAccessPanel from "../components/SitesAccessPanel";
 import PrivateConversation from "./PrivateConversation";
 
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:cursor-not-allowed disabled:opacity-50";
@@ -83,6 +84,8 @@ export default function PrivateFiles() {
           <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Private cloud files</h1>
           <p className="mt-3 max-w-[65ch] text-sm leading-6 text-slate-600">Files here belong to your signed-in account. Browser-local files stay on this device unless you choose to upload one.</p>
         </header>
+
+        <SitesAccessPanel />
 
         {activity && <div role="status" aria-live="polite" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-700"><span>{({ status: "Checking storage", list: "Loading private files", upload: "Uploading file", delete: "Deleting file", recover: "Recovering unfinished upload" })[activity]} · {elapsed}s elapsed · Time remaining unknown</span><button type="button" onClick={cancel} className="font-medium underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700">Cancel</button></div>}
         {error && <div role="alert" className="mt-5 rounded-lg bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-800">{error}</div>}

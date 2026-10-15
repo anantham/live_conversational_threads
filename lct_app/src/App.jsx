@@ -149,6 +149,7 @@ export default function App() {
           <UploadProvider>
             <AppRoutes />
             {sitesMode && <Routes>
+              <Route path="/private-files" element={null} />
               <Route path="/privacy" element={null} />
               <Route path="/view" element={null} />
               <Route path="/view/:artifactId" element={null} />

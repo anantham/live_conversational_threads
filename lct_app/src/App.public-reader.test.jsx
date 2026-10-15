@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { Link, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import PrivateFiles from "./pages/PrivateFiles";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("./services/apiClient", () => ({ apiFetch }));
@@ -18,7 +19,7 @@ vi.mock("./routes/AppRoutes", () => ({
       <Route path="/view/:artifactId" element={<button type="button">Next moment</button>} />
       <Route path="/public/:publicId" element={<button type="button">Next moment</button>} />
       <Route path="/browse" element={<p>Library content</p>} />
-      <Route path="/private-files" element={<p>Private files content</p>} />
+      <Route path="/private-files" element={<PrivateFiles />} />
     </Routes>
   </>,
 }));
@@ -38,6 +39,8 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn((path) => {
     if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
     if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: false, configured: false } }) });
+    if (path === "/api/cloud/files/status") return Promise.resolve({ ok: true, json: async () => ({ enabled: true, configured: true, limits: { maxFileBytes: 2097152 } }) });
+    if (path === "/api/cloud/files") return Promise.resolve({ ok: false, status: 401, json: async () => ({ code: "sign_in", error: "Sign in" }) });
     throw new Error(`Unexpected request: ${path}`);
   }));
   host = document.createElement("div");
@@ -70,7 +73,9 @@ it.each(["/view", "/view/synthetic-artifact", "/public/synthetic-public-id"])(
     expect(fetch).toHaveBeenCalledWith("/api/auth/config", expect.any(Object));
 
     await act(async () => host.querySelector('a[href="/private-files"]').click());
-    expect(host.textContent).toContain("Private files content");
+    expect(host.textContent).toContain("Private cloud files");
+    expect(host.querySelectorAll("#site-access")).toHaveLength(1);
+    expect(host.querySelector("main #site-access")).not.toBeNull();
     expect(host.querySelector("#site-access")?.textContent).toContain("Browsing as guest");
     expect(host.querySelector("#site-access")?.classList.contains("fixed")).toBe(false);
     expect(apiFetch).not.toHaveBeenCalled();

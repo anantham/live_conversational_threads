@@ -78,6 +78,13 @@
       "when": 1791953763901,
       "tag": "0010_openrouter_pilot_recovery_oct14",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792068167467,
+      "tag": "0011_inference_test_recovery_oct15",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,9 @@
+## 2026-10-15 18:27 IST — private-page sign-in repair and approved recovery ready
+
+User approved exactly the two latest failed map-test releases. Both backends paused at env34/deployment appgdep_6ad0c911695881918b9a8d2ef8ff455d; exact six-row preflight unchanged. Promoted the byte-identical reviewed UPDATE into migration0011, added journal/snapshot predecessor and guard/replay checks. Recovery not yet run. App/PrivateFiles/SitesAccessPanel render one account panel after the private-page header. Real-route integration tests and desktop/mobile built checks prove Google visible in the first viewport. The wrong static localhost preview caused HTML-as-JSON and was stopped; actual Google now reaches origin_mismatch, awaiting owner Console save.
+
+Final959/959 combined tests111files and native build pass. Three stale mock-route fixture failures corrected before final acceptance. Independent AGY/Gemini3.8FlashLow PASS on31134-byte source/synthetic packet SHA b78baedc622af36f5a66192c75700fca05c22caa9eaf87f6249bf3c4c5616123; direct Claude was session-limited, no verdict. Prior exact SQL-body review reused. Changes await commit/publication. Next: publish OFF, verify two-only releases, activate and collect bounded diagnostics. Google/private and generated-map acceptance remain incomplete.
+
 ## 2026-10-15 18:04 IST — diagnostics served; activation dependencies explicit
 
 - Reviewed0252ae0 pushed; nativef8d6c8b4 changed one Worker source,310others/all11migrations retained. Saved36 deployed successfully as appgdep_6ad0c81692448191a1ec1449d4ec97c0 at12:33:54UTC/env33. Existing public audience retained. Archive contains35payload files; macOS metadata excluded with COPYFILE_DISABLE=1.
