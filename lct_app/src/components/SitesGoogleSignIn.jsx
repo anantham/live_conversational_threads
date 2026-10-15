@@ -175,8 +175,15 @@ export default function SitesGoogleSignIn({ available }) {
   );
   const busy = ["challenge", "loading", "google", "verifying"].includes(stage);
   return (
-    <div className="min-w-0">
-      {(stage === "ready" || stage === "error") && <button type="button" className="text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={begin}>Sign in with Google</button>}
+    <div className="min-w-0 w-full">
+      {(stage === "ready" || stage === "error") && <button type="button" className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={begin}>
+        <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0" aria-hidden="true" focusable="false">
+          <path fill="#4285F4" d="M21.6 12.227c0-.709-.064-1.391-.182-2.045H12v3.868h5.382a4.6 4.6 0 0 1-1.996 3.018v2.509h3.232c1.891-1.741 2.982-4.305 2.982-7.35Z" />
+          <path fill="#34A853" d="M12 22c2.7 0 4.964-.895 6.618-2.423l-3.232-2.509c-.895.6-2.041.955-3.386.955-2.605 0-4.81-1.759-5.596-4.123H3.063v2.591A10 10 0 0 0 12 22Z" />
+          <path fill="#FBBC05" d="M6.404 13.9A6 6 0 0 1 6.09 12c0-.659.114-1.3.314-1.9V7.509H3.063A10 10 0 0 0 2 12c0 1.614.386 3.141 1.063 4.491L6.404 13.9Z" />
+          <path fill="#EA4335" d="M12 5.977c1.468 0 2.786.505 3.823 1.496l2.868-2.868C16.959 2.991 14.695 2 12 2a10 10 0 0 0-8.937 5.509L6.404 10.1C7.19 7.736 9.395 5.977 12 5.977Z" />
+        </svg><span>Sign in with Google</span>
+      </button>}
       <div ref={buttonRef} className={stage === "google" ? "mt-2 max-w-full" : "hidden"} />
       {busy && <div role="status" className="mt-1 text-xs text-slate-600">
         {stage === "challenge" ? "Starting Google sign-in" : stage === "loading" ? "Loading Google sign-in" : stage === "google" ? "Waiting for Google" : "Verifying sign-in"} · {elapsed}s elapsed · Time remaining unknown

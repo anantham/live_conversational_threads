@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { MessageCircle, UserRound } from "lucide-react";
 import SitesGoogleSignIn from "./SitesGoogleSignIn";
 import { recordAuthUiTiming, requestWithin } from "./sitesAuthUi";
 
@@ -226,8 +227,8 @@ export default function SitesAccessPanel() {
   }, [attempt]);
 
   return (
-    <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit px-3 py-2"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
-      {!expanded ? <button type="button" className="text-sm font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}>{status === "guest" ? "Sign in" : "Account"}</button> : <>
+    <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit p-1"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
+      {!expanded ? <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span>{status === "guest" ? "Sign in" : "Account"}</span></button> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-800">{inPrivateFiles ? "Your account" : "Public access"}</p>
         <button type="button" className="text-xs text-slate-600 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}>Close</button>
@@ -244,18 +245,18 @@ export default function SitesAccessPanel() {
         Sign-in is optional for private files and history. Browse public conversations without an account. Recording and map generation are available from New conversation; private saving requires sign-in and enabled storage. Opening browser-local files does not publish them.
       </p>
       <a className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/privacy">Privacy and data use</a>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium">
+      <div className="mt-3 flex flex-col items-start gap-2 text-xs font-medium">
         {status !== "signed-in" && (
-          <a className="text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/signin-with-chatgpt?return_to=%2F" target="_top">Sign in with ChatGPT</a>
+          <a className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/signin-with-chatgpt?return_to=%2F" target="_top"><MessageCircle size={20} className="shrink-0" aria-hidden="true" /><span>Sign in with ChatGPT</span></a>
         )}
+        <SitesGoogleSignIn available={status === "guest" && !signingOut} />
         {(status === "signed-in" || status === "guest") && (
-          <button type="button" disabled={signingOut} className="text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:opacity-50" onClick={signOut}>{status === "guest" ? "Reset sign-in" : "Sign out"}</button>
+          <button type="button" disabled={signingOut} className="inline-flex min-h-11 items-center text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:opacity-50" onClick={signOut}>{status === "guest" ? "Reset sign-in" : "Sign out"}</button>
         )}
         {status === "error" && (
-          <button type="button" className="text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={retry}>Retry sign-in check</button>
+          <button type="button" className="inline-flex min-h-11 items-center text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={retry}>Retry sign-in check</button>
         )}
       </div>
-      <SitesGoogleSignIn available={status === "guest" && !signingOut} />
       {signingOut && <div className="mt-2 text-xs">
         <p role="status" className="text-slate-600">Signing out · {signOutElapsed}s elapsed · Time remaining unknown</p>
         <button type="button" className="mt-1 text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={cancelSignOut}>Cancel sign-out</button>
