@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { Blob as NodeBlob } from "node:buffer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchDriveThreadsArtifact,
@@ -30,8 +31,11 @@ function response(body, { status = 200, headers = {} } = {}) {
 }
 
 describe("Google Drive .threads opener", () => {
+  // Undici Response.blob uses the global constructor; jsdom 25 lacks Blob.text.
+  beforeEach(() => vi.stubGlobal("Blob", NodeBlob));
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     document.querySelectorAll(`script[src="${GOOGLE_IDENTITY_SCRIPT}"]`).forEach((script) => script.remove());
     delete window.google;
   });

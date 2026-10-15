@@ -15,7 +15,7 @@ import { buildDiscussionModel } from '../../components/discussion/discussionMode
 const origin = 'https://threads-adityaarpitha-cloud.avalokai.chatgpt.site';
 const adapter = new URL('./openRouterClient.js', import.meta.url);
 const consumers = { getRecordingMapStatus, generateRecordingMap, readThreadsFile, buildDiscussionModel };
-const status = { enabled: true, available: true, configured: true, schema_ready: true, audience: 'public',
+const status = { backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true, audience: 'public',
   model: 'google/gemini-2.5-flash-lite', provider: 'google-vertex', max_output_tokens: 8192 };
 const graph = { nodes: [
   { id: 'moment-a', node_name: 'First sentence', semantic_level: 1, semantic_type: 'chunk',

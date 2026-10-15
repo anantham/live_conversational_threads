@@ -12,7 +12,7 @@ export default function SitesPrivacy() {
         <header className="mt-7 border-b border-slate-200 pb-7">
           <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Privacy at Threads</h1>
           <p className={paragraph}>This page describes the public Sites preview, including its optional sign-in and cloud features. The separate local and Tailscale app can work differently.</p>
-          <p className="mt-2 text-xs text-slate-600">Updated 2 October 2026</p>
+          <p className="mt-2 text-xs text-slate-600">Updated 15 October 2026</p>
         </header>
 
         <section className={section}>
@@ -30,14 +30,14 @@ export default function SitesPrivacy() {
 
         <section className={section}>
           <h2 className={heading}>Files and conversations</h2>
-          <p className={paragraph}>Opening a browser-local file does not upload or publish it automatically. A private cloud save is a separate action. Private file metadata is stored in the Site’s cloud database and file bytes in its cloud object storage. Private copies stay until their owner deletes them; a failed upload or deletion can require cleanup or a retry. The current preview accepts only fixed synthetic checks for private uploads, so personal uploads and cloud recording are not yet active.</p>
+          <p className={paragraph}>Opening a browser-local file does not upload or publish it automatically. A private cloud save is a separate action. Private file metadata is stored in the Site’s cloud database and file bytes in its cloud object storage. Private copies stay until their owner deletes them; a failed upload or deletion can require cleanup or a retry. Private saving requires sign-in and enabled personal storage. Each file is limited to 2 MiB, with 10 MiB per account and 20 MiB shared across this Site.</p>
           <p className={paragraph}>Publishing a `.threads` file is another separate, deliberate action that asks you to confirm the whole file may be public. A published copy can be browsed and downloaded by anyone. The browser keeps a removal key for that copy; removing it from the live library cannot recall copies others already downloaded.</p>
         </section>
 
         <section className={section}>
           <h2 className={heading}>Services and access</h2>
           <p className={paragraph}>Google receives data involved in Google sign-in when you choose it. The Site host and its infrastructure providers necessarily process browser requests and operate the cloud database and object storage. The operator may have infrastructure access to stored data. Private cloud storage is access-controlled for the signed-in owner; it is not end-to-end encrypted from the operator.</p>
-          <p className={paragraph}>If you choose the bring-your-own-key AI tools, chat content is sent through the Site’s thin proxy to OpenAI; audio-file transcription with your own key goes from your browser to OpenAI. These are separate from Google sign-in and private file saving. The current Sites preview has Soniox live transcription and OpenRouter integration inactive. Any future provider flow needs its own review before activation.</p>
+          <p className={paragraph}>If you choose the bring-your-own-key AI tools, chat content is sent through the Site’s thin proxy to OpenAI; audio-file transcription with your own key goes from your browser to OpenAI. These are separate from Google sign-in and private file saving. If you choose live transcription, audio streams to Soniox after your permission. If you generate a conversation map, finalized words and their utterance IDs go to the provider you select: Google Gemini through Google AI Studio, or OpenRouter and its configured model provider. The Site does not automatically switch providers or retry. For direct Gemini, Google’s API terms and the project’s billing tier determine data use; OpenRouter’s data-collection setting does not apply to direct Google requests. Provider processing policies and the applicable account settings apply; generation does not itself save or publish your transcript or map.</p>
         </section>
 
         <section className={section}>

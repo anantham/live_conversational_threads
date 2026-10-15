@@ -31,7 +31,7 @@ export async function openRouterWait(signal, milliseconds, operation) {
 export async function readOpenRouterJSON(message, signal, maximum, upstream = false) {
   const status = upstream ? 502 : 400;
   const error = () => new OpenRouterError(status, upstream ? 'provider_response' : 'source_body',
-    upstream ? 'OpenRouter returned an unusable completion. The attempt remains counted.' : 'Supply a bounded valid JSON recording source. No attempt was requested.');
+    upstream ? 'The selected provider returned an unusable completion. The attempt remains counted.' : 'Supply a bounded valid JSON recording source. No attempt was requested.');
   const declared = message.headers.get('content-length');
   if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maximum)) {
     void message.body?.cancel().catch(() => {});

@@ -1,3 +1,9 @@
+## 2026-10-15 — inference selection and activation preparation
+
+Implemented direct Gemini (AI Studio) and OpenRouter selection with per-recipient consent, strict status identity, endpoint/key allowlisting and one existing shared admission ledger. Uses GEMINI_API_KEY and prefers the user-supplied OPENROUTER_API_KEY_2 without runtime fallback. Existing caps/data/migrations preserved. User now explicitly requests live activation/E2E, superseding the earlier OFF-only handoff and single-test restoration instruction for this journey. Environment revision32 prepares both inference flags and personal storage ON; Google has no client ID yet. This records activation authority, not independent verification of provider currency caps or promotional-credit eligibility.
+
+934/934 full tests and build pass; final independent Claude Sonnet5.5 review PASS after supported fixes. Review receipt: docs/reviews/2026-10-15-inference-choice.md. Local desktop/mobile browser check used synthetic intercepted services and cannot establish live provider acceptance. Source projection preserves304unrelated files. Publication/live results follow in milestone board. Found16 locked dependency advisories recorded in ISSUES.md; dependency upgrade deferred. Prior implementation25–45min forecast is near its upper bound due review routing/timeouts and fixture diagnosis; final review and builds now complete. Deployment/live outcome and Google human interaction remain separate waits.
+
 # WORKLOG
 
 ## 2026-10-15 16:46 IST — Approved two-record DNS verification delivered from Mac

@@ -26,7 +26,7 @@ it('sends fixed same-origin consented source and returns an actual readable port
 it('refuses invalid source before network and checks actual readiness fields', async () => {
   await expect(generateRecordingMap({ ...source, finalTokens: [] })).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
   fetch.mockResolvedValueOnce(response({ enabled: true })); await expect(getRecordingMapStatus()).rejects.toThrow('unreadable');
-  fetch.mockResolvedValueOnce(response({ enabled: false, available: false, configured: false, schema_ready: false, audience: null, model: null, provider: null }));
+  fetch.mockResolvedValueOnce(response({ backend: 'openrouter', enabled: false, available: false, configured: false, schema_ready: false, audience: null, model: null, provider: null }));
   expect(await getRecordingMapStatus()).toMatchObject({ enabled: false, available: false });
 });
 it.each(['identity', 'text', 'time', 'evidence', 'version', 'edge-schema', 'request-id'])('rejects response %s contradictions without producing a portable file', async mode => {
@@ -62,4 +62,12 @@ it('releases a stalled response reader on abort and cancels an already-aborted l
     await Promise.resolve(); await Promise.resolve(); controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' }); expect(cancelled).toHaveBeenCalledTimes(1);
   }
+});
+
+it('rejects readiness for a different backend before disclosing or generating source', async () => {
+  fetch.mockResolvedValue(response({ backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'google/model', provider: 'Google' }));
+  await expect(getRecordingMapStatus(undefined, 'gemini')).rejects.toThrow('unreadable');
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  await expect(getRecordingMapStatus(undefined, 'unknown')).rejects.toThrow('Select Gemini');
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

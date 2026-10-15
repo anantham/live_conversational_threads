@@ -2,11 +2,11 @@ import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { validateThreadsArtifact } from '../threadsArtifact.js';
 
-const PREFIX = '/api/cloud/openrouter';
+const BACKENDS = new Set(['openrouter', 'gemini']);
 const uncertain = 'No new map is available. The attempt may remain counted; check setup and allowance before retrying.';
 const messages = {
   401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',
-  403: 'Confirm permission to send this transcript to OpenRouter and the selected model provider.',
+  403: 'Confirm permission to send this transcript to the selected inference provider.',
   429: 'The shared generation limit is reached or another attempt is starting. Wait and check setup before retrying; unresolved attempts may need owner review.',
   503: 'Generation is unavailable. Check provider setup and spending limits before retrying.',
 };
@@ -43,10 +43,11 @@ async function readJSON(response, signal, limit) {
   finally { signal?.removeEventListener('abort', stop); stop(); }
 }
 
-async function request(path, signal, body) {
-  const response = await fetch(PREFIX + path, { method: body ? 'POST' : 'GET',
+async function request(path, signal, body, backend) {
+  if (!BACKENDS.has(backend)) throw new Error('Select Gemini or OpenRouter before generation.');
+  const response = await fetch(`/api/cloud/${backend}${path}`,  { method: body ? 'POST' : 'GET',
     credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    ...(body ? { headers: { 'Content-Type': 'application/json', 'X-LCT-OpenRouter-Consent': 'generate-v1' }, body } : {}),
+    ...(body ? { headers: { 'Content-Type': 'application/json', [backend === 'gemini' ? 'X-LCT-Gemini-Consent' : 'X-LCT-OpenRouter-Consent']: 'generate-v1' }, body } : {}),
   });
   const payload = await readJSON(response, signal, body ? 2 * 1024 * 1024 + 1024 : 8192);
   if (!response.ok) {
@@ -57,19 +58,19 @@ async function request(path, signal, body) {
   return payload;
 }
 
-export async function getRecordingMapStatus(signal) {
-  const status = await request('/status', signal);
-  if (['enabled', 'available', 'configured', 'schema_ready'].some(key => typeof status[key] !== 'boolean')
+export async function getRecordingMapStatus(signal, backend = 'openrouter') {
+  const status = await request('/status', signal, undefined, backend);
+  if (status.backend !== backend || ['enabled', 'available', 'configured', 'schema_ready'].some(key => typeof status[key] !== 'boolean')
     || ![null, 'public', 'authenticated'].includes(status.audience)
     || ['model', 'provider'].some(key => status[key] != null && (typeof status[key] !== 'string' || status[key].length > 160))) throw unreadable();
   return status;
 }
 
-export async function generateRecordingMap(source, signal) {
+export async function generateRecordingMap(source, signal, backend = 'openrouter') {
   createRecordingTranscript(source);
   const body = JSON.stringify({ source });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
-  const payload = await request('/generate', signal, body);
+  const payload = await request('/generate', signal, body, backend);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.request_id)) throw unreadable();
   const artifact = payload.artifact;
   let result;

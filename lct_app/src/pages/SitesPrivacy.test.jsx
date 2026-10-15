@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { STORAGE_LIMITS } from "../../sites/storagePolicy.js";
 import SitesPrivacy from "./SitesPrivacy";
 import AppRoutes from "../routes/AppRoutes";
 
@@ -27,8 +28,11 @@ describe("Sites privacy disclosure", () => {
     await act(async () => root.render(<MemoryRouter><SitesPrivacy /></MemoryRouter>));
     expect(container.querySelector("h1")?.textContent).toBe("Privacy at Threads");
     expect(container.textContent).toContain("Opening a browser-local file does not upload or publish it automatically.");
-    expect(container.textContent).toContain("synthetic checks for private uploads");
+    expect(container.textContent).toContain("Private saving requires sign-in");
+    expect(container.textContent).toContain(`${STORAGE_LIMITS.maxFileBytes / 1048576} MiB, with ${STORAGE_LIMITS.maxOwnerBytes / 1048576} MiB per account and ${STORAGE_LIMITS.maxSiteBytes / 1048576} MiB shared`);
     expect(container.textContent).toContain("downloaded by anyone");
+    expect(container.textContent).toContain("Google Gemini through Google AI Studio");
+    expect(container.textContent).toContain("does not automatically switch providers or retry");
     expect(container.textContent).toContain("does not store the Google identity token");
     expect(container.querySelector('a[href="mailto:aditya@repub.live"]')).not.toBeNull();
   });

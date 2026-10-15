@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { transferableAbortController } from "node:util";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -362,11 +363,15 @@ describe("SitesAccessPanel", () => {
   });
 
   it("shows signed-in only for a valid authenticated response and never renders identity", async () => {
-    fetch.mockImplementation((path, options) => sitesWorker.fetch(new Request(new URL(path, "https://site.example"), {
-      method: "GET",
-      headers: { "oai-authenticated-user-id": "private-id" },
-      signal: options.signal,
-    })));
+    fetch.mockImplementation((path, options) => {
+      // Bridge jsdom's signal to Node/Undici's branded signal for this Worker fixture.
+      const controller = transferableAbortController();
+      if (options.signal.aborted) controller.abort();
+      else options.signal.addEventListener("abort", () => controller.abort(), { once: true });
+      return sitesWorker.fetch(new Request(new URL(path, "https://site.example"), {
+        method: "GET", headers: { "oai-authenticated-user-id": "private-id" }, signal: controller.signal,
+      }));
+    });
     await mount();
     expect(container.textContent).toContain("Signed in");
     expect(container.textContent).not.toContain("private-id");
