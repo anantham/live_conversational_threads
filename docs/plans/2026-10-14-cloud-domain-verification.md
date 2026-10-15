@@ -92,3 +92,28 @@ Next evidence: reviewed TXT procedure plus an authenticated narrow route and its
 specific human ruling, then authoritative TXT/readback and provider verification.
 TXT execution effort and account/provider waiting remain unknown; full-goal ETA
 remains unestimated. Original-domain service is not counted as cloud-delivered.
+
+## 2026-10-15 Mac execution: two TXT records delivered
+
+The earlier unavailable CLI route is superseded on the Mac: existing Vercel CLI
+54.14.2 is authenticated and supports individual `dns add` operations with an
+explicit team. Human approval in this chat covered exactly the two TXT records
+above; it did not approve the traffic CNAME. Root executed from the isolated Mac
+checkout `/Users/aditya/Documents/Ongoing Local/live_conversational_threads` on
+`codex/lct-sites-serverless` after refreshing the same Site/domain handle and the
+complete eight-record zone baseline.
+
+- `_openai-site-verification.threads`: `rec_f7efe964f4161d229818f173`, TXT, TTL60.
+- `_cf-custom-hostname.threads`: `rec_1347f53b24bcb389c48c02bf`, TXT, TTL60.
+
+Both exact provider values were read back after single submissions. All eight
+preexisting records retain ID, name, type, value, TTL and comment; final count is
+ten. Both authoritative nameservers return both exact values (4/4 matches).
+Verification values are excluded from these docs. Native refresh reports provider
+active, overall pending, SSL pending_validation. The certificate is not yet
+verified and traffic has not switched. Existing source/review evidence is reused;
+no source change, paid call, identity activation or new Site was involved.
+
+Next checkpoint: certificate state and existing Google client/session readiness.
+The original-domain CNAME and real-account/provider acceptance remain separate
+release gates. Account/provider wait and full migration ETA remain unknown.
