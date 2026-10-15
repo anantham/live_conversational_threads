@@ -11,6 +11,23 @@ const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_
 const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backlink', 'primary_mismatch',
   'membership_missing', 'membership_level', 'membership_backlink', 'secondary_duplicate',
   'child_missing', 'child_level', 'child_backlink', 'cycle']);
+const PROVIDER_STATUSES = new Set(['INVALID_ARGUMENT', 'UNAUTHENTICATED', 'PERMISSION_DENIED',
+  'NOT_FOUND', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION', 'UNAVAILABLE', 'INTERNAL']);
+
+async function logProviderRefusal(env, response, signal, backend) {
+  if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
+  let providerStatus = 'unknown';
+  try {
+    const body = await openRouterWait(signal, 2000, diagnosticSignal =>
+      readOpenRouterJSON(response, diagnosticSignal, 16 * 1024, true));
+    const envelope = Array.isArray(body) && body.length === 1 ? body[0] : body;
+    if (PROVIDER_STATUSES.has(envelope?.error?.status)) providerStatus = envelope.error.status;
+  } catch { /* Missing, oversized and non-JSON error bodies remain content-free. */ }
+  try {
+    console.error(backend === 'gemini' ? '[gemini] provider refused' : '[openrouter] provider refused',
+      { code: 'provider_refused', upstreamStatus: response.status, providerStatus });
+  } catch { /* Diagnostics must not change admission or the public refusal. */ }
+}
 
 export function logOpenRouterFailure(env, code, validationStage, validationRule, backend = 'openrouter') {
   if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
@@ -65,6 +82,7 @@ async function generate(request, env, policy) {
       body: JSON.stringify(wire), signal, redirect: 'manual' });
     if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
     if (response.status !== 200) {
+      await logProviderRefusal(env, response, signal, policy.backend);
       void response.body?.cancel().catch(() => {});
       throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation. The attempt remains counted. Check provider availability and allowance before retrying.`);
     }

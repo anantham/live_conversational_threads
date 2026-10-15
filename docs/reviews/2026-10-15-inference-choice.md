@@ -24,3 +24,5 @@ Packet inventory:
 - lct_app/src/components/SitesAccessPanel.jsx
 - lct_app/src/components/SitesAccessPanel.test.jsx
 - lct_app/src/services/googleDriveThreads.test.js
+
+Follow-up diagnostics/recovery preparation: Claude Sonnet5.5 direct subscription PASS/no supported defects on39471-byte source/synthetic packet SHA a6cca741aedf0f327c727dfc459241eb140c56ded8fcb384e5d44b9720350751. Content-free status, bounded read, Gemini array envelope and cancellation were reviewed. SQL recovery remains unapplied outside journal and requires provider-OFF exact-row preflight plus owner decision. Full956/956tests110files14.55s/start17:54:55IST passed;61focused checks passed. Optional review suggestions do not change behavior or block this slice. Actual runtime results and limitations are in the milestone checkpoint.

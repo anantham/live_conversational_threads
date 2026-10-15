@@ -34,7 +34,7 @@ beforeEach(async () => {
   // Migrations, lease root and intercepted provider exist before importing Worker.
   worker = (await import('../../../sites/worker.js')).default;
 });
-afterEach(() => { sqlite?.close(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { sqlite?.close(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 function rejectedGraph(mutate) {
   const value = graph(); mutate(value);
@@ -61,6 +61,69 @@ function hierarchyCompletion(mutate) {
 }
 
 describe('redacted OpenRouter validation diagnostics through the public Worker', () => {
+  it('handles a Gemini array envelope without logging provider text', async () => {
+    Object.assign(env, { GEMINI_API_KEY: KEY, LCT_GEMINI_MODEL: 'gemini-test',
+      LCT_GEMINI_ENABLED: 'true', LCT_GEMINI_PROJECT_BUDGET_CONFIRMED: 'true' });
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify([{ error: { status: 'NOT_FOUND', message: KEY } }]), { status: 404 }));
+    const response = await worker.fetch(new Request(SITE + '/api/cloud/gemini/generate', { method: 'POST',
+      headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-gemini-consent': 'generate-v1' }, body: JSON.stringify({ source }) }), env);
+    expect(response.status).toBe(502);
+    expect(logged.mock.calls).toEqual([['[gemini] provider refused', { code: 'provider_refused', upstreamStatus: 404, providerStatus: 'NOT_FOUND' }]]);
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(KEY);
+  });
+
+  it('bounds a stalled diagnostic body to two seconds without retrying or releasing the attempt', async () => {
+    vi.useFakeTimers();
+    fetch.mockResolvedValueOnce(new Response(new ReadableStream({ start() {} }), { status: 400 }));
+    const pending = worker.fetch(request(), env);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(2001);
+    const response = await pending;
+    expect(response.status).toBe(502); expect((await response.json()).code).toBe('provider_refused');
+    expect(sqlite.prepare('SELECT completed_at FROM lct_openrouter_attempts').get().completed_at).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains delivered cancellation during diagnostic reading', async () => {
+    const controller = new AbortController();
+    fetch.mockResolvedValueOnce(new Response(new ReadableStream({ start() {} }), { status: 400 }));
+    const pending = worker.fetch(new Request(request(), { signal: controller.signal }), env);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    controller.abort(); const response = await pending;
+    expect(response.status).toBe(408);
+    expect(sqlite.prepare('SELECT completed_at FROM lct_openrouter_attempts').get().completed_at).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['INVALID_ARGUMENT', 'RESOURCE_EXHAUSTED', 'private-' + KEY])('logs only a refusal status for %s', async providerStatus => {
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: {
+      status: providerStatus, message: KEY + source.finalTokens[0].text, details: { key: KEY },
+    } }), { status: 400 }));
+    const response = await worker.fetch(request(), env), body = await response.json();
+    expect(response.status).toBe(502); expect(body.code).toBe('provider_refused');
+    expect(logged.mock.calls).toEqual([['[openrouter] provider refused', {
+      code: 'provider_refused', upstreamStatus: 400,
+      providerStatus: providerStatus.startsWith('private-') ? 'unknown' : providerStatus,
+    }]]);
+    expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toMatch(/synthetic-|private-/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(sqlite.prepare('SELECT completed_at, recovery_released_at FROM lct_openrouter_attempts').get())
+      .toEqual({ completed_at: null, recovery_released_at: null });
+  });
+
+  it.each(['not-json', 'oversized', 'throwing-sink', 'off'])('preserves refusal with %s diagnostics', async mode => {
+    if (mode === 'off') delete env.LCT_OPENROUTER_DEBUG;
+    if (mode === 'throwing-sink') logged.mockImplementation(() => { throw Error(KEY); });
+    fetch.mockResolvedValueOnce(new Response(mode === 'oversized' ? KEY.repeat(2000) : KEY, { status: 429 }));
+    const response = await worker.fetch(request(), env), body = await response.json();
+    expect(response.status).toBe(502); expect(body.code).toBe('provider_refused');
+    expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toContain(KEY);
+    if (mode === 'off') expect(logged).not.toHaveBeenCalled();
+    else expect(logged.mock.calls[0][1]).toEqual({ code: 'provider_refused', upstreamStatus: 429, providerStatus: 'unknown' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(sqlite.prepare('SELECT completed_at FROM lct_openrouter_attempts').get().completed_at).toBeNull();
+  });
+
   it.each([
     ['response_envelope', () => ({ choices: [], error: { message: KEY } })],
     ['choice_tools_empty', () => { const value = completion(); value.choices[0].message.tool_calls = []; return value; }],
