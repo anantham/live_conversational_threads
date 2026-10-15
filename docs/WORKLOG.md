@@ -1,3 +1,9 @@
+## 2026-10-15 18:04 IST — diagnostics served; activation dependencies explicit
+
+- Reviewed0252ae0 pushed; nativef8d6c8b4 changed one Worker source,310others/all11migrations retained. Saved36 deployed successfully as appgdep_6ad0c81692448191a1ec1449d4ec97c0 at12:33:54UTC/env33. Existing public audience retained. Archive contains35payload files; macOS metadata excluded with COPYFILE_DISABLE=1.
+- Environment and all6inference records match pre-publication exactly. Gemini/OpenRouter configured/enabled but unavailable from two held failures; recovery proposal unapplied. Google configured/enabled; actual account step pending. Anonymous session/private file reads refuse401. Public synthetic copies removed with payloads cleared.
+- Next work depends on the requested two-holder ruling and actual Google sign-in, then bounded diagnostics/repair and private ownership acceptance. No further model call, migration application, domain cutover or limit change was made.
+
 ## 2026-10-15 — selectable inference deployed; real acceptance exposes provider failures
 
 - Source0bab135 pushed to migration branch; nativef28b035 saved35 and deployedenv32. Google env33 deployed after public client ID arrived; server-only session secret stored directly without output/files. Actual Google sign-in is pending, not proven by enabled/configured.
