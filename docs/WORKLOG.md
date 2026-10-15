@@ -1,3 +1,7 @@
+## 2026-10-15 19:08 IST — reviewed repair served, exact rows preserved
+
+Source e72acf1/native668769faece8238873a5ae007b69d044d200335e saved38/deployment appgdep_6ad0d7046ddc81919d4c52920aeb87df succeeded13:37:37UTC/env36. Both inference backendsOFF, Google/private storageON. Exact8row postflight unchanged; second recovery remains unapplied. Specific two-holder approval requested after all safe repair/review/publication preparation. Owner OAuth origin and Gemini billing still unresolved. Newly accessible Chrome profile cannot find the target project by name or number; no OAuth/billing changes made. Final authoritative-branch preservation follows. No optional work or model retry.
+
 ## 2026-10-15 18:53 IST — provider causes and reviewed hierarchy repair
 
 Version37 delivered inline Google controls and the approved two-only recovery; exact fields/history preserved. Fresh one-per-backend tests isolate Gemini402/RESOURCE_EXHAUSTED and OpenRouter hierarchy/primary_mismatch. New parent-links-v1 schema/adapter eliminates redundant authored relationship fields, retaining strict artifact validation, source ownership and legacy format. Added synthetic portable reader/Discussion, invalid/mixed-form and Worker checks. New exact8-row/two-holder proposal remains unapplied outside journal, pending new specific approval. Account origin/billing remain separate dependencies.

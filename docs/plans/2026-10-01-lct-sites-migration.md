@@ -1,5 +1,12 @@
 # LCT Sites migration — staged delivery
 
+## Served checkpoint — 2026-10-15 19:08 IST
+
+Parent-link source e72acf1 is committed/pushed on the task branch. Native668769faece8238873a5ae007b69d044d200335e saved38 and deployment appgdep_6ad0d7046ddc81919d4c52920aeb87df succeeded13:37:37UTC/env36 at the existing public URL. Native normalized archive37files/1,863,680bytes/SHA39f626ac2bf0b778b9556d91619218a8263962dc984f12a8d061ad76b8b9e008. Both inference flagsOFF; Google/private storage remainON. Exact postflight preserves all8attempt rows, including six released and two new held. New recovery SQL remains outside the deployed journal. Real generated-map acceptance is still incomplete.
+
+New two-holder decision requested only after repair,989checks, independent review, publication and preservation. OAuth origin save/account sign-in and AI Studio billing remain owner dependencies. Newly available Chrome connection reaches a different signed-in account whose project picker finds neither importTranscripts nor exact638358508210; extra tab closed, no account/config edit. The user's existing signed-in Console tab remains the intended route. No private-account acceptance is claimed. Publication estimate5–10minutes was exceeded by packaging approval evidence and elapsed account/tool coordination; no additional provider call or recovery was made. Next checkpoint is approved two-only release plus one OpenRouter result, and owner Google-origin confirmation. No reliable account/billing/full-goal ETA.
+
+
 ## Checkpoint — diagnostic causes isolated; parent-link repair reviewed — 2026-10-15 18:53 IST
 
 Root owns integration in the same Mac inference-choice worktree; authoritative migration branch is c033a06, committed/pushed. Version37/native da52810be0d3af03cf1ad824138b6c01e8c7a01f served the visible Google panel and approved0011 recovery at13:01:04UTC/env34, deployment appgdep_6ad0ce6e095c8191b70e78c28c1f2cbc. Exact postflight changed only the two approved release timestamps to1792069245000; all6rows and other fields preserved. Activation deployment appgdep_6ad0ced6632881918011095d312102ab succeeded13:02:42UTC/env35. Actual hosted desktop/mobile private-page visibility, single-panel placement and anchor checks pass.
