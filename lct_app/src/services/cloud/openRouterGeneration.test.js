@@ -109,7 +109,7 @@ describe('pure OpenRouter recording generation contract', () => {
       response_format: { type: 'json_schema', json_schema: { strict: true } },
     });
     const shape = request.response_format.json_schema.schema;
-    expect(shape.required).toEqual(['nodes', 'edges', 'metadata', 'conversation_threads']);
+    expect(shape.required).toEqual(['nodes', 'edges', 'metadata', 'conversation_threads', 'hierarchy_format']);
     expect(shape.additionalProperties).toBe(false);
     expect(shape.properties.nodes.items.properties.source_ref.properties.utterance_ids.type).toBe('array');
     expect(JSON.parse(request.messages[1].content)).toEqual({
@@ -138,18 +138,17 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(prompt).toContain('conversation_threads array when no path is defensible');
   });
 
-  it('requests reciprocal authored-node hierarchy and evidence-supported primary and secondary memberships', () => {
-    const prompt = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 })
-      .messages[0].content;
-    expect(prompt).toContain('exact authored node IDs');
-    expect(prompt).toContain('primary membership');
-    expect(prompt).toContain('matches parent_id');
-    expect(prompt).toContain('secondary membership');
-    expect(prompt).toContain('distinct higher-tier parent');
-    expect(prompt).toContain('different from parent_id');
-    expect(prompt).toContain('children_ids');
-    expect(prompt).toContain('memberships empty');
-    expect(prompt).toContain('evidence supports an overlapping parent');
+  it('requests one source of truth for primary and overlapping parent relationships', () => {
+    const request = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
+    const shape = request.response_format.json_schema.schema;
+    expect(shape.properties.hierarchy_format.enum).toEqual(['parent-links-v1']);
+    const node = shape.properties.nodes.items;
+    expect(node.required).toContain('parent_id');
+    expect(node.required).toContain('secondary_parent_ids');
+    expect(node.properties.children_ids).toBeUndefined();
+    expect(node.properties.memberships).toBeUndefined();
+    expect(request.messages[0].content).toContain('strictly greater semantic_level');
+    expect(request.messages[0].content).toContain('without changing your choices');
   });
 
   it('keeps partial transcription explicit and rejects missing model, cap and oversized input', () => {
@@ -181,7 +180,7 @@ describe('pure OpenRouter recording generation contract', () => {
       model: 'provider/selected-model', maxTokens: 2048 });
     expect(second.response_format.json_schema.schema.properties.nodes.items.properties.id.type).toBe('string');
     expect(second.response_format.json_schema.schema.required).toEqual([
-      'nodes', 'edges', 'metadata', 'conversation_threads',
+      'nodes', 'edges', 'metadata', 'conversation_threads', 'hierarchy_format',
     ]);
   });
 

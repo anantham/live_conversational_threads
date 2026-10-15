@@ -1,5 +1,6 @@
 import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
+import { expandGenerationHierarchy } from './generationHierarchy.js';
 
 const MAX_REQUEST_BYTES = 512 * 1024;
 const MAX_CONTENT_BYTES = 2 * 1024 * 1024;
@@ -18,15 +19,10 @@ function object(value) {
 const string = { type: 'string' };
 const nullableString = { type: ['string', 'null'] };
 const stringArray = { type: 'array', items: string };
-const membership = {
-  type: 'object', additionalProperties: false,
-  required: ['parent_id', 'role'],
-  properties: { parent_id: string, role: { type: 'string', enum: ['primary', 'secondary'] } },
-};
 const node = {
   type: 'object', additionalProperties: false,
   required: ['id', 'semantic_level', 'semantic_type', 'node_name', 'summary',
-    'source_excerpt', 'source_ref', 'parent_id', 'children_ids', 'thread_id', 'memberships'],
+    'source_excerpt', 'source_ref', 'parent_id', 'secondary_parent_ids', 'thread_id'],
   properties: {
     id: string,
     semantic_level: { type: 'integer', minimum: 1, maximum: 5 },
@@ -36,8 +32,7 @@ const node = {
       type: 'object', additionalProperties: false, required: ['utterance_ids'],
       properties: { utterance_ids: stringArray },
     },
-    parent_id: nullableString, children_ids: stringArray, thread_id: nullableString,
-    memberships: { type: 'array', items: membership },
+    parent_id: nullableString, secondary_parent_ids: stringArray, thread_id: nullableString,
   },
 };
 const edge = {
@@ -61,8 +56,9 @@ const thread = {
 };
 const GRAPH_SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['nodes', 'edges', 'metadata', 'conversation_threads'],
+  required: ['nodes', 'edges', 'metadata', 'conversation_threads', 'hierarchy_format'],
   properties: {
+    hierarchy_format: { type: 'string', enum: ['parent-links-v1'] },
     nodes: { type: 'array', items: node },
     edges: { type: 'array', items: edge },
     metadata: {
@@ -102,11 +98,11 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens } = 
         'Use all semantic tiers that the conversation supports: chunk (1), idea (2), topic (3), theme (4), arc (5).',
         'Return authored nodes, explicit edges, metadata, and optional conversation thread paths as JSON only.',
         'Every chunk must link to original utterance IDs; link higher tiers where evidence supports them.',
-        'Keep parent_id and children_ids reciprocal, with valid descending semantic levels.',
-        'Use exact authored node IDs for each non-null parent_id, membership parent_id, and children_ids entry; every child must be lower-tier and point back to its parent.',
-        'For overlapping parents, a primary membership matches parent_id; each secondary membership names a distinct higher-tier parent different from parent_id.',
-        'Every membership parent must list that child in children_ids, and every listed child must point back by parent_id or secondary membership.',
-        'Keep memberships empty when no evidence supports an overlapping parent; preserve supported secondary branches.',
+        'Set hierarchy_format to parent-links-v1. Author each parent relationship only on the child node.',
+        'Set parent_id to the exact authored node ID of its primary higher-tier parent, or null for a root.',
+        'Use secondary_parent_ids for distinct evidence-supported overlapping higher-tier parents, different from parent_id; otherwise use an empty array.',
+        'Every referenced parent must exist among your nodes and have a strictly greater semantic_level than its child; never use self-links or cycles.',
+        'Do not output children_ids or memberships: the application derives those reciprocal fields from your parent links without changing your choices.',
         'Use an empty edges array when no relation is defensible.',
         'Create meaningful ordered conversation threads when the utterances support a path; give each path a unique thread id and descriptive title.',
         'Each path needs at least one step. Use distinct moment_id values copied exactly from an authored node id in that path.',
@@ -157,5 +153,5 @@ export function recordingThreadsFromOpenRouterResponse({ source, response } = {}
     || !object(graph.metadata) || !Array.isArray(graph.conversation_threads)) {
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
-  return createRecordingThreads({ ...source, graph });
+  return createRecordingThreads({ ...source, graph: expandGenerationHierarchy(graph) });
 }

@@ -1,3 +1,7 @@
+## 2026-10-15 — Live Google origin and direct Gemini billing blockers
+
+Actual Google sign-in fails400/origin_mismatch for the cloud Site origin. Owner must save that exact origin under the existing supplied Web client's Authorized JavaScript origins. Google is configured and its button visible; successful account/private storage acceptance is still absent. Direct Gemini returns upstream402/RESOURCE_EXHAUSTED. Inspect the key project in AI Studio Billing; no credit purchase or billing change has been made. Current Google billing docs distinguish eligible Cloud credits from required positive Prepay balance (https://ai.google.dev/gemini-api/docs/billing#prepay). These account dependencies block full E2E but not the authorized OpenRouter parent-link repair. No generated-map success is claimed.
+
 # ISSUES
 
 ## 2026-10-14 10:08 IST — Sites Windows package-manager launch fails before build

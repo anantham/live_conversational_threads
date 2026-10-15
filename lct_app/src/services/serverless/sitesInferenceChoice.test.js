@@ -11,10 +11,10 @@ const SITE = 'https://fixture-inference.example.chatgpt.site', PREFIX = '/api/cl
 const KEY = 'synthetic-owner-key';
 const source = { recordingId: 'synthetic-source', startedAt: Date.UTC(2026, 9, 3), complete: true,
   finalTokens: [{ text: 'An exact synthetic turn.', speaker: 'S1', startMs: 1000, endMs: 2000 }] };
-const graph = () => ({ metadata: { conversation_title: 'Synthetic map', executive_summary: 'One turn.' },
+const graph = () => ({ hierarchy_format: 'parent-links-v1', metadata: { conversation_title: 'Synthetic map', executive_summary: 'One turn.' },
   nodes: [{ id: 'moment', semantic_level: 1, semantic_type: 'chunk', node_name: 'A moment', summary: 'A synthetic turn.',
     source_ref: { utterance_ids: ['utterance-0001'] }, source_excerpt: '', parent_id: null,
-    children_ids: [], thread_id: null, memberships: [] }], edges: [], conversation_threads: [] });
+    secondary_parent_ids: [], thread_id: null }], edges: [], conversation_threads: [] });
 const completion = (data = graph()) => ({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(data) } }] });
 const req = (path = '/generate', { method = 'POST', headers = {}, signal, body = { source } } = {}) =>
   new Request(SITE + PREFIX + path, { method, headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-openrouter-consent': 'generate-v1', ...headers },
