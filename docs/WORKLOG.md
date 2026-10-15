@@ -1,3 +1,9 @@
+## Served — one microphone — 2026-10-15 23:36 IST
+
+Delivered the approved single-microphone slice. Application3808533 is committed/pushed to task and migration branches. Existing Site saved41/native02ddbf9b00a81e617aa2fef0d320b387b0e1cc29 served by appgdep_6ad115967a0081918bd7d2447170241f, succeeded2026-10-15T18:04:47.298677UTC/env37. Archive39files/1,884,160bytes/SHAaea2ae3119af3c3cbad12f70607e1019e9a99f295b436c475eb98c0473d75f75. Actual cloud browser loads exact built index-BrmeWh-A.js, one footer microphone, checked Live transcription after readiness, and no horizontal overflow at429CSSpx. Screenshot /private/tmp/lct-single-mic-live.jpg. Local preview/server closed; live recording page retained. Provider/auth settings, storage, migrations and audience unchanged. No live recording or inference call was made for this UI validation.
+
+Root remains integration owner in the same worktree; finite UI acceptance complete. Implementation/review/publication finished within the recorded estimate. The broader private-file E2E dependency remains as recorded, with optional work deferred. Final documentation receipt is not another source deployment.
+
 ## Single microphone validated — 2026-10-15 23:32 IST
 
 One Start/Stop control now uses the Live transcription switch; audio-only is the off state. Default follows available transcription until an explicit selection or Start freezes mode. Requesting consent preserves the selected mode even if setup resolves late. Selected transcription becoming unavailable disables Start and leaves the switch available to choose audio-only. No engine, provider, retention, identity, database, canvas or route change.
