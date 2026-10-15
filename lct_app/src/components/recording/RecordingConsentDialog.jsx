@@ -39,7 +39,7 @@ export default function RecordingConsentDialog({ transcribe, maxSeconds, onCance
       <h2 id="recording-consent-title" className="text-xl font-semibold tracking-tight">{transcribe ? 'Record and transcribe' : 'Record audio locally'}</h2>
       <div id="recording-consent-details" className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
         {showIntro && <p>Your recording stays in this tab until you download it or choose a private save.</p>}
-        {transcribe && <p>Audio streams to Soniox for live transcription. The connection stops within {maxSeconds} seconds, including finalization. Shared session limits also apply.</p>}
+        {transcribe && <p>Audio streams to Soniox for live transcription. The connection stops within {maxSeconds} seconds, including finalization. Pause closes the connection. Resume starts a new connection within the same conversation duration limit; shared session limits also apply.</p>}
         <p>{transcribe ? 'Local audio is limited to 2 MiB.' : 'Local recording stops within 5 minutes or 2 MiB.'} Keep this tab open until you download or save your audio.</p>
         <a href="/privacy" target="_blank" rel="noreferrer" className="inline-block underline underline-offset-4">Privacy and data use</a>
       </div>

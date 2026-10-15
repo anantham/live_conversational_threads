@@ -1,19 +1,27 @@
 import PropTypes from 'prop-types';
-import { Mic, Square } from 'lucide-react';
+import { Mic, Square, Pause, Play } from 'lucide-react';
 
 const circle = 'flex h-14 w-14 items-center justify-center rounded-full transition-colors sm:h-11 sm:w-11 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
 const caption = 'mt-1 text-[10px] font-semibold uppercase tracking-wide select-none';
 
 export default function CloudRecordingToolbar({
-  active, supported, live, busy, transcribe, stage, stopRef, onTranscribeChange, onStart, onStop, onCancel,
+  active, supported, live, busy, transcribe, stage, stopRef, resumeRef, onTranscribeChange, onStart, onStop, onCancel, onPause, onResume,
 }) {
   const modeDescription = transcribe
     ? live ? 'Audio + live transcript' : 'Unavailable · turn off for audio only'
     : live ? 'Audio only' : 'Audio only · transcription unavailable';
   return (
     <section aria-label="Recording controls" data-stage={stage || undefined} className="flex min-w-0 items-center justify-end gap-3 sm:gap-4">
-      {active ? (
+      {active || stage === 'paused' ? (
         <>
+          {(stage === 'recording' || stage === 'paused' || stage === 'finalizing') && <div className="flex shrink-0 flex-col items-center">
+            <button ref={resumeRef} type="button" onClick={stage === 'paused' ? onResume : onPause} disabled={stage === 'finalizing' || (stage === 'paused' && busy)}
+              className={`${circle} bg-slate-800 text-white hover:bg-slate-700`}
+              aria-label={stage === 'paused' ? 'Resume recording' : 'Pause recording'}>
+              {stage === 'paused' ? <Play size={18} aria-hidden="true" /> : <Pause size={18} aria-hidden="true" />}
+            </button>
+            <span aria-hidden="true" className={`${caption} text-slate-700`}>{stage === 'paused' ? 'Resume' : 'Pause'}</span>
+          </div>}
           <div className="flex shrink-0 flex-col items-center">
             <button ref={stopRef} type="button" onClick={onStop}
               className={`${circle} bg-slate-200 text-slate-800 hover:bg-slate-300`}
@@ -64,8 +72,11 @@ CloudRecordingToolbar.propTypes = {
   transcribe: PropTypes.bool.isRequired,
   stage: PropTypes.string,
   stopRef: PropTypes.shape({ current: PropTypes.any }),
+  resumeRef: PropTypes.shape({ current: PropTypes.any }),
   onTranscribeChange: PropTypes.func.isRequired,
   onStart: PropTypes.func.isRequired,
   onStop: PropTypes.func.isRequired,
+  onPause: PropTypes.func,
+  onResume: PropTypes.func,
   onCancel: PropTypes.func.isRequired,
 };

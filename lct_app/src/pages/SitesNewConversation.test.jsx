@@ -1,9 +1,10 @@
-// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md, sites-recording-map.md, sites-compact-recording.md and sites-recording-layout.md; synthetic audio/tokens only.
+// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md, sites-recording-map.md, sites-compact-recording.md and sites-recording-layout.md, sites-live-workspace.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => ({ sessions: [] }));
+vi.mock('../components/MinimalGraph.jsx', () => ({ default: ({ graphData }) => <div aria-label="Rendered graph">{graphData.map(n => <span key={n.id}>{n.node_name}</span>)}</div> }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
   constructor(callbacks) { this.callbacks = callbacks; fixture.sessions.push(this); this.cancelled = false; }
   async start(options) { this.options = options; this.callbacks.onStage({ stage: 'recording', message: options.transcribe ? 'Recording and transcribing.' : 'Recording locally.', startedAt: Date.now() }); }
@@ -150,13 +151,13 @@ describe('Sites recording page', () => {
     expect(canvas.tabIndex).toBe(0);
     expect(canvas.contains(controls)).toBe(false);
     expect(container.querySelector('footer').contains(controls)).toBe(true);
-    expect(canvas.textContent).toContain('Tap the mic below');
+    expect(canvas.textContent).toContain('Start recording below');
     expect(controls.textContent).toContain('Start');
     expect(button('Start session').querySelector('svg')).toBeTruthy();
     expect(container.querySelector('h1').textContent).toBe('New conversation');
     await record();
     expect(container.querySelector('footer').contains(button('Stop recording'))).toBe(true);
-    expect(canvas.textContent).toContain('Your conversation is recording');
+    expect(canvas.textContent).toContain('Your threads will take shape here');
     await click('Stop recording');
     expect(canvas.contains(container.querySelector('audio'))).toBe(true);
     expect(canvas.contains(container.querySelector('a[download$=".webm"]'))).toBe(true);
@@ -281,10 +282,12 @@ describe('Sites recording page', () => {
   it('shows live/final transcript output without publishing it automatically', async () => {
     transcribe = true; await mount(); await record('Record and transcribe');
     expect(fixture.sessions[0].options.transcribe).toBe(true);
-    await act(async () => fixture.sessions[0].callbacks.onTranscript({ finalText: 'Final words.', partialText: ' tentative', finalTokens: [], partialTokens: [] }));
+    await act(async () => fixture.sessions[0].callbacks.onTranscript({ finalText: 'Final words.', partialText: ' tentative', finalTokens: [{ text: 'Final words.', speaker: null, startMs: 0, endMs: 1000 }], partialTokens: [] }));
     expect(container.textContent).toContain('Final words. tentative');
-    expect(container.querySelector('#final-transcript').value).toBe('Final words.');
-    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status']);
+    expect(container.querySelector('#final-transcript')).toBeNull();
+    expect(container.querySelectorAll('[aria-label="Live transcript"]')).toHaveLength(1);
+    expect(button('Copy transcript')).toBeTruthy();
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
   });
 
   it('saves audio through the existing authenticated private-file API only after a deliberate choice', async () => {
@@ -346,11 +349,14 @@ describe('Sites recording page', () => {
     expect(Object.keys(receipts[0]).sort()).toEqual(['durationMs', 'mode', 'outcome', 'retryCount', 'stage']);
   });
 
-  it('offers one matching audio and finalized transcript pair only after stopping, without publishing', async () => {
+  it('offers a live transcript snapshot, then matching audio and completed transcript after stopping, without publishing', async () => {
     transcribe = true; await mount(); await record('Record and transcribe');
     await deliverTranscript();
-    expect(container.querySelector('[aria-label="Transcript file"]')).toBeNull();
-    expect(createURL).not.toHaveBeenCalled();
+    expect(container.querySelector('[aria-label="Transcript file"]')).toBeTruthy();
+    expect(transcriptJSON().transcription_complete).toBe(false);
+    expect(button('Save transcript privately').disabled).toBe(true);
+    expect(createURL).toHaveBeenCalledWith(expect.any(File));
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     await click('Stop recording');
     const audioName = container.querySelector('a[download$=".webm"]').getAttribute('download');
     const transcriptName = container.querySelector('a[download$=".transcript.json"]').getAttribute('download');
@@ -454,7 +460,8 @@ describe('Sites recording page', () => {
   async function readyMap(partial = false, browser = false) {
     transcribe = true; generation = true;
     await mount(browser); await record('Record and transcribe'); await deliverTranscript();
-    expect(container.querySelector('[aria-label="Conversation map"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Conversation map"]')).toBeTruthy();
+    expect(generationCalls()).toHaveLength(0);
     if (partial) await failWithoutAudio(); else await click('Stop recording');
   }
   async function permitMap() { await act(async () => container.querySelector('[aria-label="Conversation map"] input').click()); }
@@ -531,7 +538,7 @@ describe('Sites recording page', () => {
 
   it('keeps audio/transcript usable when map status fails and refuses an inactive map without a POST', async () => {
     transcribe = true; await mount(); await record('Record and transcribe'); await deliverTranscript();
-    fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture unavailable' }, 503)); await click('Stop recording');
+    fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture unavailable' }, 503)); await click('Retry generation setup'); await click('Stop recording');
     expect(container.textContent).toContain('Generation setup is unavailable');
     expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
     expect(button('Start session').disabled).toBe(false);
@@ -580,4 +587,80 @@ describe('Sites recording page', () => {
     expect(container.querySelector('#recording-map-json').value).toBe(original);
     expect(generationCalls()).toHaveLength(2); expect(button('Explore map')).toBeTruthy();
   });
+  it('maps finalized words while recording, retains consent on new words, and keeps Pause/Stop available during generation', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permitMap();
+    let respond; fetch.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+    await click('Generate conversation map');
+    const source = JSON.parse(generationCalls()[0][1].body).source;
+    expect(source.complete).toBe(false);
+    expect(button('Pause recording').disabled).toBe(false); expect(button('Stop recording').disabled).toBe(false);
+    const updated = { ...transcript, finalTokens: [...transcript.finalTokens, { text: ' Another point.', speaker: 'S2', startMs: 4000, endMs: 5000 }] };
+    await deliverTranscript(updated);
+    expect(container.querySelector('[aria-label="Conversation map"] input').checked).toBe(true);
+    await act(async () => respond(jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(source).bundle })));
+    expect(container.querySelector('[aria-label="Rendered graph"]').textContent).toContain('Synthetic recorded moment');
+    expect(container.textContent).toContain('New words are waiting');
+    await click('Pause recording'); expect(button('Resume recording')).toBeTruthy();
+    expect(document.activeElement).toBe(button('Resume recording'));
+    const id = transcriptJSON().recording_id;
+    await click('Resume recording'); await deliverTranscript({ ...transcript, finalTokens: [{ text: 'Resumed words.', speaker: 'S1', startMs: 10, endMs: 1000 }], partialText: '' });
+    expect(transcriptJSON().recording_id).toBe(id);
+    expect(transcriptJSON().full_transcript).toBe('Hello there. Again. Another point.\nResumed words.');
+    expect(container.querySelector('[aria-label="Rendered graph"]')).toBeTruthy();
+    await click('Stop recording');
+    expect(container.querySelectorAll('audio')).toHaveLength(2);
+    expect(transcriptJSON().transcription_complete).toBe(true);
+    await click('Generate another map');
+    expect(JSON.parse(container.querySelector('#recording-map-json').value).utterances.at(-1).speaker_id).toBe('segment-2:S1');
+  });
+
+  it('uses one expandable transcript panel and copies only confirmed words', async () => {
+    transcribe = true; const writeText = vi.fn(async () => {}); navigator.clipboard = { writeText };
+    await mount(); await record('Record and transcribe'); await deliverTranscript();
+    await click('Copy transcript'); expect(writeText).toHaveBeenCalledWith('Hello there. Again.');
+    expect(container.querySelector('#final-transcript')).toBeNull();
+    await click('Collapse transcript'); expect(button('Expand transcript')).toBeTruthy();
+    await click('Expand transcript'); await click('Full screen transcript'); expect(button('Exit full screen transcript')).toBeTruthy();
+    await click('Exit full screen transcript'); expect(button('Pause recording')).toBeTruthy();
+  });
+
+  it('schedules bounded live updates despite frequent transcript events, serializes them, and disables automatic retry after failure', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permitMap(); vi.useFakeTimers();
+    await act(async () => container.querySelector('[aria-label="Update map while I speak"]').click());
+    const longer = { ...transcript, finalTokens: [...transcript.finalTokens, { text: ' We discuss a synthetic community garden, then a reading group, then the decisions needed to make both work. More source words accumulate while recording continues.', speaker: 'S2', startMs: 4000, endMs: 6000 }] };
+    let respond; fetch.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+    for (let i = 0; i < 4; i++) { await deliverTranscript(longer); await act(async () => vi.advanceTimersByTimeAsync(500)); }
+    expect(generationCalls()).toHaveLength(1);
+    await act(async () => vi.advanceTimersByTimeAsync(50000)); expect(generationCalls()).toHaveLength(1);
+    await act(async () => respond(jsonResponse({ error: 'synthetic refusal' }, 429)));
+    expect(container.querySelector('[aria-label="Update map while I speak"]').checked).toBe(false);
+    await deliverTranscript({ ...longer, finalTokens: [...longer.finalTokens, { text: ' More words.', speaker: 'S2', startMs: 7000, endMs: 8000 }] });
+    await act(async () => vi.advanceTimersByTimeAsync(90000)); expect(generationCalls()).toHaveLength(1);
+    expect(container.querySelector('[aria-label="Live transcript"]').textContent).toContain('More words.');
+  });
+
+  it('caps automatic attempts at six even with an ongoing transcript and preserves explicit manual control', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permitMap(); vi.useFakeTimers();
+    await act(async () => container.querySelector('[aria-label="Update map while I speak"]').click());
+    let tokens = [...transcript.finalTokens];
+    for (let i = 0; i < 8; i++) {
+      tokens = [...tokens, { text: ' Synthetic additional words about a community garden, reading together, and neighborhood projects. We follow one more thread as the conversation develops.', speaker: 'S2', startMs: 4000 + i * 1000, endMs: 5000 + i * 1000 }];
+      await deliverTranscript({ ...transcript, finalTokens: tokens });
+      await act(async () => vi.advanceTimersByTimeAsync(46000));
+    }
+    expect(generationCalls()).toHaveLength(6);
+    expect(container.querySelector('[aria-label="Update map while I speak"]').disabled).toBe(true);
+    expect(button('Pause recording')).toBeTruthy();
+    await click('Generate another map'); expect(generationCalls()).toHaveLength(7);
+  });
+
+  it('marks an unchanged live snapshot complete on Stop without another provider request', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permitMap();
+    await click('Generate conversation map');
+    expect(JSON.parse(container.querySelector('#recording-map-json').value).transcription_complete).toBe(false);
+    await click('Stop recording');
+    expect(JSON.parse(container.querySelector('#recording-map-json').value).transcription_complete).toBe(true);
+    expect(generationCalls()).toHaveLength(1);
+  });
+
 });

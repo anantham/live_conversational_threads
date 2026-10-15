@@ -393,3 +393,7 @@ The private-storage public API test file now exceeds300lines because it exercise
 ThreadsViewer's existing ingestion/persistence/presentation monolith remains the same extraction candidate. The generated-map handoff is a separate small module with one bounded page-memory slot; no source payload enters generated BrowserRouter state. SitesNewConversation.test.jsx now exceeds300lines while covering the complete synthetic recording/transcript/generation boundary. Retain its cohesive public-behavior checks for this slice; later extract shared capture/status fixtures, preserving actual BrowserRouter history and source/file-byte assertions rather than testing private helpers. No broad refactor is included.
 
 - 2026-10-15: SitesAccessPanel.jsx remains a large existing session/access UI (~300 lines). This slice only corrects stale activation copy; extracting the session timing hook is optional and deferred to avoid identity regression.
+
+## 2026-10-16 — Cloud live workspace
+
+Keep the bounded RecordingSession engine intact; conversation continuity is now separated into cloudConversationSession rather than extending its300-line transport state machine. SitesNewConversation and RecordingConversationMap remain under250lines. Existing MinimalGraph is large and reused unmodified; future graph/tool layout decomposition is separate from this migration.
