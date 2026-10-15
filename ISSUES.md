@@ -1,3 +1,7 @@
+## 2026-10-15 22:18 IST — Google login accepted; private upload automation prerequisite
+
+Google audience is verified External/In production after the user's explicit production approval, and the real Site browser shows Signed in with authenticated empty-list readiness. The prior org_internal blocker is resolved. Private save/reopen/delete/logout/isolation is still unaccepted because the Chrome extension refuses supported synthetic file selection until Allow access to file URLs is enabled. No upload or extension privilege change occurred. Next: owner enables that extension setting or selects /private/tmp/lct-generated-map.threads manually, then root completes the bounded private-file journey. Gemini billing remains a separate unchanged blocker; OpenRouter's prior real generation/public-reader acceptance remains valid.
+
 ## 2026-10-15 20:50 IST — OpenRouter repaired; Google audience and Gemini billing remain
 
 OpenRouter real one-request acceptance now passes:200, strict artifact reader and Discussion model,5nodes/2linked moments/2utterances/1thread, ledger9records with zero unresolved holds. The two specifically approved diagnostic releases changed only release timestamps; all prior history/caps remain. Saved39/native2e97cab455c241f12eddac7dc96159fec6b13e51/env37 is served with OpenRouterON and GeminiOFF. This supersedes earlier no-generated-map claims for provider/file-consumer acceptance; actual guest Graph and Discussion now render the generated artifact and both source sentences. The temporary public copy was removed200 and content404 verified.
