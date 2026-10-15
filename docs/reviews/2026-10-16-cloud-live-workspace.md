@@ -39,3 +39,11 @@ Google account is signed in and private list loads. Chrome upload is blocked by 
 - `lct_app/src/components/recording/RecordingAudioFiles.jsx`: `02f4a6d465a1986cce9749032d683a9030370d8ec3867d900bfd21f9f7d518ea`
 - `lct_app/src/services/cloud/cloudConversationSession.js`: `f009e7088261b31536ec7d52886beb67111e029029a55d067677da7ad7130dbf`
 - `lct_app/src/services/cloud/cloudConversationSession.test.js`: `0a21788b19604c02b9f00745e8f7bc6e5f187e876e9125d318c81abe12f9add0`
+
+## Served evidence — 2026-10-16 00:40 IST
+
+Application134cfc2c18599cabe8380512ecec27e8f992722b is committed and pushed to codex/lct-inference-choice and codex/lct-sites-serverless; clean primary checkout fast-forwarded. Native425bae275d0216b9690c538eeb887e98551f9868 saved as Site42. Deployment appgdep_6ad123a1d1008191b4fab83be5a442cf succeeded2026-10-15T19:04:38.725644UTC with unchanged environment37 and public audience. Archive39files/1,894,400bytes/SHA16f638b9d789e0c9a445c210df438a943f3eb79163b16b7b88bf360ea85e49f4. Fresh built-in browser loads index-D8oFGBpL.js, matching native dist/client/index.html, and displays the new conversation workspace. Screenshot /private/tmp/lct-live-workspace-served.jpg.
+
+Read-only native-authorized HTTP checks: Soniox200/enabled/public/300seconds; private storage200/enabled/personal/configured with unchanged2MiB/file,10MiB/owner,20MiB/site limits; OpenRouter200/enabled/available/configured/schema-ready; direct Gemini200/disabled/unavailable/configured; Google config200/enabled/configured. Raw urllib/new returned404 without HTML Accept; the actual browser navigation succeeds, so this is a transport-specific result, not proof of a broken route. Postflight still9inference attempts and7Soniox sessions, no pagination. No paid request was made.
+
+Chrome's YourChrome connection disappeared after file selection was blocked; its old signed-in DOM is not fresh authenticated-CRUD proof. The built-in browser successfully opens the Site but is guest; normal ChatGPT sign-in reaches an interactive login. The private-files access panel is retained for handoff. No account cookie/token was extracted and no browser permission was bypassed. Current hosted save/reopen/delete/second-account acceptance remains pending. The existing user's recording tab was not intentionally reloaded or stopped.

@@ -7465,3 +7465,5 @@ Source diagnosis confirmed /new cloud had no graph renderer or pause state and g
 ## 2026-10-16 — Core cloud workspace validation
 
 Implemented and browser-verified the full core live interaction; final1002 tests,114files,44.30s pass. Eight runtime files match native build; final focused45checks/lint pass. Independent review fixes and unsupported-finding adjudication are recorded in docs/reviews/2026-10-16-cloud-live-workspace.md. No real microphone/provider call, quota recovery, environment or DNS mutation. Private Google browser upload remains blocked by explicit extension file-URL permission; no bypass. Publication/runtime acceptance follows.
+
+Served checkpoint: application134cfc2 pushed to both existing branches; native425bae275 saved42/deploymentappgdep_6ad123a1d1008191b4fab83be5a442cf succeeded19:04:38UTC/env37. Actual browser matches release asset; live readiness checks pass for Soniox/OpenRouter/Google/private storage; counters9/7 unchanged. Full migration acceptance still awaits real-account private CRUD/isolation, direct Gemini billing and custom-domain release. No paid test, account expansion, DNS write or quota mutation.
