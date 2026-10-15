@@ -1,3 +1,7 @@
+## Served — sign-in icon buttons — 2026-10-15 23:01 IST
+
+Delivered this UI slice: Google and ChatGPT icon-and-label buttons plus the compact account icon control. Source63dafd7 committed/pushed to both task and migration branches. Existing Site saved40/native0dc4dfe77a3a697cc6a31f4bf378aae47c1d501c is served by deployment appgdep_6ad10d58ad7c8191bd5d90770ac4f23a, succeeded2026-10-15T17:29:33.444524UTC/env37. Archive39files/1,873,920bytes/SHA9004cd56d04932955e3209cd787579ece10e293b2b85374b1aa4c42e3cc79ff9. Live browser shows both icons, labels and44px controls, no underline; served index-TGDp31tG.js matches the exact native build. Screenshot /private/tmp/lct-signin-buttons-live.jpg. Runtime settings, access audience and database migrations unchanged. Root owns the same worktree; this slice is complete, optional UI work deferred. Original full private-file E2E dependency remains as recorded below. Implementation/validation and publication completed inside the forecast. Final documentation receipt follows the source commit without another deploy.
+
 ## Sign-in button validation — 2026-10-15 23:00 IST
 
 The provider options now use bordered icon-and-label controls; the compact Sign in / Account control has a user icon. Labels, ChatGPT target/href and Google challenge/callback/cancellation paths are preserved. Root changed only SitesAccessPanel.jsx and SitesGoogleSignIn.jsx. Adjacent reset/retry targets also enlarged following review. Test intent is tests/intent/sites-signin-buttons.md.
