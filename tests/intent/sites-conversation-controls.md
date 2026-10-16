@@ -8,3 +8,6 @@
 
 - 16 October: Live transcription belongs in Settings; changing it never starts capture and it stays locked during active/paused recording. Start retains selected-mode consent and unavailable-provider refusal. Reuse the existing journey tests for this placement-only change.
 - Signed-in access shows an accessible icon-only Sign out, no redundant Signed in label or guest sign-in instructions. Existing logout ordering, failure/retry, cancellation and guest reset checks remain authoritative.
+
+- Profile opens the existing access panel from More on the recording page; no standalone account icon, no navigation or new recording, and closing returns keyboard focus to More. Existing sign-in/sign-out behavior stays unchanged.
+- Routine browser-saving information and its library link live in Settings; browser-save failures stay visible with retry. Start is visually centered independently of the left status indicators; active controls remain usable on narrow screens. Verify placement visually rather than asserting CSS implementation.

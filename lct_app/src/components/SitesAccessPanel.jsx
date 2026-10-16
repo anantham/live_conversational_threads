@@ -44,7 +44,8 @@ export default function SitesAccessPanel() {
   const { pathname, search, hash } = useLocation();
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
   const inRecording = pathname === "/new" || pathname === "/new/";
-  const [expanded, setExpanded] = useState(() => inPrivateFiles || !wasDismissed() || hash === "#site-access");
+  const dismissedRef = useRef(wasDismissed());
+  const [expanded, setExpanded] = useState(() => inPrivateFiles || (!inRecording && !dismissedRef.current) || hash === "#site-access");
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const panelRef = useRef(null);
@@ -76,12 +77,13 @@ export default function SitesAccessPanel() {
       panelRef.current?.focus();
       focusOnOpen.current = false;
     } else if (!expanded && focusOnDismiss.current) {
-      panelRef.current?.querySelector("button")?.focus();
+      (inRecording ? document.querySelector('button[aria-controls="conversation-more"]') : panelRef.current?.querySelector("button"))?.focus();
       focusOnDismiss.current = false;
     }
-  }, [expanded]);
+  }, [expanded, inRecording]);
 
   function dismissPanel() {
+    dismissedRef.current = true;
     focusOnDismiss.current = true;
     setExpanded(false);
     try {
@@ -93,12 +95,16 @@ export default function SitesAccessPanel() {
 
   useEffect(() => {
     if (hash === "#site-access") openPanel();
-  }, [hash, openPanel]);
+    else if (inRecording) {
+      if (panelRef.current?.contains(document.activeElement)) focusOnDismiss.current = true;
+      setExpanded(false);
+    } else if (!dismissedRef.current && !wasDismissed()) setExpanded(true);
+  }, [hash, inRecording, openPanel]);
 
   useEffect(() => {
     // Repeated clicks on an unchanged hash do not fire hashchange.
     const onAccessLink = (event) => {
-      const link = event.target.closest?.('a[href="#site-access"]');
+      const link = event.target.closest?.('a[href="#site-access"], button[aria-controls="site-access"]');
       if (link) openPanel();
     };
     document.addEventListener("click", onAccessLink);
@@ -227,8 +233,8 @@ export default function SitesAccessPanel() {
   }, [attempt]);
 
   return (
-    <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit p-1"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
-      {!expanded ? <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span className={inRecording ? "sr-only" : undefined}>{status === "guest" ? "Sign in" : "Account"}</span></button> : <>
+    <aside hidden={inRecording && !expanded} ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit p-1"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
+      {!expanded ? !inRecording && <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span>{status === "guest" ? "Sign in" : "Account"}</span></button> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-800">{status === "signed-in" ? "Your account" : "Sign in"}</p>
         <button type="button" className="ml-auto flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}><X size={18} aria-hidden="true" /></button>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PropTypes from 'prop-types';
-import { ArrowLeft, Network, MoreHorizontal, Globe, FolderLock, Download, Settings, HardDrive, X } from 'lucide-react';
+import { ArrowLeft, Network, MoreHorizontal, Globe, FolderLock, Download, Settings, HardDrive, UserRound, X } from 'lucide-react';
 
 export const iconButton = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700';
 export default function ConversationNavigation({ panel, onPanelChange }) {
@@ -17,7 +17,7 @@ export default function ConversationNavigation({ panel, onPanelChange }) {
   }, [open]);
   function show(name) { close(); onPanelChange(name); }
   const item = 'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-700';
-  return <header className="flex items-center justify-between px-3 py-2 pr-[4.5rem] sm:px-4 sm:pr-[4.5rem]">
+  return <header className="flex items-center justify-between px-3 py-2 sm:px-4">
     <h1 className="sr-only">New conversation</h1>
     <Link to="/" aria-label="Back to home" title="Back" className={iconButton}><ArrowLeft size={21} aria-hidden="true" /></Link>
     <nav aria-label="Conversation navigation" className="flex items-center gap-1">
@@ -30,6 +30,7 @@ export default function ConversationNavigation({ panel, onPanelChange }) {
           <Link className={item} to="/private-files" onClick={close}><FolderLock size={18} aria-hidden="true" />Private files</Link>
           <button className={item} onClick={() => show('files')}><Download size={18} aria-hidden="true" />Files &amp; export</button>
           <button className={item} onClick={() => show('settings')}><Settings size={18} aria-hidden="true" />Settings</button>
+          <button className={item} aria-controls="site-access" onClick={() => show(null)}><UserRound size={18} aria-hidden="true" />Profile</button>
         </div>}
       </div>
     </nav>

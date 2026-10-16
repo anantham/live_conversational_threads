@@ -6,6 +6,7 @@ import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import sitesWorker from "../../sites/worker.js";
 import SitesAccessPanel from "./SitesAccessPanel";
+import ConversationNavigation from "./recording/ConversationNavigation.jsx";
 
 let root;
 let container;
@@ -20,7 +21,7 @@ async function mount(initialPath = "/") {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => { root.render(<MemoryRouter initialEntries={[initialPath]}><NavigationCapture /><SitesAccessPanel /></MemoryRouter>); });
+  await act(async () => { root.render(<MemoryRouter initialEntries={[initialPath]}><NavigationCapture />{initialPath.startsWith("/new") && <ConversationNavigation panel={null} onPanelChange={() => {}} />}<SitesAccessPanel /></MemoryRouter>); });
 }
 
 async function settle() {
@@ -44,18 +45,51 @@ afterEach(async () => {
 });
 
 describe("SitesAccessPanel", () => {
-  it('anchors recording-page access above the bottom toolbar and preserves placement on other pages', async () => {
-    fetch.mockResolvedValue({ status: 401 }); await mount('/new');
+  it.each([401, 200])('opens Profile from More and restores focus without a separate trigger (session %i)', async status => {
+    fetch.mockResolvedValue({ status, ok: true, json: async () => status === 200 ? { authenticated: true, user: { id: 'synthetic' } } : { google: { enabled: false, configured: false } } });
+    await mount('/new');
     const panel = container.querySelector('#site-access');
-    expect(panel.classList.contains('top-14')).toBe(true);
-    expect(panel.classList.contains('bottom-4')).toBe(false);
+    const more = container.querySelector('button[aria-controls="conversation-more"]');
+    expect(panel.hidden).toBe(true); expect(panel.querySelector('button')).toBeNull();
+    for (let i = 0; i < 2; i++) {
+      await act(async () => more.click());
+      const profile = container.querySelector('button[aria-controls="site-access"]');
+      expect(profile.textContent).toBe('Profile');
+      await act(async () => profile.click());
+      expect(more.getAttribute('aria-expanded')).toBe('false');
+      expect(panel.hidden).toBe(false); expect(panel.classList.contains('top-14')).toBe(true);
+      expect(document.activeElement).toBe(panel);
+      expect(panel.textContent).toContain(status === 200 ? 'Your account' : 'Sign in with ChatGPT');
+      await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+      expect(panel.hidden).toBe(true); expect(document.activeElement).toBe(more);
+    }
+    await act(async () => navigate('/new#site-access'));
+    expect(panel.hidden).toBe(false); expect(document.activeElement).toBe(panel);
+    await act(async () => navigate('/new'));
+    expect(panel.hidden).toBe(true); expect(document.activeElement).toBe(more);
+    await act(async () => navigate('/new#site-access'));
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(panel.classList.contains('top-3')).toBe(true);
     await act(async () => navigate('/public'));
-    expect(panel.classList.contains('bottom-4')).toBe(true);
+    expect(panel.hidden).toBe(false); expect(panel.classList.contains('bottom-4')).toBe(true);
     await act(async () => navigate('/private-files'));
     expect(panel.classList.contains('fixed')).toBe(false);
     expect(fetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
+  it('collapses on entry to recording without storing dismissal and honors explicit access links', async () => {
+    fetch.mockResolvedValue({ status: 401 }); await mount('/');
+    const panel = container.querySelector('#site-access');
+    expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
+    await act(async () => navigate('/new'));
+    expect(panel.hidden).toBe(true); expect(localStorage.getItem('lct.sites_access_dismissed.v1')).toBeNull();
+    await act(async () => navigate('/new#site-access'));
+    expect(panel.hidden).toBe(false); expect(document.activeElement).toBe(panel);
+    await act(async () => navigate('/new'));
+    expect(panel.hidden).toBe(true);
+    await act(async () => navigate('/public'));
+    expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
+    await act(async () => navigate('/new#site-access'));
+    expect(panel.hidden).toBe(false);
   });
 
   // Test intent: Google remains unavailable until runtime configuration; failures and cancellation
@@ -134,6 +168,10 @@ describe("SitesAccessPanel", () => {
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+    expect(container.textContent).toBe("Sign in");
+    await act(async () => navigate('/new'));
+    expect(container.querySelector('#site-access').hidden).toBe(true);
+    await act(async () => navigate('/public'));
     expect(container.textContent).toBe("Sign in");
     vi.restoreAllMocks();
   });

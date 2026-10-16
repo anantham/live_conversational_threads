@@ -97,6 +97,9 @@ describe('Sites recording page', () => {
     transcribe = true; await mount();
     expect(transcriptionSwitch().checked).toBe(true);
     expect(container.querySelector('footer').contains(transcriptionSwitch())).toBe(false);
+    const status = [...container.querySelectorAll('[role=status]')].find(node => node.textContent.includes('Audio and maps save automatically'));
+    expect(status.closest('[aria-label="Conversation tools"]')).toBeTruthy();
+    expect(status.querySelector('a').getAttribute('href')).toBe('/browse');
     expect(transcriptionSwitch().closest('[aria-label="Conversation tools"]')).toBeTruthy();
     expect(container.querySelectorAll('[aria-label="Start session"]')).toHaveLength(1);
     expect(container.textContent).toContain('Audio + live transcript');
