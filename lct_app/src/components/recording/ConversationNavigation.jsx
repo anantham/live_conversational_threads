@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import PropTypes from 'prop-types';
-import { ArrowLeft, Network, MoreHorizontal, Globe, FolderLock, Download, Settings, X } from 'lucide-react';
+import { ArrowLeft, Network, MoreHorizontal, Globe, FolderLock, Download, Settings, HardDrive, X } from 'lucide-react';
 
 export const iconButton = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700';
 export default function ConversationNavigation({ panel, onPanelChange }) {
@@ -25,6 +25,7 @@ export default function ConversationNavigation({ panel, onPanelChange }) {
       <div ref={root} className="relative" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
         <button ref={trigger} type="button" className={iconButton} aria-label="More options" title="More options" aria-expanded={open} aria-controls="conversation-more" onClick={() => setOpen(v => !v)}><MoreHorizontal size={22} aria-hidden="true" /></button>
         {open && <div id="conversation-more" aria-label="More options" className="absolute right-0 top-full z-[60] mt-1 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          <Link className={item} to="/browse" onClick={close}><HardDrive size={18} aria-hidden="true" />On this device</Link>
           <Link ref={first} className={item} to="/public" onClick={close}><Globe size={18} aria-hidden="true" />Public conversations</Link>
           <Link className={item} to="/private-files" onClick={close}><FolderLock size={18} aria-hidden="true" />Private files</Link>
           <button className={item} onClick={() => show('files')}><Download size={18} aria-hidden="true" />Files &amp; export</button>

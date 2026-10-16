@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../components/recording/ConversationServiceStatus.jsx', () => ({ default: () => <div aria-label="Service status" /> }));
-const fixture = vi.hoisted(() => ({ sessions: [] }));
+const fixture = vi.hoisted(() => ({ sessions: [], restored: null }));
+vi.mock('../services/cloud/localConversationStore.js', () => ({ readLocalConversation: async () => fixture.restored, saveLocalConversation: async () => {} }));
 vi.mock('../components/MinimalGraph.jsx', () => ({ default: ({ graphData }) => <div aria-label="Rendered graph">{graphData.map(n => <span key={n.id}>{n.node_name}</span>)}</div> }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
   constructor(callbacks) { this.callbacks = callbacks; fixture.sessions.push(this); this.cancelled = false; }
@@ -27,7 +28,7 @@ function generated(source) {
 }
 function LocationProbe() { return <output data-testid="location">{JSON.stringify(useLocation().state)}</output>; }
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; transcribe = false; privateUploads = false; generation = false;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; fixture.restored = null; transcribe = false; privateUploads = false; generation = false;
   localStorage.clear(); createURL = vi.fn(() => 'blob:synthetic-audio'); revokeURL = vi.fn();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn(function () { this.open = true; }) });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: vi.fn(function () { this.open = false; }) });
@@ -275,7 +276,7 @@ describe('Sites recording page', () => {
     expect(container.textContent).toContain('Recording locally');
     await click('Stop recording');
     expect(container.querySelector('audio').getAttribute('src')).toBe('blob:synthetic-audio');
-    expect(container.textContent).toContain('This copy is only in this tab');
+    expect(container.textContent).toContain('Browser saving status appears above');
     expect(button('Save audio privately').disabled).toBe(true);
     expect(fetch.mock.calls.map(call => call[0])).not.toContain('/api/cloud/soniox/session');
   });
@@ -496,7 +497,7 @@ describe('Sites recording page', () => {
     const source = JSON.parse(options.body).source;
     expect(source.complete).toBe(true); expect(source.finalTokens).toEqual(transcript.finalTokens);
     expect(JSON.parse(container.querySelector('#recording-map-json').value)).toEqual(generated(source).bundle);
-    expect(container.textContent).toContain('Your map is ready in this tab');
+    expect(container.textContent).toContain('Your map is ready. Browser saving status appears above');
     expect(container.querySelector('a[download$=".threads"]').getAttribute('download')).toBe(`recording-${source.recordingId}.threads`);
     expect(button('Save map privately').disabled).toBe(true);
     expect(fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1);
@@ -664,4 +665,16 @@ describe('Sites recording page', () => {
     expect(generationCalls()).toHaveLength(1);
   });
 
+});
+
+it('starts a fresh ephemeral conversation after opening a saved one without restoring over the new session', async () => {
+  const id = 'synthetic-restored'; fixture.restored = { id, version: 1, recording: { id, startedAt: 1, transcribe: true, retention: 'local' }, transcript, map: null, audio: null, stage: 'stopped', updatedAt: 1, segments: [] };
+  window.history.replaceState(null, '', `/new?local=${id}`); await mount(true);
+  expect(container.textContent).toContain('Opened from this device');
+  await click('More options'); await click('Settings');
+  await act(async () => [...container.querySelectorAll('input[type=radio]')].find(input => input.parentElement.textContent === 'Ephemeral').click());
+  await click('Close tools'); await act(async () => new Promise(resolve => setTimeout(resolve, 250)));
+  await record(); await click('Stop recording');
+  expect(window.location.search).toBe(''); expect(container.textContent).toContain('Ephemeral · download');
+  expect(container.textContent).not.toContain('Opening saved conversation'); expect(button('Start session').disabled).toBe(false);
 });

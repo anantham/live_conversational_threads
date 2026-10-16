@@ -235,3 +235,13 @@ describe('RecordingSession', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 });
+
+it('emits ordered archival chunks during capture, including the final stop chunk, without another provider request', async () => {
+  const chunks = [];
+  const f = setup({ onAudioChunk: c => chunks.push(c) }); await f.session.start();
+  recorders[0].emit(new Blob([])); recorders[0].emit(new Blob(['first'])); recorders[0].emit(new Blob([])); recorders[0].emit(new Blob(['second']));
+  expect(chunks.map(c => c.index)).toEqual([0, 1]); expect(f.onAudio).not.toHaveBeenCalled();
+  await f.session.stop(); expect(chunks.map(c => c.index)).toEqual([0, 1, 2]);
+  expect(await readBlob(new Blob(chunks.map(c => c.blob)))).toBe('firstsecondtail');
+  expect(chunks.every(c => c.mimeType === 'audio/webm;codecs=opus')).toBe(true); expect(f.requestSession).not.toHaveBeenCalled();
+});

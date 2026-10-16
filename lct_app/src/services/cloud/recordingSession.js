@@ -75,11 +75,12 @@ function stopTracks(stream) {
 }
 
 export class RecordingSession {
-  constructor({ onStage, onAudio, onTranscript, onFailure, StreamClass = SonioxStream,
+  constructor({ onStage, onAudio, onAudioChunk, onTranscript, onFailure, StreamClass = SonioxStream,
     mediaDevices = globalThis.navigator?.mediaDevices, MediaRecorderClass = globalThis.MediaRecorder,
     requestSession = defaultRequestSession } = {}) {
     this.onStage = onStage;
     this.onAudio = onAudio;
+    this.onAudioChunk = onAudioChunk;
     this.onTranscript = onTranscript;
     this.onFailure = onFailure;
     this.StreamClass = StreamClass;
@@ -197,6 +198,7 @@ export class RecordingSession {
     }
     this.chunks.push(blob);
     this.bytes += blob.size;
+    try { this.onAudioChunk?.({ blob, index: this.chunks.length - 1, mimeType: this.mimeType }); } catch { /* storage failure cannot stop capture */ }
     if (this.stream && !this.providerFailed) {
       try { this.stream.sendAudio(blob); }
       catch { this.providerFailure(); }

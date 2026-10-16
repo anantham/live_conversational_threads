@@ -53,3 +53,11 @@ it('bounds a provider that ignores abort, caches failure, and permits a later re
   await vi.advanceTimersByTimeAsync(60_000); fetch.mockResolvedValue(new Response(JSON.stringify({ data: { limit_remaining: 1 } })));
   expect(await (await get('openrouter')).json()).toMatchObject({ reachable: true });
 });
+
+it('distinguishes temporary active capacity from exhausted lifetime allowance without consuming a request', async () => {
+  db.prepare("INSERT INTO lct_soniox_sessions (id, created_at, max_session_seconds, lease_until) VALUES ('busy-fixture', ?, 300, ?)").run(Date.now(), Date.now() + 300000);
+  expect(await (await get('soniox')).json()).toMatchObject({ capacity: 'busy', available: false });
+  env.LCT_SONIOX_MAX_SESSIONS = '1';
+  expect(await (await get('soniox')).json()).toMatchObject({ capacity: 'exhausted', available: false });
+  expect(fetch).not.toHaveBeenCalled();
+});

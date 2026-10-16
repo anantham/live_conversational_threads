@@ -58,6 +58,7 @@ export class CloudConversationSession {
         this.transcript = { finalTokens, partialTokens, finalText: finalTokens.map(t => t.text).join(''), partialText: snapshot.partialText || '' };
         this.callbacks.onTranscript?.(this.transcript);
       },
+      onAudioChunk: chunk => { if (epoch === this.epoch) this.callbacks.onAudioChunk?.({ ...chunk, segment: number }); },
       onAudio: audio => {
         if (epoch !== this.epoch) return;
         this.segments.push({ ...audio, number });

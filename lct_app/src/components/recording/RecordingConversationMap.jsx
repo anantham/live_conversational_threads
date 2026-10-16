@@ -11,7 +11,7 @@ import { stageGeneratedMap } from '../../services/cloud/generatedMapHandoff.js';
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
 const interrupted = 'Waiting stopped. The attempt may still be running or counted; stopping this view does not confirm billing stopped. Keep your transcript and check setup before a deliberate retry.';
 
-export default function RecordingConversationMap({ source, backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false }) {
+export default function RecordingConversationMap({ source, savedBundle, retention = 'ephemeral', backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false }) {
   const [localBackend, setLocalBackend] = useState('openrouter');
   const backend = selectedBackend ?? localBackend;
   const setBackend = value => { setLocalBackend(value); onBackendChange?.(value); };
@@ -39,6 +39,11 @@ export default function RecordingConversationMap({ source, backend: selectedBack
   }, [source.recordingId, checkStatus, cancel]);
   useEffect(() => { setResult(null); setAutomatic(false); attempts.current = 0; setAttemptCount(0); lastText.current = ''; lastAttempt.current = 0; }, [source.recordingId]);
   useEffect(() => { setAutomatic(false); }, [backend]);
+  useEffect(() => {
+    if (!savedBundle || result?.bundle === savedBundle || savedBundle.conversation_id !== source.recordingId) return;
+    const json = JSON.stringify(savedBundle), filename = `recording-${source.recordingId}.threads`;
+    setResult({ bundle: savedBundle, json, filename, file: new File([json], filename, { type: 'application/json' }) });
+  }, [savedBundle, source.recordingId, result?.bundle]);
   useEffect(() => { onMapStatusChange?.(error); }, [error, onMapStatusChange]);
   useEffect(() => { onGeneratingChange(activity === 'generate'); return () => onGeneratingChange(false); }, [activity, onGeneratingChange]);
   useEffect(() => {
@@ -68,7 +73,7 @@ export default function RecordingConversationMap({ source, backend: selectedBack
     const response = await run('generate', signal => generateRecordingMap(requestedSource, signal, backend));
     generating.current = false;
     if (!alive.current || currentSource.current.recordingId !== requestedSource.recordingId) return;
-    onHealthChange?.({ service: backend, ok: Boolean(response.data), at: Date.now(), detail: response.data ? `Last map completed in ${((Date.now() - healthStarted) / 1000).toFixed(1)} s.` : 'Map generation did not complete. Check the map panel for details.' });
+    onHealthChange?.({ service: backend, ok: response.data ? true : ['cancelled', 'timeout'].includes(response.outcome) ? null : false, at: Date.now(), detail: response.data ? `Last map completed in ${((Date.now() - healthStarted) / 1000).toFixed(1)} s.` : 'Map generation did not complete. Check the map panel for details.' });
     if (response.data) { setResult(response.data); onMapChange?.(response.data.bundle); }
     else { setAutomatic(false); setError(response.outcome === 'cancelled' || response.outcome === 'timeout' ? interrupted : response.error.message); }
   }
@@ -85,7 +90,7 @@ export default function RecordingConversationMap({ source, backend: selectedBack
   }, [automatic, consent, status, activity, saving, liveActive, source.recordingId, source.complete, backend, attemptCount]);
   return <section aria-label="Conversation map" className="mt-8 border-t border-slate-200 pt-6">
     <h2 className="text-lg font-medium">AI map</h2>
-    <p className="mt-3 max-w-[65ch] text-sm leading-6 text-slate-600">Turn finalized words into a map linked to their source. {source.complete ? 'The recording is complete.' : 'This is a partial transcript; unfinished words are excluded.'} Generation does not save or publish it.</p>
+    <p className="mt-3 max-w-[65ch] text-sm leading-6 text-slate-600">Turn finalized words into a map linked to their source. {source.complete ? 'The recording is complete.' : 'This is a partial transcript; unfinished words are excluded.'} {retention === 'local' ? 'The map saves in this browser; it is never published automatically.' : 'Generation does not save or publish it.'}</p>
     <label className="mt-4 block text-sm font-medium" htmlFor="map-inference-backend">AI provider</label>
     <select id="map-inference-backend" className="mt-2 min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm" value={backend} disabled={Boolean(activity) || saving} onChange={event => { setConsent(false); setStatus(null); setBackend(event.target.value); }}>
       <option value="gemini">Gemini · Google AI Studio</option>
@@ -104,7 +109,7 @@ export default function RecordingConversationMap({ source, backend: selectedBack
     {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-4 text-sm leading-6 text-rose-900">{error}</p>}
     {result && <div className="mt-6">
       {result.bundle.full_transcript !== source.finalTokens.map(t => t.text).join('') && <p className="text-xs text-amber-800">The map covers an earlier snapshot. New words are waiting for the next update.</p>}
-      <p role="status" className="text-sm leading-6">Your map is ready in this tab. Download audio, transcript and map before leaving the recording page.</p>
+      <p role="status" className="text-sm leading-6">{retention === 'local' ? 'Your map is ready. Browser saving status appears above; you can also download a copy.' : 'Your map is ready in this tab. Download audio, transcript and map before leaving the recording page.'}</p>
       <PrivateRetentionNotice id="map-private-retention" />
       <div className="mt-4 flex flex-wrap gap-3"><button className={button} disabled={Boolean(activity) || saving || recordingBusy} onClick={() => navigate('/view', { state: { generatedMapId: stageGeneratedMap(result.bundle), remember: false } })}>Explore map</button>{url && <a className={button} href={url} download={result.filename}>Download map</a>}<button className={button} aria-describedby="map-private-retention" disabled={!privateEnabled || Boolean(activity) || saving || liveActive} onClick={() => onPrivateSave(result.file, 'Map')}>Save map privately</button></div>
       {!privateEnabled && <p className="mt-3 text-sm text-slate-600">Private saving needs sign-in and enabled personal storage. You can download this map now.</p>}
@@ -114,5 +119,5 @@ export default function RecordingConversationMap({ source, backend: selectedBack
   </section>;
 }
 
-RecordingConversationMap.propTypes = { backend: PropTypes.string, onBackendChange: PropTypes.func, onHealthChange: PropTypes.func, source: PropTypes.object.isRequired, privateEnabled: PropTypes.bool,
+RecordingConversationMap.propTypes = { savedBundle: PropTypes.object, retention: PropTypes.string, backend: PropTypes.string, onBackendChange: PropTypes.func, onHealthChange: PropTypes.func, source: PropTypes.object.isRequired, privateEnabled: PropTypes.bool,
   saving: PropTypes.bool.isRequired, onPrivateSave: PropTypes.func.isRequired, onGeneratingChange: PropTypes.func.isRequired, onMapChange: PropTypes.func, onMapStatusChange: PropTypes.func, liveActive: PropTypes.bool, recordingBusy: PropTypes.bool };

@@ -12,7 +12,7 @@ export default function SitesPrivacy() {
         <header className="mt-7 border-b border-slate-200 pb-7">
           <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Privacy at Threads</h1>
           <p className={paragraph}>This page describes the public Sites preview, including its optional sign-in and cloud features. The separate local and Tailscale app can work differently.</p>
-          <p className="mt-2 text-xs text-slate-600">Updated 15 October 2026</p>
+          <p className="mt-2 text-xs text-slate-600">Updated 16 October 2026</p>
         </header>
 
         <section className={section}>
@@ -25,7 +25,7 @@ export default function SitesPrivacy() {
         <section className={section}>
           <h2 className={heading}>Sessions and browser data</h2>
           <p className={paragraph}>For Google sign-in, the Site stores your Google subject ID, hashed session and sign-in challenge IDs, and session creation and expiry times in its cloud database. Private files are scoped to both identity provider and account ID. The session cookie is HttpOnly, Secure, and SameSite=Strict and expires after one hour. Signing out revokes the matching session. Expired session rows are cleaned up when a later Google sign-in is accepted, so expiry does not mean an old row disappears immediately.</p>
-          <p className={paragraph}>This browser may keep local files, drafts, publication removal keys, and small timing histories. The session-check history and the other sign-in timing history each keep at most eight samples, recording stage or outcome, elapsed milliseconds, and retry count; they exclude tokens, file contents, and account IDs. You can clear local browser data using your browser’s controls.</p>
+          <p className={paragraph}>By default, new recordings save their audio parts, transcript and maps in this browser, without sign-in. Settings → Ephemeral turns off automatic conversation saving for new recordings; existing copies remain until you remove them. Ephemeral recordings disappear when their tab closes unless you deliberately download or save them. Browser storage is specific to this site and browser and may be removed by clearing site data or by browser eviction. Small preferences, session data, publication removal keys and payload-free timing histories are separate from conversation retention. The session-check history and the other sign-in timing history each keep at most eight samples, recording stage or outcome, elapsed milliseconds, and retry count; they exclude tokens, file contents, and account IDs. You can clear local browser data using your browser’s controls.</p>
         </section>
 
         <section className={section}>
@@ -37,7 +37,7 @@ export default function SitesPrivacy() {
         <section className={section}>
           <h2 className={heading}>Services and access</h2>
           <p className={paragraph}>Google receives data involved in Google sign-in when you choose it. The Site host and its infrastructure providers necessarily process browser requests and operate the cloud database and object storage. The operator may have infrastructure access to stored data. Private cloud storage is access-controlled for the signed-in owner; it is not end-to-end encrypted from the operator.</p>
-          <p className={paragraph}>If you choose the bring-your-own-key AI tools, chat content is sent through the Site’s thin proxy to OpenAI; audio-file transcription with your own key goes from your browser to OpenAI. These are separate from Google sign-in and private file saving. If you choose live transcription, audio streams to Soniox after your permission. If you generate a conversation map, finalized words and their utterance IDs go to the provider you select: Google Gemini through Google AI Studio, or OpenRouter and its configured model provider. The Site does not automatically switch providers or retry. For direct Gemini, Google’s API terms and the project’s billing tier determine data use; OpenRouter’s data-collection setting does not apply to direct Google requests. Provider processing policies and the applicable account settings apply; generation does not itself save or publish your transcript or map.</p>
+          <p className={paragraph}>If you choose the bring-your-own-key AI tools, chat content is sent through the Site’s thin proxy to OpenAI; audio-file transcription with your own key goes from your browser to OpenAI. These are separate from Google sign-in and private file saving. If you choose live transcription, audio streams to Soniox after your permission. If you generate a conversation map, finalized words and their utterance IDs go to the provider you select: Google Gemini through Google AI Studio, or OpenRouter and its configured model provider. The Site does not automatically switch providers or retry. For direct Gemini, Google’s API terms and the project’s billing tier determine data use; OpenRouter’s data-collection setting does not apply to direct Google requests. Provider processing policies and the applicable account settings apply; generation never publishes your transcript or map. The local or ephemeral saving preference applies to generated maps; cloud saving remains a separate action.</p>
         </section>
 
         <section className={section}>

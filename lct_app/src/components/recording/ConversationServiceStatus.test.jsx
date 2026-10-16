@@ -28,3 +28,11 @@ it('displays disabled and malformed status without claiming readiness', async ()
   fetch.mockImplementation(async path => new Response(JSON.stringify(path.includes('soniox') ? { service: 'soniox', enabled: false, reachable: false, checked_at: Date.now() } : { enabled: true })));
   await render(); expect(host.querySelector('button[aria-label*="Switched off"]')).toBeTruthy(); expect(host.querySelector('button[aria-label*="Needs attention"]')).toBeTruthy();
 });
+
+it('does not confuse a busy self-held session with provider failure or use server clock for freshness', async () => {
+  fetch.mockImplementation(async path => new Response(JSON.stringify({ service: path.split('/').at(-1), enabled: true, available: false, reachable: false, capacity: 'busy', allowance: 'unknown', checked_at: Date.now() - 600000 })));
+  await render(); expect(host.querySelectorAll('button[aria-label*="Busy"]')).toHaveLength(2);
+  await render({ voice: { service: 'soniox', at: Date.now() - 100, ok: true }, inference: { service: 'openrouter', at: Date.now() - 100, ok: true } });
+  expect(host.querySelectorAll('button[aria-label*="Working"]')).toHaveLength(2);
+  expect(host.querySelectorAll('button[aria-label*="Needs attention"]')).toHaveLength(0);
+});

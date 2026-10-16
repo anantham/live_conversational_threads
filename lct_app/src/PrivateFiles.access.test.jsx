@@ -28,7 +28,7 @@ describe('Private-files sign-in placement through real Sites routes',()=>{
   window.history.replaceState({},'',path);await act(async()=>root.render(<App/>));
   const panels=host.querySelectorAll('#site-access');expect(panels).toHaveLength(1);
   expect(panels[0].closest('main')).not.toBeNull();
-  expect(panels[0].textContent).toContain('Your account');
+  expect(panels[0].textContent).toContain('Sign in to save conversations privately in the cloud');
   expect([...panels[0].querySelectorAll('button')].some(x=>x.textContent==='Sign in with Google')).toBe(true);
   const prompt=host.querySelector('a[href="#site-access"]');expect(prompt).not.toBeNull();
   expect(panels[0].compareDocumentPosition(prompt)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

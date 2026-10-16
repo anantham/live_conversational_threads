@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { MessageCircle, UserRound } from "lucide-react";
+import { MessageCircle, UserRound, X } from "lucide-react";
 import SitesGoogleSignIn from "./SitesGoogleSignIn";
 import { recordAuthUiTiming, requestWithin } from "./sitesAuthUi";
 
@@ -230,19 +230,19 @@ export default function SitesAccessPanel() {
     <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit p-1"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
       {!expanded ? <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span className={inRecording ? "sr-only" : undefined}>{status === "guest" ? "Sign in" : "Account"}</span></button> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-semibold text-slate-800">{inPrivateFiles ? "Your account" : "Public access"}</p>
-        <button type="button" className="text-xs text-slate-600 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}>Close</button>
+        <p className="font-semibold text-slate-800">{status === "signed-in" ? "Your account" : "Sign in"}</p>
+        <button type="button" className="ml-auto flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}><X size={18} aria-hidden="true" /></button>
         {status === "checking" && (
           <span role="status" className="text-xs tabular-nums text-slate-600">
             Checking sign-in · {elapsedSeconds}s elapsed · Time remaining unknown
           </span>
         )}
-        {status === "guest" && <span role="status" className="text-xs text-slate-600">Browsing as guest</span>}
+        {status === "guest" && <span role="status" className="sr-only">Browsing as guest</span>}
         {status === "signed-in" && <span role="status" className="text-xs text-slate-600">Signed in</span>}
         {status === "error" && <span role="alert" className="text-xs text-rose-700">Sign-in check failed</span>}
       </div>
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
-        Sign-in is optional for private files and history. Browse public conversations without an account. Recording and map generation are available from New conversation; private saving requires sign-in and enabled storage. Opening browser-local files does not publish them.
+        Sign in to save conversations privately in the cloud and open them across devices. Without signing in, new conversations save in this browser unless you choose ephemeral mode.
       </p>
       <a className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/privacy">Privacy and data use</a>
       <div className="mt-3 flex flex-col items-start gap-2 text-xs font-medium">

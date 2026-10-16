@@ -55,18 +55,21 @@ export async function handleServiceHealth(request, env) {
   const base = { service, enabled: policy.enabled, available: false, reachable: false, allowance: 'unknown', checked_at: Date.now() };
   if (!policy.enabled) return openRouterJSON(200, { ...base, detail: 'This service is switched off or not configured.' });
   try {
-    let available;
+    let available, exhausted;
     if (service === 'soniox') {
       const row = await env.DB.prepare(`SELECT COUNT(*) AS attempts, MAX(created_at) AS latest,
         COALESCE(SUM(CASE WHEN lease_until IS NULL OR lease_until > ? THEN 1 ELSE 0 END), 0) AS active FROM lct_soniox_sessions`).bind(Date.now()).first();
       if (!row || !Number.isSafeInteger(row.attempts) || !Number.isSafeInteger(row.active)) throw new Error('Unavailable ledger');
+      exhausted = row.attempts >= policy.maxSessions;
       available = row.attempts < policy.maxSessions && row.active < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.mintIntervalMs);
     } else {
       const row = await readOpenRouterAdmission(env);
+      exhausted = row.attempts >= policy.maxRequests;
       available = row.attempts < policy.maxRequests && row.unresolved < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.admissionIntervalMs);
     }
-    if (!available) return openRouterJSON(200, { ...base, detail: 'Shared capacity is currently unavailable. An active request or the session limit may be responsible.' });
-    const check = await providerCheck(service, policy, env);
+    if (!available) return openRouterJSON(200, { ...base, capacity: exhausted ? 'exhausted' : 'busy', detail: exhausted ? 'The shared attempt limit has been reached.' : 'A request is active or the short admission interval has not elapsed.' });
+    // Each request owns a deadline even when an originating request disappears.
+    const check = await openRouterWait(new AbortController().signal, 6500, () => providerCheck(service, policy, env));
     return openRouterJSON(200, { ...base, ...check, available });
   } catch { return openRouterJSON(200, { ...base, detail: 'Service capacity could not be checked.' }); }
 }

@@ -4,13 +4,10 @@ import PropTypes from 'prop-types';
 const INTRO_KEY = 'lct.recording_intro.v1';
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:opacity-50';
 
-export default function RecordingConsentDialog({ transcribe, maxSeconds, onCancel, onConfirm }) {
+export default function RecordingConsentDialog({ transcribe, retention = 'ephemeral', maxSeconds, onCancel, onConfirm }) {
   const dialog = useRef(null), permission = useRef(null), submitting = useRef(false);
   const [consent, setConsent] = useState(false);
-  const [showIntro] = useState(() => {
-    try { return localStorage.getItem(INTRO_KEY) !== 'seen'; }
-    catch { return true; }
-  });
+
 
   useEffect(() => {
     const element = dialog.current;
@@ -38,9 +35,9 @@ export default function RecordingConsentDialog({ transcribe, maxSeconds, onCance
     <form onSubmit={confirm}>
       <h2 id="recording-consent-title" className="text-xl font-semibold tracking-tight">{transcribe ? 'Record and transcribe' : 'Record audio locally'}</h2>
       <div id="recording-consent-details" className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
-        {showIntro && <p>Your recording stays in this tab until you download it or choose a private save.</p>}
+        <p>{retention === 'local' ? 'Your audio, transcript and maps save automatically in this browser. Nothing is uploaded unless you choose a cloud save or sharing action.' : 'Ephemeral: your recording stays in this tab until you download it or choose a private save.'}</p>
         {transcribe && <p>Audio streams to Soniox for live transcription. The connection stops within {maxSeconds} seconds, including finalization. Pause closes the connection. Resume starts a new connection within the same conversation duration limit; shared session limits also apply.</p>}
-        <p>{transcribe ? 'Local audio is limited to 2 MiB.' : 'Local recording stops within 5 minutes or 2 MiB.'} Keep this tab open until you download or save your audio.</p>
+        <p>{transcribe ? 'Local audio is limited to 2 MiB.' : 'Local recording stops within 5 minutes or 2 MiB.'} {retention === 'local' ? 'Keep this tab open while recording.' : 'Keep this tab open until you download or save your audio.'}</p>
         <a href="/privacy" target="_blank" rel="noreferrer" className="inline-block underline underline-offset-4">Privacy and data use</a>
       </div>
       <label className="mt-5 flex items-start gap-3 text-sm leading-6">
@@ -56,6 +53,7 @@ export default function RecordingConsentDialog({ transcribe, maxSeconds, onCance
 }
 
 RecordingConsentDialog.propTypes = {
+  retention: PropTypes.string,
   transcribe: PropTypes.bool.isRequired,
   maxSeconds: PropTypes.number,
   onCancel: PropTypes.func.isRequired,

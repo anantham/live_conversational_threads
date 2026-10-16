@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, HardDrive, Trash2 } from "lucide-react";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import RecordedConversations from "../components/browse/RecordedConversations.jsx";
 import IndrasNetAudioLibrary from "../components/browse/IndrasNetAudioLibrary";
 import { apiFetch, API_BASE_URL } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
@@ -344,6 +345,7 @@ export default function Browse() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+        {sitesMode && <RecordedConversations />}
         <section className="mx-auto max-w-2xl">
           <div className="mb-3 flex items-end justify-between gap-4">
             <div>
@@ -371,7 +373,7 @@ export default function Browse() {
           ) : localRecords.length === 0 && !draftSummary ? (
             <div className="rounded-xl border border-dashed border-slate-250 bg-white px-5 py-6 text-center">
               <FileText aria-hidden="true" className="mx-auto text-slate-300" size={24} />
-              <p className="mt-2 text-sm font-medium text-slate-600">No saved conversations on this device</p>
+              <p className="mt-2 text-sm font-medium text-slate-600">No imported conversation files on this device</p>
               <p className="mt-1 text-xs text-slate-400">
                 Open a .threads file above; valid files will appear here next time.
               </p>

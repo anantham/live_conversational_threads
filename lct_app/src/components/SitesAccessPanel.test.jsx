@@ -86,7 +86,7 @@ describe("SitesAccessPanel", () => {
   it("dismisses to a compact control, remembers the choice, and keeps authentication unchanged", async () => {
     fetch.mockResolvedValue({ status: 401 });
     await mount();
-    expect(container.textContent).toContain("Opening browser-local files does not publish them.");
+    expect(container.textContent).toContain("Without signing in, new conversations save in this browser unless you choose ephemeral mode.");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
     expect(container.textContent).toBe("Sign in");
     expect(localStorage.getItem("lct.sites_access_dismissed.v1")).toBe("true");
@@ -355,7 +355,7 @@ describe("SitesAccessPanel", () => {
     fetch.mockResolvedValue({ status: 401 });
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
-    expect(container.textContent).toContain("Opening browser-local files does not publish them.");
+    expect(container.textContent).toContain("Without signing in, new conversations save in this browser unless you choose ephemeral mode.");
     expect(fetch).toHaveBeenCalledWith("/api/auth/session", expect.objectContaining({ credentials: "same-origin", cache: "no-store", signal: expect.any(AbortSignal) }));
     const signIn = [...container.querySelectorAll("a")].find((link) => link.textContent === "Sign in with ChatGPT");
     expect(signIn?.getAttribute("href")).toBe("/signin-with-chatgpt?return_to=%2F");
