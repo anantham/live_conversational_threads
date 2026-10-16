@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { MessageCircle, UserRound, X } from "lucide-react";
+import { MessageCircle, UserRound, LogOut, X } from "lucide-react";
 import SitesGoogleSignIn from "./SitesGoogleSignIn";
 import { recordAuthUiTiming, requestWithin } from "./sitesAuthUi";
 
@@ -238,11 +238,11 @@ export default function SitesAccessPanel() {
           </span>
         )}
         {status === "guest" && <span role="status" className="sr-only">Browsing as guest</span>}
-        {status === "signed-in" && <span role="status" className="text-xs text-slate-600">Signed in</span>}
+        {status === "signed-in" && <span role="status" className="sr-only">Signed in</span>}
         {status === "error" && <span role="alert" className="text-xs text-rose-700">Sign-in check failed</span>}
       </div>
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
-        Sign in to save conversations privately in the cloud and open them across devices. Without signing in, new conversations save in this browser unless you choose ephemeral mode.
+        {status === "signed-in" ? "You can save conversations privately in the cloud and open them across devices." : "Sign in to save conversations privately in the cloud and open them across devices. Without signing in, new conversations save in this browser unless you choose ephemeral mode."}
       </p>
       <a className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/privacy">Privacy and data use</a>
       <div className="mt-3 flex flex-col items-start gap-2 text-xs font-medium">
@@ -251,7 +251,7 @@ export default function SitesAccessPanel() {
         )}
         <SitesGoogleSignIn available={status === "guest" && !signingOut} />
         {(status === "signed-in" || status === "guest") && (
-          <button type="button" disabled={signingOut} className="inline-flex min-h-11 items-center text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:opacity-50" onClick={signOut}>{status === "guest" ? "Reset sign-in" : "Sign out"}</button>
+          <button type="button" disabled={signingOut} title={status === "signed-in" ? "Sign out" : undefined} className={`inline-flex min-h-11 items-center text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:opacity-50 ${status === "signed-in" ? "w-11 justify-center rounded-full hover:bg-slate-100" : "underline underline-offset-2"}`} onClick={signOut}>{status === "guest" ? "Reset sign-in" : <><LogOut size={20} aria-hidden="true" /><span className="sr-only">Sign out</span></>}</button>
         )}
         {status === "error" && (
           <button type="button" className="inline-flex min-h-11 items-center text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={retry}>Retry sign-in check</button>

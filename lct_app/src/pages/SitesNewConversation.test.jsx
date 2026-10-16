@@ -61,7 +61,10 @@ async function mount(browser = false) {
 async function consent() { await act(async () => container.querySelector('dialog input[type=checkbox]').click()); }
 const transcriptionSwitch = () => container.querySelector('input[role=switch]');
 async function chooseTranscription(enabled) {
-  if (transcriptionSwitch().checked !== enabled) await act(async () => transcriptionSwitch().click());
+  if (transcriptionSwitch().checked !== enabled) {
+    await click('More options'); await click('Settings');
+    await act(async () => transcriptionSwitch().click()); await click('Close tools');
+  }
 }
 async function record(name = 'Record audio locally') {
   const enabled = name === 'Record and transcribe';
@@ -93,6 +96,8 @@ describe('Sites recording page', () => {
   it('uses one Start control for the selected mode without capturing or transmitting on a switch change', async () => {
     transcribe = true; await mount();
     expect(transcriptionSwitch().checked).toBe(true);
+    expect(container.querySelector('footer').contains(transcriptionSwitch())).toBe(false);
+    expect(transcriptionSwitch().closest('[aria-label="Conversation tools"]')).toBeTruthy();
     expect(container.querySelectorAll('[aria-label="Start session"]')).toHaveLength(1);
     expect(container.textContent).toContain('Audio + live transcript');
     await chooseTranscription(false);
@@ -106,10 +111,11 @@ describe('Sites recording page', () => {
     expect(transcriptionSwitch().checked).toBe(false);
     await chooseTranscription(true); await click('Start session');
     expect(container.querySelector('dialog').textContent).toContain('send this audio to Soniox');
+    expect(transcriptionSwitch().disabled).toBe(true);
     expect(fixture.sessions).toHaveLength(0);
     await consent(); await click('Start transcription');
     expect(fixture.sessions[0].options.transcribe).toBe(true);
-    expect(transcriptionSwitch()).toBeNull();
+    expect(transcriptionSwitch().disabled).toBe(true);
     expect(button('Start session')).toBeUndefined();
     expect(document.activeElement).toBe(button('Stop recording'));
   });
@@ -121,6 +127,7 @@ describe('Sites recording page', () => {
     expect(transcriptionSwitch().checked).toBe(true);
     expect(transcriptionSwitch().disabled).toBe(false);
     expect(button('Start session').disabled).toBe(true);
+    expect(container.textContent).toContain('Turn it off in Settings to record audio only.');
     await click('Start session');
     expect(container.querySelector('dialog')).toBeNull();
     expect(fixture.sessions).toHaveLength(0);
@@ -222,7 +229,7 @@ describe('Sites recording page', () => {
     await mount(); await record();
     expect(localStorage.getItem('lct.recording_intro.v1')).toBe('seen');
     expect(container.querySelector('dialog')).toBeNull();
-    expect(container.querySelector('input[type=checkbox]')).toBeNull();
+    expect(transcriptionSwitch().disabled).toBe(true);
     expect(button('Start session')).toBeUndefined();
     expect(button('Cancel session')).toBeTruthy();
     expect(document.activeElement).toBe(button('Stop recording'));
@@ -602,8 +609,12 @@ describe('Sites recording page', () => {
     await act(async () => respond(jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(source).bundle })));
     expect(container.querySelector('[aria-label="Rendered graph"]').textContent).toContain('Synthetic recorded moment');
     expect(container.textContent).toContain('New words are waiting');
-    await click('Pause recording'); expect(button('Resume recording')).toBeTruthy();
+    await click('Pause recording'); expect(button('Resume recording')).toBeTruthy(); expect(transcriptionSwitch().disabled).toBe(true);
     expect(document.activeElement).toBe(button('Resume recording'));
+    transcribe = false; await click('Check connections');
+    expect(transcriptionSwitch().disabled).toBe(true);
+    expect(container.textContent).not.toContain('Turn it off in Settings to record audio only.');
+    transcribe = true; await click('Check connections');
     const id = transcriptJSON().recording_id;
     await click('Resume recording'); await deliverTranscript({ ...transcript, finalTokens: [{ text: 'Resumed words.', speaker: 'S1', startMs: 10, endMs: 1000 }], partialText: '' });
     expect(transcriptJSON().recording_id).toBe(id);

@@ -336,7 +336,7 @@ describe("SitesAccessPanel", () => {
     expect(panel.classList.contains("fixed")).toBe(false);
     expect(panel.classList.contains("overflow-y-auto")).toBe(false);
     expect(panel.classList.contains("max-h-[45dvh]")).toBe(false);
-    expect(panel.textContent).toContain("Signed in");
+    expect(panel.textContent).toContain("Your account");
     expect([...panel.querySelectorAll("button")].some((button) => button.textContent === "Sign out")).toBe(true);
 
     await act(async () => navigate("/private-files/"));
@@ -347,7 +347,7 @@ describe("SitesAccessPanel", () => {
     expect(container.querySelector("aside")).toBe(panel);
     expect(panel.classList.contains("fixed")).toBe(true);
     expect(panel.classList.contains("overflow-y-auto")).toBe(true);
-    expect(panel.textContent).toContain("Signed in");
+    expect(panel.textContent).toContain("Your account");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -373,13 +373,18 @@ describe("SitesAccessPanel", () => {
       }));
     });
     await mount();
-    expect(container.textContent).toContain("Signed in");
+    expect(container.textContent).toContain("Your account");
     expect(container.textContent).not.toContain("private-id");
     const history = JSON.parse(localStorage.getItem("lct.sites_session_check_timing.v1"));
     expect(history).toEqual([{ durationMs: expect.any(Number), outcome: "signed-in", retryCount: 0 }]);
     expect(localStorage.getItem("lct.sites_session_check_timing.v1")).not.toContain("private-id");
     const signOut = [...container.querySelectorAll("button")].find((button) => button.textContent === "Sign out");
     expect(signOut).toBeTruthy();
+    expect(signOut.title).toBe("Sign out");
+    expect(signOut.querySelector("svg")).toBeTruthy();
+    expect(signOut.querySelector(".sr-only").textContent).toBe("Sign out");
+    expect(container.querySelector('[role="status"]').classList.contains("sr-only")).toBe(true);
+    expect(container.textContent).not.toContain("Sign in to save");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
     expect(container.textContent).toBe("Account");
   });
@@ -403,14 +408,14 @@ describe("SitesAccessPanel", () => {
     fetch.mockResolvedValue({ status: 200, ok: true, json: async () => ({ authenticated: true, id: "private-id" }) });
     await mount();
     expect(container.textContent).toContain("Sign-in check failed");
-    expect(container.textContent).not.toContain("Signed in");
+    expect(container.textContent).not.toContain("Your account");
   });
 
   it("does not treat a non-200 response as signed in", async () => {
     fetch.mockResolvedValue({ status: 201, ok: true, json: async () => ({ authenticated: true, user: { id: "private-id" } }) });
     await mount();
     expect(container.textContent).toContain("Sign-in check failed");
-    expect(container.textContent).not.toContain("Signed in");
+    expect(container.textContent).not.toContain("Your account");
   });
 
   it("shows elapsed time during a slow check and recovers after timeout", async () => {
