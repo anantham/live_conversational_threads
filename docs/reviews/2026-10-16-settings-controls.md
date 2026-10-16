@@ -27,4 +27,6 @@ Supported findings fixed: unavailable selected-mode recovery discoverability; sc
 
 ## Publication
 
-Validated source, publication pending. Existing public Site43/env37 is the rollback. No audience, provider, credential, storage or domain configuration is changed.
+Application source `b037417` is committed and pushed. Native source `4875c4129aff3b914bbdcb491f329b40b12130f3` is pushed and served as public Site44, environment37; deployment `appgdep_6ad2558596688191bb43410ff0aa864c` succeeded2026-10-16T16:49:42.497780UTC. Saved version `appgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_d7060ffcd60c8191b218f93709e74366`. Archive SHA256 `bf1c5d94bb7c94a72b5760368b4fa1a7f3256da5199939d48a69201fed4f73ca`,39files/1925120bytes.
+
+Fresh separate live browser tab confirms `/assets/index-BmU8Nxpl.js`, Settings contains the live-transcription toggle/caption and footer contains only Start. Live screenshot `/private/tmp/lct-settings-controls-live.png`. That browser is a guest, so signed-in appearance was verified with the synthetic preview, not claimed as a live-account test. Existing user conversation tab was untouched. Public URL: https://threads-adityaarpitha-cloud.avalokai.chatgpt.site . Previous Site43/env37 is the rollback. No audience, provider, application credential, storage or domain configuration changed.

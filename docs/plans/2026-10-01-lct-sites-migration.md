@@ -1,3 +1,7 @@
+## 16 October 22:20 IST — Settings and account controls served
+
+Root/authoritative worktree unchanged. Sourceb037417 and native4875c41 pushed; public Site44/env37 succeeded16:49:42UTC. Settings relocation is verified in the live guest browser; signed-in icon/copy is verified in the synthetic preview. Final1022checks and independent Claude PASS/zero findings cover the bounded behavior, [receipt](../reviews/2026-10-16-settings-controls.md). This slice is delivered within the refreshed5–15minute publication range; broader account/provider/domain acceptance dependencies remain below. Storage status remains unchanged. No further decision required for this slice.
+
 ## 16 October 22:17 IST — Settings and account controls validated
 
 Root/checkout unchanged. Final1022/1022checks, browser preview and independent Claude PASS/zero findings cover the bounded change; [receipt](../reviews/2026-10-16-settings-controls.md). Edited and validated, publication next. Remaining dependency is exact-source Site deployment. Forecast5–15minutes publication; original10–20minute implementation range met, review/publication range still in progress. Storage line unchanged.
