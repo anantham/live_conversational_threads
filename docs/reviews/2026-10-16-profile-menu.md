@@ -26,3 +26,10 @@ Claude opus5.5, existing authorized account, final verdict PASS/zero findings. P
 ## Publication
 
 Validated locally; existing public Site44/env37 is the rollback. Exact-source publication and live-browser receipt follow. No provider/account/domain settings are changed by this UI release.
+
+
+## Served receipt — 23:12 IST
+
+Application source `eea4877` is committed/pushed; native source `57fb30c5630143b00d0499e4a76c3c8b538ec95b` is pushed and published as public Site45/env37. Saved version `appgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_148a683654308191b93e84f1d4460a0a`; deployment `appgdep_6ad26180c4c08191a5622746039de614` succeeded2026-10-16T17:40:47.945377UTC. Archive39files/1925120bytes/SHA256 `ecea6a8e3bba21b5ca0e4288d85b46591084dafebbc2170ebcfa8ad8da529f12`.
+
+Fresh separate live guest browser confirms `/assets/index-CxdC-Qt3.js`, Profile inside More opens the account panel and closes with focus on More, local-saving status/link in Settings, no standalone profile or idle saving notice, Start center640 at1280CSSpx. Screenshot `/private/tmp/lct-profile-menu-live.png`. Signed-in behavior and320px geometry were tested in the explicit synthetic preview, not claimed as live-account tests. User recording tab was untouched. Previous Site44/env37 is the rollback; no provider/account/domain/runtime configuration changed.
