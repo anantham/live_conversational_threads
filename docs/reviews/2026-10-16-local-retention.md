@@ -55,3 +55,9 @@ No account access, environment, quota, DNS or sharing mutation. Current public S
 - `lct_app/src/services/serverless/sitesServiceHealth.test.js` — `03d3162fa657ec858de53519303f7763e5258f9ad3d9edcdc4782a40401d725b`
 - `tests/browser/local-conversation-contract.js` — `5c6a3a74faf5f2cd799b5fabc10bdd4bc72df1ef36b8bc592721a01428ec011f`
 - `tests/intent/local-conversation-retention.md` — `2dbd1f94c8f5930f2d6f41e6d55259e7a2ff81520924dddc51463dd8437de9fb`
+
+## Served receipt — 2026-10-16 14:46 IST
+
+Application source1073338e0eaa78fb316b3eafe187cbff0ba18979 committed/pushed on the task branch; native Site source55c86b092d713f944340337e3cff3875a9d6a288 committed/pushed by the official Sites helper. Site43, versionappgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_3c69916609888191b8fc49ebb130b989, deploymentappgdep_6ad1ea5647e481918286e0a64e57744f succeeded2026-10-16T09:12:24.557071UTC, public/env37. Archive39files/1925120bytes/SHA256718fe156d6eaaaf465879c4a660de139977e0a3384225b9cc040c61c8a4d761f. Fresh browser confirms exact served /assets/index-CpIG4c7O.js, default On this device, Ephemeral settings and compact controls. Screenshot /private/tmp/lct-retention-settings-live.png. No user recording tab was reloaded.
+
+Live read-only check exposes Soniox Provider access was refused, while OpenRouter API check is reachable and live processing unverified. The new Soniox models probe refusal is not proof that existing temporary-key transcription is broken, nor proof of depleted balance. Request method/URL/header match the official GET models documentation. Exact upstream401vs403 and key permission cause remain unknown because this intentionally sanitized health endpoint groups them. Logged separately in ISSUES; do not widen credentials or spend merely to make a green indicator. Storage slice is delivered; real-account cloud cross-device acceptance remains unverified.
