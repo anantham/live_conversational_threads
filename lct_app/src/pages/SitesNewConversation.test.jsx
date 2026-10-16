@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('../components/recording/ConversationServiceStatus.jsx', () => ({ default: () => <div aria-label="Service status" /> }));
 const fixture = vi.hoisted(() => ({ sessions: [] }));
 vi.mock('../components/MinimalGraph.jsx', () => ({ default: ({ graphData }) => <div aria-label="Rendered graph">{graphData.map(n => <span key={n.id}>{n.node_name}</span>)}</div> }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
@@ -115,7 +116,7 @@ describe('Sites recording page', () => {
   it('refuses unavailable selected transcription and keeps an explicit audio-only choice after recovery', async () => {
     transcribe = true; await mount();
     await click('Start session'); await click('Cancel');
-    transcribe = false; await click('Retry cloud setup');
+    transcribe = false; await click('Check connections');
     expect(transcriptionSwitch().checked).toBe(true);
     expect(transcriptionSwitch().disabled).toBe(false);
     expect(button('Start session').disabled).toBe(true);
@@ -124,7 +125,7 @@ describe('Sites recording page', () => {
     expect(fixture.sessions).toHaveLength(0);
     await chooseTranscription(false);
     expect(button('Start session').disabled).toBe(false);
-    transcribe = true; await click('Retry cloud setup');
+    transcribe = true; await click('Check connections');
     expect(transcriptionSwitch().checked).toBe(false);
     await click('Start session'); await consent(); await click('Start recording');
     expect(fixture.sessions[0].options.transcribe).toBe(false);
@@ -171,12 +172,12 @@ describe('Sites recording page', () => {
     const footer = container.querySelector('footer');
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     expect(canvas.textContent).toContain('2 s elapsed');
-    expect(canvas.contains(button('Cancel setup'))).toBe(true);
+    expect(canvas.contains(button('Cancel connection check'))).toBe(true);
     expect(footer.textContent).not.toContain('Time remaining unknown');
     expect(footer.textContent).not.toContain('Live transcription is not available');
-    await click('Cancel setup');
-    expect(canvas.contains(button('Retry cloud setup'))).toBe(true);
-    expect(button('Retry cloud setup').closest('details')).toBeNull();
+    await click('Cancel connection check');
+    expect(canvas.contains(button('Check connections'))).toBe(true);
+    expect(button('Check connections').closest('details')).toBeNull();
     expect(footer.contains(button('Start session'))).toBe(true);
   });
 
@@ -188,7 +189,7 @@ describe('Sites recording page', () => {
     expect(transcriptionSwitch().checked).toBe(false);
     expect(transcriptionSwitch().disabled).toBe(true);
     expect(container.querySelectorAll('[aria-label="Start session"]')).toHaveLength(1);
-    expect(button('Retry cloud setup').closest('details')).toBeNull();
+    expect(button('Check connections').closest('details')).toBeNull();
     expect(fixture.sessions).toHaveLength(0);
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status']);
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
@@ -311,19 +312,19 @@ describe('Sites recording page', () => {
     expect(container.textContent).toContain('Time remaining unknown');
     await act(async () => vi.advanceTimersByTimeAsync(2000));
     expect(container.textContent).toContain('2 s elapsed');
-    await click('Cancel setup');
+    await click('Cancel connection check');
     expect(container.textContent).toContain('Setup stopped or timed out');
     fetch.mockImplementation(async () => new Response(JSON.stringify({ enabled: false, synthetic_only: true })));
-    await click('Retry cloud setup');
-    expect(button('Retry cloud setup')).toBeTruthy(); expect(button('Cancel setup')).toBeUndefined();
+    await click('Check connections');
+    expect(button('Check connections')).toBeTruthy(); expect(button('Cancel connection check')).toBeUndefined();
   });
 
   it('bounds setup without relying on fetch honoring the abort signal', async () => {
     vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {})); await mount();
     await act(async () => vi.advanceTimersByTimeAsync(15_000));
     expect(container.textContent).toContain('Setup stopped or timed out');
-    expect(button('Cancel setup')).toBeUndefined();
-    expect(button('Retry cloud setup')).toBeTruthy();
+    expect(button('Cancel connection check')).toBeUndefined();
+    expect(button('Check connections')).toBeTruthy();
   });
 
   it('keeps local audio and warns about uncertain private-save outcome after cancellation', async () => {
@@ -333,7 +334,7 @@ describe('Sites recording page', () => {
     await click('Cancel private save');
     expect(container.textContent).toContain('check your private files before retrying');
     expect(container.querySelector('audio')).toBeTruthy(); expect(button('Save audio privately').disabled).toBe(false);
-    expect(button('Retry cloud setup').closest('details')).toBeNull();
+    expect(button('Check connections').closest('details')).toBeNull();
     expect(button('Save audio privately').textContent).toBe('Save audio privately');
   });
 

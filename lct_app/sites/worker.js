@@ -4,6 +4,7 @@ import { handleStorage } from './storage.js';
 import { handlePublicThreads } from './publicThreads.js';
 import { handleSoniox } from './soniox.js';
 import { handleOpenRouter } from './openRouter.js';
+import { handleServiceHealth } from './serviceHealth.js';
 import { handleAuth } from './auth.js';
 
 // The original proxy routes remain BYOK. Cloud handlers enforce separate admission.
@@ -37,6 +38,8 @@ export default {
     const url = new URL(request.url);
     const auth = await handleAuth(request, env);
     if (auth) return auth;
+    const health = await handleServiceHealth(request, env);
+    if (health) return health;
     const soniox = await handleSoniox(request, env);
     if (soniox) return soniox;
     const openRouter = await handleOpenRouter(request, env);

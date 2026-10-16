@@ -397,3 +397,5 @@ ThreadsViewer's existing ingestion/persistence/presentation monolith remains the
 ## 2026-10-16 — Cloud live workspace
 
 Keep the bounded RecordingSession engine intact; conversation continuity is now separated into cloudConversationSession rather than extending its300-line transport state machine. SitesNewConversation and RecordingConversationMap remain under250lines. Existing MinimalGraph is large and reused unmodified; future graph/tool layout decomposition is separate from this migration.
+
+- 2026-10-16: SitesNewConversation remains the recording controller (~220 lines); extracted navigation and service indicators. SitesAccessPanel mixes identity lifecycle and panel layout (~280 lines); future presentation extraction should preserve the existing auth timeout/reset tests. No broad auth refactor in this slice.

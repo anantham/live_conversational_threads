@@ -11,8 +11,10 @@ import { stageGeneratedMap } from '../../services/cloud/generatedMapHandoff.js';
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
 const interrupted = 'Waiting stopped. The attempt may still be running or counted; stopping this view does not confirm billing stopped. Keep your transcript and check setup before a deliberate retry.';
 
-export default function RecordingConversationMap({ source, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false }) {
-  const [backend, setBackend] = useState('openrouter');
+export default function RecordingConversationMap({ source, backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false }) {
+  const [localBackend, setLocalBackend] = useState('openrouter');
+  const backend = selectedBackend ?? localBackend;
+  const setBackend = value => { setLocalBackend(value); onBackendChange?.(value); };
   const [automatic, setAutomatic] = useState(false), [attemptCount, setAttemptCount] = useState(0);
   const generateLatest = useRef(null), downloadURLs = useRef(new Set());
   const lastAttempt = useRef(0), lastText = useRef(''), generating = useRef(false), attempts = useRef(0);
@@ -62,9 +64,11 @@ export default function RecordingConversationMap({ source, privateEnabled, savin
     attempts.current++;
     setAttemptCount(attempts.current);
     setError('');
+    const healthStarted = Date.now();
     const response = await run('generate', signal => generateRecordingMap(requestedSource, signal, backend));
     generating.current = false;
     if (!alive.current || currentSource.current.recordingId !== requestedSource.recordingId) return;
+    onHealthChange?.({ service: backend, ok: Boolean(response.data), at: Date.now(), detail: response.data ? `Last map completed in ${((Date.now() - healthStarted) / 1000).toFixed(1)} s.` : 'Map generation did not complete. Check the map panel for details.' });
     if (response.data) { setResult(response.data); onMapChange?.(response.data.bundle); }
     else { setAutomatic(false); setError(response.outcome === 'cancelled' || response.outcome === 'timeout' ? interrupted : response.error.message); }
   }
@@ -110,5 +114,5 @@ export default function RecordingConversationMap({ source, privateEnabled, savin
   </section>;
 }
 
-RecordingConversationMap.propTypes = { source: PropTypes.object.isRequired, privateEnabled: PropTypes.bool,
+RecordingConversationMap.propTypes = { backend: PropTypes.string, onBackendChange: PropTypes.func, onHealthChange: PropTypes.func, source: PropTypes.object.isRequired, privateEnabled: PropTypes.bool,
   saving: PropTypes.bool.isRequired, onPrivateSave: PropTypes.func.isRequired, onGeneratingChange: PropTypes.func.isRequired, onMapChange: PropTypes.func, onMapStatusChange: PropTypes.func, liveActive: PropTypes.bool, recordingBusy: PropTypes.bool };
