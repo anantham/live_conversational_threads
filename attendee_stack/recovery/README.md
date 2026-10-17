@@ -2,7 +2,18 @@
 
 Prepare a fresh directory outside Git/build context with `python prepare.py <new-directory>`.
 This does not start services, copy old data, join a meeting, or enable public access.
-On Windows, restrict that new directory to the current owner and SYSTEM before using it.
+On Windows, restrict the actual runtime directory and its files to the explicit
+interactive-user SID and SYSTEM before using it. Restricting only its parent is
+insufficient: Python's Windows `mkdir(mode=0o700)` can produce a protected child
+ACL owned by Administrators, which a limited interactive Docker task cannot read.
+For this exact recovery path, `repair_windows_acl.ps1` defaults to a no-write dry
+run. Its explicit `-Apply` operation saves the prior ACL, refuses unexpected files
+or links, and verifies the credential file's bytes remain unchanged. Apply from the existing elevated SSH session of the same user only
+inside the approved recovery envelope; the script verifies that identity matches
+the limited interactive Docker task. A partial failure preserves the original ACL
+backup and refuses automatic retry; inspect it before restoring or continuing. Then prove the actual Docker task account
+can open the configuration before any service startup. Do not grant broad Users
+or Everyone access or run the task elevated to evade the missing permission.
 Keep `runtime.env` private; never include it in source, reviews, archives or console output.
 
 The image `lct-attendee:recovery-500168b1` must first be built from exact upstream

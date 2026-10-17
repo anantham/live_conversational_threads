@@ -1,3 +1,15 @@
+## 2026-10-17 11:41 IST — Native source prepared, runtime gate unresolved
+
+Outcome/owner/authoritative checkout and seven acceptance checks are unchanged. Native source acbbeb987fbe806d8d051198c1119c80f3cd2667 and matching archive are prepared through the official helper; release45/env37 remains served. Source/export checks and independent review pass. ACL correction is independently reviewed and passes Windows dry run, awaiting the loop-limit continuation response; no startup retry or permission application has followed.
+
+Build dependency connection failure is distinct from the ACL issue. Both exact public package URLs recovered to200; one cached image retry is dispatched at the same clean500168b source. Completion remains unverified. Next evidence: successful image, actual limited-account config access, isolated API/storage/sandbox readiness, then guarded cloud connection and real Meet acceptance. Build/network wait and human checkpoint remain separate; calendar ETA unknown. No need to repeat room authorization. Google Cloud remains deferred.
+
+## 17 October 11:33 IST — Source durable; startup loop checkpoint
+
+Reviewed integration e52e060 is pushed, not served. Final export repair passes1049 checks and a clean339-file source build; independent review passes. Runtime source matches on Asus and existing credential bytes are preserved. Image build continues through Chrome download.
+
+The data-service launch is stopped after three failed attempts; final direct error is runtime.env access denied. The runtime child ACL differs from its correctly restricted parent. A dry-run-validated explicit user/SYSTEM-only correction and rollback are ready; the AGENTS loop rule requires human guidance before the next startup attempt. User continuation is pending, not a missing product decision about Asus-first. Owner-session location also remains pending because the controlled tab still shows guest despite the user's completed sign-in elsewhere. Next evidence remains actual API/storage/sandbox readiness; no bot or real captions/audio/threads accepted. Root, checkout and seven finite checks remain unchanged; Google Cloud deferred.
+
 ## 17 October 11:24 IST — Reviewed inactive integration; image and identity remain
 
 Root owns the same authoritative worktree and Asus-first outcome. The cloud relay, Meet entry/view, captions/threads integration, private audio range streaming and browser archive handling are implemented locally and independently reviewed ([receipt](../reviews/2026-10-17-asus-site-meetings.md)).1048 combined tests,4 Python checks, final build and desktop/mobile synthetic browser flow pass; actual meeting acceptance is still incomplete. Site remains45/env37. No bot, paid model request, public route or credential transfer has occurred.
