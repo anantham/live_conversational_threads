@@ -1881,7 +1881,7 @@ Real guest browser now verifies dismissible notice/reload, public-library loadin
 
 - 2026-10-15: Locked npm install reports16 dependency audit findings (6 moderate,8 high,2 critical). Existing dependency versions preserved; no install scripts executed. Not a provider-selector regression; separate dependency triage is recommended. No claim of exploitability from the aggregate advisory count.
 
-## 2026-10-17 17:02 IST — Asus build diagnostic fixture and browser control blockers
+## 2026-10-17 17:00 IST — Asus build diagnostic fixture and browser control blockers
 
 The local-wheel build still chooses a remote OpenCV artifact. Its two follow-up diagnostics failed before compatibility (network-disabled apt and absent python command in a Chrome-only cached fixture). Both public wheel files mount with correct sizes, but this does not prove pip compatibility or local selection. Impact: image/private API/S3 acceptance and Meet pilot blocked. Status: current recovery blocker, stopped at the two-inconclusive-cycle rule; preserve all prior receipts. Next: explicit continuation for one preflight-validated, offline diagnostic; do not dispatch another full build on an assumed fixture.
 
