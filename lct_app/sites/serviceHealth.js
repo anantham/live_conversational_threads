@@ -8,6 +8,24 @@ const TTL = 60_000;
 const policies = { soniox: sonioxPolicy, openrouter: openRouterPolicy, gemini: geminiPolicy };
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 
+// Account totals stay server-side; this public endpoint exposes only coarse state.
+async function accountBalance(key, parentSignal) {
+  try {
+    return await openRouterWait(parentSignal, 2500, async signal => {
+      const response = await fetch('https://openrouter.ai/api/v1/credits', {
+        method: 'GET', redirect: 'manual', signal, headers: { Authorization: `Bearer ${key}` },
+      });
+      if (response.status !== 200) {
+        void response.body?.cancel().catch(() => {});
+        return response.status === 401 || response.status === 403 ? 'permission_required' : 'unavailable';
+      }
+      const { data } = await readOpenRouterJSON(response, signal, 8192, true);
+      if (!finite(data?.total_credits) || data.total_credits < 0 || !finite(data.total_usage) || data.total_usage < 0) return 'unavailable';
+      return data.total_credits > data.total_usage ? 'available' : 'exhausted';
+    });
+  } catch { return 'unavailable'; }
+}
+
 async function providerCheck(service, policy, env) {
   const key = service === 'soniox' ? env.SONIOX_API_KEY.trim() : policy.key;
   const previous = checks.get(service);
@@ -17,6 +35,7 @@ async function providerCheck(service, policy, env) {
     const start = Date.now();
     try {
       return await openRouterWait(new AbortController().signal, 6000, async signal => {
+        const balance = service === 'openrouter' ? accountBalance(key, signal) : null;
         const url = service === 'soniox' ? 'https://api.soniox.com/v1/models'
           : service === 'openrouter' ? 'https://openrouter.ai/api/v1/key'
             : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(policy.model)}`;
@@ -34,10 +53,11 @@ async function providerCheck(service, policy, env) {
         const data = body.data;
         const limits = service === 'openrouter' ? [data.limit_remaining, data.effective_budget?.remaining_usd,
           ...(Array.isArray(data.budgets) ? data.budgets.map(b => b.remaining_usd) : [])].filter(finite) : [];
-        const allowance = limits.some(n => n <= 0) ? 'exhausted' : limits.length ? 'key_available' : 'unknown';
-        return { reachable: true, allowance, latency_ms: Date.now() - start,
+        const account = balance ? await balance : null;
+        const allowance = account === 'exhausted' || limits.some(n => n <= 0) ? 'exhausted' : limits.length ? 'key_available' : 'unknown';
+        return { reachable: true, allowance, ...(account ? { account_balance: account } : {}), latency_ms: Date.now() - start,
           detail: allowance === 'exhausted' ? 'The provider reports an exhausted allowance.'
-            : service === 'openrouter' ? 'API key accepted. Account balance and model generation are not tested by this check.'
+            : service === 'openrouter' ? 'API key accepted. This check does not run model generation.'
               : 'Provider API responded. Billing balance and live processing are not tested by this check.' };
       });
     } catch { return { reachable: false, allowance: 'unknown', detail: 'Provider check timed out or returned an unreadable response.', latency_ms: Date.now() - start }; }

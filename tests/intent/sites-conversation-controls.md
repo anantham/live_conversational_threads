@@ -11,3 +11,11 @@
 
 - Profile opens the existing access panel from More on the recording page; no standalone account icon, no navigation or new recording, and closing returns keyboard focus to More. Existing sign-in/sign-out behavior stays unchanged.
 - Routine browser-saving information and its library link live in Settings; browser-save failures stay visible with retry. Start is visually centered independently of the left status indicators; active controls remain usable on narrow screens. Verify placement visually rather than asserting CSS implementation.
+
+- 17 October: the same OpenRouter health check also attempts fixed read-only /credits
+  using the existing restricted server key, without a new management key or inference.
+  Validate real response schema and distinguish available, exhausted, refused and
+  timed-out/malformed balance checks. Preserve key reachability when only balance
+  fails; cache both probes together and consume no reservation. Public responses
+  contain coarse state only, never account amounts, key labels or credentials.
+  This extends the earlier key-only check; no generation-success claim follows.

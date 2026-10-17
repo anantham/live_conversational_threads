@@ -2,6 +2,13 @@ import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Mic, Sparkles } from 'lucide-react';
 
+const accountBalanceText = {
+  available: 'Account balance checked: credit available.',
+  exhausted: 'Account balance checked: no credit remains.',
+  permission_required: 'Account balance check refused. OpenRouter requires management-key access.',
+  unavailable: 'Account balance check could not finish. Check again to retry.',
+};
+
 const colors = { checking: 'bg-slate-300', ready: 'bg-emerald-500', uncertain: 'bg-amber-500', error: 'bg-rose-500', off: 'bg-slate-400' };
 function ServiceIndicator({ service, label, Icon, evidence }) {
   const [check, setCheck] = useState(null), [open, setOpen] = useState(false), [revision, setRevision] = useState(0), [now, setNow] = useState(Date.now());
@@ -44,8 +51,9 @@ function ServiceIndicator({ service, label, Icon, evidence }) {
       <p>{headline}</p><p>{current?.detail}</p>
       {Number.isFinite(current?.latency_ms) && <p>API check: {current.latency_ms} ms</p>}
       {current && <p>Checked {new Date(current.checked_at).toLocaleTimeString()}</p>}
-      {current?.allowance === 'key_available' && <p>Key allowance available. Account credit balance unknown.</p>}
-      {current?.allowance === 'unknown' && <p>Credit balance unavailable to this check.</p>}
+      {current?.allowance === 'key_available' && <p>Key allowance available.</p>}
+      {service === 'openrouter' && current?.account_balance && <p>{accountBalanceText[current.account_balance] || accountBalanceText.unavailable}</p>}
+      {current?.allowance === 'unknown' && !current?.account_balance && <p>Credit balance unavailable to this check.</p>}
       {result && <p>{result.detail}</p>}
       <button className="mt-2 min-h-11 underline underline-offset-4" onClick={() => { setRevision(v => v + 1); }}>Check again</button>
     </div>}

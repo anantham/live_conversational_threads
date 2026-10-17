@@ -36,3 +36,18 @@ it('does not confuse a busy self-held session with provider failure or use serve
   expect(host.querySelectorAll('button[aria-label*="Working"]')).toHaveLength(2);
   expect(host.querySelectorAll('button[aria-label*="Needs attention"]')).toHaveLength(0);
 });
+
+it.each([
+  ['available', 'Account balance checked: credit available.'],
+  ['exhausted', 'Account balance checked: no credit remains.'],
+  ['permission_required', 'Account balance check refused. OpenRouter requires management-key access.'],
+  ['unavailable', 'Account balance check could not finish.'],
+])('shows the actual same-check account result for %s', async (balance, copy) => {
+  fetch.mockImplementation(async path => new Response(JSON.stringify({ service: path.split('/').at(-1), enabled: true, reachable: true, available: true,
+    allowance: balance === 'exhausted' ? 'exhausted' : 'key_available', account_balance: balance, checked_at: Date.now() })));
+  await render(); await act(async () => host.querySelector('button[aria-label^="AI inference"]').focus());
+  expect(host.textContent).toContain(copy);
+  expect(host.textContent).not.toContain('Account credit balance unknown');
+  expect(host.querySelector('button[aria-label*="Working"]')).toBeNull();
+  if (balance === 'exhausted') expect(host.querySelector('button[aria-label^="AI inference: Needs attention"]')).toBeTruthy();
+});
