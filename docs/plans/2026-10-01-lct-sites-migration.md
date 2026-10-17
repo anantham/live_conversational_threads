@@ -1,3 +1,37 @@
+## 2026-10-17 13:10 IST — Builder progressing; explicit sandbox gate prepared
+
+Root/integration owner and authoritative checkout unchanged. Limited-account ACL
+read/config proof passes; unchanged credentials/old ACL rollback verified. Original
+Docker Hub build method is stopped. A materially different public-mirror route
+verified the exact original Ubuntu manifest bytes, cached it, and resumed the
+unchanged Attendee build; Chrome/driver and audio layers now progress. No global
+Docker/WSL, DNS, proxy, TLS or unrelated-service change. MinIO registry image is
+unavailable; same-release official package is checksum-verified on Mac and reviewed
+for a pinned local image. Full-file transfer timed out; a bounded256KiB probe passed,
+so new bounded chunks are transferring, preserving partial holders.
+
+Actual default-sandbox Chrome probe refuses namespace creation (exit134), with
+user namespaces enabled. An inactive worker-only profile preserves33 exact engine
+baseline rules and adds clone/setns/unshare; independent Gemini PASS. Explicit H1
+kernel-permission approval is pending separately from the applied ACL approval.
+Exact Google owner choice is also pending. No bot has joined, no real captions,
+audio or map, no Funnel route or live Site change;45/env37 still authoritative.
+
+Next evidence: complete image and verified local storage image, actual API/private
+S3 readiness, approved sandbox probe, then the seven existing real acceptance
+checks. Network build/transfer wait remains unknown; after prerequisites pass,
+integration/release estimate30–60minutes and bounded test/verification10–20minutes,
+subject to newly observed failures. Source reviews are complete; human permission
+and owner waits are separate and do not halt build/storage preparation. Earlier
+forecasts and missed before11window remain historical; the same room is now
+explicitly authorized after11. Google Cloud remains deferred.
+
+## 2026-10-17 12:30 IST — Permission blocker resolved; image network failure remains
+
+User approved the bounded ACL correction. Its actual non-administrator task account can now read runtime.env and validate Compose; old ACL backup and unchanged credential bytes verified. Isolated Postgres/Redis/MinIO startup is dispatched after empty-namespace guards; do not count it ready until native exit and container health are checked.
+
+Cached image build failed at Docker Hub TLS before compilation resumed. Host-only public endpoint checks work, which does not establish builder-network readiness. The declared three-attempt image boundary is reached; no further image retry or global Docker/WSL/network change has occurred. Chrome official Google sign-in reaches the two-account chooser; owner choice is pending. Native source acbbeb9 remains prepared, public Site45/env37 unchanged. Next checkpoint: real data-service health, bounded builder-network diagnosis/decision, exact owner, then API/storage/sandbox and the seven real acceptance checks. Root/authoritative checkout unchanged; Google Cloud deferred.
+
 ## 2026-10-17 11:41 IST — Native source prepared, runtime gate unresolved
 
 Outcome/owner/authoritative checkout and seven acceptance checks are unchanged. Native source acbbeb987fbe806d8d051198c1119c80f3cd2667 and matching archive are prepared through the official helper; release45/env37 remains served. Source/export checks and independent review pass. ACL correction is independently reviewed and passes Windows dry run, awaiting the loop-limit continuation response; no startup retry or permission application has followed.

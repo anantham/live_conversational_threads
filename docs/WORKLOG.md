@@ -7612,3 +7612,40 @@ Official native Site source acbbeb987fbe806d8d051198c1119c80f3cd2667 is pushed a
 The first full image build failed at Chrome apt installation because archive.ubuntu.com stopped responding for two ALSA dependency packages. Exact read-only HEAD probes on Asus later returned200 for both paths. Dispatched one cached retry at unchanged clean upstream500168b, with distinct log/exit files and a two-hour bound; no dependency versions, hashes or sandbox settings changed. Do not infer completion from dispatch. If this build attempt fails, stop that method and report its concrete result rather than repeat. The earlier successful base layers and Chrome download are retained in Docker cache.
 
 Pending user questions remain the limited ACL continuation and which browser contains the reported signed-in Site account. No new permission for the already approved Meet room is required; the cancelled call allows testing after11. No bot, caption capture, audio recording, paid model call, Funnel route or live Site change has occurred. Actual E2E is incomplete.
+
+
+## 2026-10-17 12:30 IST — Approved ACL correction and actual account verification
+
+User approved the exact limited ACL repair and continuation, and identified Chrome as the signed-in browser. Applied the reviewed repair once: it saved the prior SDDL, set the runtime directory/six files to the explicit user and SYSTEM, and verified unchanged credential bytes. The outer caller then incorrectly treated null LASTEXITCODE from the successful PowerShell script as failure; read-only owner/DACL verification and the actual limited account probe established the true result. Added explicit exit0 to the helper's success branch so a native-style caller receives an accurate status; permission behavior is unchanged.
+
+The first encoded probe-launch command exceeded Windows' command-line limit, before registration. Switched to a transferred public .ps1 file and a short task action. The real limited interactive token reports administrator=false, readable=true, compose_valid=true. This resolves the earlier ACL blocker. No bot/app worker was started. Dispatched only Postgres/Redis/MinIO after guarded empty-volume/container checks; readiness remains unverified.
+
+The independent cached image retry exited1 while fetching Docker Hub's anonymous base-image token, with TLS handshake timeout; source compilation did not resume. Three image approaches have failed (SSH credential helper, Ubuntu dependency connectivity, Docker Hub TLS), so that image method is stopped at its declared boundary. Read-only Windows HEAD probes now reach auth.docker.io(404) and registry-1.docker.io(401); those prove host TLS reachability, not Docker builder connectivity. No Docker/WSL restart, proxy/DNS/TLS change or further image retry occurred.
+
+Focused Chrome lookup found no existing /new tab. A fresh LCT page in the already connected Chrome profile remains guest; its official Google popup offers two existing accounts. Used only selected-popup lookup after our click, not broad tab enumeration. Asked which account should own private recordings. The already authorized Meet room remains available after11; no new meeting consent is required. Site remains45/env37, no actual Meet/captions/audio/map generation or Funnel change.
+
+
+## 2026-10-17 13:10 IST — Actual build progress and bounded security/storage proposals
+
+Read-only recovery proved kernel user namespaces enabled but default Docker
+non-root Chrome134 cannot create its namespace and exits134. Prepared inactive
+proposed/ profile, provenance, baseline/license and worker-only Compose overlay.
+Exact engine seccomp module v0.2.3 baseline retained plus one namespace rule;
+structural assertion and independent Google review pass. New H1 approval requested
+for no-network25second probe then one five-minute pilot only if it passes; no kernel
+permission was changed. User ACL approval already applied is not this permission.
+
+Exact original Ubuntu manifest recovered from public ECR mirror after actual body
+SHA validation, cached/tagged, and unchanged500168b build now reaches GStreamer
+layers. MinIO Hub/Quay release unavailable; official compressed asset verified by
+actual hash/length and archive listing. Added minio/Dockerfile/README, changed
+prepare.py to pinned local image/pull_policy=never, and extended public preparation
+checks. Four focused checks and independent Gemini review pass; receipts capture
+exact source inventory/hash and limitations. No image/storage runtime proof yet.
+Full-file SCP timed out; isolated256KiB transfer passed in9seconds, new bounded
+chunk transfer in progress. No active partial download was overwritten.
+
+Board now separates unknown network wait, remaining integration/release30–60min,
+and actual test10–20min after all prerequisites. Root/worktree unchanged. Exact
+Google owner selection and explicit kernel-permission question remain pending;
+no bot, recording, paid model request, network exposure or Site publication.

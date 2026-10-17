@@ -1,3 +1,23 @@
+## 2026-10-17 13:10 IST — Runtime image/storage/sandbox readiness, preserved recovery
+
+The earlier room cutoff is superseded by explicit user approval to test the same
+empty room after11; the scheduled call was cancelled. ACL repair is applied and
+actual limited-account readability/Compose validation pass. Image recovery has
+progressed via the exact original Ubuntu digest from Docker's official ECR mirror;
+the unchanged Attendee image is building through media dependencies. Configured
+MinIO registry image is unavailable; reviewed same-release official checksum-pinned
+local packaging and fail-closed Compose source are committed, not yet runtime-ready.
+A full package transfer timed out; bounded chunks now transfer successfully.
+
+Actual non-root Chrome sandbox probe fails namespace creation under default Docker
+restrictions, despite enabled kernel user namespaces. No sandbox-disable or broad
+privileges were added. Reviewed inactive worker-only namespace proposal requires
+explicit H1 permission, currently pending, for isolated probe/one five-minute test.
+Exact Google private-recording owner choice is also pending. These block live Meet
+acceptance, not independent build/storage preparation. Next: actual verified images,
+API/private-S3 and approved sandbox proof, then caption/thread/audio and reconnect
+checks. No meeting, recording, inference request, route or live Site change yet.
+
 ## 2026-10-17 10:41 IST — Asus source/engine recovered; runtime and cloud bridge still incomplete
 
 The original dirty source and Docker data are preserved. A separate exact500168b Attendee worktree and hash-verified stopped-Docker backups exist on Asus. Offline filesystem inspection found zero saved containers and one retained anonymous volume. Docker29.5.3 is now responsive after an interactive-session launch; the source/engine part of the09:40 blocker is resolved. Native image build is downloading dependencies in a one-time desktop task. Its earlier SSH credential-helper failure is bypassed by using the normal authenticated desktop session, not by changing credentials.
