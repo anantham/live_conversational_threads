@@ -1,3 +1,26 @@
+## 2026-10-17 13:20 IST — Local storage executable verified; acceptance still pending
+
+Root/authoritative checkout unchanged. Reviewed recovery source is committed/pushed
+at e3c5f49 (remote SHA reverified), not merged/deployed. All40 bounded public asset
+chunks transferred successfully. Actual Asus reassembled package hash matches
+D8898351831761E083E7BA6B74EA7EC478B9A6680794FE92E5E838145341C9C5.
+Local storage image c93cea67ae8d5f531332c745ad43f51558194038898c31dc16416d0debb02d13
+reports User1000:1000/linux-amd64; actual no-network/no-data-mount executable reports
+RELEASE.2025-04-22T22-12-26Z/source0d7408fc9969caf07de6a8c3a84f9fbb10a6739e.
+Image/version is proven; private S3/API acceptance is not.
+
+Pinned database/cache image pulls continue in the limited interactive task. The
+guarded local-storage task waits for their verified completion before checking
+unused volumes, exact old/new Compose, unchanged credentials and starting only
+isolated data services. No completion receipt exists yet. App build now downloads
+pinned Python dependencies; no app/worker, meeting, inference, Funnel or Site
+change. Exact Google owner choice and reviewed H1 sandbox approval remain pending.
+Next checkpoint: native image/task exit plus actual data-service/API/S3 health,
+then approved sandbox probe and the same seven real acceptance checks. Build and
+transfer calendar wait remain unknown; earlier conditional30–60min integration and
+10–20min test forecast starts only after prerequisites, not at this entry. Existing
+Site45/env37 and the earlier native prepared source remain unchanged.
+
 ## 2026-10-17 13:10 IST — Builder progressing; explicit sandbox gate prepared
 
 Root/integration owner and authoritative checkout unchanged. Limited-account ACL

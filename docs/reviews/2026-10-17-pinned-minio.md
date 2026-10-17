@@ -20,3 +20,14 @@ Dockerfile verifies checksum and extracts only binary, executes no maintainer
 script, retains exact base digest, and runs UID1000. Compose pull_policy=never
 prevents an implicit registry fallback. Build/version/private S3 read-write-range
 and anonymous refusal are pending runtime evidence, not manufactured by review.
+
+
+## Actual executable checkpoint — 13:20 IST
+
+All40 bounded chunks completed; reassembled Asus package SHA matches the reviewed
+asset. Image c93cea67ae8d5f531332c745ad43f51558194038898c31dc16416d0debb02d13 is
+linux/amd64, Config.User1000:1000. Actual --version with --network none and no data
+mount reports the exact release/source commit above. No inference or meeting.
+Pinned Postgres/Redis mirror pulls remain in progress; storage task waits for
+verification before fresh-volume/data-service startup. No completion receipt yet;
+private bucket/API refusal/read-write-range acceptance remains unclaimed.
