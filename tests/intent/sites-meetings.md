@@ -10,3 +10,10 @@
 - Use existing local archive queue; audio is copied only after finalized recording, bounded to20MiB, and copy failures never hide the private remote recording.
 
 - The sanitized source export must retain the meeting handler and its policy dependency so the exported Worker can load; test without source-directory fallback.
+
+### Host UI identity guard (17 October 2026)
+
+- Bind the join action to the exact approved Meet URL and selected host account.
+- Refuse wrong room/account or enabled microphone/camera permission before any click.
+- Exercise wrong-account refusal on the real prejoin, then observe the real allowed join and empty room during the bounded pilot.
+- Written test exception: this operator-only CUA guard uses actual Google UI acceptance instead of a mocked browser that could manufacture permission/identity readiness. It must not report an attempted click as a joined room.

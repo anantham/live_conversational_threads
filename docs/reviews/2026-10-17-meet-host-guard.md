@@ -1,0 +1,7 @@
+# Meet host identity actuation guard — 17 October 2026
+
+The operator test helper binds the exact approved Meet origin/path, host account in Google's account-switcher region, and disabled microphone/camera permission controls before clicking Join now. It returns attempted only; admission and absence of other people require a separate actual observation. No real account, room URL or credentials are stored in source/review packets.
+
+Independent Google Gemini4ArgonMedium through existing authenticated AGY subscription, fresh plan/no-tool/read-only review. Initial2068byte packet SHA2566134e959682246690180b3f2330ca021e66ef74020a9402a39597bc542d95206, conversation52e8b617-9fe6-480e-9dc6-4fe59173a9f9,51.897s. Supported finding: unscoped account text could match a room title. Fixed with directly observed two-child account-switcher parent and actual data-account-switcher-url attribute, without obfuscated CSS or arbitrary page text. Final2395byte packet SHA256e2a2da36e89181a39e3c26e13fc615384a8bc280c4b53b4082db3ee3e3b4b18f; conversation20ad98a7-9453-48ae-bf80-533f814a374f,19.376s, PASS/no findings.
+
+Node syntax check passes. Actual Google prejoin: wrong-room and synthetic wrong-account calls both refuse before click; Join now remains visible afterward. Positive join is deliberately pending runtime/relay readiness. Test intent and real-browser exception are in tests/intent/sites-meetings.md. This is an operator-only safety guard, not a product sign-in change.
