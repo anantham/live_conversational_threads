@@ -7721,3 +7721,12 @@ root task continues runtime acceptance. Preserved all original data, dirty sourc
 leases and services. Preparation of synthetic audio uses the existing upstream
 output_audio API only if its actual source contract supports the one-bot pilot;
 no ambient microphone, new public speech endpoint or TTS provider is activated.
+
+
+## 2026-10-17 15:37 IST — Real-runtime acceptance staged; host scope separate
+
+Root/integration owner and authoritative worktree remain unchanged. Added check_runtime.py:1–96 and start_runtime_after_build.ps1:1–73 plus README actual-acceptance intent. Wrong persistence-root subprocess refuses before Django imports/writes. The final independent Gemini review passes after supported completion-preservation, stopped-holder and rejected-app cleanup repairs; receipt docs/reviews/2026-10-17-runtime-readiness.md. Actual positive schema/API/S3 checks remain pending the image. Staged public files only; no credential transfer or worker/public route.
+
+The current cached build began15:10:39, task still running at15:36; latest log15:16:19 remains the62.5MB OpenCV wheel. TaskRunning is not asserted as download progress. No automatic new retry. One non-recording continuation is dispatched after Windows parse/hash guards under the same limited account, bounded150minutes; it waits for this build then checks only the isolated app/API/S3. Native dispatch/readiness results must still be observed.
+
+Chosen LCT Google owner is now verified signed in; user conversation is preserved. Meet prejoin for that selected account says Ask to join, mic/camera off, no room join. Automatic approval review rejected selecting the other existing Google account, treating it as outside selected-account scope. No retry/bypass. A separate one-time host-account check or user-host admission question remains pending; recording ownership stays unchanged. Seven real Meet checks remain incomplete. Source planning estimate30–60min integration plus10–20min pilot remains conditional on image/readiness and host availability; actual build/network wait is additional and unknown.

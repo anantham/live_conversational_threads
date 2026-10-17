@@ -1,3 +1,11 @@
+## 2026-10-17 15:37 IST — Non-recording acceptance queued; pilot not started
+
+Outcome/integration owner: root completes the same Asus-first Meet caption/thread/audio journey in `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, branch `codex/lct-inference-choice`. Balance addition is served/verified as Site46/env37, source494f6ed. Existing seven finite acceptance checks below remain authoritative and unfulfilled for actual Meet.
+
+Prepared a real-runtime probe and bounded app-only startup continuation: actual schema without bot save, empty DB/API correspondence, auth/refusal/JSON, private S3 exact bytes/ranges and anonymous403. Wrong-root refusal passes; independent Gemini source review passes after three safety repairs. See [review](../reviews/2026-10-17-runtime-readiness.md). This is prepared/dispatched, not accepted runtime. No worker, bot or public relay.
+
+Dependencies: current single cached build (began15:10:39; at15:36 stillRunning, latest output15:16:19 OpenCV download), then actual imports/API/S3; Meet room host admission. Selected recording owner is signed in. Alternate Meet host account selection was rejected by automatic approval review and stopped; a separate one-time scope question is pending. No claim of bot join, captions, audio or thread E2E. Next checkpoint: native build+readiness results and approved host/admission. Earlier conditional30–60min integration/10–20min pilot range preserved; build/network and host waits remain unknown. Google Cloud and optional production widening deferred.
+
 ## 2026-10-17 15:13 IST — Balance delivered; owner and sandbox gates resolved
 
 Root/integration owner and authoritative checkout remain unchanged. User selected

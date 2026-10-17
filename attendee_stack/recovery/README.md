@@ -73,3 +73,16 @@ and validate the existing Site only after local API/storage and sandbox readines
 One active or uncertain receipt and a five-minute bot maximum bound this pilot.
 The Asus must remain online. Viewer disconnect does not stop recording; AI-map
 updates run only while the browser view is open with provider consent.
+
+## Actual non-recording readiness
+
+check_runtime.py runs only inside the initialized dedicated recovery app after
+bootstrap. It refuses a different database/host, root UID and storage endpoint,
+validates the real caption/MP3/five-minute creation serializer without saving a
+bot, compares actual empty API/DB state, and checks private S3 exact bytes/ranges
+with anonymous refusal. One uniquely named tiny synthetic object is retained.
+No bot is created, no quota/provider call is made, no recording is deleted.
+Authenticated API probes refuse redirects so credentials stay on the local app.
+Test exception: wrong-namespace refusal is checked as an actual subprocess;
+positive API/schema/S3 checks require the real isolated image/runtime and must
+never be reported passed from mocks or preparation alone.
