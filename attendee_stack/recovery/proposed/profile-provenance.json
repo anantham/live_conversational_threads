@@ -1,0 +1,31 @@
+{
+  "engine_git": "285b47192d4b2f183aba5dd360a92cd52d723004",
+  "profile_module": "github.com/moby/profiles/seccomp v0.2.3",
+  "module_info": {
+    "Version": "v0.2.3",
+    "Time": "2026-05-06T10:50:04Z",
+    "Origin": {
+      "VCS": "git",
+      "URL": "https://github.com/moby/profiles",
+      "Subdir": "seccomp",
+      "Hash": "836ae4d37ef2ec995c77c99fc55f5b5f3af3a897",
+      "Ref": "refs/tags/seccomp/v0.2.3"
+    }
+  },
+  "stock_sha256": "536529b665dd0972c37bfb569f5d4ac8a53592e7b00752bc39ff063ca9864c74",
+  "candidate_sha256": "f9bb5bb902e72952474862f7119e86cadb53dcbc0bb5f111e3c1b25dcc34f368",
+  "added_rule": {
+    "comment": "Allow Chromium user namespace sandbox; worker only, no extra capabilities",
+    "names": [
+      "clone",
+      "setns",
+      "unshare"
+    ],
+    "action": "SCMP_ACT_ALLOW",
+    "args": [],
+    "includes": {},
+    "excludes": {}
+  },
+  "all_stock_rules_retained": true,
+  "applied": false
+}
