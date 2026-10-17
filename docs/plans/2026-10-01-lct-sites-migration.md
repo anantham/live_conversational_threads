@@ -1,3 +1,30 @@
+## 2026-10-17 15:13 IST — Balance delivered; owner and sandbox gates resolved
+
+Root/integration owner and authoritative checkout remain unchanged. User selected
+the private Google owner and approved one sandbox probe then one five-minute pilot.
+Actual signed-in Site session verifies that owner (ID kept in session memory only).
+Reviewed profile passes the actual no-network/no-mount Chrome probe: non-root,
+zero added capabilities, privilegedfalse, exact profile, page HTML and exit0.
+Postgres/Redis are healthy and MinIO runs on fresh isolated volumes; credentials
+unchanged. No bot, app worker, recording or Funnel route yet.
+
+User's additional same-check balance request is delivered: native494f6ed served as
+Site46/env37 via successful appgdep_6ad341d9b35c8191a2e07164019b93f5. Actual browser
+JSON and popover confirm key_available/account_balanceavailable,321ms. The existing
+key is accepted despite the docs' management-key prerequisite, so no new credential
+or numerical public disclosure.1060combined checks, independent Gemini PASS,
+build/package and live screenshot pass. No generation/ledger mutation.
+
+Attendee app build failed after1640.7s on92.9/118.5MB Zoom SDK PyPI download. A new
+reviewed external recipe preserves source/requirements and changes one pip RUN to
+public cache,120second read timeout and one HTTP retry. Windows constructor hashes
+and one-line delta pass. One limited-account two-hour-bounded build is running;
+not an unchanged-upstream-Dockerfile claim. Next decisive evidence: successful
+image/imports, actual private API/S3, scoped relay, then the existing seven real
+Meet/caption/thread/audio/privacy/disconnect checks. Build waiting remains unknown;
+prior conditional30–60min integration and10–20min test estimates do not start until
+image readiness. Same room remains authorized after11; Google Cloud deferred.
+
 ## 2026-10-17 13:20 IST — Local storage executable verified; acceptance still pending
 
 Root/authoritative checkout unchanged. Reviewed recovery source is committed/pushed

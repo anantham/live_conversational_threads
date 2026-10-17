@@ -7673,3 +7673,51 @@ then approved sandbox probe and the same seven real acceptance checks. Build and
 transfer calendar wait remain unknown; earlier conditional30–60min integration and
 10–20min test forecast starts only after prerequisites, not at this entry. Existing
 Site45/env37 and the earlier native prepared source remain unchanged.
+
+
+## 2026-10-17 15:08 IST — Approved sandbox succeeds; balance check validated
+
+User chose the Google owner and approved the reviewed profile for exactly one
+no-network25second probe then one five-minute synthetic pilot if ready. Actual
+probe exit0 renders blank-page HTML; non-root app user, networknone, zero mounts,
+zero added capabilities, privilegedfalse,34syscall rules and exact reviewed profile
+hash. Probe container removed after stop. Profile is not a global Docker change;
+no worker or meeting started. Chrome manual handoff resolved an expired challenge;
+actual existing-Site session reports authenticated Google identity, held only in
+session memory for owner binding. No account ID entered source/review packets.
+
+Asus hostname SSH timed out, but read-only Tailscale peer state and direct verified
+100.81.65.74 SSH confirm the same host online. Postgres/Redis are healthy and MinIO
+runs in the isolated new namespace. Original app build failed pip ReadTimeout at
+92.9/118.5MB Zoom SDK wheel after1640.7s. Prepared an outside-context one-line
+BuildKit pip-cache/timeout constructor preserving requirements/source; independent
+review suggested and source now enforces absolute external output and exact line
+matching. Final review/Windows preparation and bounded build remain pending.
+
+User also explicitly requested account balance in the same indicator check. Added
+fixed read-only /credits alongside /key with shorter independent deadline and
+coarse public result. No management-key widening, numerical account disclosure,
+generation or ledger write.20focused and1060combined checks pass; independent
+Gemini review PASS. Initial unflagged Node26 full run failed at preexisting jsdom
+localStorage setup; unchanged10PrivateFiles checks and full suite pass with the
+runtime compatibility flag. ISSUES records this without changing test/product
+oracles. Official native source opened, only two runtime files projected, packaging
+underway. LiveSite remains45/env37 until deployment; balance outcome unverified.
+
+
+## 2026-10-17 15:13 IST — Balance served and actual build retry dispatched
+
+Native494f6ed/source c8097cb is served as46/env37, successful native deployment and
+real signed-in browser health/popover prove account credit available and key
+allowance available in321ms. Screenshot/private/tmp/lct-account-balance-live.png.
+No management key needed on the actual configured key, no numerical balance output,
+paid generation or reservation mutation. Direct Python403was a Site boundary
+response, not evidence about OpenRouter; browser verifies the actual JSON.
+
+Final cached-build constructor independent review PASS and actual Windows parse/
+preparation receipts confirm exact one-line external recipe, unchanged upstream
+source/requirements and hashes. One new bounded limited-account build now runs;
+root task continues runtime acceptance. Preserved all original data, dirty source,
+leases and services. Preparation of synthetic audio uses the existing upstream
+output_audio API only if its actual source contract supports the one-bot pilot;
+no ambient microphone, new public speech endpoint or TTS provider is activated.

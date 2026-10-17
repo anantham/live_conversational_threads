@@ -1,3 +1,13 @@
+## 2026-10-17 — Node26 test Web Storage global collides with jsdom
+
+Unflagged combined tests fail155/1060 at localStorage setup across15files while
+905pass; product behavior is not exercised in those setup failures. Installed
+Node26.0.0 emits localStorage unavailable without --localstorage-file. The unchanged
+10PrivateFiles checks pass with NODE_OPTIONS=--no-experimental-webstorage, then all
+1060checks pass under that compatibility flag. No test or storage implementation
+changed. Nonblocking for balance-check delivery using that verified invocation;
+recommended separate tooling task: declare the supported Node LTS/test runtime.
+
 ## 2026-10-17 13:10 IST — Runtime image/storage/sandbox readiness, preserved recovery
 
 The earlier room cutoff is superseded by explicit user approval to test the same
