@@ -17,7 +17,7 @@ it('keeps destinations in More, retains icon names, dismisses with Escape and op
   expect(host.querySelector('a').getAttribute('href')).toBe('/');
   await act(async () => host.querySelector('[aria-label="AI map"]').click()); expect(panel).toHaveBeenCalledWith('map');
   await act(async () => more.click());
-  expect(document.activeElement.getAttribute('href')).toBe('/public');
+  expect(document.activeElement.getAttribute('href')).toBe('/meeting');
   expect(host.querySelector('a[href="/private-files"]')).toBeTruthy();
   await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
   expect(host.textContent).not.toContain('Public conversations'); expect(document.activeElement).toBe(more);

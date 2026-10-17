@@ -7,7 +7,7 @@ function transcriptLines(tokens) {
   for (const token of tokens || []) {
     let line = lines.at(-1);
     if (!line || (token.speaker && token.speaker !== line.speaker) || (line.text.length > 240 && /[.!?]\s*$/.test(line.text))) {
-      line = { id: lines.length, text: '', speaker: token.speaker || line?.speaker, startMs: token.startMs };
+      line = { id: lines.length, text: '', speaker: token.speaker || line?.speaker, displaySpeaker: token.displaySpeaker, startMs: token.startMs };
       lines.push(line);
     }
     line.text += token.text;
@@ -34,7 +34,7 @@ export default function ConversationTranscriptPanel({ transcript, status, minimi
     {!minimized && <div ref={scroll} onScroll={event => { const el = event.currentTarget; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; }} className="min-h-0 flex-1 overflow-y-auto px-5 pb-4" role="region" aria-label="Transcript history" tabIndex={0}>
       {copyStatus && <p role="status" className="mb-2 text-xs text-slate-500">{copyStatus}</p>}
       {!lines.length && !transcript.partialText && <p className="text-sm text-slate-500">Your words will appear here.</p>}
-      {lines.map(line => <p key={line.id} className="mb-3 whitespace-pre-wrap text-sm leading-6">{line.speaker && <span className="mr-2 text-xs font-medium text-slate-500">{line.speaker.startsWith('segment-') ? line.speaker.replace(/^segment-(\d+):(.+)$/, 'Speaker $2 · part $1') : `Speaker ${line.speaker}`}</span>}{line.text}</p>)}
+      {lines.map(line => <p key={line.id} className="mb-3 whitespace-pre-wrap text-sm leading-6">{line.speaker && <span className="mr-2 text-xs font-medium text-slate-500">{line.displaySpeaker || (line.speaker.startsWith('segment-') ? line.speaker.replace(/^segment-(\d+):(.+)$/, 'Speaker $2 · part $1') : `Speaker ${line.speaker}`)}</span>}{line.text}</p>)}
       {transcript.partialText && <p className="whitespace-pre-wrap text-sm leading-6 text-slate-500">{transcript.partialText}</p>}
     </div>}
   </section>;

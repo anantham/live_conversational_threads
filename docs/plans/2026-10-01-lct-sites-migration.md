@@ -1,3 +1,15 @@
+## 17 October 11:24 IST — Reviewed inactive integration; image and identity remain
+
+Root owns the same authoritative worktree and Asus-first outcome. The cloud relay, Meet entry/view, captions/threads integration, private audio range streaming and browser archive handling are implemented locally and independently reviewed ([receipt](../reviews/2026-10-17-asus-site-meetings.md)).1048 combined tests,4 Python checks, final build and desktop/mobile synthetic browser flow pass; actual meeting acceptance is still incomplete. Site remains45/env37. No bot, paid model request, public route or credential transfer has occurred.
+
+Next evidence: exact upstream image completion and actual new-volume API/storage/sandbox readiness. One-time data-service task is running; readiness is unverified. User reports signed in; locate the exact session without broad browsing inspection before owner configuration. Remaining effort cannot be estimated credibly until the old image finishes its remaining Chrome/Python layers; integration review wait is complete. Preserve the earlier forecast and all seven acceptance checks below. Google Cloud remains deferred.
+
+## 17 October 11:14 IST — Same room authorized after11; integration validation
+
+User cancelled the scheduled call and explicitly allowed testing the same empty room after11; the earlier before11 cutoff is superseded for this synthetic test. Root/integration checkout unchanged. Recorder image remains building, dependency downloads rather than source repair. New cloud relay/view is inactive and unserved;1044 combined tests,4 Python checks and1280/375px synthetic Chromium journey passed before independent review. Supported review fixes are being verified; no bot has joined and no real audio/map result is claimed. Google sign-in is pending on the existing Site to establish the exact owner.
+
+Remaining dependency: complete image, actual isolated database/API/storage/sandbox readiness, exact-source review, guarded cloud connection, then the seven finite acceptance checks below. Next evidence checkpoint is successful image plus local-only recorder readiness; forecast remains uncertain because the legacy image is still downloading its397MB base package set, with further Chrome/Python layers ahead. Prior build delay remains recorded; no promised11am test. Continue only this meeting journey; Google Cloud remains deferred.
+
 ## 17 October 10:32 IST — Preserved source/data; Docker engine recovered
 
 Root integrates the same approved Asus-first meeting journey in `codex/lct-inference-choice` at `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads` (base aa13c96). The existing public Site remains version45; no application or hosting change has shipped. A clean Asus Attendee worktree at exact source `500168b15b105576ebc11cc43bdaed3eb87d39da` now exists separately from the checkout with 416 deletions. Stopped-Docker data/main VHDs and settings were copied to the Asus-local recovery directory; each source/copy SHA256 matches. Read-only complete filesystem metadata inspection proves no saved containers and one preserved anonymous volume. No data volume was reused or removed.

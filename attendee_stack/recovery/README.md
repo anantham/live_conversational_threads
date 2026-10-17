@@ -40,3 +40,21 @@ Use `down` without `--volumes` to stop this stack. Never prune or delete old vol
 This stack is preparation only. Site owner authorization, caption delivery,
 audio playback, live thread generation, cancellation and reconnect remain separate
 acceptance checks; an image build or mocked test is not end-to-end proof.
+
+## Existing Site relay
+
+The reviewed follow-on source adds `cloud_api.py` and `audio_range.py` to the
+read-only mounts. When updating an already prepared runtime, replace only those
+public source files, `settings.py` and generated `compose.json`; preserve the
+existing `runtime.env` byte-for-byte. Do not run preparation over that directory.
+The credential is project-scoped and server-side. Only bot list/create/detail,
+caption snapshot, leave and private MP3 range reads are exposed; no dashboard,
+calendar, speech injection or deletion endpoints are served.
+
+The Site relay is off unless its exact owner, existing Asus HTTPS path, private
+key, test window and enabled flag are configured. Its additive meeting receipt
+migration preserves uncertain joins and prevents duplicate bot creation. Configure
+and validate the existing Site only after local API/storage and sandbox readiness.
+One active or uncertain receipt and a five-minute bot maximum bound this pilot.
+The Asus must remain online. Viewer disconnect does not stop recording; AI-map
+updates run only while the browser view is open with provider consent.

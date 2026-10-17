@@ -85,3 +85,20 @@ export const publicThreads = sqliteTable('lct_public_threads', {
   check('lct_public_threads_state_check', sql`${table.state} in ('ready', 'removed')`),
   check('lct_public_threads_payload_check', sql`(${table.state} = 'ready' and ${table.payload} is not null and ${table.payloadHash} is not null and ${table.byteSize} > 0 and ${table.byteSize} <= 524288) or (${table.state} = 'removed' and ${table.payload} is null and ${table.payloadHash} is null and ${table.byteSize} = 0 and ${table.nodeCount} = 0 and ${table.title} = '')`),
 ]);
+
+// Owner-scoped meeting control receipts; content/audio remain on the selected recorder.
+// Unknown joins retain a reservation until reconciled, never silently POSTed again.
+export const meetings = sqliteTable('lct_meetings', {
+  id: text('id').primaryKey(),
+  owner: text('owner').notNull(),
+  urlHash: text('url_hash').notNull(),
+  botId: text('bot_id'),
+  state: text('state', { enum: ['starting', 'uncertain', 'active', 'ended'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+  endsAt: integer('ends_at').notNull(),
+}, (table) => [
+  uniqueIndex('lct_meetings_bot_unique').on(table.botId),
+  index('lct_meetings_owner_created_idx').on(table.owner, table.createdAt),
+  check('lct_meetings_state_check', sql`${table.state} in ('starting', 'uncertain', 'active', 'ended')`),
+  check('lct_meetings_duration_check', sql`${table.endsAt} > ${table.createdAt} and ${table.endsAt} <= ${table.createdAt} + 300000`),
+]);

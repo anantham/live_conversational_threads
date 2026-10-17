@@ -49,7 +49,7 @@ describe('approved bounded diagnostic recovery', () => {
     const before = rows(); db.exec(sql); expect(rows()).toEqual(before);
   });
   it('appends only the approved exact operation with an unchanged schema', () => {
-    expect(journal.entries.at(-1)).toMatchObject({idx:12, tag:'0012_inference_diagnostic_recovery_oct15'});
+    expect(journal.entries.filter(entry => entry.idx === 12)).toEqual([expect.objectContaining({idx:12, tag:'0012_inference_diagnostic_recovery_oct15'})]);
     const before = JSON.parse(readFileSync(new URL('../../../drizzle/meta/0011_snapshot.json', import.meta.url), 'utf8'));
     const after = JSON.parse(readFileSync(new URL('../../../drizzle/meta/0012_snapshot.json', import.meta.url), 'utf8'));
     expect(after.prevId).toBe(before.id); expect(after.id).not.toBe(before.id);
