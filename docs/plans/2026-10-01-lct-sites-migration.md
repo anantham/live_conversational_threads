@@ -1,3 +1,11 @@
+## 2026-10-17 16:06 IST — Host ready; changed public-artifact transport
+
+Same Asus-first outcome, root integration owner and authoritative `codex/lct-inference-choice` worktree; existing seven real acceptance checks below remain required. Selected host account now verified in the correct connected Chrome profile: Join now, microphone/camera permissions disabled, no room/bot join. Separate private LCT owner unchanged. Host/login dependency resolved.
+
+Cached Docker pip run failed on OpenCV ReadTimeout after1688.6s; build exit1 and queued readiness exit97 correctly leave app/worker off. No retry of that method or overwrite of failed receipts. A materially different public-wheel transport is prepared: exact same OpenCV/Zoom release wheels fetched on Mac with size/SHA validation from official PyPI, then read-only external BuildKit context on Asus. Requirements/source/TLS/permissions unchanged. Independent Gemini PASS, actual Windows parser and duplicate-receipt preservation pass; [receipt](../reviews/2026-10-17-verified-wheels-build.md). Public SFTP transfer underway in directly observed /C:/ namespace; active file is exclusively held, so directory metadata alone is not a byte-progress proof.
+
+Next evidence: verified Asus wheel hashes/constructor, native image/imports, actual private API/S3, then scoped relay/pilot. Source prepared, not accepted runtime. Source integration30–60min and pilot10–20min remain conditional estimates; earlier prerequisite forecast missed because two large download attempts timed out, and transfer/build wait is still unknown. Existing Site46/env37 balance feature remains served; no bot, generation, new public route or credential transfer. Google Cloud remains deferred.
+
 ## 2026-10-17 15:37 IST — Non-recording acceptance queued; pilot not started
 
 Outcome/integration owner: root completes the same Asus-first Meet caption/thread/audio journey in `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, branch `codex/lct-inference-choice`. Balance addition is served/verified as Site46/env37, source494f6ed. Existing seven finite acceptance checks below remain authoritative and unfulfilled for actual Meet.

@@ -1,0 +1,9 @@
+# Verified public wheels after bounded Docker download failures
+
+Two Linux Docker pip runs timed out on unchanged upstream Zoom/OpenCV downloads. Stop that method. The approved recovery uses a different transport: fetch exactly the same two release wheels on the Mac with resumable HTTPS, compare size/SHA256 with official PyPI metadata, transfer public bytes only, and verify them again on Asus. No dependency/index/TLS/permission changes. Keep credentials/runtime outside every build context.
+
+`prepare_verified_wheels_build.ps1` refuses source and artifact drift, unknown files/links, nested upstream output and existing destinations. It writes an external recipe that differs from upstream by exactly one pip RUN. BuildKit mounts only the two verified public files read-only and retains the existing public pip cache. Requirements remain byte-identical. Pass `--build-context lct_verified_wheels=<verified-directory>` with the generated Dockerfile and original clean upstream context. Verify native status and final image; no automatic retry.
+
+Use separate `build-verified-wheels-*` receipts. The non-recording continuation accepts `-BuildMethod verified-wheels` and writes separate `runtime-verified-wheels-*` receipts, preserving the earlier failed readiness receipt. Its app/worker/port/identity/persistence/auth/S3 guards are unchanged. No worker or public route starts here. Wrong method is rejected by PowerShell ValidateSet. Actual constructor/parser/bytes, final image/imports and actual API/S3 are the acceptance evidence; preparation alone is insufficient.
+
+Primary contracts: [pip find-links](https://pip.pypa.io/en/stable/cli/pip_install/#finding-packages), [PyPI release metadata](https://docs.pypi.org/api/json/). Payload inventory is exactly two public Linux CPython3.10-compatible upstream dependencies, not a different source release.
