@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { exportSiteSource } from '../../../sites/export-source.mjs';
 import { copySiteStorageMetadata } from '../../../sites/storage-packaging.mjs';
 
@@ -29,6 +31,7 @@ function fixture() {
     'sites/soniox.js', 'sites/sonioxPolicy.js', 'sites/serviceHealth.js',
     'sites/openRouter.js', 'sites/openRouterPolicy.js', 'sites/openRouterIO.js',
     'sites/auth.js', 'sites/authPolicy.js',
+    'sites/meetings.js', 'sites/meetingPolicy.js',
     'db/schema.ts', 'drizzle.config.ts',
     'src/main.jsx', 'src/index.css', 'src/services/serverless/prompts.json',
   ]) file(name);
@@ -60,6 +63,19 @@ describe('Site source export public API', () => {
     for (const name of ['.env', '.openai/private-token.json', 'docs', 'src/private-recording.json', 'src/main.test.jsx', 'src/fixtures']) {
       expect(existsSync(join(output, name))).toBe(false);
     }
+  });
+
+  it('exports a loadable meeting handler and its local policy dependency', async () => {
+    const { source, output, file } = fixture();
+    file('package.json', JSON.stringify({ name: 'fixture', type: 'module' }));
+    file('sites/worker.js', "import { message } from './meetings.js'; export default { fetch: () => new Response(message) };");
+    file('sites/meetings.js', "import { label } from './meetingPolicy.js'; export const message = label;");
+    file('sites/meetingPolicy.js', "export const label = 'synthetic meeting route';");
+    exportSiteSource(source, output);
+    const result = execFileSync(process.execPath, ['--input-type=module', '-e',
+      "const {default:worker}=await import(process.argv[1]); console.log(await worker.fetch(new Request('https://fixture.test/api/cloud/meetings')).text());",
+      pathToFileURL(join(output, 'sites/worker.js')).href], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    expect(result.trim()).toBe('synthetic meeting route');
   });
 
   it('refuses a nonempty destination and preserves existing content', () => {

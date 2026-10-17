@@ -8,3 +8,5 @@
 
 - UI: explicit join consent, closed window, uncertain create reference, full-snapshot deduplication/reconnect, source-linked map generation with provider consent, private audio access/local copy, ephemeral no local persistence and viewer unmount without leave.
 - Use existing local archive queue; audio is copied only after finalized recording, bounded to20MiB, and copy failures never hide the private remote recording.
+
+- The sanitized source export must retain the meeting handler and its policy dependency so the exported Worker can load; test without source-directory fallback.

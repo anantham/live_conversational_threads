@@ -31,3 +31,10 @@ Runtime remains a separate gate: exact upstream500168b image build, new-volume A
 - `lct_app/src/services/cloud/sitesMeetings.test.js`: `eb4968887d13f043b9cc56db7343b9e1662056733980964dc4ed4ee755a7eae6`
 - `lct_app/src/services/serverless/sitesMeetings.test.js`: `637da0c65f1aa7e06271dbb93c96429741955e46a87e836af94c5453165c8e25`
 - `lct_app/src/components/recording/ConversationTranscriptPanel.jsx`: `325edfdd54b20579452967913a8748c807738d16603f5723a163e1fe3a8e6d77`
+
+
+## Sanitized export and native preparation
+
+The export allowlist initially omitted the two new Worker modules. A native Node regression reproduces ERR_MODULE_NOT_FOUND against the isolated exported worker before repair and succeeds afterward. Final combined1049/1049 checks across122files and a fresh339-file standalone source build pass. Independent Gemini review PASS,28.64seconds, fresh conversation92208b39-27fd-435e-8869-744fe41d2c31; packet20754bytes/SHA2560963aee3c68e95b47d7e7199a5c838e2d65d692c0d2a374eb171bbce94b1292d. This also reviewed the exact schema, migration journal, routing, account-panel and navigation wiring.
+
+Official Sites helper rebuilt, committed and pushed native source `acbbeb987fbe806d8d051198c1119c80f3cd2667`. Prepared archive `/private/tmp/lct-meet-site-e52e060.tar`,632438bytes,SHA2565747f0b60a18ff259b8aea1eb38aa2dfee2400992e3fc1bbbc47331e828a146a. Automatic publication was false; no save-version/deploy call followed. Existing public release45/env37 remains the runtime baseline. The prepared source and archive are not live-user acceptance.
