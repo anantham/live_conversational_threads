@@ -21,6 +21,10 @@ The image `lct-attendee:recovery-500168b1` must first be built from exact upstre
 Use the existing interactive Windows session for Docker credential-helper access.
 Check native exit status before interpreting an empty inventory or claiming success.
 
+The local storage image must also be built and its release verified using
+[minio/README.md](minio/README.md). Its checksum-pinned official package replaces
+the unavailable registry tag; Compose refuses registry fallback.
+
 Every command below runs **from the generated runtime directory** and explicitly
 passes `--env-file runtime.env`: service `env_file` is not Compose interpolation.
 

@@ -5,6 +5,7 @@ Test intent:
 - Keep services on fresh named volumes and publish only the loopback API.
 - Generate secrets outside source/build context; never print credential values.
 - Keep bot workers opt-in and scheduled/calendar launching absent.
+- Refuse an implicit registry fallback for the checksum-pinned local storage image.
 """
 from __future__ import annotations
 
@@ -55,7 +56,7 @@ def compose_config():
                 "restart": "unless-stopped",
             },
             "minio": {
-                "image": "minio/minio:RELEASE.2025-04-22T22-12-26Z",
+                "image": "lct-minio:recovery-20250422", "pull_policy": "never",
                 "command": ["server", "/data", "--console-address", ":9001"],
                 "environment": {"MINIO_ROOT_USER": "lct_attendee",
                                 "MINIO_ROOT_PASSWORD": "${AWS_SECRET_ACCESS_KEY:?Missing runtime.env}"},

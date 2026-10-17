@@ -33,6 +33,8 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(config["services"]["worker"]["profiles"], ["bot"])
             self.assertEqual(config["services"]["worker"]["restart"], "no")
             self.assertFalse(any("scheduler" in name for name in config["services"]))
+            self.assertEqual(config["services"]["minio"]["image"], "lct-minio:recovery-20250422")
+            self.assertEqual(config["services"]["minio"]["pull_policy"], "never")
             for name, service in config["services"].items():
                 if name != "app":
                     self.assertNotIn("ports", service)
