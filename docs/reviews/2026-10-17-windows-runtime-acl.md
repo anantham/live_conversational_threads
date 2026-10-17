@@ -12,3 +12,8 @@ Test exception: this one-time OS repair is tested by its actual no-write Windows
 
 - `attendee_stack/recovery/repair_windows_acl.ps1`: `2a38779d6674466b7e427864b3a4d0a1268bc487d13af710f72f94599d6c4106`
 - `attendee_stack/recovery/README.md`: `d7a6a0c05380a8e46142ba522dc0ed03aba1696603b594a152f91a3150e805dd`
+
+
+## Applied and verified — 2026-10-17 12:30 IST
+
+User approved the exact repair. Applied once with the reviewed preconditions; rollback SDDL saved and credential bytes unchanged. Actual limited-account check reports administrator=false, readable=true, compose_valid=true. The caller's null LASTEXITCODE check falsely reported failure after successful application; explicit exit0 was added to the helper success branch afterward, without changing ACL logic. No second ACL application was attempted. Database/storage startup is a separate pending check; no bot/app worker started.

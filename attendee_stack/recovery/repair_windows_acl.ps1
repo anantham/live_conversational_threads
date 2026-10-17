@@ -50,3 +50,4 @@ foreach ($path in $paths) {
 }
 if ((Get-FileHash -LiteralPath (Join-Path $runtime 'runtime.env') -Algorithm SHA256).Hash -ne $hash) { throw 'Credential contents changed; do not start services' }
 [pscustomobject]@{Mode='applied';AllowedAccounts='current user and SYSTEM only';CredentialBytesPreserved=$true;ServicesStarted=$false;Backup=$backup} | ConvertTo-Json -Compress
+exit 0
