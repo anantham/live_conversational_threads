@@ -33,3 +33,17 @@ Recommendation: approve the scoped connection and run the bounded test. Confiden
 Require actual protected-route JSON and guest refusal before sending the bot, then empty host room, admission/leave, incremental speaker-labelled captions, one source-linked map, viewer reconnect/independence, finalized playable private audio and cleanup. Exact-source review/release receipts remain required. Current integration owner/root and authoritative codex/lct-inference-choice worktree stay unchanged.
 
 Remaining implementation/release mechanics5–15minutes after approval, then actual pilot/verification10–20minutes; human tab-audio handoff and network/runtime failures are additional unknown waits. Prior forecasts remain historical; native dependency build took about24minutes in this resumed slice. Google Cloud hosting remains deferred.
+
+## Concrete CLI operations and last readiness check
+
+After the reserved approval only, add the handler with:
+```text
+tailscale funnel --bg --yes --https=10000 --set-path=/lct-meet http://127.0.0.1:8088
+```
+Rollback only this mount with the same flags and `off`; compare the remaining configuration to the saved baseline. Never reset Funnel.
+```text
+tailscale funnel --bg --yes --https=10000 --set-path=/lct-meet off
+```
+The installed CLI help confirms the flags; [official Funnel CLI documentation](https://tailscale.com/docs/reference/tailscale-cli/funnel) specifies path-scoped `off` with original flags.
+
+Actual approved overlay/config validation passes with credential bytes unchanged and no worker holder. The guarded host join first refused a tab that had returned to Meet home; the visible approved-room join flow restored prejoin identity/AV checks, then real room entry reports first participant/People1. No bot or notes/transcription started. Current host is waiting; synthetic tab is readyState4,31.087664s,paused. The connection decision and manual tab-audio handoff are pending.
