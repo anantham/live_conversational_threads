@@ -8,7 +8,7 @@ vi.mock('./contexts/UploadContext', () => ({ UploadProvider: ({children}) => chi
 vi.mock('./components/upload/UploadToast', () => ({ default: () => null }));
 import App from './App';
 let root, host;
-const json=(value,status=200)=>({ok:status<400,status,json:async()=>value});
+const json=(value,status=200)=>({ok:status<400,status,headers:new Headers({'content-type':'application/json'}),json:async()=>value});
 beforeEach(()=>{
  globalThis.IS_REACT_ACT_ENVIRONMENT=true;vi.stubEnv('VITE_SITES_MODE','true');localStorage.clear();
  // A previously dismissed floating panel must not hide the inline account controls.

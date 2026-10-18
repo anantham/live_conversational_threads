@@ -401,3 +401,5 @@ Keep the bounded RecordingSession engine intact; conversation continuity is now 
 - 2026-10-16: SitesNewConversation remains the recording controller (~220 lines); extracted navigation and service indicators. SitesAccessPanel mixes identity lifecycle and panel layout (~280 lines); future presentation extraction should preserve the existing auth timeout/reset tests. No broad auth refactor in this slice.
 
 - 2026-10-16: Browser storage is isolated into localConversationStore/ConversationArchive/useConversationArchive and small settings/library components. Browse and SitesAccessPanel remain large existing orchestration files; extracted recorded-library UI instead of growing their persistence concerns. Future candidate: split account presentation from identity controller; no broad rewrite in retention slice.
+
+- 2026-10-18: Account-state repair extracts only the session-response contract from SitesAccessPanel, retaining its bounded request/cancellation lifecycle. Existing presentation/lifecycle split remains a later candidate; no broad identity-controller rewrite.

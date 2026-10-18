@@ -8,6 +8,11 @@ import sitesWorker from "../../sites/worker.js";
 import SitesAccessPanel from "./SitesAccessPanel";
 import ConversationNavigation from "./recording/ConversationNavigation.jsx";
 
+// Fresh readable JSON contract per call; synthetic identity only.
+const sessionResponse = (status = 401, body = status === 401 ? { authenticated: false } : { authenticated: true, user: { id: "synthetic" } }) => ({
+  status, ok: status === 200, headers: new Headers({ "content-type": "application/json" }), json: async () => body,
+});
+
 let root;
 let container;
 let navigate;
@@ -46,7 +51,7 @@ afterEach(async () => {
 
 describe("SitesAccessPanel", () => {
   it.each([401, 200])('opens Profile from More and restores focus without a separate trigger (session %i)', async status => {
-    fetch.mockResolvedValue({ status, ok: true, json: async () => status === 200 ? { authenticated: true, user: { id: 'synthetic' } } : { google: { enabled: false, configured: false } } });
+    fetch.mockResolvedValue(sessionResponse(status));
     await mount('/new');
     const panel = container.querySelector('#site-access');
     const more = container.querySelector('button[aria-controls="conversation-more"]');
@@ -77,7 +82,7 @@ describe("SitesAccessPanel", () => {
   });
 
   it('collapses on entry to recording without storing dismissal and honors explicit access links', async () => {
-    fetch.mockResolvedValue({ status: 401 }); await mount('/');
+    fetch.mockResolvedValue(sessionResponse(401)); await mount('/');
     const panel = container.querySelector('#site-access');
     expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
     await act(async () => navigate('/new'));
@@ -96,7 +101,7 @@ describe("SitesAccessPanel", () => {
   // leave public browsing usable; sign-out revokes the app session before platform navigation.
   // Dismissal only changes local presentation; private-page access links reopen the same panel.
   it("keeps focus on the current access control after rapid close and repeated reopen", async () => {
-    fetch.mockResolvedValue({ status: 401 }); await mount();
+    fetch.mockResolvedValue(sessionResponse(401)); await mount();
     const close = container.querySelector('[aria-label="Close site access"]');
     await act(async () => { close.click(); close.click(); });
     expect(document.activeElement).toBe(container.querySelector("button"));
@@ -114,11 +119,11 @@ describe("SitesAccessPanel", () => {
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(container.textContent).toBe("Account");
     await act(async () => container.querySelector("button").click());
-    expect(container.textContent).toContain("Retry sign-in check");
+    expect(container.textContent).toContain("Retry connection");
   });
 
   it("dismisses to a compact control, remembers the choice, and keeps authentication unchanged", async () => {
-    fetch.mockResolvedValue({ status: 401 });
+    fetch.mockResolvedValue(sessionResponse(401));
     await mount();
     expect(container.textContent).toContain("Without signing in, new conversations save in this browser unless you choose ephemeral mode.");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
@@ -138,7 +143,7 @@ describe("SitesAccessPanel", () => {
 
   it("reopens on a private access link even when the hash is already set", async () => {
     localStorage.setItem("lct.sites_access_dismissed.v1", "true");
-    fetch.mockResolvedValue({ status: 401 });
+    fetch.mockResolvedValue(sessionResponse(401));
     await mount("/private-files");
     const panel = container.querySelector("#site-access");
     expect(panel.classList.contains("fixed")).toBe(false);
@@ -157,7 +162,7 @@ describe("SitesAccessPanel", () => {
 
   it("opens for an initial access hash and tolerates unavailable preference storage", async () => {
     localStorage.setItem("lct.sites_access_dismissed.v1", "true");
-    fetch.mockResolvedValue({ status: 401 });
+    fetch.mockResolvedValue(sessionResponse(401));
     await mount("/private-files#site-access");
     expect(container.textContent).toContain("Browsing as guest");
     await act(async () => root.unmount());
@@ -180,7 +185,7 @@ describe("SitesAccessPanel", () => {
       { stage: "config", durationMs: 1, outcome: "complete", retryCount: 0, credential: "must-drop" },
       { stage: "config", durationMs: 1, outcome: "complete", retryCount: -1 },
     ]));
-    fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ? { status: 401 } :
+    fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ? sessionResponse(401) :
       { ok: true, json: async () => ({ google: { enabled: true, configured: false } }) }));
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
@@ -196,7 +201,7 @@ describe("SitesAccessPanel", () => {
   it("reports a Google script error, offers retry, and cancels an unfinished challenge", async () => {
     let challengeSignal;
     fetch.mockImplementation((path, options) => {
-      if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+      if (path === "/api/auth/session") return Promise.resolve(sessionResponse(401));
       if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: true, configured: true, client_id: "test.apps.googleusercontent.com" } }) });
       challengeSignal = options.signal;
       return Promise.resolve({ ok: true, json: async () => ({ nonce: "synthetic-nonce" }) });
@@ -216,7 +221,7 @@ describe("SitesAccessPanel", () => {
   it("aborts a pending Google challenge when the user cancels", async () => {
     let challengeSignal;
     fetch.mockImplementation((path, options) => {
-      if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+      if (path === "/api/auth/session") return Promise.resolve(sessionResponse(401));
       if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: true, configured: true, client_id: "test.apps.googleusercontent.com" } }) });
       challengeSignal = options.signal;
       return new Promise(() => {});
@@ -233,7 +238,7 @@ describe("SitesAccessPanel", () => {
     let resolveChallenge;
     const append = vi.spyOn(document.head, "appendChild");
     fetch.mockImplementation((path) => {
-      if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+      if (path === "/api/auth/session") return Promise.resolve(sessionResponse(401));
       if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: true, configured: true, client_id: "test.apps.googleusercontent.com" } }) });
       return new Promise((resolve) => { resolveChallenge = resolve; });
     });
@@ -250,7 +255,7 @@ describe("SitesAccessPanel", () => {
     vi.useFakeTimers();
     let configCalls = 0;
     fetch.mockImplementation((path) => {
-      if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+      if (path === "/api/auth/session") return Promise.resolve(sessionResponse(401));
       if (path === "/api/auth/config") {
         configCalls += 1;
         return configCalls === 1 ? new Promise(() => {}) : Promise.resolve({ ok: true, json: async () => ({ google: { enabled: true, configured: true, client_id: "test.apps.googleusercontent.com" } }) });
@@ -274,7 +279,7 @@ describe("SitesAccessPanel", () => {
       cancel: vi.fn(),
     } } });
     fetch.mockImplementation((path) => {
-      if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+      if (path === "/api/auth/session") return Promise.resolve(sessionResponse(401));
       if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: true, configured: true, client_id: "test.apps.googleusercontent.com" } }) });
       if (path === "/api/auth/google/challenge") return Promise.resolve({ ok: true, json: async () => ({ nonce: "synthetic-nonce" }) });
       return Promise.resolve({ ok: false, json: async () => ({ error: "Identity response was refused." }) });
@@ -300,7 +305,7 @@ describe("SitesAccessPanel", () => {
       initialize: (options) => { gisOptions = options; }, renderButton: vi.fn(), cancel: vi.fn(),
     } } });
     fetch.mockImplementation((path) => {
-      if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+      if (path === "/api/auth/session") return Promise.resolve(sessionResponse(401));
       if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: true, configured: true, client_id: "test.apps.googleusercontent.com" } }) });
       if (path === "/api/auth/google/challenge") return Promise.resolve({ ok: true, json: async () => ({ nonce: "synthetic-nonce" }) });
       if (path === "/api/auth/logout") return new Promise(() => {});
@@ -317,7 +322,7 @@ describe("SitesAccessPanel", () => {
 
   it("revokes the app session before opening platform sign-out and keeps retry on failure", async () => {
     fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ?
-      { status: 200, json: async () => ({ authenticated: true, user: { id: "synthetic" } }) } : { ok: false }));
+      sessionResponse(200, { authenticated: true, user: { id: "synthetic" } }) : { ok: false }));
     await mount("/private-files?tab=mine");
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Sign out").click());
     expect(fetch).toHaveBeenCalledWith("/api/auth/logout", expect.objectContaining({ method: "POST", credentials: "same-origin", headers: expect.objectContaining({ "x-lct-auth-write": "1" }) }));
@@ -331,7 +336,7 @@ describe("SitesAccessPanel", () => {
       navigation.push({ href: this.getAttribute("href"), target: this.target, calls: fetch.mock.calls.length });
     });
     fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ?
-      { status: 200, json: async () => ({ authenticated: true, user: { id: "synthetic" } }) } : { ok: true, json: async () => ({ authenticated: false }) }));
+      sessionResponse(200, { authenticated: true, user: { id: "synthetic" } }) : { ok: true, json: async () => ({ authenticated: false }) }));
     await mount("/private-files?tab=mine");
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Sign out").click());
     expect(navigation).toEqual([{ href: "/signout-with-chatgpt?return_to=%2Fprivate-files%3Ftab%3Dmine", target: "_top", calls: 2 }]);
@@ -341,7 +346,7 @@ describe("SitesAccessPanel", () => {
   it("lets a guest clear a rejected prior session before choosing another provider", async () => {
     const navigation = [];
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () { navigation.push(this.getAttribute("href")); });
-    fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ? { status: 401 } :
+    fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ? sessionResponse(401) :
       path === "/api/auth/config" ? { ok: true, json: async () => ({ google: { enabled: false, configured: false } }) } :
         { ok: true, json: async () => ({ authenticated: false }) }));
     await mount("/private-files");
@@ -354,7 +359,7 @@ describe("SitesAccessPanel", () => {
   it("times out a stalled sign-out and leaves a retry control", async () => {
     vi.useFakeTimers();
     fetch.mockImplementation((path) => Promise.resolve(path === "/api/auth/session" ?
-      { status: 200, json: async () => ({ authenticated: true, user: { id: "synthetic" } }) } :
+      sessionResponse(200, { authenticated: true, user: { id: "synthetic" } }) :
       { ok: true, json: async () => new Promise(() => {}) }));
     await mount();
     await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Sign out").click());
@@ -366,7 +371,7 @@ describe("SitesAccessPanel", () => {
     expect(JSON.parse(localStorage.getItem("lct.sites_auth_ui_timing.v1")).some((sample) => sample.stage === "signout" && sample.outcome === "timeout")).toBe(true);
   });
   it("uses document flow on private files and floats elsewhere without repeating the session check", async () => {
-    fetch.mockResolvedValue({ status: 200, json: async () => ({ authenticated: true, user: { id: "private-id" } }) });
+    fetch.mockResolvedValue(sessionResponse(200, { authenticated: true, user: { id: "private-id" } }));
     await mount("/private-files");
     const panel = container.querySelector('aside[aria-label="Site access"]');
     expect(panel.id).toBe("site-access");
@@ -390,7 +395,7 @@ describe("SitesAccessPanel", () => {
   });
 
   it("shows a guest on 401, keeps public browsing, and uses same-origin no-store session checks", async () => {
-    fetch.mockResolvedValue({ status: 401 });
+    fetch.mockResolvedValue(sessionResponse(401));
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
     expect(container.textContent).toContain("Without signing in, new conversations save in this browser unless you choose ephemeral mode.");
@@ -428,12 +433,12 @@ describe("SitesAccessPanel", () => {
   });
 
   it("offers retry after a malformed successful response and recovers to guest", async () => {
-    fetch.mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ authenticated: true, user: { id: "" } }) })
-      .mockResolvedValueOnce({ status: 401 });
+    fetch.mockResolvedValueOnce(sessionResponse(200, { authenticated: true, user: { id: "" } }))
+      .mockResolvedValueOnce(sessionResponse(401));
     await mount();
-    expect(container.textContent).toContain("Sign-in check failed");
+    expect(container.textContent).toContain("Account status unavailable");
     expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy and data use");
-    await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry sign-in check").click());
+    await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry connection").click());
     expect(container.textContent).toContain("Browsing as guest");
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(JSON.parse(localStorage.getItem("lct.sites_session_check_timing.v1"))).toEqual([
@@ -443,16 +448,16 @@ describe("SitesAccessPanel", () => {
   });
 
   it("rejects a top-level id without a user object", async () => {
-    fetch.mockResolvedValue({ status: 200, ok: true, json: async () => ({ authenticated: true, id: "private-id" }) });
+    fetch.mockResolvedValue(sessionResponse(200, { authenticated: true, id: "private-id" }));
     await mount();
-    expect(container.textContent).toContain("Sign-in check failed");
+    expect(container.textContent).toContain("Account status unavailable");
     expect(container.textContent).not.toContain("Your account");
   });
 
   it("does not treat a non-200 response as signed in", async () => {
-    fetch.mockResolvedValue({ status: 201, ok: true, json: async () => ({ authenticated: true, user: { id: "private-id" } }) });
+    fetch.mockResolvedValue(sessionResponse(201, { authenticated: true, user: { id: "private-id" } }));
     await mount();
-    expect(container.textContent).toContain("Sign-in check failed");
+    expect(container.textContent).toContain("Account status unavailable");
     expect(container.textContent).not.toContain("Your account");
   });
 
@@ -464,10 +469,54 @@ describe("SitesAccessPanel", () => {
     expect(container.textContent).toContain("3s elapsed");
     expect(container.textContent).toContain("Time remaining unknown");
     await act(async () => vi.advanceTimersByTime(7000));
-    expect(container.textContent).toContain("Sign-in check failed");
+    expect(container.textContent).toContain("Account status unavailable");
     expect(container.textContent).toContain("keep browsing public content");
     expect(JSON.parse(localStorage.getItem("lct.sites_session_check_timing.v1"))[0].outcome).toBe("timeout");
     await settle();
+  });
+
+  it.each([
+    ['network failure', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ['HTML response', () => Promise.resolve(new Response('<!DOCTYPE html>', { headers: { 'content-type': 'text/html' } }))],
+    ['unreadable refusal', () => Promise.resolve(new Response('<html>Unavailable</html>', { status: 401 }))],
+  ])('keeps %s unknown and offers connection recovery without sign-in or reset', async (_, response) => {
+    fetch.mockImplementation(response);
+    await mount('/meeting#site-access');
+    expect(container.textContent).toContain('Account status unavailable');
+    expect(container.textContent).toContain("We couldn't check whether you're signed in");
+    expect(container.querySelector('a[href^="/signin"]')).toBeNull();
+    expect(container.textContent).not.toContain('Sign in with Google');
+    expect(container.textContent).not.toContain('Reset sign-in');
+    expect(container.textContent).not.toContain('Browsing as guest');
+    expect([...container.querySelectorAll('button')].some(node => node.textContent === 'Retry connection')).toBe(true);
+    expect(fetch.mock.calls.some(([path]) => path === '/api/auth/logout')).toBe(false);
+  });
+
+  it('does not offer a provider while checking, then recovers a failed check to the confirmed account', async () => {
+    let resolve;
+    fetch.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    await mount('/meeting#site-access');
+    expect(container.textContent).toContain('Checking your account on this site');
+    expect(container.querySelector('a[href^="/signin"]')).toBeNull();
+    await act(async () => resolve(sessionResponse(503)));
+    fetch.mockResolvedValueOnce(sessionResponse(200));
+    await act(async () => [...container.querySelectorAll('button')].find(node => node.textContent === 'Retry connection').click());
+    expect(container.textContent).toContain('Your account');
+    expect(container.textContent).not.toContain('Account status unavailable');
+    expect(container.textContent).not.toContain('Sign in to save');
+    expect(container.querySelector('a[href^="/signin"]')).toBeNull();
+    expect([...container.querySelectorAll('button')].some(node => node.title === 'Sign out')).toBe(true);
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/auth/session')).toHaveLength(2);
+  });
+
+  it('keeps meeting entry quiet until the account panel is explicitly requested', async () => {
+    fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    await mount('/meeting');
+    expect(container.textContent).toBe('Account');
+    expect(container.querySelector('a[href^="/signin"]')).toBeNull();
+    await act(async () => navigate('/meeting#site-access'));
+    expect(container.querySelector('#site-access').hidden).toBe(false);
+    expect(container.textContent).toContain('Account status unavailable');
   });
 
   it("aborts and clears timers when the panel unmounts", async () => {
@@ -488,10 +537,10 @@ describe("SitesAccessPanel", () => {
   });
 
   it("keeps at most eight payload-free timing samples", async () => {
-    fetch.mockResolvedValue({ status: 500 });
+    fetch.mockResolvedValue(sessionResponse(500));
     await mount();
     for (let index = 0; index < 9; index += 1) {
-      await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry sign-in check").click());
+      await act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry connection").click());
     }
     const history = JSON.parse(localStorage.getItem("lct.sites_session_check_timing.v1"));
     expect(history).toHaveLength(8);

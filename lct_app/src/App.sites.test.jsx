@@ -50,7 +50,7 @@ describe("Sites public shell", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(container.querySelector("#site-access")).not.toBeNull();
-    expect(container.textContent).toContain("Checking sign-in");
+    expect(container.textContent).toContain("Checking account");
     expect(fetch).toHaveBeenCalledWith("/api/auth/session", expect.any(Object));
   });
 
@@ -58,7 +58,7 @@ describe("Sites public shell", () => {
     const readStorage = vi.spyOn(Storage.prototype, "getItem");
     await act(async () => root.render(<App />));
     expect(container.textContent).toContain("Public route");
-    expect(container.textContent).toContain("Checking sign-in");
+    expect(container.textContent).toContain("Checking account");
     expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy and data use");
     expect(container.textContent).not.toContain("Enter your API key");
     expect(providerKeys).toContain("");

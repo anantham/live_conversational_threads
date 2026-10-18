@@ -37,7 +37,7 @@ beforeEach(() => {
   localStorage.clear();
   apiFetch.mockReset();
   vi.stubGlobal("fetch", vi.fn((path) => {
-    if (path === "/api/auth/session") return Promise.resolve({ status: 401 });
+    if (path === "/api/auth/session") return Promise.resolve(new Response(JSON.stringify({ authenticated: false }), { status: 401, headers: { "content-type": "application/json" } }));
     if (path === "/api/auth/config") return Promise.resolve({ ok: true, json: async () => ({ google: { enabled: false, configured: false } }) });
     if (path === "/api/cloud/files/status") return Promise.resolve({ ok: true, json: async () => ({ enabled: true, configured: true, limits: { maxFileBytes: 2097152 } }) });
     if (path === "/api/cloud/files") return Promise.resolve({ ok: false, status: 401, json: async () => ({ code: "sign_in", error: "Sign in" }) });

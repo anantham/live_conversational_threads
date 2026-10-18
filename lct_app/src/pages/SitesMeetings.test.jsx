@@ -26,7 +26,8 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = () => 'blob:fixture'; static revokeObjectURL = () => {}; });
   vi.stubGlobal('fetch', vi.fn(async (path, options = {}) => {
     calls.push({ path, options });
-    if (path === BASE + '/status') return json(server.status === 200 ? { enabled: true, canJoin: server.canJoin } : { error: 'Sign in to use private meeting recordings.' }, server.status);
+    if (path === BASE + '/status' && server.failStatus) throw new TypeError('Failed to fetch');
+    if (path === BASE + '/status') return json(server.status === 200 ? { enabled: true, canJoin: server.canJoin } : { error: server.status === 401 ? 'Sign in to use private meeting recordings.' : 'The recorder is unavailable.' }, server.status);
     if (path === BASE && options.method === 'POST') {
       const input = JSON.parse(options.body); server.id = input.requestId;
       if (server.createStatus === 503) throw new Error('Synthetic lost response');
@@ -73,6 +74,25 @@ describe('Cloud meeting journey', () => {
     server.canJoin = false; await mount(); await inputURL(); expect(button('Join and record').disabled).toBe(true);
     expect(container.textContent).toContain('testing window is closed');
     server.status = 401; await click('Check connection'); expect(container.textContent).toContain('Sign in to use'); expect(creates()).toHaveLength(0);
+  });
+  it.each([401, 403, 503])('offers account recovery only for authentication refusal (%i)', async status => {
+    server.status = status; await mount(); await inputURL();
+    expect(Boolean(container.querySelector('a[href$="#site-access"]'))).toBe(status === 401);
+    expect(button('Join and record').disabled).toBe(true);
+    expect(creates()).toHaveLength(0);
+  });
+  it('invalidates stale readiness after a failed refresh, preserves the form, and recovers without joining', async () => {
+    await mount(); await inputURL(); expect(button('Join and record').disabled).toBe(false);
+    server.failStatus = true; await click('Check connection');
+    expect(button('Join and record').disabled).toBe(true);
+    expect(container.querySelector('a[href$="#site-access"]')).toBeNull();
+    expect(container.querySelector('#meet-url').value).toBe('https://meet.google.com/abc-defg-hij');
+    expect(container.querySelector('form input[type=checkbox]').checked).toBe(true);
+    expect(container.textContent).toContain('Failed to fetch');
+    server.failStatus = false; await click('Check connection');
+    expect(button('Join and record').disabled).toBe(false);
+    expect(container.textContent).not.toContain('Failed to fetch');
+    expect(creates()).toHaveLength(0);
   });
   it('keeps the same reference after a lost join response without sending another bot', async () => {
     server.createStatus = 503; server.state = 'uncertain'; await mount(); await inputURL(); await click('Join and record'); await tick(6100);

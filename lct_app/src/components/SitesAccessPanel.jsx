@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { MessageCircle, UserRound, LogOut, X } from "lucide-react";
 import SitesGoogleSignIn from "./SitesGoogleSignIn";
+import { checkSiteSession } from "../services/cloud/siteSession.js";
 import { recordAuthUiTiming, requestWithin } from "./sitesAuthUi";
 
 const SESSION_TIMEOUT_MS = 10_000;
@@ -44,8 +45,9 @@ export default function SitesAccessPanel() {
   const { pathname, search, hash } = useLocation();
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
   const inRecording = pathname === "/new" || pathname === "/new/" || pathname.startsWith("/meeting/");
+  const inMeetingEntry = pathname === "/meeting" || pathname === "/meeting/";
   const dismissedRef = useRef(wasDismissed());
-  const [expanded, setExpanded] = useState(() => inPrivateFiles || (!inRecording && !dismissedRef.current) || hash === "#site-access");
+  const [expanded, setExpanded] = useState(() => inPrivateFiles || (!inRecording && !inMeetingEntry && !dismissedRef.current) || hash === "#site-access");
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const panelRef = useRef(null);
@@ -95,11 +97,11 @@ export default function SitesAccessPanel() {
 
   useEffect(() => {
     if (hash === "#site-access") openPanel();
-    else if (inRecording) {
+    else if (inRecording || inMeetingEntry) {
       if (panelRef.current?.contains(document.activeElement)) focusOnDismiss.current = true;
       setExpanded(false);
     } else if (!dismissedRef.current && !wasDismissed()) setExpanded(true);
-  }, [hash, inRecording, openPanel]);
+  }, [hash, inRecording, inMeetingEntry, openPanel]);
 
   useEffect(() => {
     // Repeated clicks on an unchanged hash do not fire hashchange.
@@ -201,24 +203,8 @@ export default function SitesAccessPanel() {
 
     async function checkSession() {
       try {
-        const response = await fetch("/api/auth/session", {
-          credentials: "same-origin",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!active) return;
-        if (response.status === 401) {
-          finish("guest");
-          return;
-        }
-        if (response.status !== 200) throw new Error("Session check failed");
-        const session = await response.json();
-        if (!active) return;
-        if (session?.authenticated === true && typeof session.user?.id === "string" && session.user.id.trim()) {
-          finish("signed-in");
-        } else {
-          finish("error");
-        }
+        const result = await checkSiteSession(controller.signal);
+        if (active) finish(result);
       } catch {
         if (active) finish("error");
       }
@@ -236,23 +222,23 @@ export default function SitesAccessPanel() {
     <aside hidden={inRecording && !expanded} ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit p-1"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
       {!expanded ? !inRecording && <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span>{status === "guest" ? "Sign in" : "Account"}</span></button> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="font-semibold text-slate-800">{status === "signed-in" ? "Your account" : "Sign in"}</p>
+        <p className="font-semibold text-slate-800">{status === "signed-in" ? "Your account" : status === "guest" ? "Sign in" : "Account"}</p>
         <button type="button" className="ml-auto flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}><X size={18} aria-hidden="true" /></button>
         {status === "checking" && (
           <span role="status" className="text-xs tabular-nums text-slate-600">
-            Checking sign-in · {elapsedSeconds}s elapsed · Time remaining unknown
+            Checking account · {elapsedSeconds}s elapsed · Time remaining unknown
           </span>
         )}
         {status === "guest" && <span role="status" className="sr-only">Browsing as guest</span>}
         {status === "signed-in" && <span role="status" className="sr-only">Signed in</span>}
-        {status === "error" && <span role="alert" className="text-xs text-rose-700">Sign-in check failed</span>}
+        {status === "error" && <span role="alert" className="text-xs text-rose-700">Account status unavailable</span>}
       </div>
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
-        {status === "signed-in" ? "You can save conversations privately in the cloud and open them across devices." : "Sign in to save conversations privately in the cloud and open them across devices. Without signing in, new conversations save in this browser unless you choose ephemeral mode."}
+        {status === "signed-in" ? "You can save conversations privately in the cloud and open them across devices." : status === "guest" ? "Sign in to save conversations privately in the cloud and open them across devices. Without signing in, new conversations save in this browser unless you choose ephemeral mode." : status === "checking" ? "Checking your account on this site." : "We couldn't check whether you're signed in. Check the connection and try again."}
       </p>
       <a className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/privacy">Privacy and data use</a>
       <div className="mt-3 flex flex-col items-start gap-2 text-xs font-medium">
-        {status !== "signed-in" && (
+        {status === "guest" && (
           <a className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/signin-with-chatgpt?return_to=%2F" target="_top"><MessageCircle size={20} className="shrink-0" aria-hidden="true" /><span>Sign in with ChatGPT</span></a>
         )}
         <SitesGoogleSignIn available={status === "guest" && !signingOut} />
@@ -260,7 +246,7 @@ export default function SitesAccessPanel() {
           <button type="button" disabled={signingOut} title={status === "signed-in" ? "Sign out" : undefined} className={`inline-flex min-h-11 items-center text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:opacity-50 ${status === "signed-in" ? "w-11 justify-center rounded-full hover:bg-slate-100" : "underline underline-offset-2"}`} onClick={signOut}>{status === "guest" ? "Reset sign-in" : <><LogOut size={20} aria-hidden="true" /><span className="sr-only">Sign out</span></>}</button>
         )}
         {status === "error" && (
-          <button type="button" className="inline-flex min-h-11 items-center text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={retry}>Retry sign-in check</button>
+          <button type="button" className="inline-flex min-h-11 items-center text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={retry}>Retry connection</button>
         )}
       </div>
       {signingOut && <div className="mt-2 text-xs">

@@ -1,3 +1,13 @@
+## 2026-10-18 23:12 IST — Account recovery delivered; Meet pilot remains pending
+
+Outcome: truthful checking/unknown/guest/signed-in account UI and auth-specific meeting recovery. Root integration owner; authoritative codex/lct-inference-choice worktree. Served Site47/native sourcea23cb7ea/env37, deployment appgdep_6ad503f3d80481919717a372f6c2125e succeeded. Focused60/60, combined1082/1082 across123files, client/Worker build and independent Gemini PASS. Actual unavailable preview plus live guest→Google→Your account/Sign out verified; no provider/reset buttons after successful sign-in, no non-auth Open account link. Review/screenshot evidence: docs/reviews/2026-10-18-account-state-accuracy.md. Edited/published/browser-verified; human visual acceptance not claimed; dedicated branch commit/push checkpoint follows.
+
+Remaining original dependency: protected Meet relay/key-transfer approval and synthetic tab-audio handoff; no bot/worker/route or Site-env change. Next evidence checkpoint for that separate journey remains protected authenticated JSON plus empty room/audio readiness before the one bounded pilot. Account slice completed within its20–40minute forecast; original Meet timing remains conditional and human/network wait unknown.
+
+## 2026-10-18 22:57 IST — Current bounded slice: truthful account recovery
+
+Outcome: connection failures cannot impersonate signed-out state or prompt unnecessary login/reset; meeting joins require current verified readiness. Integration owner: root; authoritative checkout: codex/lct-inference-choice worktree. User approved this repair. Acceptance: valid session/guest/error/timeout/cancellation and meeting recovery behavior; combined Site tests/build; independent-family review; actual preview failure plus live authenticated UI. Remaining dependencies: review/publication mechanics; Meet connection/audio decisions remain separate and pending. Next checkpoint: focused test results. Estimate20–40minutes implementation/checks plus review/release wait; prior Meet forecasts preserved below.
+
 ## 2026-10-18 13:03 IST — Ready for reserved connection and audio handoff
 
 Source/guard f7cdc41 is committed and pushed. Actual full image2233dbf/native app/private API/S3 acceptance remains successful; exact approved worker config validates without starting it or changing credential bytes. Existing Site is active46/env37, saved archive-backed source494f6ed and prior successful deployment reverified. Live DB bindingDB/lct_meetings has0rows, no truncation/pagination. No bot, worker, public /lct-meet handler, Site environment mutation or paid inference.
