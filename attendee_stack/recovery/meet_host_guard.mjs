@@ -28,3 +28,31 @@ export async function joinApprovedMeetHost(tab, { meetingUrl, expectedAccount })
   await tab.playwright.getByRole('button', { name: 'Join now', exact: true }).click();
   return { joinAttempted: true };
 }
+
+/** Verify the actual Site origin before a handoff; never infer cloud login from preview UI. */
+export async function assertApprovedSiteOrigin(tab, siteOrigin) {
+  const expected = new URL(siteOrigin), actual = new URL(await tab.url());
+  if (expected.protocol !== 'https:' || expected.href !== expected.origin + '/'
+      || expected.username || expected.password || actual.username || actual.password
+      || actual.origin !== expected.origin) {
+    throw new Error('Refused: use the selected live cloud Site, not a separate preview origin.');
+  }
+  return { origin: expected.origin };
+}
+
+/** Read-only operator prerequisite. The session tab must show the actual server JSON. */
+export async function requireRecordingOwnerSession(siteTab, sessionTab, { siteOrigin, expectedOwner }) {
+  await assertApprovedSiteOrigin(siteTab, siteOrigin);
+  await assertApprovedSiteOrigin(sessionTab, siteOrigin);
+  const proofURL = new URL(await sessionTab.url());
+  if (proofURL.pathname !== '/api/auth/session' || proofURL.search || proofURL.hash
+      || typeof expectedOwner !== 'string' || !/^(google|chatgpt):.{1,255}$/.test(expectedOwner)) {
+    throw new Error('Refused: an exact approved owner and live session proof are required.');
+  }
+  const state = JSON.parse(await sessionTab.playwright.evaluate(() => document.body.innerText));
+  if (state?.authenticated !== true || state.user?.id !== expectedOwner
+      || state.user?.provider !== expectedOwner.split(':')[0]) {
+    throw new Error('Refused: the live session does not match the approved recording owner.');
+  }
+  return { authenticated: true, ownerMatches: true, provider: state.user.provider };
+}

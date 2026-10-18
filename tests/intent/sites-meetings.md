@@ -17,3 +17,9 @@
 - Refuse wrong room/account or enabled microphone/camera permission before any click.
 - Exercise wrong-account refusal on the real prejoin, then observe the real allowed join and empty room during the bounded pilot.
 - Written test exception: this operator-only CUA guard uses actual Google UI acceptance instead of a mocked browser that could manufacture permission/identity readiness. It must not report an attempted click as a joined room.
+
+### Cloud test-session guard (18 October 2026)
+
+- Before a sign-in handoff or pilot join, bind the operator tab to the selected live HTTPS Site origin; localhost and other origins refuse.
+- Bind the actual visible /api/auth/session response to the approved qualified recording owner, independently of the Meet host account.
+- Written test exception: exercise wrong-origin/wrong-owner refusal and allowed owner against real CUA tabs, with no browser mocks or network injection. The guard does not sign in, mutate data or join.
