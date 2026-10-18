@@ -6,7 +6,8 @@ Change only the pip RUN; never start Docker, access secrets or replace old recei
 param(
  [Parameter(Mandatory=$true)][string]$SourceDirectory,
  [Parameter(Mandatory=$true)][string]$WheelhouseDirectory,
- [Parameter(Mandatory=$true)][string]$OutputDirectory
+ [Parameter(Mandatory=$true)][string]$OutputDirectory,
+ [ValidateSet('verified-wheels','direct-wheels')][string]$BuildMethod='verified-wheels'
 )
 $ErrorActionPreference='Stop'
 foreach($path in @($SourceDirectory,$WheelhouseDirectory,$OutputDirectory)){
@@ -44,12 +45,17 @@ $original=[IO.File]::ReadAllText((Join-Path $SourceDirectory 'Dockerfile'))
 $boundary=[regex]::new('(?m)^RUN pip install -r requirements\.txt(?=\r?$)')
 if($boundary.Matches($original).Count -ne 1){throw 'Unexpected pip boundary'}
 $replacement='RUN --mount=type=bind,from=lct_verified_wheels,target=/lct-wheels,readonly --mount=type=cache,id=lct-attendee-pip-500168b1,target=/root/.cache/pip,sharing=locked pip install --find-links=/lct-wheels --timeout 120 --retries 1 -r requirements.txt'
+if($BuildMethod -eq 'direct-wheels'){
+ # Explicit local requirements prevent pip choosing the index's equal-version wheel.
+ $paths=($expected|ForEach-Object{'/lct-wheels/'+$_.name}) -join ' '
+ $replacement=$replacement.Replace('--find-links=/lct-wheels',$paths)
+}
 $updated=$boundary.Replace($original,$replacement,1)
 if($updated.Replace($replacement,'RUN pip install -r requirements.txt') -cne $original){throw 'Unexpected Dockerfile delta'}
 New-Item -ItemType Directory $OutputDirectory|Out-Null
 $path=Join-Path $OutputDirectory 'Dockerfile'
 [IO.File]::WriteAllText($path,$updated,[Text.UTF8Encoding]::new($false))
-$receipt=@{source_head=$head;requirements_sha256=(Get-FileHash (Join-Path $SourceDirectory 'requirements.txt') -Algorithm SHA256).Hash;dockerfile_sha256=(Get-FileHash $path -Algorithm SHA256).Hash;verified_wheels=$expected;changed_lines=1;built=$false}
+$receipt=@{build_method=$BuildMethod;source_head=$head;requirements_sha256=(Get-FileHash (Join-Path $SourceDirectory 'requirements.txt') -Algorithm SHA256).Hash;dockerfile_sha256=(Get-FileHash $path -Algorithm SHA256).Hash;verified_wheels=$expected;changed_lines=1;built=$false}
 [IO.File]::WriteAllText((Join-Path $OutputDirectory 'prepared.json'),($receipt|ConvertTo-Json -Depth 4 -Compress))
 $receipt|ConvertTo-Json -Depth 4 -Compress
 exit 0

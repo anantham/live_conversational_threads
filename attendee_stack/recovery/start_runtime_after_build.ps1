@@ -3,13 +3,13 @@ Non-recording continuation for this isolated recovery only. No worker or public 
 Waits for the one bounded build, then validates/imports/migrates/bootstrap/checks API/S3.
 Every native command must succeed; preserves new/old data and credential bytes.
 #>
-param([ValidateSet('cached-pip','verified-wheels')][string]$BuildMethod='cached-pip')
+param([ValidateSet('cached-pip','verified-wheels','direct-wheels')][string]$BuildMethod='cached-pip')
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $b='C:\Users\adity\.lct-recovery\20261017'
 $runtime=Join-Path $b 'private\stack'
-$prefix=if($BuildMethod -eq 'cached-pip'){'runtime-ready'}else{'runtime-verified-wheels'}
-$acceptancePrefix=if($BuildMethod -eq 'cached-pip'){'runtime-acceptance'}else{'runtime-verified-wheels-acceptance'}
+$prefix=if($BuildMethod -eq 'cached-pip'){'runtime-ready'}else{'runtime-'+$BuildMethod}
+$acceptancePrefix=if($BuildMethod -eq 'cached-pip'){'runtime-acceptance'}else{$prefix+'-acceptance'}
 $buildExit=Join-Path $b ('build-'+$BuildMethod+'-exit.txt')
 $log=Join-Path $b ($prefix+'-setup.log')
 $code=97

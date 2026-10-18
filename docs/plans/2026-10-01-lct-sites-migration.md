@@ -1,3 +1,17 @@
+## 2026-10-18 12:22 IST — Offline boundary passes; direct-wheel repair reviewed
+
+The approved single corrected diagnostic exits0: actual Python3.10/pip accepts and saves both exact official public wheels offline. No package installation, service/worker/bot or public route. Public cached-image history disproves absent Python3/pip; missing later python alias explains the previous fixture failure. This closes the approved diagnostic positively, not the meeting journey.
+
+Changed prepare_verified_wheels_build.ps1:6–63 (explicit direct-file method/receipt), start_runtime_after_build.ps1:6–14 (separate direct-method receipts), added start_direct_wheels_build.ps1:1–41 and check_verified_wheels.ps1:1–55, appended verified-wheels.md. Exact source-only independent Gemini PASS and actual Windows parser/constructor/one-line recipe/old-receipt refusal checks pass; receipt docs/reviews/2026-10-18-direct-wheels-build.md. Public tools are staged in a new directory, preserving earlier source/receipts. Actual process probe reports0old verified-build holders; no recovery task running.
+
+Browser extension is reconnected in the correct personal profile. Agent-driven Google popup did not establish a session and its challenge expired; actual session endpoint reports false. Fresh account panel is handed to user for the already approved private owner, while build work continues. Host join is deferred until actual API and owner readiness. Next checkpoint: one native direct-file full build and app-only imports/private API/S3; no worker/public relay until accepted. Same seven finite Meet checks/owner/checkout, prior conditional estimates and Google Cloud deferral remain.
+
+## 2026-10-18 12:14 IST — Approved single corrected offline diagnostic
+
+User approves one corrected diagnostic and continuation only on success. Root integrates in the existing codex/lct-inference-choice worktree, starting clean1e490af. Actual Asus identity/data services reverified; app/worker off. Public cached-image history63af3508 contains upstream python3-pip; full Dockerfile adds python alias later. Corrected fixture validates Python3.10/pip/x86_64 then downloads only two already verified local wheels with no index/dependencies/network. One ten-minute invocation, no package installation, credentials, runtime data, service or route changes. Predict native0 and both local wheels accepted; confidence0.88. Failure stops with retained receipts, no full build.
+
+Personal Chrome now reconnects; actual owner/host state must be observed afresh. No duplicate account/test decision requested. Existing seven Meet checks remain required. Next checkpoint: actual wheel result, reviewed direct-file build, real private API/S3, then bounded Meet pilot. Prior conditional integration/test estimates remain; build/browser wait unknown. Google Cloud deferred. A checkpoint-write auto-review initially misidentified the authoritative worktree as primary; realpath plus git worktree inventory confirm distinct approved paths before retry, with no primary edit or runtime action.
+
 ## 2026-10-17 17:00 IST — Diagnostic loop stop; no Meet acceptance claim
 
 **Outcome:** the existing Asus bot supplies captions, live threads and playable private audio to the existing cloud Site. **Integration owner:** root. **Authoritative checkout:** /Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads, branch codex/lct-inference-choice; last source head96a3ec9, documentation preservation pending. Existing seven finite Meet acceptance checks below remain required.
