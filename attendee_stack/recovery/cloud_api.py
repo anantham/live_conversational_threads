@@ -19,7 +19,7 @@ from lct_audio_range import byte_range
 from lct_audio_chunks import pcm_wave, MAX_PCM_BYTES, MAX_AUDIO_PARTS
 
 BOT_ID = r"bot_[A-Za-z0-9]{16}"
-ALLOWED = re.compile(rf"/api/v1/bots(?:/({BOT_ID})(?:/(leave|snapshot|audio|audio-chunks/[1-9][0-9]{0,12}))?)?")
+ALLOWED = re.compile(rf"/api/v1/bots(?:/({BOT_ID})(?:/(leave|snapshot|audio|audio-chunks/[1-9][0-9]{{0,12}}))?)?")
 
 
 class OnlyMeetingAPI:
