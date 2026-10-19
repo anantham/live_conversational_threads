@@ -24,7 +24,7 @@ export default function ConversationNavigation({ panel, onPanelChange }) {
       <button type="button" className={iconButton} aria-label="AI map" title="AI map" aria-expanded={panel === 'map'} onClick={() => onPanelChange(panel === 'map' ? null : 'map')}><Network size={21} aria-hidden="true" /></button>
       <div ref={root} className="relative" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
         <button ref={trigger} type="button" className={iconButton} aria-label="More options" title="More options" aria-expanded={open} aria-controls="conversation-more" onClick={() => setOpen(v => !v)}><MoreHorizontal size={22} aria-hidden="true" /></button>
-        {open && <div id="conversation-more" aria-label="More options" className="absolute right-0 top-full z-[60] mt-1 w-60 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+        {open && <div id="conversation-more" aria-label="More options" className="absolute right-0 top-full z-[60] mt-1 max-h-[calc(100dvh-4.5rem-env(safe-area-inset-bottom))] w-60 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
           <Link ref={first} className={item} to="/meeting" onClick={close}><Video size={18} aria-hidden="true" />Meetings</Link>
           <Link className={item} to="/browse" onClick={close}><HardDrive size={18} aria-hidden="true" />On this device</Link>
           <Link className={item} to="/public" onClick={close}><Globe size={18} aria-hidden="true" />Public conversations</Link>

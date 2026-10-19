@@ -11,7 +11,7 @@ export default function LiveConversationGraph({ bundle, transcriptVisible, onCon
   const nodes = useMemo(() => bundle ? withThreadLanes(enrichGraphNodesWithProvenance(indexExplicitEdges(flattenThreadsGraph(bundle.graph_data), bundle.edges, true), bundle.utterances || []), bundle.conversation_threads || []) : [], [bundle]);
   const chosen = nodes.find(n => n.id === selected);
   function select(id) { setSelected(id); setFocus(id); setFocusKey(k => k + 1); }
-  return <div className="relative flex min-h-0 flex-1 flex-col" aria-label="Live conversation graph">
+  return <div className="relative isolate flex min-h-0 flex-1 flex-col" aria-label="Live conversation graph">
     {bundle ? <>
       {!!bundle.conversation_threads?.length && <div className="relative z-50 h-11 shrink-0 border-b border-slate-100 bg-white px-3"><details className="absolute top-0 max-h-64 w-56 max-w-[90%] overflow-auto rounded-lg border border-slate-200 bg-white text-xs shadow-sm">
         <summary className="min-h-11 cursor-pointer px-3 py-3 font-medium">Threads · {bundle.conversation_threads.length}</summary>
