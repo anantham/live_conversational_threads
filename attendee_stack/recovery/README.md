@@ -86,3 +86,24 @@ Authenticated API probes refuse redirects so credentials stay on the local app.
 Test exception: wrong-namespace refusal is checked as an actual subprocess;
 positive API/schema/S3 checks require the real isolated image/runtime and must
 never be reported passed from mocks or preparation alone.
+
+
+## Read-only access checks before an operator handoff
+
+A failed SSH client is evidence about that method, not proof the Asus is asleep
+or that a human must inspect it. Before an operator-only handoff, record the
+failed phase and bounded attempts, inspect the available control inventory, and
+check an existing approved alternative such as a saved RustDesk session when it
+needs no new credential or access grant. Respect the failed method's stop limit;
+never route around a permission denial, install an access agent, restart a shared
+service, or widen networking to obtain a diagnostic. If the alternative cannot
+be used safely, record its concrete limitation rather than assert it was tried.
+
+For native remote-desktop diagnostics, open a separate shell and preserve existing
+terminals. Verify the exact visible command before execution. If typed text or
+clipboard transport drops characters/modifiers, never execute the malformed line
+or infer a server/API failure from it. A short literal `get-service sshd` can prove
+service status; it does not prove usable SSH authentication, source transfer,
+recorder readiness or meeting capture. Restore temporary input preferences and
+close only the owned diagnostic shell. Keep unrelated desktop content, clipboard
+contents, credentials and event logs out of repository/review packets.
