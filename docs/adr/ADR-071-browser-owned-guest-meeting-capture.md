@@ -1,0 +1,9 @@
+# ADR-071: Browser-owned guest meeting capture
+
+Recorded19October2026. Status: user-approved product direction; implementation/actual E2E pending. Group: identity, retention and meeting integration.
+
+A visitor may paste a Meet link without an LCT account. The recorder requests admission when required; host settings still decide entry. A random, signed, origin-bound HttpOnly browser capability owns only meeting-control receipts and private streaming/retrieval. It is not an account identity and grants no private cloud-file access. Same-origin writes, fixed bot duration, one active/unconfirmed receipt, lifetime capacity and explicit participant-permission confirmation remain enforced. Guest capability loss cannot transfer a recording to another guest. Existing account-owned data is preserved.
+
+Captions/maps/audio copy into the existing browser archive by default, respecting ephemeral mode. Closing a viewer does not silently send a second bot or stop the remote recorder. Sign-in is optional for deliberate private cloud history; public contribution stays separately explicit. Recorder processing/private working copies on Asus are not equivalent to account cloud history or public publication; the UI must state the real storage path without claiming device-only processing or automatic remote deletion.
+
+Reuse existing Attendee/Asus and the same cloud Site; no new paid service, account, blanket public API or expanded Chrome sandbox. The current finished-MP3 endpoint alone does not satisfy live-audio acceptance. Reuse a supported bounded audio path and independently verify it before claiming delivery. Tests/intent/guest-meetings.md and the existing migration board define the finite acceptance. Deferred: Google Cloud hosting, longer/unbounded meetings and new remote-retention/deletion policy.

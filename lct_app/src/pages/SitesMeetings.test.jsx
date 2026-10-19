@@ -26,8 +26,10 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = () => 'blob:fixture'; static revokeObjectURL = () => {}; });
   vi.stubGlobal('fetch', vi.fn(async (path, options = {}) => {
     calls.push({ path, options });
+    if (path === BASE + '/guest-session') { server.guestStarted = true; return json({ mode: 'guest' }); }
+    if (path === '/api/auth/session') return json({ authenticated: false }, 401);
     if (path === BASE + '/status' && server.failStatus) throw new TypeError('Failed to fetch');
-    if (path === BASE + '/status') return json(server.status === 200 ? { enabled: true, canJoin: server.canJoin } : { error: server.status === 401 ? 'Sign in to use private meeting recordings.' : 'The recorder is unavailable.' }, server.status);
+    if (path === BASE + '/status') return json(server.status === 200 ? { enabled: true, canJoin: server.canJoin } : { error: server.status === 401 ? 'Sign in to use private meeting recordings.' : 'The recorder is unavailable.', code: server.errorCode || (server.status === 401 ? 'sign_in' : 'inactive') }, server.status);
     if (path === BASE && options.method === 'POST') {
       const input = JSON.parse(options.body); server.id = input.requestId;
       if (server.createStatus === 503) throw new Error('Synthetic lost response');
@@ -35,6 +37,7 @@ beforeEach(() => {
     }
     if (path === BASE) return json({ meetings: [{ ...row, id: server.id || id }] });
     if (path.endsWith('/leave')) { server.state = 'ended'; server.snapshot.state = 'ended'; server.snapshot.recording_state = 'complete'; server.snapshot.audio_available = true; return json({ message: 'Leave requested.' }, 202); }
+    if (path.includes('/audio-chunks/')) return new Response(new Uint8Array(100), { headers: { 'content-type': 'audio/wav' } });
     if (path.endsWith('/audio')) return new Response(new Uint8Array([73, 68, 51, 1, 2, 3]), { headers: { 'content-type': 'audio/mpeg' } });
     if (path.startsWith(BASE + '/')) {
       if (server.failPoll) throw new Error('Synthetic connection lost');
@@ -63,8 +66,38 @@ async function inputURL() {
 }
 const creates = () => calls.filter(call => call.path === BASE && call.options.method === 'POST');
 describe('Cloud meeting journey', () => {
+  it('does not ask an expired guest to sign into an account', async () => {
+    server.status = 401; server.errorCode = 'guest_session'; await mount();
+    expect(container.querySelector('a[href$="#site-access"]')).toBeNull(); expect(creates()).toHaveLength(0);
+  });
+  it('receives and saves live WAV parts once while captions continue, retaining them with the final MP3', async () => {
+    server.snapshot.audio_chunks = [{ id: '17', index: 1, timestamp_ms: zero + 1000, duration_ms: 5000, sample_rate: 48000, ready: true }];
+    await mount('/meeting/' + id); await tick(300); await click('More options'); await click('Files & export');
+    expect(container.textContent).toContain('1 parts received');
+    expect(container.querySelector('audio[aria-label="Latest live audio part"]')).not.toBeNull();
+    expect(fixture.saved.some(entry => entry.chunks.some(part => part.mimeType === 'audio/wav' && part.blob.size === 100))).toBe(true);
+    await tick(6100); expect(calls.filter(call => call.path.endsWith('/audio-chunks/17'))).toHaveLength(1);
+    server.snapshot.audio_chunks.push({ id: '18', index: 2, timestamp_ms: zero + 6000, duration_ms: 5000, sample_rate: 48000, ready: true });
+    await tick(2100); await tick(2100); expect(container.textContent).toContain('2 parts received');
+    await click('Leave recording'); await tick(300);
+    const saved = fixture.saved.at(-1).snapshot;
+    expect(saved.segments.map(part => [part.number, part.mimeType])).toEqual([[1, 'audio/wav'], [2, 'audio/wav'], [1000, 'audio/mpeg']]);
+    expect(saved.stage).toBe('stopped');
+    expect(calls.some(call => call.path.startsWith('/api/cloud/public') || call.path === '/api/cloud/files' && call.options.method === 'POST')).toBe(false);
+  });
+  it('does not confuse saved live parts with a completed MP3 after reconnect', async () => {
+    fixture.restored = { id, recording: { id, startedAt: zero, retention: 'local' }, transcript: { finalText: 'Saved orchard.', finalTokens: [{ text: 'Saved orchard.', speaker: 'local' }], partialText: '', partialTokens: [] }, stage: 'recording', map: null,
+      segments: [{ number: 1, chunkId: '17', mimeType: 'audio/wav', complete: true, bytes: 100 }],
+      audio: { complete: true, segments: [{ number: 1, mimeType: 'audio/wav', complete: true }] }, revision: 'saved' };
+    server.snapshot.audio_chunks = [{ id: '17', index: 1, timestamp_ms: zero + 1000, duration_ms: 5000, sample_rate: 48000, ready: true }];
+    server.state = 'ended'; server.snapshot.state = 'ended'; server.snapshot.recording_state = 'complete'; server.snapshot.audio_available = true;
+    await mount('/meeting/' + id); await tick(300);
+    expect(calls.filter(call => call.path.endsWith('/audio-chunks/17'))).toHaveLength(0);
+    expect(fixture.saved.some(entry => entry.chunks.some(part => part.segment === 1000 && part.mimeType === 'audio/mpeg'))).toBe(true);
+  });
+
   it('never joins on load and requires consent inside an open test window', async () => {
-    await mount(); expect(creates()).toHaveLength(0); expect(button('Join and record').disabled).toBe(true);
+    await mount(); expect(server.guestStarted).toBe(true); expect(creates()).toHaveLength(0); expect(button('Join and record').disabled).toBe(true);
     await inputURL(); expect(button('Join and record').disabled).toBe(false);
     await click('Join and record'); expect(creates()).toHaveLength(1);
     expect(JSON.parse(creates()[0].options.body)).toMatchObject({ meetingUrl: 'https://meet.google.com/abc-defg-hij', consent: true });

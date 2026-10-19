@@ -31,7 +31,7 @@ function fixture() {
     'sites/soniox.js', 'sites/sonioxPolicy.js', 'sites/serviceHealth.js',
     'sites/openRouter.js', 'sites/openRouterPolicy.js', 'sites/openRouterIO.js',
     'sites/auth.js', 'sites/authPolicy.js',
-    'sites/meetings.js', 'sites/meetingPolicy.js',
+    'sites/meetings.js', 'sites/meetingPolicy.js', 'sites/meetingGuests.js',
     'db/schema.ts', 'drizzle.config.ts',
     'src/main.jsx', 'src/index.css', 'src/services/serverless/prompts.json',
   ]) file(name);
@@ -69,13 +69,14 @@ describe('Site source export public API', () => {
     const { source, output, file } = fixture();
     file('package.json', JSON.stringify({ name: 'fixture', type: 'module' }));
     file('sites/worker.js', "import { message } from './meetings.js'; export default { fetch: () => new Response(message) };");
-    file('sites/meetings.js', "import { label } from './meetingPolicy.js'; export const message = label;");
+    file('sites/meetings.js', "import { label } from './meetingPolicy.js'; import { guest } from './meetingGuests.js'; export const message = label + guest;");
+    file('sites/meetingGuests.js', "export const guest = ' with guest access';");
     file('sites/meetingPolicy.js', "export const label = 'synthetic meeting route';");
     exportSiteSource(source, output);
     const result = execFileSync(process.execPath, ['--input-type=module', '-e',
       "const {default:worker}=await import(process.argv[1]); console.log(await worker.fetch(new Request('https://fixture.test/api/cloud/meetings')).text());",
       pathToFileURL(join(output, 'sites/worker.js')).href], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    expect(result.trim()).toBe('synthetic meeting route');
+    expect(result.trim()).toBe('synthetic meeting route with guest access');
   });
 
   it('refuses a nonempty destination and preserves existing content', () => {

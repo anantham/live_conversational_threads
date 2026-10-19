@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import { meetingRequest, meetingStateText } from '../services/cloud/sitesMeetings.js';
+import { meetingRequest, meetingStateText, startMeetingAccess } from '../services/cloud/sitesMeetings.js';
 import SitesMeetingView from './SitesMeetingView.jsx';
 
 const button = 'min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50';
@@ -19,7 +19,7 @@ function MeetingEntry() {
     alive.current = true;
     const controller = new AbortController();
     setStatus(null); setError(null); setChecking(true);
-    Promise.all([meetingRequest('/status', { signal: controller.signal }), meetingRequest('', { signal: controller.signal })])
+    startMeetingAccess(controller.signal).then(() => Promise.all([meetingRequest('/status', { signal: controller.signal }), meetingRequest('', { signal: controller.signal })]))
       .then(([config, list]) => { if (alive.current && !controller.signal.aborted) { setStatus(config); setMeetings(list.meetings); } })
       .catch(failure => { if (alive.current && !controller.signal.aborted) setError(failure); })
       .finally(() => { if (alive.current && !controller.signal.aborted) setChecking(false); });
@@ -44,20 +44,20 @@ function MeetingEntry() {
     <Link to="/new" aria-label="Back to conversation" className="inline-flex h-11 w-11 items-center justify-center rounded-full hover:bg-slate-100"><ArrowLeft size={21} /></Link>
     <div className="mx-auto max-w-xl py-8">
       <h1 className="text-2xl font-semibold">Bring a meeting into Threads</h1>
-      <p className="mt-3 text-sm leading-6 text-slate-600">Paste a Google Meet link. The LCT recorder captures captions and audio on the Asus, while your transcript and threads appear here.</p>
+      <p className="mt-3 text-sm leading-6 text-slate-600">Paste a Google Meet link. The recorder joins when allowed, or asks the host to admit it. Captions and threads appear here.</p>
       <form onSubmit={join} className="mt-8 space-y-4">
         <label className="block text-sm font-medium" htmlFor="meet-url">Google Meet link</label>
         <input id="meet-url" type="url" required value={url} onChange={event => setURL(event.target.value)} disabled={busy} placeholder="https://meet.google.com/abc-defg-hij" className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3" />
-        <p className="text-xs leading-5 text-slate-500">Owner-only test · up to five minutes. Keep the Asus online. Captions and audio stay private on the Asus and are accessible through this signed-in account. Nothing is published.</p>
-        <label className="flex items-start gap-3 text-sm leading-6"><input className="mt-1.5" type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />This is the approved empty test room. Everyone present permits captions and audio recording.</label>
+        <p className="text-xs leading-5 text-slate-500">No account needed. Conversations save in this browser by default; sign in only to save cloud history. Nothing is published automatically. This first version supports recordings up to five minutes.</p>
+        <label className="flex items-start gap-3 text-sm leading-6"><input className="mt-1.5" type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />I have permission from everyone present to capture captions and record audio.</label>
         <button className={`${button} border-slate-900 bg-slate-900 text-white`} disabled={busy || !consent || checking || !status?.canJoin}>{busy ? 'Sending recorder…' : 'Join and record'}</button>
         {status && !status.canJoin && <p role="status" className="text-sm text-slate-600">The approved testing window is closed. Your existing recordings remain available.</p>}
       </form>
-      {error && <div role="alert" className="mt-4 text-sm text-rose-800">{error.message} {error.status === 401 && <Link to="#site-access" className="underline">Sign in</Link>}</div>}
+      {error && <div role="alert" className="mt-4 text-sm text-rose-800">{error.message} {error.status === 401 && error.code === 'sign_in' && <Link to="#site-access" className="underline">Sign in</Link>}</div>}
       <button className="mt-4 min-h-11 text-sm underline" disabled={busy || checking} onClick={() => setAttempt(value => value + 1)}>Check connection</button>
-      <h2 className="mt-10 font-medium">Your meeting recordings</h2>
+      <h2 className="mt-10 font-medium">Meetings in this browser</h2>
       {meetings.map(meeting => <Link className="mt-3 block rounded-lg border border-slate-200 p-4 text-sm" key={meeting.id} to={'/meeting/' + meeting.id}>{new Date(meeting.createdAt).toLocaleString()} · {meetingStateText(meeting.state)}</Link>)}
-      {!meetings.length && status && <p className="mt-3 text-sm text-slate-500">Your meeting recordings will appear here.</p>}
+      {!meetings.length && status && <p className="mt-3 text-sm text-slate-500">Your meetings will appear here. Saved conversations are also available from On this device.</p>}
     </div>
   </main>;
 }

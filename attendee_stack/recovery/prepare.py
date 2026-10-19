@@ -28,7 +28,8 @@ def compose_config():
         "volumes": ["./settings.py:/attendee/lct_recovery_settings.py:ro",
                     "./bootstrap.py:/recovery/bootstrap.py:ro",
                     "./cloud_api.py:/attendee/lct_cloud_api.py:ro",
-                    "./audio_range.py:/attendee/lct_audio_range.py:ro"],
+                    "./audio_range.py:/attendee/lct_audio_range.py:ro",
+                    "./audio_chunks.py:/attendee/lct_audio_chunks.py:ro"],
         "depends_on": {"postgres": {"condition": "service_healthy"},
                        "redis": {"condition": "service_healthy"},
                        "minio": {"condition": "service_started"}},
@@ -110,7 +111,7 @@ def prepare(directory: Path):
     with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
         stream.write("".join(f"{key}={value}\n" for key, value in values.items()))
     (directory / "compose.json").write_text(json.dumps(compose_config(), indent=2) + "\n", encoding="utf-8")
-    for name in ("settings.py", "bootstrap.py", "cloud_api.py", "audio_range.py"):
+    for name in ("settings.py", "bootstrap.py", "cloud_api.py", "audio_range.py", "audio_chunks.py"):
         shutil.copyfile(Path(__file__).with_name(name), directory / name)
     return directory
 

@@ -1,12 +1,13 @@
 import { resolveIdentity } from './auth.js';
+import { guestMeetingOwner, guestsEnabled, startGuestMeetingSession } from './meetingGuests.js';
 import { digest } from './authPolicy.js';
 import { MEETINGS_PREFIX, MEETING_ID, BOT_ID, TERMINAL, MeetingError, meetingJSON,
   meetingConfig, requireMeetingWrite, boundedMeetingJSON, attendeeRequest } from './meetingPolicy.js';
 
 const publicRow = row => ({ id: row.id, state: row.state, createdAt: row.created_at, endsAt: row.ends_at });
 
-async function owned(env, owner, id) {
-  const row = await env.DB.prepare('SELECT * FROM lct_meetings WHERE id = ? AND owner = ?').bind(id, owner).first();
+async function owned(env, owner, id, accountOwner = '') {
+  const row = await env.DB.prepare('SELECT * FROM lct_meetings WHERE id = ? AND (owner = ? OR owner = ?)').bind(id, owner, accountOwner).first();
   if (!row) throw new MeetingError(404, 'missing', 'This meeting is not available to your account.');
   return row;
 }
@@ -51,7 +52,7 @@ async function create(request, env, config, owner) {
       meeting_url: input.meetingUrl, bot_name: 'LCT Test — captions and audio',
       deduplication_key: 'lct-' + row.id, metadata: { lct_recording_id: row.id },
       transcription_settings: { meeting_closed_captions: { google_meet_language: 'en-US' } },
-      recording_settings: { format: 'mp3' },
+      recording_settings: { format: 'mp3', record_async_transcription_audio_chunks: true },
       automatic_leave_settings: { max_uptime_seconds: seconds, waiting_room_timeout_seconds: 60,
         wait_for_host_to_start_meeting_timeout_seconds: 60, only_participant_in_meeting_timeout_seconds: 30 },
     } });
@@ -72,37 +73,44 @@ export async function handleMeetings(request, env) {
   if (url.pathname !== MEETINGS_PREFIX && !url.pathname.startsWith(MEETINGS_PREFIX + '/')) return null;
   try {
     const config = meetingConfig(env);
+    if (url.pathname === MEETINGS_PREFIX + '/guest-session') return await startGuestMeetingSession(request, env);
+    const guest = await guestMeetingOwner(request, env);
     const identity = await resolveIdentity(request, env);
-    if (!identity) throw new MeetingError(401, 'sign_in', 'Sign in to use private meeting recordings.');
-    const owner = identity.provider + ':' + identity.id;
+    const accountOwner = identity ? identity.provider + ':' + identity.id : '';
+    if (!guest && !identity) throw new MeetingError(401, guestsEnabled(env) ? 'guest_session' : 'sign_in', guestsEnabled(env)
+      ? 'Start meeting access in this browser. No account is needed.' : 'Sign in to use private meeting recordings.');
+    const owner = guest || accountOwner;
     if (!config.configured || !config.enabled) throw new MeetingError(503, 'inactive', 'Meeting recording is being connected. No bot was sent.');
-    if (owner !== config.owner) throw new MeetingError(403, 'pilot', 'Meeting recording is currently limited to the approved owner test.');
+    if (!guest && owner !== config.owner) throw new MeetingError(403, 'pilot', 'Meeting recording is currently limited to the approved owner test.');
     const ready = await env.DB.prepare('SELECT COUNT(*) AS count FROM lct_meetings').first();
     if (!Number.isSafeInteger(ready?.count)) throw new Error('Meeting schema not ready');
     const suffix = url.pathname.slice(MEETINGS_PREFIX.length);
     if (url.search) throw new MeetingError(400, 'query', 'This meeting endpoint does not accept query parameters.');
-    if (suffix === '/status' && request.method === 'GET') return meetingJSON(200, { enabled: true, canJoin: config.canJoin, maxSeconds: 300 });
+    if (suffix === '/status' && request.method === 'GET') return meetingJSON(200, { enabled: true, canJoin: config.canJoin, maxSeconds: 300, mode: guest ? 'guest' : 'account' });
     if (!suffix && request.method === 'POST') return await create(request, env, config, owner);
     if (!suffix && request.method === 'GET') {
       const rows = await env.DB.prepare('SELECT id, state, created_at, ends_at FROM lct_meetings WHERE owner = ? ORDER BY created_at DESC LIMIT 20').bind(owner).all();
       return meetingJSON(200, { meetings: rows.results.map(publicRow) });
     }
-    const match = /^\/([^/]+)(?:\/(leave|audio))?$/.exec(suffix);
+    const match = /^\/([^/]+)(?:\/(leave|audio|audio-chunks\/([1-9][0-9]{0,12})))?$/.exec(suffix);
     if (!match || !MEETING_ID.test(match[1])) throw new MeetingError(404, 'route', 'Meeting endpoint not found.');
-    const allowedMethods = match[2] === 'leave' ? ['POST'] : match[2] === 'audio' ? ['GET', 'HEAD'] : ['GET'];
+    const audioPart = match[3];
+    const allowedMethods = match[2] === 'leave' ? ['POST'] : match[2] === 'audio' || audioPart ? ['GET', 'HEAD'] : ['GET'];
     if (!allowedMethods.includes(request.method)) {
       throw new MeetingError(405, 'method', 'Use the meeting controls on this Site.');
     }
     if (request.method === 'POST') requireMeetingWrite(request);
-    const row = await reconcile(env, config, await owned(env, owner, match[1]));
+    const row = await reconcile(env, config, await owned(env, owner, match[1], accountOwner === config.owner ? accountOwner : ''));
     if (!row.bot_id) return meetingJSON(202, { meeting: publicRow(row), message: 'The join is not yet confirmed. No additional bot has been sent.' });
+    if (audioPart) return await attendeeRequest(config, '/' + row.bot_id + '/audio-chunks/' + audioPart,
+      { method: request.method, audio: true, audioType: 'audio/wav' });
     if (match[2] === 'audio') return await attendeeRequest(config, '/' + row.bot_id + '/audio',
       { method: request.method, audio: true, range: request.headers.get('range') });
     if (match[2] === 'leave') {
       const current = await attendeeRequest(config, '/' + row.bot_id);
       if (current?.id !== row.bot_id || typeof current.state !== 'string') throw new MeetingError(502, 'response', 'The recorder returned an unreadable meeting state.');
       if (TERMINAL.has(current.state)) {
-        await env.DB.prepare("UPDATE lct_meetings SET state = 'ended' WHERE id = ? AND owner = ?").bind(row.id, owner).run();
+        await env.DB.prepare("UPDATE lct_meetings SET state = 'ended' WHERE id = ? AND owner = ?").bind(row.id, row.owner).run();
         return meetingJSON(200, { meeting: { ...publicRow(row), state: 'ended' }, message: 'The recorder has already left.' });
       }
       if (!['leaving', 'post_processing'].includes(current.state)) {
@@ -120,7 +128,7 @@ export async function handleMeetings(request, env) {
       throw new MeetingError(502, 'response', 'The recorder returned an incomplete meeting snapshot.');
     }
     const state = TERMINAL.has(snapshot.state) ? 'ended' : 'active';
-    await env.DB.prepare('UPDATE lct_meetings SET state = ? WHERE id = ? AND owner = ?').bind(state, row.id, owner).run();
+    await env.DB.prepare('UPDATE lct_meetings SET state = ? WHERE id = ? AND owner = ?').bind(state, row.id, row.owner).run();
     return meetingJSON(200, { meeting: { ...publicRow(row), state }, snapshot });
   } catch (error) {
     if (error instanceof MeetingError) return meetingJSON(error.status, { error: error.message, code: error.code });

@@ -1,6 +1,6 @@
 // Intent: real caption-to-artifact conversion, unknown clocks and malformed snapshots.
 import { describe, expect, it } from 'vitest';
-import { meetingPath, meetingTranscript } from './sitesMeetings.js';
+import { meetingPath, meetingTranscript, meetingAudioParts } from './sitesMeetings.js';
 import { createRecordingTranscript } from './recordingTranscript.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
@@ -30,5 +30,17 @@ describe('Meet caption source', () => {
     expect(() => meetingTranscript({ utterances: [{ id: '1', text: {} }] })).toThrow();
     expect(() => meetingPath('../private')).toThrow();
     expect(meetingPath(id)).toBe('/api/cloud/meetings/' + id);
+  });
+});
+
+
+describe('live audio manifest', () => {
+  const part = { id: '17', index: 1, timestamp_ms: 1700000001000, duration_ms: 5000, sample_rate: 48000, ready: true };
+  it('keeps stable indices while uploads become ready and rejects unsafe or duplicate identities', () => {
+    expect(meetingAudioParts({ audio_chunks: [{ ...part, ready: false }] })[0].index).toBe(1);
+    expect(meetingAudioParts({ audio_chunks: [part] })).toEqual([part]);
+    for (const invalid of [[part, { ...part, index: 2 }], [{ ...part, id: '../17' }], [{ ...part, index: 2 }], [{ ...part, sample_rate: 1 }], [{ ...part, ready: 'yes' }]]) {
+      expect(() => meetingAudioParts({ audio_chunks: invalid })).toThrow();
+    }
   });
 });

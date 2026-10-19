@@ -4,6 +4,7 @@ import PropTypes from 'prop-types';
 import { useSiteMeeting } from '../hooks/useSiteMeeting.js';
 import { useMeetingArchive } from '../hooks/useMeetingArchive.js';
 import { meetingPath, meetingRequest, meetingStateText, meetingIO } from '../services/cloud/sitesMeetings.js';
+import { checkSiteSession } from '../services/cloud/siteSession.js';
 import { privateRequest } from '../services/privateFiles.js';
 import { createRecordingTranscript } from '../services/cloud/recordingTranscript.js';
 import ConversationNavigation, { CloseConversationTools } from '../components/recording/ConversationNavigation.jsx';
@@ -25,7 +26,7 @@ export default function SitesMeetingView({ id }) {
   const uploads = useRef(null);
   useEffect(() => {
     const controller = new AbortController();
-    meetingIO(signal => privateRequest('/api/cloud/files/status', { signal }), controller.signal).then(status => { if (!controller.signal.aborted) setPrivateEnabled(Boolean(status.enabled && status.configured && !status.synthetic_only)); }).catch(() => {});
+    Promise.all([meetingIO(signal => privateRequest('/api/cloud/files/status', { signal }), controller.signal), checkSiteSession(controller.signal)]).then(([status, session]) => { if (!controller.signal.aborted) setPrivateEnabled(session === 'signed-in' && Boolean(status.enabled && status.configured && !status.synthetic_only)); }).catch(() => {});
     return () => { controller.abort(); uploads.current?.abort(); };
   }, []);
   const alive = useRef(true);
@@ -35,7 +36,7 @@ export default function SitesMeetingView({ id }) {
   const recordingComplete = snapshot ? snapshot.recording_state === 'complete' : local.restored?.stage === 'stopped';
   const [localAudioURL, setLocalAudioURL] = useState('');
   useEffect(() => {
-    const blob = local.restored?.audio?.blob;
+    const blob = local.restored?.stage === 'stopped' && local.restored?.audio?.mimeType === 'audio/mpeg' ? local.restored.audio.blob : null;
     if (!blob) return;
     const url = URL.createObjectURL(blob); setLocalAudioURL(url);
     return () => URL.revokeObjectURL(url);
@@ -88,15 +89,18 @@ export default function SitesMeetingView({ id }) {
         </div>
         <div hidden={panel !== 'files'} className="pt-12">
           <h2 className="font-medium">Files &amp; export</h2>
-          {audioURL ? <><audio className="mt-4 w-full" controls preload="none" src={audioURL} aria-label="Meeting recording" /><a className={`${button} mt-3 inline-block`} href={audioURL} download={`meeting-${id}.mp3`}>Download meeting audio</a></> : <p className="mt-3 text-sm text-slate-600">Audio becomes available after the recorder finishes.</p>}
+          {local.liveAudio.parts > 0 && <section aria-label="Live meeting audio" className="mt-4 text-sm"><p role="status">Live audio · {local.liveAudio.parts} parts received</p><button className="mt-2 min-h-11 underline" onClick={() => void local.liveAudio.toggleMonitoring()}>{local.liveAudio.monitoring ? 'Stop listening' : 'Listen live'}</button><audio className="mt-3 w-full" controls preload="none" src={local.liveAudio.url} aria-label="Latest live audio part" /></section>}
+          {local.liveAudio.error && <p role="status" className="mt-3 text-sm text-rose-800">{local.liveAudio.error}</p>}
+          {audioURL ? <><audio className="mt-4 w-full" controls preload="none" src={audioURL} aria-label="Meeting recording" /><a className={`${button} mt-3 inline-block`} href={audioURL} download={`meeting-${id}.mp3`}>Download meeting audio</a></> : <p className="mt-3 text-sm text-slate-600">Audio arrives in short parts during the call. The complete MP3 becomes available when the recorder finishes.</p>}
+          {!privateEnabled && <Link to="/private-files#site-access" className="mt-3 block min-h-11 text-sm underline">Sign in to save privately in the cloud</Link>}
           <RecordingTranscriptFiles artifact={artifact} retention={local.ready ? local.retention : 'ephemeral'} privateEnabled={privateEnabled} saving={saving || generating} onPrivateSave={savePrivate} />
           {local.map && <button className="mt-3 min-h-11 text-sm underline" onClick={() => setPanel('map')}>Download your map</button>}
         </div>
         <div hidden={panel !== 'settings'} className="pt-12 text-sm leading-6">
           <h2 className="font-medium">Meeting settings</h2>
           <p className="mt-3">The Asus captures Meet captions and audio independently of this tab. Keep it online. Threads update while this view is open and automatic maps are enabled.</p>
-          <p className="mt-3">{local.retention === 'local' ? 'Captions and maps save in this browser. Completed audio is copied here while this view is open.' : 'Ephemeral mode: nothing saves automatically in this browser.'} The private recording remains on the Asus.</p>
-          <p className="mt-3">This pilot stops after five minutes at most. Leave recording stops the bot; closing this tab does not.</p>
+          <p className="mt-3">{local.retention === 'local' ? 'Captions, maps and incoming audio save in this browser. The complete MP3 is copied here when the recorder finishes while this view is open.' : 'Ephemeral mode: nothing saves automatically in this browser.'} The recorder also keeps a private working copy on the Asus; it is not added to account history or the public library.</p>
+          <p className="mt-3">Recordings currently stop after five minutes at most. Leave recording stops the bot; closing this tab does not.</p>
           <div className="mt-3"><ConversationStorageStatus status={local.archive.status} preference={local.retention} onRetry={local.archive.retry} /></div>
           <Link to="/meeting" className="mt-3 inline-block min-h-11 underline">Your meeting recordings</Link>
         </div>

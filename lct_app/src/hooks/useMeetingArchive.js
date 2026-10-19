@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useMeetingLiveAudio } from './useMeetingLiveAudio.js';
 import { useConversationArchive } from './useConversationArchive.js';
 import { readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { meetingPath, meetingIO } from '../services/cloud/sitesMeetings.js';
@@ -11,7 +12,13 @@ export function useMeetingArchive(id, data) {
   const [map, setMap] = useState(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const audioSaved = useRef(false), audioFetched = useRef(false);
   const [restored, setRestored] = useState({ loaded: false, value: null });
-  const signature = useRef('');
+  const signature = useRef(''), parts = useRef(new Map());
+  const savePart = useCallback((part, blob) => {
+    if (mode !== 'local') return;
+    parts.current.set(part.number, { ...part, complete: true, bytes: blob.size });
+    archive.append({ segment: part.number, index: 0, mimeType: part.mimeType, blob });
+    archive.update({ segments: [...parts.current.values()].sort((a, b) => a.number - b.number) });
+  }, [mode, archive.append, archive.update]);
   const createdAt = data?.meeting?.createdAt;
   useEffect(() => {
     let alive = true;
@@ -19,7 +26,8 @@ export function useMeetingArchive(id, data) {
     readLocalConversation(id).then(value => {
       if (!alive) return;
       setRestored({ loaded: true, value }); setMap(value?.map || null);
-      audioSaved.current = Boolean(value?.audio?.complete);
+      audioSaved.current = Boolean(value?.stage === 'stopped' && value?.audio?.segments?.some(part => part.mimeType === 'audio/mpeg' && part.complete));
+      parts.current = new Map((value?.segments || []).map(part => [part.number, part]));
       if (value?.mapUnreadable) {
         setMode('ephemeral');
         setError('The saved map could not be read. Its local copy is unchanged; new words and maps stay in this tab. Download them before leaving.');
@@ -69,13 +77,14 @@ export function useMeetingArchive(id, data) {
         if (!alive) return;
         // Queue once; archive.retry retries persistence, without fetching again.
         audioFetched.current = true;
-        archive.append({ segment: 1, index: 0, mimeType: 'audio/mpeg', blob });
-        archive.update({ segments: [{ number: 1, mimeType: 'audio/mpeg', complete: true, bytes: blob.size }], stage: 'stopped' });
+        savePart({ number: 1000, mimeType: 'audio/mpeg' }, blob);
+        archive.update({ stage: 'stopped' });
         setError('');
       } catch { if (alive) setError('Audio was not copied to this browser. It remains private on the Asus; download it or retry the local copy.'); }
     }
     void copyAudio();
     return () => { alive = false; controller.abort(); };
-  }, [ready, available, id, mode, retry, archive.append, archive.update]);
-  return { archive, map, mapReady, retention: mode, ready, restored: restored.value, error, retryAudio: () => setRetry(value => value + 1) };
+  }, [ready, available, id, mode, retry, archive.append, archive.update, savePart]);
+  const liveAudio = useMeetingLiveAudio(id, data, ready, restored.value, savePart);
+  return { liveAudio, archive, map, mapReady, retention: mode, ready, restored: restored.value, error, retryAudio: () => setRetry(value => value + 1) };
 }

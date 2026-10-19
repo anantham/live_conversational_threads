@@ -12,7 +12,7 @@ const requiredFiles = [
   'sites/soniox.js', 'sites/sonioxPolicy.js', 'sites/serviceHealth.js',
   'sites/openRouter.js', 'sites/openRouterPolicy.js', 'sites/openRouterIO.js',
   'sites/auth.js', 'sites/authPolicy.js',
-  'sites/meetings.js', 'sites/meetingPolicy.js',
+  'sites/meetings.js', 'sites/meetingPolicy.js', 'sites/meetingGuests.js',
   'db/schema.ts', 'drizzle.config.ts',
 ];
 

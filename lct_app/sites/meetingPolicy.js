@@ -63,8 +63,8 @@ export async function boundedMeetingJSON(message, maximum = 1024 * 1024) {
   } finally { clearTimeout(timer); void reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-export async function attendeeRequest(config, suffix, { method = 'GET', body, range, audio = false } = {}) {
-  const headers = { Authorization: `Token ${config.key}`, Accept: audio ? 'audio/mpeg, application/json;q=0.9' : 'application/json' };
+export async function attendeeRequest(config, suffix, { method = 'GET', body, range, audio = false, audioType = 'audio/mpeg' } = {}) {
+  const headers = { Authorization: `Token ${config.key}`, Accept: audio ? audioType + ', application/json;q=0.9' : 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
   if (range) headers.Range = range;
   let response;
@@ -78,7 +78,7 @@ export async function attendeeRequest(config, suffix, { method = 'GET', body, ra
       ? 'The meeting or its audio is not ready yet.' : 'The recorder could not complete this request. Check this meeting before retrying.');
   }
   if (!audio) return boundedMeetingJSON(response);
-  if (response.status !== 416 && response.headers.get('content-type')?.split(';')[0] !== 'audio/mpeg') {
+  if (response.status !== 416 && response.headers.get('content-type')?.split(';')[0] !== audioType) {
     void response.body?.cancel().catch(() => {});
     throw new MeetingError(502, 'audio', 'The recorder did not return playable audio.');
   }

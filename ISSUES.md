@@ -1896,3 +1896,8 @@ Human reported a sign-in panel after successful login. Actual cloud session is a
 - 2026-10-19: Authoritative verification-child names made threads an empty non-terminal, suppressing the root wildcard; prior TXT-only/rollback traffic-neutral assumption was incorrect under RFC4592. Explicit CNAME now restores a destination, with all prior records preserved. Generator correction: domain runbook requires actual A/CNAME/HTTPS pre/post checks and factual rollback state; no inferred wildcard recovery. HTTPS issuance currently pending, so not yet full cutover acceptance.
 
 - 2026-10-19 10:31 IST amendment: custom-domain provisioning completed with domain/provider/SSL active, valid HTTPS and real Google login/reload/private access/refusal. Earlier certificate-pending note is historical. Existing OAuth origin already allowed the custom hostname; no Console change. DNS wildcard-assumption generator correction remains recorded in the domain procedure. No current cutover blocker; separate Meet pilot remains pending.
+
+
+## 2026-10-19 — Guest meeting release review dependency
+
+Guest/source tests and build pass, but Gemini/Grok review transports returned no verdict and the authenticated Anthropic route reports quota exhausted. Impact: blocks publication/guest Meet runtime acceptance, not a known product-code defect. Three review methods are stopped under AGENTS; source and exact packets are preserved. Next: human review of the concrete slice or restoration of an existing authorized independent reviewer. No model upgrade, new key, relaxed gate or PASS claim. Actual Meet capture remains unverified.

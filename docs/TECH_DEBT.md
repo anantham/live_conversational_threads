@@ -403,3 +403,8 @@ Keep the bounded RecordingSession engine intact; conversation continuity is now 
 - 2026-10-16: Browser storage is isolated into localConversationStore/ConversationArchive/useConversationArchive and small settings/library components. Browse and SitesAccessPanel remain large existing orchestration files; extracted recorded-library UI instead of growing their persistence concerns. Future candidate: split account presentation from identity controller; no broad rewrite in retention slice.
 
 - 2026-10-18: Account-state repair extracts only the session-response contract from SitesAccessPanel, retaining its bounded request/cancellation lifecycle. Existing presentation/lifecycle split remains a later candidate; no broad identity-controller rewrite.
+
+
+## 2026-10-19 — Attendee controller audio buffer configuration
+
+The pinned public upstream bots/bot_controller/bot_controller.py is a large mixed-concern controller. The guest journey derives a two-line buffer override without rewriting or dirtying that checkout. Candidate upstream refactor: expose bounded audio chunk sizing as explicit pipeline configuration, keeping existing defaults for other bot types. Current scope retains exact-source/hash guards and does not split the upstream monolith.

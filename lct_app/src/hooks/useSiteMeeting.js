@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { meetingPath, meetingRequest, meetingTranscript } from '../services/cloud/sitesMeetings.js';
+import { meetingPath, meetingRequest, meetingTranscript, startMeetingAccess } from '../services/cloud/sitesMeetings.js';
 
 export function useSiteMeeting(id) {
   const [data, setData] = useState(null), [error, setError] = useState(''), [retry, setRetry] = useState(0);
@@ -19,13 +19,13 @@ export function useSiteMeeting(id) {
         if (['fatal_error', 'data_deleted'].includes(next.snapshot?.state) || (next.meeting.state === 'ended' && ['not_started', 'complete', 'failed'].includes(next.snapshot?.recording_state))) return;
       } catch (failure) {
         if (!alive) return;
-        setError(failure.status === 401 ? 'Sign in again to reconnect to this meeting.' : failure.message || 'Connection interrupted. The recorder may still be running.');
+        setError(failure.message || 'Connection interrupted. The recorder may still be running.');
         if ([401, 403, 404].includes(failure.status)) return;
       }
       if (alive) timer = window.setTimeout(poll, 2000);
     }
     try { meetingPath(id); } catch (failure) { setError(failure.message); return () => controller.abort(); }
-    void poll();
+    void startMeetingAccess(controller.signal).then(() => { if (alive) void poll(); }).catch(failure => { if (alive) setError(failure.message || 'Browser meeting access is unavailable. Your saved local files are unchanged.'); });
     return () => { alive = false; controller.abort(); window.clearTimeout(timer); };
   }, [id, retry]);
   return { data, error, refresh };
