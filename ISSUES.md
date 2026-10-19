@@ -1901,3 +1901,8 @@ Human reported a sign-in panel after successful login. Actual cloud session is a
 ## 2026-10-19 — Guest meeting release review dependency
 
 Guest/source tests and build pass, but Gemini/Grok review transports returned no verdict and the authenticated Anthropic route reports quota exhausted. Impact: blocks publication/guest Meet runtime acceptance, not a known product-code defect. Three review methods are stopped under AGENTS; source and exact packets are preserved. Next: human review of the concrete slice or restoration of an existing authorized independent reviewer. No model upgrade, new key, relaxed gate or PASS claim. Actual Meet capture remains unverified.
+
+
+## 2026-10-19 — Guest meeting mobile acceptance gaps
+
+Read-only rendered QA of source172c2f1/build index-CJFwh0gt at320x600,390x843 and843x360 CSS pixels found: (1) populated graph thread header z-50 covers Meeting tools z-40 close hit area; top AI-map toggle still works, (2) More/Profile bottom12.89px are clipped in360px-high landscape, without a scrollable menu. Impact: mobile/overlay usability; blocker:yes for mobile signoff, alongside the existing release-review hold. Source/data/runtime unchanged. Next: consistent graph/tools overlay stacking and viewport-bounded scrollable More menu, then repeat close hit-test/menu reachability and real-device checks. Detailed synthetic layout receipt: docs/reviews/2026-10-19-guest-meeting-flow.md. No real Meet/audio/provider acceptance inferred.
