@@ -1,19 +1,19 @@
 # Test intent: validation is default; -Create additionally requires the actual
 # one-shot stop guard ready with >=30seconds left. No credential leaves the app.
-param([string]$RecordingId,[string]$MeetingUrl,[int]$Seconds=90,[switch]$Create,[switch]$CheckGuard)
+param([string]$RecordingId,[string]$MeetingUrl,[int]$Seconds=90,[switch]$Create,[switch]$CheckGuard,[switch]$Begin)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
-if(!$CheckGuard -and ($RecordingId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or $MeetingUrl -notmatch '^https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}$' -or $Seconds -lt 60 -or $Seconds -gt 90)){throw 'Invalid bounded diagnostic arguments'}
+if(!$CheckGuard -and !$Begin -and ($RecordingId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or $MeetingUrl -notmatch '^https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}$' -or $Seconds -lt 60 -or $Seconds -gt 90)){throw 'Invalid bounded diagnostic arguments'}
 $base='C:\Users\adity\.lct-recovery\20261017'
 $source=Join-Path $base 'create_diagnostic_once.py'
-if((Get-FileHash $source -Algorithm SHA256).Hash.ToLower() -ne '36d775ba4e4ae7ab8cf7b2c08af59c9d83ee9af7da8be7effaa52d2fd46b031c'){throw 'Reviewed client source differs'}
+if((Get-FileHash $source -Algorithm SHA256).Hash.ToLower() -ne '7af64b30c1b40f738f84729a9e46df0f01c920df408f79a412e3bff7140ce90d'){throw 'Reviewed client source differs'}
 $worker='692a6837f73c924db96a56b449c7d5f63bcd234cfccc3b9003f9f3d081d44c8a'
 $w=(& docker inspect $worker|ConvertFrom-Json)[0]
 if($LASTEXITCODE -ne 0 -or $w.Id -ne $worker -or !$w.State.Running -or $w.Name -ne '/lct-meet-first-failure-20261020'){throw 'Dedicated worker unavailable; no POST'}
-if($Create -or $CheckGuard){
- $guard=Join-Path $base 'private\first-failure-stop-692a6837'
+if($Create -or $CheckGuard -or $Begin){
+ $guard=Join-Path $base 'private\first-failure-stop-692a6837-v2'
  if(!(Test-Path (Join-Path $guard 'ready.json')) -or (Test-Path (Join-Path $guard 'done.json'))){throw 'Independent stop guard not active; no POST'}
  $ready=[IO.File]::ReadAllText((Join-Path $guard 'ready.json'))|ConvertFrom-Json
- $minimum=30;if($CheckGuard){$minimum=60}
+ $minimum=30;if($CheckGuard -or $Begin){$minimum=60}
  if($ready.worker -ne $worker -or !$ready.armed -or [DateTime]::Parse($ready.deadline).ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds($minimum)){throw 'Insufficient stop-guard time; no POST'}
  $identity=[IO.File]::ReadAllText((Join-Path $guard 'supervisor.json'))|ConvertFrom-Json
  if($identity.worker -ne $worker -or $identity.deadline -ne $ready.deadline -or $identity.pid -isnot [int] -or $identity.pid -le 0){throw 'Stop supervisor identity invalid; no POST'}
@@ -23,6 +23,22 @@ if($Create -or $CheckGuard){
  $hash=[Security.Cryptography.SHA256]::Create()
  $actual=([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($encoded)))).Replace('-','').ToLower()
  if($actual -ne $identity.command_sha256){throw 'Stop supervisor command identity differs; no POST'}
+ if($Begin){
+  if((Test-Path (Join-Path $guard 'start.json')) -or (Test-Path (Join-Path $guard 'active.json'))){throw 'Dispatch already begun; no second window'}
+  $dispatch=[DateTime]::UtcNow.AddSeconds(85).ToString('o')
+  [IO.File]::WriteAllText((Join-Path $guard 'start.json'),(@{worker=$worker;deadline=$dispatch}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
+  $until=[DateTime]::UtcNow.AddSeconds(2)
+  while(!(Test-Path (Join-Path $guard 'active.json')) -and [DateTime]::UtcNow -lt $until){Start-Sleep -Milliseconds 50}
+  if(!(Test-Path (Join-Path $guard 'active.json'))){throw 'Dispatch timer acknowledgement missing; do not send bot'}
+  $active=[IO.File]::ReadAllText((Join-Path $guard 'active.json'))|ConvertFrom-Json
+  if($active.worker -ne $worker -or !$active.active -or $active.deadline -ne $dispatch){throw 'Dispatch timer acknowledgement differs; no bot'}
+  @{dispatch_ready=$true;stop_at=$dispatch;bot_sent=$false}|ConvertTo-Json -Compress;exit
+ }
+ if($Create){
+  if(!(Test-Path (Join-Path $guard 'active.json'))){throw 'Bot dispatch clock has not begun; no POST'}
+  $active=[IO.File]::ReadAllText((Join-Path $guard 'active.json'))|ConvertFrom-Json
+  if($active.worker -ne $worker -or !$active.active -or [DateTime]::Parse($active.deadline).ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds(30)){throw 'Insufficient dispatch time; no POST'}
+ }
  if($CheckGuard){@{supervisor_alive=$true;exact_command=$true;stop_at=$ready.deadline;seconds_left=[Math]::Floor(([DateTime]::Parse($ready.deadline).ToUniversalTime()-[DateTime]::UtcNow).TotalSeconds);bot_sent=$false}|ConvertTo-Json -Compress;exit}
 
 }
