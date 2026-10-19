@@ -4,6 +4,8 @@
   even when a hidden duplicate appears first in DOM order.
 - Stale and disabled candidates cannot hide a later usable control.
 - Missing/hidden or ambiguous controls time out without clicking them.
+- Opt-in first-failure diagnostics persist one synthetic snapshot; default stays off,
+  and snapshot failure never replaces the original UI refusal.
 - No browser, network, model, recording, database or provider write is performed.
 
 Run inside the isolated recovery app: python test_meet_dialogs.py SOURCE_PATH.
@@ -14,6 +16,8 @@ import os
 from pathlib import Path
 import sys
 import unittest
+import tempfile
+from unittest.mock import patch
 
 if os.environ.get('POSTGRES_DB') != 'lct_meet_recovery_20261017':
     raise RuntimeError('Refusing another persistence root before framework import')
@@ -111,6 +115,38 @@ class DialogReadinessTests(unittest.TestCase):
         with self.assertRaises(UiCouldNotLocateElementException):
             ui.select_language('en-US')
         self.assertFalse(any(x.endswith('close') for x in driver.actions))
+
+
+class FirstFailureDiagnosticsTests(unittest.TestCase):
+    def exercise(self, directory, flag=None, fail_snapshot=False):
+        target = Path(directory) / 'snapshot.json'
+
+        class UI(module.GoogleMeetUIMethods):
+            driver = None
+            def send_screenshot_and_mhtml_file_message(self):
+                if fail_snapshot:
+                    raise OSError('Synthetic storage failure')
+                with target.open('a') as stream:
+                    stream.write('snapshot\n')
+
+        ui = UI()
+        with patch.dict(os.environ, {'LCT_MEET_UI_DIAGNOSTICS': flag or ''}):
+            for _ in range(2):
+                with self.assertRaises(UiCouldNotLocateElementException):
+                    ui.locate_element('video_button', lambda driver: False, wait_time_seconds=0)
+        return target.read_text().splitlines() if target.exists() else []
+
+    def test_first_failure_persists_only_one_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.exercise(directory, 'first-failure'), ['snapshot'])
+
+    def test_diagnostics_remain_off_by_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.exercise(directory), [])
+
+    def test_snapshot_failure_preserves_original_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.exercise(directory, 'first-failure', fail_snapshot=True), [])
 
 
 if __name__ == '__main__':

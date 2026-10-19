@@ -35,6 +35,23 @@ def prepare(source, destination):
     if text.count(ANCHOR) != 1:
         raise ValueError('Ambiguous helper insertion point')
     text = text.replace(ANCHOR, ANCHOR + HELPER)
+    old = """        except Exception as e:
+            # Take screenshot when any exception occurs
+            logger.warning(f"Exception raised in locate_element for {step}. Exception type = {type(e)}")
+"""
+    new = """        except Exception as e:
+            # Keep the first failed lookup before join retries replace the page.
+            if os.getenv("LCT_MEET_UI_DIAGNOSTICS") == "first-failure" and not getattr(self, "_lct_failure_snapshot_attempted", False):
+                self._lct_failure_snapshot_attempted = True
+                try:
+                    self.send_screenshot_and_mhtml_file_message()
+                except Exception as snapshot_error:
+                    logger.warning("First UI diagnostic snapshot failed (%s)", type(snapshot_error).__name__)
+            logger.warning(f"Exception raised in locate_element for {step}. Exception type = {type(e)}")
+"""
+    if text.count(old) != 1:
+        raise ValueError('First-failure capture point differs')
+    text = text.replace(old, new)
     for method, step in [('attempt_to_turn_off_reactions', 'reactions'),
                          ('attempt_to_set_layout', 'layout'), ('select_language', 'language')]:
         start = text.index('    def ' + method + '(')
