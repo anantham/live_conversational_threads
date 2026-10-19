@@ -4,7 +4,10 @@ export const BOT_ID = /^bot_[A-Za-z0-9]{16}$/;
 export const TERMINAL = new Set(['ended', 'fatal_error', 'data_deleted']);
 
 export class MeetingError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  constructor(status, code, message, upstreamStatus = null) {
+    super(message); this.status = status; this.code = code;
+    this.upstreamStatus = Number.isInteger(upstreamStatus) && upstreamStatus >= 100 && upstreamStatus <= 599 ? upstreamStatus : null;
+  }
 }
 
 export function meetingJSON(status, body) {
@@ -75,7 +78,7 @@ export async function attendeeRequest(config, suffix, { method = 'GET', body, ra
   if (![200, 201, 206, 416].includes(response.status)) {
     void response.body?.cancel().catch(() => {});
     throw new MeetingError(response.status === 404 ? 404 : 502, 'recorder', response.status === 404
-      ? 'The meeting or its audio is not ready yet.' : 'The recorder could not complete this request. Check this meeting before retrying.');
+      ? 'The meeting or its audio is not ready yet.' : 'The recorder could not complete this request. Check this meeting before retrying.', response.status);
   }
   if (!audio) return boundedMeetingJSON(response);
   if (response.status !== 416 && response.headers.get('content-type')?.split(';')[0] !== audioType) {

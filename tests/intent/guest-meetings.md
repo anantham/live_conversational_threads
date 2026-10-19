@@ -16,3 +16,6 @@ Live-audio acceptance uses Attendee's existing per-participant PCM chunk persist
 - Transcript collapse/fullscreen, visible recording footer and independently scrolling Files/Settings remain usable, without horizontal page overflow.
 
 CSS regression verification uses actual browser layout and hit testing against an isolated synthetic HTTP fixture. Written unit-test exception: jsdom cannot evaluate stacking, viewport clipping or scroll geometry; asserting Tailwind class strings would mirror the implementation without catching the reported defect. Existing behavioral navigation/meeting/recording tests and required combined acceptance remain in force. No fixture claims live Meet or physical-phone acceptance.
+
+- For capture follow-up diagnostics, verify effective worker CLI log level plus transcript masking; an environment flag alone is insufficient. Close controls must be uniquely visible/enabled through the real public upstream UI methods; hidden/disabled/stale/ambiguous candidates must not be clicked.
+- Gated cloud join-failure diagnostics expose only technical code/status categories, preserve the original uncertain receipt and never retry a POST or log any key, owner, meeting ID, URL, body or exception message.

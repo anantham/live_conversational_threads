@@ -408,3 +408,7 @@ Keep the bounded RecordingSession engine intact; conversation continuity is now 
 ## 2026-10-19 — Attendee controller audio buffer configuration
 
 The pinned public upstream bots/bot_controller/bot_controller.py is a large mixed-concern controller. The guest journey derives a two-line buffer override without rewriting or dirtying that checkout. Candidate upstream refactor: expose bounded audio chunk sizing as explicit pipeline configuration, keeping existing defaults for other bot types. Current scope retains exact-source/hash guards and does not split the upstream monolith.
+
+
+## 2026-10-20 — Pinned Meet UI dialog controls
+Public upstream GoogleMeetUIMethods is1297lines across joining, media/layout, language and login. This slice derives an exact-hash guarded14line readiness condition plus three dialog-close wait replacements, preserving the upstream checkout. Split layout/language interaction concerns upstream later; broad decomposition is deferred. Current derivative1311lines (+1.08%); no frontend bundle growth from this Python overlay, no any types, complexity/coverage/performance metrics for a broad refactor are not applicable. Behavioral regression exercises public UI methods with real recovery dependencies and synthetic WebDriver controls, with hidden/disabled/stale/ambiguous cases.

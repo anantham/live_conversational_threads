@@ -1926,3 +1926,7 @@ Actual admitted synthetic bot records/finalizes playable MP3 and guest/local iso
 
 ## 2026-10-19 — Browse opens guest account panel (non-blocking)
 Navigating from the meeting to On this device shows the optional account panel open without a sign-in action. Local recording opening remains usable after closing it. Defer the guest archive/account presentation cleanup until the active Meet capture journey is complete.
+
+
+## 2026-10-20 — Follow-up Meet blocked before capture (blocking)
+The first additional bot is admitted but retries join after two ElementNotInteractableException warnings at a Close control; it never reaches joined_recording. Leave ends it as fatal_error before capture; all records/logs retained. Existing UI close selectors accept presence and can choose a hidden first duplicate; six public-method synthetic scenarios reproduce failures on the pinned source and pass on the derived readiness repair. This establishes the selector defect class, not exact live DOM identity. Celery CLI WARNING overrides diagnostic INFO env; proposed overlay corrects the actual command. No caption-mapping fix inferred. Original cloud create is separately unconfirmed despite functioning GET/invalid-payload POST transport; one guarded recorder-side continuation using the same request ID created the diagnostic bot. Gated category-only join diagnostics prepared for the remaining approved pilot. No quota or receipt reset, new route/provider/key/permission.

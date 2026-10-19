@@ -96,6 +96,35 @@ describe('owner-scoped meeting control through public Worker APIs', () => {
     expect(count()).toBe(1);
   });
 
+  it('logs only technical failure categories when diagnostics are explicitly enabled', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    env.LCT_MEETINGS_DIAGNOSTICS = 'true';
+    fetch.mockResolvedValueOnce(json({ error: KEY + input.meetingUrl }, 400));
+    const response = await join();
+    expect(response.status).toBe(202); expect(row().state).toBe('uncertain'); expect(count()).toBe(1);
+    expect(warning).toHaveBeenCalledExactlyOnceWith('lct.meetings.create_unconfirmed',
+      { code: 'recorder', status: 502, upstreamStatus: 400 });
+    const logged = JSON.stringify(warning.mock.calls);
+    for (const privateValue of [KEY, input.meetingUrl, ID, 'synthetic-owner']) expect(logged).not.toContain(privateValue);
+    expect((await join()).status).toBe(200); expect(warning).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps failure logging off by default and retains the uncertain reservation', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    fetch.mockRejectedValueOnce(new Error(KEY + input.meetingUrl));
+    expect((await join()).status).toBe(202); expect(row().state).toBe('uncertain');
+    expect(warning).not.toHaveBeenCalled(); expect(count()).toBe(1);
+  });
+
+  it('does not log raw transport errors even with diagnostics enabled', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    env.LCT_MEETINGS_DIAGNOSTICS = 'true';
+    fetch.mockRejectedValueOnce(new Error(KEY + input.meetingUrl));
+    expect((await join()).status).toBe(202); expect(row().state).toBe('uncertain');
+    expect(warning).toHaveBeenCalledExactlyOnceWith('lct.meetings.create_unconfirmed',
+      { code: 'unreachable', status: 503, upstreamStatus: null });
+  });
+
   it('reconciles uncertain creation by GET without repeating the external join', async () => {
     fetch.mockRejectedValueOnce(new TypeError('synthetic transport failure'));
     expect((await join()).status).toBe(202); expect(row().state).toBe('uncertain');

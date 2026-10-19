@@ -59,7 +59,15 @@ async function create(request, env, config, owner) {
     if (!BOT_ID.test(bot?.id)) throw new Error('Invalid bot response');
     await env.DB.prepare('UPDATE lct_meetings SET bot_id = ?, state = ? WHERE id = ? AND owner = ?')
       .bind(bot.id, TERMINAL.has(bot.state) ? 'ended' : 'active', row.id, owner).run();
-  } catch {
+  } catch (error) {
+    if (env.LCT_MEETINGS_DIAGNOSTICS === 'true') {
+      // Technical categories only: never log keys, URLs, IDs, bodies or exception text.
+      console.warn('lct.meetings.create_unconfirmed', {
+        code: error instanceof MeetingError ? error.code : 'unexpected',
+        status: error instanceof MeetingError ? error.status : null,
+        upstreamStatus: error instanceof MeetingError ? error.upstreamStatus : null,
+      });
+    }
     // A timed-out create may already have joined. Keep its durable reservation;
     // reads reconcile by its original deduplication key and never repeat POST.
     await env.DB.prepare("UPDATE lct_meetings SET state = 'uncertain' WHERE id = ? AND owner = ?")
