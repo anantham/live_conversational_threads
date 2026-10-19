@@ -40,7 +40,7 @@ async function create(request, env, config, owner) {
     if (existing.owner !== owner || existing.url_hash !== hash) throw new MeetingError(409, 'conflict', 'This request identifier is already in use.');
     return meetingJSON(200, { meeting: publicRow(existing) });
   }
-  const now = Date.now(), seconds = Math.min(300, Math.floor((config.deadline - now) / 1000));
+  const now = Date.now(), seconds = Math.min(config.maxSeconds, Math.floor((config.deadline - now) / 1000));
   if (seconds < 60) throw new MeetingError(503, 'closed', 'The meeting test window is closing. No bot was sent.');
   const row = await env.DB.prepare(`INSERT INTO lct_meetings (id, owner, url_hash, state, created_at, ends_at)
     SELECT ?, ?, ?, 'starting', ?, ? WHERE NOT EXISTS (SELECT 1 FROM lct_meetings WHERE state != 'ended')
@@ -94,7 +94,7 @@ export async function handleMeetings(request, env) {
     if (!Number.isSafeInteger(ready?.count)) throw new Error('Meeting schema not ready');
     const suffix = url.pathname.slice(MEETINGS_PREFIX.length);
     if (url.search) throw new MeetingError(400, 'query', 'This meeting endpoint does not accept query parameters.');
-    if (suffix === '/status' && request.method === 'GET') return meetingJSON(200, { enabled: true, canJoin: config.canJoin, maxSeconds: 300, mode: guest ? 'guest' : 'account' });
+    if (suffix === '/status' && request.method === 'GET') return meetingJSON(200, { enabled: true, canJoin: config.canJoin, maxSeconds: config.maxSeconds, mode: guest ? 'guest' : 'account' });
     if (!suffix && request.method === 'POST') return await create(request, env, config, owner);
     if (!suffix && request.method === 'GET') {
       const rows = await env.DB.prepare('SELECT id, state, created_at, ends_at FROM lct_meetings WHERE owner = ? ORDER BY created_at DESC LIMIT 20').bind(owner).all();

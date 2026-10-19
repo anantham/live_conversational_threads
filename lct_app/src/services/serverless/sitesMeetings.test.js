@@ -84,6 +84,41 @@ describe('owner-scoped meeting control through public Worker APIs', () => {
     expect(row().ends_at - row().created_at).toBe(300_000);
   });
 
+  it('caps recorder duration independently of admission time and ignores a client increase', async () => {
+    env.LCT_MEETINGS_MAX_SECONDS = '90';
+    const status = await worker.fetch(req('/status'), env);
+    expect(await status.json()).toMatchObject({ enabled: true, canJoin: true, maxSeconds: 90 });
+    expect((await join({ body: { ...input, maxSeconds: 300 } })).status).toBe(202);
+    expect(JSON.parse(calls[0].options.body).automatic_leave_settings.max_uptime_seconds).toBe(90);
+    expect(row().ends_at - row().created_at).toBe(90_000);
+  });
+
+  it('uses a shorter remaining admission window even when the configured cap is longer', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-20T00:00:00Z'));
+    env.LCT_MEETINGS_MAX_SECONDS = '90';
+    env.LCT_MEETINGS_TEST_END = new Date(Date.now() + 75_000).toISOString();
+    expect((await join()).status).toBe(202);
+    expect(JSON.parse(calls[0].options.body).automatic_leave_settings.max_uptime_seconds).toBe(75);
+    expect(row().ends_at - row().created_at).toBe(75_000);
+  });
+
+  it.each(['59', '301', 'not-a-number', '90.5'])('refuses invalid duration cap %s before reservation', async value => {
+    env.LCT_MEETINGS_MAX_SECONDS = value;
+    const status = await worker.fetch(req('/status'), env);
+    expect(await status.json()).toMatchObject({ enabled: true, canJoin: false, maxSeconds: null });
+    expect((await join()).status).toBe(503); expect(count()).toBe(0); expect(calls).toEqual([]);
+  });
+
+  it('preserves owned snapshot and leave access when new-join duration configuration is invalid', async () => {
+    await join(); env.LCT_MEETINGS_MAX_SECONDS = 'invalid';
+    fetch.mockResolvedValueOnce(json({ id: BOT, state: 'joined_recording', utterances: [], audio_available: false }));
+    expect((await worker.fetch(req('/' + ID), env)).status).toBe(200);
+    fetch.mockResolvedValueOnce(json({ id: BOT, state: 'ended' }));
+    expect((await worker.fetch(req('/' + ID + '/leave', { method: 'POST' }), env)).status).toBe(200);
+    expect(row().state).toBe('ended'); expect(count()).toBe(1);
+    expect(calls.filter(call => call.options.method === 'POST')).toHaveLength(1);
+  });
+
   it('never repeats a duplicate create even after that meeting ends; refuses a second active reservation', async () => {
     await join();
     expect((await join()).status).toBe(200);

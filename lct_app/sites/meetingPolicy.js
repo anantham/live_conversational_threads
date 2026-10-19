@@ -28,9 +28,11 @@ export function meetingConfig(env) {
   const configured = Boolean(base && typeof key === 'string' && /^[0-9a-f]{64}$/.test(key) &&
     typeof owner === 'string' && /^(google|chatgpt):.{1,255}$/.test(owner) && env.DB?.prepare);
   const deadline = Date.parse(env.LCT_MEETINGS_TEST_END || '');
-  return { base, key, owner, configured, deadline,
+  const limit = env.LCT_MEETINGS_MAX_SECONDS === undefined ? 300 : Number(env.LCT_MEETINGS_MAX_SECONDS);
+  const maxSeconds = Number.isInteger(limit) && limit >= 60 && limit <= 300 ? limit : null;
+  return { base, key, owner, configured, deadline, maxSeconds,
     enabled: configured && env.LCT_MEETINGS_ENABLED === 'true',
-    canJoin: configured && env.LCT_MEETINGS_ENABLED === 'true' && Number.isFinite(deadline) && deadline - Date.now() >= 60_000 };
+    canJoin: configured && env.LCT_MEETINGS_ENABLED === 'true' && maxSeconds !== null && Number.isFinite(deadline) && deadline - Date.now() >= 60_000 };
 }
 
 export function requireMeetingWrite(request) {

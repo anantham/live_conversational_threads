@@ -23,3 +23,9 @@
 - Before a sign-in handoff or pilot join, bind the operator tab to the selected live HTTPS Site origin; localhost and other origins refuse.
 - Bind the actual visible /api/auth/session response to the approved qualified recording owner, independently of the Meet host account.
 - Written test exception: exercise wrong-origin/wrong-owner refusal and allowed owner against real CUA tabs, with no browser mocks or network injection. The guard does not sign in, mutate data or join.
+
+### Independent bot-duration cap (20 October 2026)
+
+- A server-only90second cap bounds the recorder request and persisted receipt independently of a longer admission window; client input cannot increase it. Omitted cap preserves300seconds; a shorter remaining window wins.
+- Invalid explicit duration caps refuse new joins before any reservation or recorder call.
+- Existing owned snapshots and leave remain available when the new-join cap is invalid, preserving cancellation/history access.
