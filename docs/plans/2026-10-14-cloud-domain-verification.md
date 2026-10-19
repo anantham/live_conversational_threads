@@ -117,3 +117,7 @@ no source change, paid call, identity activation or new Site was involved.
 Next checkpoint: certificate state and existing Google client/session readiness.
 The original-domain CNAME and real-account/provider acceptance remain separate
 release gates. Account/provider wait and full migration ETA remain unknown.
+
+## 2026-10-19 amendment — actual wildcard/rollback semantics
+
+Current authoritative DNS shows threads is an empty non-terminal/NODATA despite the root wildcard resolving a synthetic sibling. Existing child verification names create DNS existence under RFC4592; TXT verification therefore cannot be assumed traffic-neutral. Removing a new explicit CNAME restores the observed prior NODATA state, not guaranteed old wildcard service. Future verification/cutover pre/postflight must test actual A/CNAME/HTTPS alongside all-record preservation. New explicit cutover authority and exact operation are recorded in 2026-10-19-custom-domain-cutover.md; historical receipts above remain unchanged.
