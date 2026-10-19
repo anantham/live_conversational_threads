@@ -1909,3 +1909,10 @@ Read-only rendered QA of source172c2f1/build index-CJFwh0gt at320x600,390x843 an
 
 
 - 2026-10-19 mobile repair amendment: the two reported overlay/menu defects are fixed in source, with actual populated-map close hits/clicks at320/390px and short-landscape scroll-to-complete-Profile/activation verified against rebuilt index-B8UF_jts. Focused59/59, full1096/1096 and client/Worker build pass. Status: resolved locally, not yet deployed; physical-device and real Meet acceptance remain pending. Required exact-source independent/human review remains the publication blocker. See the guest review receipt for numeric pre/post geometry.
+
+
+## 2026-10-19 21:42 IST — Intermittent Asus SSH blocks the bounded live Meet pilot
+
+Impact/blocker:yes for recorder activation and actual Meet acceptance. Approved file-based read-only preflight passes (exact image/non-root/dedicated Bot0/AudioChunk0/schema), then public staging stalls45seconds and two subsequent connection/read-only operations time out before authentication. Tailscale ping and an earlier TCPgreeting succeed, which do not establish usable SSH. Generator is not yet diagnosed; no claim that Windows argument length explains TCPconnect failures. No activation, bot, real audio or provider request. Preserve partial staged public files, old Compose/env/data/services and prepared image. Next: human verifies Asus awake/existing SSH responsive and approves bounded continuation required by AGENTS; reconcile hashes before any runtime step. No reset/reinstall/wider permission recommended. Guest/mobile release review PASS and Site48/env38 deployed independently; actual physical-device/Meet/audio remain unverified.
+
+- 21:42 amendment to prior guest-review/mobile entries: exact source3cc1711 now has Gemini3.8FlashLow PASS and is served as existingSite48. Their review/publication blockers are resolved. Remaining live blocker is authenticated Asus SSH plus empty-room/audio handoff; physical-device acceptance remains a separate gap.
