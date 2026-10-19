@@ -1919,3 +1919,10 @@ Impact/blocker:yes for recorder activation and actual Meet acceptance. Approved 
 
 
 - 2026-10-19 22:45 IST amendment to the SSH blocker: direct saved RustDesk + exact new-shell get-service sshd proves the Asus awake and service Running. Do not ask the operator to reconfirm wakefulness. Mac SSH client still times out; complex native remote typing/paste corrupts text and is stopped without executing malformed commands. Current blocker is reliable command/file/secret transfer plus approved Meet host control, not a confirmed stopped service or known key rejection. Existing data/runtime/keys retained; no bot. Recovery README now states access-method/alternative/exact-input checks. Software enforcement of attention preflight remains unimplemented process debt; avoid replacing it with repeated notes or broad protocol edits during this Meet slice.
+
+
+## 2026-10-19 — Real Meet captions/live-chunk acceptance gap (blocking)
+Actual admitted synthetic bot records/finalizes playable MP3 and guest/local isolation passes, but caption utterance and PCM chunk counts are both0. Effective organization chunk feature gate is false; captions reach the bot final-page DOM but not persistence. See docs/plans/2026-10-19-meet-capture-followup.md. No speculative fix or second bot applied. Need guarded effective-feature dry-run and bounded caption/frame/participant diagnostics. Independent code review/tests do not substitute for this actual acceptance.
+
+## 2026-10-19 — Browse opens guest account panel (non-blocking)
+Navigating from the meeting to On this device shows the optional account panel open without a sign-in action. Local recording opening remains usable after closing it. Defer the guest archive/account presentation cleanup until the active Meet capture journey is complete.
