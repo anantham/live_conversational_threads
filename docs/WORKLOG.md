@@ -8093,3 +8093,8 @@ Supported routine repair prepared before seeking any extra bot authority: two-ph
 ## 2026-10-20 — Two-phase dispatch guard validation passes
 
 Actual read-only/isolated validation exit0/16.10seconds: all3PowerShell files parse; actualstoppedworker refuses readiness; unchangeddeepcopy/schema/wire validates on4terminalbots; productionchildhandshake prefix passes valid, missingtrigger expiry, wrongworker, deadline100s and deadline1s refusal. Syntheticfiles are exclusively fresh ownedprivate subdirectories; child deliberately ends before unchangedDockerstop. No realv2guard created, supervisor armed, worker restarted, bot/paid request. Review the coherentchanged5operationalfiles plus testsintent; reuse prior actualexactstoprecord and unchanged9UI/1106product/buildchecks.
+
+
+## 2026-10-20 — Dispatch-window repair independently reviewed and pushed
+
+Exact3b42a790cb2350714a8a7b4a996dd15c40cd6c9b pushed to existing taskbranch. GoogleGemini3.8FlashLow/AGY, freshfa6be998-5a13-48af-8cc1-bd0f05c14063,15.71seconds,SUCCESS/PASS/findings[]. Packet24017bytes/SHA89aadc0d198c40c0388435aac7c8e500e9a7349cb905be175595aca68992e0d8;5publicoperationalfiles+testintent, sanitized spec/results, fixed exclusions. Real5protocol cases/schema/refusal complete; no activation. Concrete continuation plan prepared before one-time new short-bot ruling; current actual Site50/env52closed,workerstopped,4recordsretained,hostleft. Final<=300second slot remains unused/conditional, not repurposed. No pending operator SSH/Chrome reconnect or sign-in action. Nextevidence depends only on additional short-test allowance, followed by actual artifact; no other optional slice opened.
