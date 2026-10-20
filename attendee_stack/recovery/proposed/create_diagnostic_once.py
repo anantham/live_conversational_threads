@@ -17,7 +17,9 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--recording-id', required=True)
 parser.add_argument('--meeting-url', required=True)
 parser.add_argument('--seconds', type=int, default=90)
-parser.add_argument('--create', action='store_true')
+action = parser.add_mutually_exclusive_group()
+action.add_argument('--create', action='store_true')
+action.add_argument('--probe', action='store_true', help='Read existing internal API only; never create')
 a = parser.parse_args()
 if (not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}', a.recording_id)
         or not re.fullmatch(r'https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}', a.meeting_url)
@@ -51,14 +53,24 @@ wire = json.dumps(data,ensure_ascii=False,separators=(',',':')).encode()
 s = CreateBotSerializer(data=copy.deepcopy(data))
 if not s.is_valid() or json.dumps(data,ensure_ascii=False,separators=(',',':')).encode() != wire:
     raise RuntimeError('Creation schema or original wire differs; no POST')
-if not a.create:
+if not a.create and not a.probe:
     print(json.dumps({'dry_run':True,'schema_valid':True,'wire_unchanged':True,'bot_count':4,'seconds':a.seconds,'bot_sent':False}))
     raise SystemExit(0)
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-request = urllib.request.Request('https://asus-strix-scar.tail4741ad.ts.net:10000/lct-meet/api/v1/bots',
+# Existing isolated recorder API, same app/project credential; no public DNS hop.
+base = 'http://app:8000/api/v1/bots'
+if a.probe:
+    req = urllib.request.Request(base,headers={'Authorization':'Token '+os.environ['LCT_BOOTSTRAP_API_KEY'],'Accept':'application/json'})
+    with opener.open(req,timeout=10) as response:
+        value = json.load(response)
+        if response.status != 200 or not isinstance(value.get('results'),list) or len(value['results']) != 4 or value.get('next'):
+            raise RuntimeError('Internal API readiness differs; no POST')
+    print(json.dumps({'internal_api_ready':True,'key_accepted':True,'bot_count':4,'bot_sent':False}))
+    raise SystemExit(0)
+request = urllib.request.Request(base,
     data=wire,method='POST',headers={'Authorization':'Token '+os.environ['LCT_BOOTSTRAP_API_KEY'],
         'Accept':'application/json','Content-Type':'application/json'})
 started = time.monotonic()

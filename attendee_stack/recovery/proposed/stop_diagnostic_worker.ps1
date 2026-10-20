@@ -5,7 +5,7 @@ $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $worker='692a6837f73c924db96a56b449c7d5f63bcd234cfccc3b9003f9f3d081d44c8a'
 $expectedName='/lct-meet-first-failure-20261020'
 $base='C:\Users\adity\.lct-recovery\20261017\private'
-$guard=Join-Path $base 'first-failure-stop-692a6837-v2'
+$guard=Join-Path $base 'first-failure-stop-692a6837-v3'
 $a=(& docker inspect $worker|ConvertFrom-Json)[0]
 if($LASTEXITCODE -ne 0 -or $a.Id -ne $worker -or $a.Name -ne $expectedName -or !$a.State.Running -or $a.Config.User -ne 'app' -or $a.Image -ne 'sha256:ef5518b4ed1b31e4590f5fa86a85d36238223e0f733443a801ea271dd9f366f3' -or $a.Config.Labels.'com.docker.compose.project' -ne 'lct-meet-recovery-20261017' -or $a.Config.Labels.'com.docker.compose.service' -ne 'worker'){throw 'Dedicated worker identity differs; no action'}
 if(!$Arm){@{dry_run=$true;worker=$worker;dispatch_window_seconds=85;idle_wait_seconds=120;stop_grace_seconds=2;bot_sent=$false}|ConvertTo-Json -Compress;exit}

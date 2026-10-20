@@ -1945,3 +1945,8 @@ Actual final admitted bot reaches captions-on and opens Settings, then video_but
 ### 2026-10-20 — Short Meet diagnostic loses runtime during preflight
 
 Blocking current diagnostic acceptance. External guard actually stops the exactworker; however its timer starts before SSH identity checks/UI dispatch, so the fourth bot gets54.778seconds before deadline and no failure artifact. Chromeprofile error occurs after stop, not evidence of profile conflict. Prepare two-phase Begin/85second clock with isolated handshake/refusal tests and independent review; retain prior guard/data. Parent also falsely reports failure from nullable cached ExitCode despite actual stop receipt/state; use receipt+actualstate. Cloud guest-create succeeded for the fourth bot; prior timeout rootcause remains unknown. Additional short-bot authority is required before another diagnostic; final five-minute slot remains conditional.
+
+
+### 2026-10-20 — Public Funnel DNS missing despite valid private relay
+
+Blocking current cloud Meet dispatch. Worker givesupstream530 (originDNS failure), while MacMagicDNS/privateGET reaches401. BothCloudflare andGooglepublicresolvers returnNXDOMAIN for existingFunnelhostname. ActualAsusonline/AllowFunneltrue/exactroute/config equalretainedbaseline; no newbot. Sameroutereannouncement completes once withentireconfigurationunchanged. Next: allowdocumentedDNSpropagationthenverifypublicDNS andactualcloudGET beforeanybot. Do not treatprivatecurl success/configcanJoin aspubliccloudreadiness. ExistingunconfirmedD1recordmustremainretained; noSQLreset orblindPOST.

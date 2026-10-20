@@ -5,12 +5,12 @@ $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 if(!$CheckGuard -and !$Begin -and ($RecordingId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or $MeetingUrl -notmatch '^https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}$' -or $Seconds -lt 60 -or $Seconds -gt 90)){throw 'Invalid bounded diagnostic arguments'}
 $base='C:\Users\adity\.lct-recovery\20261017'
 $source=Join-Path $base 'create_diagnostic_once.py'
-if((Get-FileHash $source -Algorithm SHA256).Hash.ToLower() -ne '7af64b30c1b40f738f84729a9e46df0f01c920df408f79a412e3bff7140ce90d'){throw 'Reviewed client source differs'}
+if((Get-FileHash $source -Algorithm SHA256).Hash.ToLower() -ne 'e5b1202a6a2deb6820a1db931f9c49aa483ade142192dee227425eb7146db993'){throw 'Reviewed client source differs'}
 $worker='692a6837f73c924db96a56b449c7d5f63bcd234cfccc3b9003f9f3d081d44c8a'
 $w=(& docker inspect $worker|ConvertFrom-Json)[0]
 if($LASTEXITCODE -ne 0 -or $w.Id -ne $worker -or !$w.State.Running -or $w.Name -ne '/lct-meet-first-failure-20261020'){throw 'Dedicated worker unavailable; no POST'}
 if($Create -or $CheckGuard -or $Begin){
- $guard=Join-Path $base 'private\first-failure-stop-692a6837-v2'
+ $guard=Join-Path $base 'private\first-failure-stop-692a6837-v3'
  if(!(Test-Path (Join-Path $guard 'ready.json')) -or (Test-Path (Join-Path $guard 'done.json'))){throw 'Independent stop guard not active; no POST'}
  $ready=[IO.File]::ReadAllText((Join-Path $guard 'ready.json'))|ConvertFrom-Json
  $minimum=30;if($CheckGuard -or $Begin){$minimum=60}

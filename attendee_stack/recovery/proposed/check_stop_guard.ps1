@@ -16,6 +16,8 @@ $app='8393c66369988cc75f22445fca62e931f07b08a536fa34b09ed60bfee66a66cd'
 if($LASTEXITCODE -ne 0){throw 'Public serializer probe copy failed'}
 & docker exec $app python /tmp/lct_create_diagnostic_once.py --recording-id '00000000-0000-4000-8000-000000000005' --meeting-url 'https://meet.google.com/abc-defg-hij'
 if($LASTEXITCODE -ne 0){throw 'Four-terminal-bot serializer precondition failed'}
+& docker exec $app python /tmp/lct_create_diagnostic_once.py --recording-id '00000000-0000-4000-8000-000000000005' --meeting-url 'https://meet.google.com/abc-defg-hij' --probe
+if($LASTEXITCODE -ne 0){throw 'Existing internal API readiness failed'}
 & (Join-Path $base 'test_stop_handshake.ps1')
-if(Test-Path (Join-Path $base 'private\first-failure-stop-692a6837-v2')){throw 'Unexpected real v2 guard exists'}
+if(Test-Path (Join-Path $base 'private\first-failure-stop-692a6837-v3')){throw 'Unexpected real v2 guard exists'}
 @{syntax_valid=$true;stopped_holder_refused=$true;serializer_dry_run=$true;real_supervisor_armed=$false;bot_sent=$false}|ConvertTo-Json -Compress
