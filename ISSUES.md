@@ -1960,3 +1960,12 @@ Finalcloudguestbot joins/records/normalleave/finalMP3/localreload/privateguestis
 ## 2026-10-20 — Celery shutdown logging recursion (nonblocking this slice)
 
 FinalexactworkerstopSIGTERMsrun_bot_task.shutting_down_handler→kill_child_processes→Celerysignal/loggingrecursion. All10tracebacksoccurafterthebot'snormalPostProcessingComplete; finalMP3/dataarevalidandretained. Itdoesnotexplainlivecaption/audioidentitydrop. Keepstopped; investigatehandlerreentrancy/loggingseparately, noextraactivationforthisissue.
+
+
+## 2026-10-20 — Repaired Meet pilot: partial real ingestion, live acceptance interrupted (blocking)
+
+Seventhguestbot nowpersists2captionrows+2validliveWAVparts/6.23seconds, mapfromrealcapturedwords and42.42secondfinalMP3/localreload/privacyverified. Host/player tabsdisappear duringclip; causeunknown. No sourcefailure inferred. Singlemapgeneratedafterroomended; sustainedlivecaption/map/reconnectstillpending. Onebot/onemapallowanceconsumed; workerstopped/joinsclosed/sevenrecordsretained. Next: stablehost+player and one explicitlybounded finaltest; no unapprovedbotretry. Priorpresentation/RMSsourcefaults havepositiveactualingestionproof, but entirejourneyisnot delivered.
+
+## 2026-10-20 — Cloud Import audio entry opens recording without file import (deferred)
+
+ActualHome Import audio opens /new with nofilepicker. Legacy FileUpload/useFileUploadStream supports audio, but SitesNewConversation doesnotconnectit; /import handles transcripts only. Impact: userscannotimportMP3/WAV/M4A fortranscription/threads onthecloudSite. Separatejourney, not blockerforcurrentMeettest; useraskedstatusonly. Next: scopedfileimport/transcription/defaultlocalstorage/cancel/limits/privacyimplementation andrealacceptance aftercurrentjourney or explicitpivot. No realfile/providercallmade.
