@@ -71,7 +71,7 @@ foreach($f in $files){
 if($Apply -or $Rollback){
  foreach($f in $files){
   $source=$f.replacement;$expected=$f.new;if($Rollback){$source=$f.original;$expected=$f.old}
-  DockerStream ('cp - '+$worker+':'+$f.directory) $source ''|Out-Null
+  DockerStream ('cp -a - '+$worker+':'+$f.directory) $source ''|Out-Null
   $readback=Join-Path $backup ($f.name+'.readback-'+[guid]::NewGuid().ToString('N')+'.tar')
   DockerStream ('cp '+$worker+':'+$f.path+' -') '' $readback|Out-Null
   $actual=ArchiveInfo $readback;$meta=$f.metadata
