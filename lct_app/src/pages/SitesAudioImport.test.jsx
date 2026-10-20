@@ -137,3 +137,13 @@ it('keeps a missing local import error visible after provider readiness finishes
   expect(container.textContent).toContain('This import is not saved in this browser.');
   expect(fixture.sessions).toHaveLength(0); expect(posts).toHaveLength(0);
 });
+
+// Intent: reopening a completed transcript without a map must not promise pending generation.
+it('accurately describes a restored transcript when no map was saved', async () => {
+  const id='00000000-0000-4000-8000-000000000004';
+  fixture.restored={id,recording:{id,startedAt:1000,retention:'local',source:'audio-import'},stage:'stopped',title:'Synthetic',transcript,map:null,segments:[],updatedAt:1000,audio:null};
+  await mount('/import-audio?local='+id);
+  expect(container.textContent).toContain('No thread map is saved');
+  expect(container.textContent).not.toContain('Threads appear after your transcript is ready.');
+  expect(posts).toHaveLength(0); expect(fixture.sessions).toHaveLength(0);
+});

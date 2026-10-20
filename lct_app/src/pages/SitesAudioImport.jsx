@@ -64,8 +64,8 @@ export default function SitesAudioImport() {
       {recording && <>
         {map ? <LiveConversationGraph bundle={map} transcriptVisible={!minimized} onConfigure={() => setPanel('map')} recording /> :
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center" aria-label="Imported conversation graph">
-            <p className="text-sm font-medium text-slate-700">Your threads will take shape here</p>
-            <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">Threads appear after your transcript is ready. Your original audio stays available in Files &amp; export.</p>
+            <p className="text-sm font-medium text-slate-700">{busy ? 'Your threads will take shape here' : 'No thread map is saved'}</p>
+            <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{busy ? 'Threads are created after transcription finishes.' : 'Open AI map to check generation availability.'} {(audio || artifact) && 'Your available audio and transcript are in Files & export.'}</p>
           </div>}
         <ConversationTranscriptPanel transcript={transcript} status={busy ? 'Importing' : artifact?.source?.complete ? 'Finished' : 'Partial'} minimized={minimized} onMinimize={() => { setMinimized(value => !value); setFullscreen(false); }} fullscreen={fullscreen} onFullscreen={() => setFullscreen(value => !value)} />
       </>}
