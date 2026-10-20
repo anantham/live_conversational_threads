@@ -130,3 +130,10 @@ describe('cloud audio import page', () => {
     await click('Files & export'); expect(container.querySelector('a[download$=".m4a"]')).toBeTruthy();
   });
 });
+
+// Intent: the asynchronous setup check must not erase a missing browser-local file explanation.
+it('keeps a missing local import error visible after provider readiness finishes', async () => {
+  await mount('/import-audio?local=00000000-0000-4000-8000-000000000003');
+  expect(container.textContent).toContain('This import is not saved in this browser.');
+  expect(fixture.sessions).toHaveLength(0); expect(posts).toHaveLength(0);
+});

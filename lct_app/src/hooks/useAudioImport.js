@@ -12,6 +12,7 @@ export function useAudioImport() {
   const [file, setFile] = useState(null), [consent, setConsent] = useState(false), [backend, setBackend] = useState('openrouter');
   const [recording, setRecording] = useState(null), [audio, setAudio] = useState(null), [transcript, setTranscript] = useState(empty);
   const [map, setMap] = useState(null), [activity, setActivity] = useState(null), [error, setError] = useState('');
+  const [setupError, setSetupError] = useState('');
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
@@ -25,8 +26,8 @@ export function useAudioImport() {
       const value = await response.json();
       if (!response.ok || typeof value.enabled !== 'boolean' || !Number.isInteger(value.max_session_seconds) ||
           value.max_session_seconds < 15 || value.max_session_seconds > 900) throw new Error('Transcription setup is unavailable.');
-      if (alive.current) { setCapability(value); setError(''); }
-    } catch { if (alive.current) { setCapability(null); setError('Transcription setup could not be checked. Your file has not been sent.'); } }
+      if (alive.current) { setCapability(value); setSetupError(''); }
+    } catch { if (alive.current) { setCapability(null); setSetupError('Transcription setup could not be checked. Your file has not been sent.'); } }
     finally { clearTimeout(timeout); if (alive.current) setLoading(false); }
   }, []);
   useEffect(() => {
@@ -101,5 +102,5 @@ export function useAudioImport() {
   }
   function cancel() { current.current?.cancel(); task.cancel(); }
   return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
-    mapReady, activity, busy, loading, elapsed, error, capability, check, start, cancel };
+    mapReady, activity, busy, loading, elapsed, error: error || setupError, capability, check, start, cancel };
 }
