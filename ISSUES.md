@@ -1950,3 +1950,13 @@ Blocking current diagnostic acceptance. External guard actually stops the exactw
 ### 2026-10-20 — Public Funnel DNS missing despite valid private relay
 
 Blocking current cloud Meet dispatch. Worker givesupstream530 (originDNS failure), while MacMagicDNS/privateGET reaches401. BothCloudflare andGooglepublicresolvers returnNXDOMAIN for existingFunnelhostname. ActualAsusonline/AllowFunneltrue/exactroute/config equalretainedbaseline; no newbot. Sameroutereannouncement completes once withentireconfigurationunchanged. Next: allowdocumentedDNSpropagationthenverifypublicDNS andactualcloudGET beforeanybot. Do not treatprivatecurl success/configcanJoin aspubliccloudreadiness. ExistingunconfirmedD1recordmustremainretained; noSQLreset orblindPOST.
+
+## 2026-10-20 — Meet live ingestion drops synthetic presentation captions/audio (blocking)
+
+Finalcloudguestbot joins/records/normalleave/finalMP3/localreload/privateguestisolation pass, butlivecaptionsandPCMparts0. Finalwindowmaskedcounts130CaptionUpdateevents/1missingID/0of130IDsknownagainst2rosterparticipants,8missingparticipantwarnings/10tracebacks. Effectivecapturegateistrue. Investigatepresentationidentitymappingandtracebackframes usingprivateartifacts; do notattribute tocredit/provider/Googlecaptionquality. No additionalbot orpaidmap sent; all6botsstopped/dataretained. Nextaction safeexactsource/datarelationshiprepro then reviewedrepair; realacceptance needs a new boundedpilot ruling after preparation.
+
+2026-10-20 update — presentationmappingcauseconfirmedbyprivateDOM/hash+maskedcaption/PCMrelationships, twohash-pinnedsourcefixesvalidated(12routing+8actualconsumerchecks), independentlyunreviewed/runtimeunapplied. AddedRMSfloatconversionpreventsint16overflowwithoutchangingthresholds. Sixrecordsretain; noextraBot. EarliercloudPOST/DNSblockerrecoveredforordinaryfinalUIcreateandGET.
+
+## 2026-10-20 — Celery shutdown logging recursion (nonblocking this slice)
+
+FinalexactworkerstopSIGTERMsrun_bot_task.shutting_down_handler→kill_child_processes→Celerysignal/loggingrecursion. All10tracebacksoccurafterthebot'snormalPostProcessingComplete; finalMP3/dataarevalidandretained. Itdoesnotexplainlivecaption/audioidentitydrop. Keepstopped; investigatehandlerreentrancy/loggingseparately, noextraactivationforthisissue.
