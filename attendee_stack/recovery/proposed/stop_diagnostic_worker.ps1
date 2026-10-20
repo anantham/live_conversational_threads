@@ -1,14 +1,16 @@
 # Test intent: dry-run checks exact dedicated worker; -Arm creates one bounded
 # same-user supervisor. Only that container can be stopped; data/logs remain.
-param([switch]$Arm)
+param([switch]$Arm,[switch]$Verification)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $worker='692a6837f73c924db96a56b449c7d5f63bcd234cfccc3b9003f9f3d081d44c8a'
 $expectedName='/lct-meet-first-failure-20261020'
 $base='C:\Users\adity\.lct-recovery\20261017\private'
-$guard=Join-Path $base 'first-failure-stop-692a6837-v3'
+$window=85;$guardName='first-failure-stop-692a6837-v3'
+if($Verification){$window=285;$guardName='final-verification-stop-692a6837-v1'}
+$guard=Join-Path $base $guardName
 $a=(& docker inspect $worker|ConvertFrom-Json)[0]
 if($LASTEXITCODE -ne 0 -or $a.Id -ne $worker -or $a.Name -ne $expectedName -or !$a.State.Running -or $a.Config.User -ne 'app' -or $a.Image -ne 'sha256:ef5518b4ed1b31e4590f5fa86a85d36238223e0f733443a801ea271dd9f366f3' -or $a.Config.Labels.'com.docker.compose.project' -ne 'lct-meet-recovery-20261017' -or $a.Config.Labels.'com.docker.compose.service' -ne 'worker'){throw 'Dedicated worker identity differs; no action'}
-if(!$Arm){@{dry_run=$true;worker=$worker;dispatch_window_seconds=85;idle_wait_seconds=120;stop_grace_seconds=2;bot_sent=$false}|ConvertTo-Json -Compress;exit}
+if(!$Arm){@{dry_run=$true;worker=$worker;dispatch_window_seconds=$window;idle_wait_seconds=120;stop_grace_seconds=2;bot_sent=$false}|ConvertTo-Json -Compress;exit}
 if(Test-Path $guard){throw 'Preserve existing one-shot guard; no rearm'}
 New-Item -ItemType Directory -Path $guard|Out-Null
 $deadline=[DateTime]::UtcNow.AddSeconds(120).ToString('o')
@@ -26,7 +28,7 @@ while([DateTime]::UtcNow -lt $deadline){
  if(Test-Path '__START__'){
   $start=[IO.File]::ReadAllText('__START__')|ConvertFrom-Json
   $requested=[DateTime]::Parse($start.deadline).ToUniversalTime()
-  if($start.worker -ne $worker -or $requested -gt [DateTime]::UtcNow.AddSeconds(85) -or $requested -lt [DateTime]::UtcNow.AddSeconds(70)){throw 'Dispatch deadline invalid; no acceptance'}
+  if($start.worker -ne $worker -or $requested -gt [DateTime]::UtcNow.AddSeconds(__WINDOW__) -or $requested -lt [DateTime]::UtcNow.AddSeconds(__MINIMUM__)){throw 'Dispatch deadline invalid; no acceptance'}
   $deadline=$requested;$active=$true
   [IO.File]::WriteAllText('__ACTIVE__',(@{worker=$worker;deadline=$deadline.ToString('o');active=$true}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
   break
@@ -42,7 +44,7 @@ $after=(& docker inspect $worker|ConvertFrom-Json)[0]
 if($LASTEXITCODE -ne 0 -or $after.Id -ne $worker -or $after.State.Running){throw 'Worker stop not confirmed'}
 [IO.File]::WriteAllText('__DONE__',(@{worker=$worker;stopped=$true;finished_at=[DateTime]::UtcNow.ToString('o');data_and_logs_retained=$true}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
 '@
-$child=$child.Replace('__DEADLINE__',$deadline).Replace('__READY__',$ready).Replace('__DONE__',$done).Replace('__START__',(Join-Path $guard 'start.json')).Replace('__ACTIVE__',(Join-Path $guard 'active.json'))
+$child=$child.Replace('__WINDOW__',[string]$window).Replace('__MINIMUM__',[string]($window-15)).Replace('__DEADLINE__',$deadline).Replace('__READY__',$ready).Replace('__DONE__',$done).Replace('__START__',(Join-Path $guard 'start.json')).Replace('__ACTIVE__',(Join-Path $guard 'active.json'))
 $encoded=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($child))
 $process=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile','-NonInteractive','-EncodedCommand',$encoded) -WindowStyle Hidden -RedirectStandardOutput (Join-Path $guard 'stdout.txt') -RedirectStandardError (Join-Path $guard 'stderr.txt') -PassThru
 $hash=[Security.Cryptography.SHA256]::Create()
@@ -57,7 +59,7 @@ if($r.worker -ne $worker -or !$r.armed -or $r.deadline -ne $deadline -or [DateTi
 
 # Keep the owning SSH command alive until the exact stop completes. The browser
 # path independently verifies supervisor PID/command identity before creating.
-if(!$process.WaitForExit(215000)){throw 'Stop supervisor exceeded its bound; reconcile exact worker'}
+if(!$process.WaitForExit((130+$window)*1000)){throw 'Stop supervisor exceeded its bound; reconcile exact worker'}
 # Start-Process/WaitForExit can expose a null cached ExitCode on Windows PowerShell.
 # Read the exact persisted receipt and actual container state instead.
 if(!(Test-Path $done)){throw 'Stop supervisor did not confirm completion; reconcile exact worker'}

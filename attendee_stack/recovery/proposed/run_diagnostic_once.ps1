@@ -1,8 +1,11 @@
 # Test intent: validation is default; -Create additionally requires the actual
 # one-shot stop guard ready with >=30seconds left. No credential leaves the app.
-param([string]$RecordingId,[string]$MeetingUrl,[int]$Seconds=90,[switch]$Create,[switch]$CheckGuard,[switch]$Begin)
+param([string]$RecordingId,[string]$MeetingUrl,[int]$Seconds=90,[switch]$Create,[switch]$CheckGuard,[switch]$Begin,[switch]$Verification)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 if(!$CheckGuard -and !$Begin -and ($RecordingId -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or $MeetingUrl -notmatch '^https://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}$' -or $Seconds -lt 60 -or $Seconds -gt 90)){throw 'Invalid bounded diagnostic arguments'}
+if($Verification -and ($Create -or (!$CheckGuard -and !$Begin))){throw 'Verification mode only acknowledges the timer; use ordinary cloud UI for creation'}
+$window=85;$guardName='first-failure-stop-692a6837-v3'
+if($Verification){$window=285;$guardName='final-verification-stop-692a6837-v1'}
 $base='C:\Users\adity\.lct-recovery\20261017'
 $source=Join-Path $base 'create_diagnostic_once.py'
 if((Get-FileHash $source -Algorithm SHA256).Hash.ToLower() -ne 'e5b1202a6a2deb6820a1db931f9c49aa483ade142192dee227425eb7146db993'){throw 'Reviewed client source differs'}
@@ -10,7 +13,7 @@ $worker='692a6837f73c924db96a56b449c7d5f63bcd234cfccc3b9003f9f3d081d44c8a'
 $w=(& docker inspect $worker|ConvertFrom-Json)[0]
 if($LASTEXITCODE -ne 0 -or $w.Id -ne $worker -or !$w.State.Running -or $w.Name -ne '/lct-meet-first-failure-20261020'){throw 'Dedicated worker unavailable; no POST'}
 if($Create -or $CheckGuard -or $Begin){
- $guard=Join-Path $base 'private\first-failure-stop-692a6837-v3'
+ $guard=Join-Path (Join-Path $base 'private') $guardName
  if(!(Test-Path (Join-Path $guard 'ready.json')) -or (Test-Path (Join-Path $guard 'done.json'))){throw 'Independent stop guard not active; no POST'}
  $ready=[IO.File]::ReadAllText((Join-Path $guard 'ready.json'))|ConvertFrom-Json
  $minimum=30;if($CheckGuard -or $Begin){$minimum=60}
@@ -25,7 +28,7 @@ if($Create -or $CheckGuard -or $Begin){
  if($actual -ne $identity.command_sha256){throw 'Stop supervisor command identity differs; no POST'}
  if($Begin){
   if((Test-Path (Join-Path $guard 'start.json')) -or (Test-Path (Join-Path $guard 'active.json'))){throw 'Dispatch already begun; no second window'}
-  $dispatch=[DateTime]::UtcNow.AddSeconds(85).ToString('o')
+  $dispatch=[DateTime]::UtcNow.AddSeconds($window).ToString('o')
   [IO.File]::WriteAllText((Join-Path $guard 'start.json'),(@{worker=$worker;deadline=$dispatch}|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
   $until=[DateTime]::UtcNow.AddSeconds(2)
   while(!(Test-Path (Join-Path $guard 'active.json')) -and [DateTime]::UtcNow -lt $until){Start-Sleep -Milliseconds 50}
