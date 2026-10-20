@@ -39,7 +39,7 @@ export class SonioxStream {
     this.transcriptBytes = 0;
   }
 
-  async connect({ apiKey, expiresAt, maxSessionSeconds, signal } = {}) {
+  async connect({ apiKey, expiresAt, maxSessionSeconds, signal, audioFormat = 'auto', sampleRate, numChannels } = {}) {
     if (!['idle', 'closed'].includes(this.state)) throw fail('session is already active.');
     if (typeof apiKey !== 'string' || !apiKey || apiKey.length > 4096) throw fail('requires a valid temporary key.');
     const expiration = typeof expiresAt === 'number' ? expiresAt : Date.parse(expiresAt);
@@ -48,6 +48,9 @@ export class SonioxStream {
     if (signal?.aborted) throw fail('was canceled.');
     if (typeof this.WebSocketClass !== 'function') throw fail('is unavailable in this browser.');
 
+    if (!['auto', 'pcm_s16le'].includes(audioFormat) || (audioFormat === 'pcm_s16le' && (sampleRate !== 16000 || numChannels !== 1))) throw fail('requires a supported audio format.');
+    const configuration = { model: 'stt-rt-v5', audio_format: audioFormat, enable_speaker_diarization: true, enable_endpoint_detection: true,
+      ...(audioFormat === 'pcm_s16le' ? { sample_rate: sampleRate, num_channels: numChannels } : {}) };
     this.cleanup();
     this.serial += 1;
     const serial = this.serial;
@@ -68,7 +71,7 @@ export class SonioxStream {
         clearTimeout(this.connectTimer);
         this.connectTimer = null;
         try {
-          socket.send(JSON.stringify({ model: 'stt-rt-v5', audio_format: 'auto', enable_speaker_diarization: true, enable_endpoint_detection: true }));
+          socket.send(JSON.stringify(configuration));
         } catch {
           this.terminate(fail('could not configure the session.'));
           return;

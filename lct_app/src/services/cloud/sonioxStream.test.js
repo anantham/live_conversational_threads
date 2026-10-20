@@ -42,6 +42,17 @@ async function connected(options = {}) {
 }
 
 describe('SonioxStream', () => {
+  it('configures imported mono16kPCM without exposing the key in the start message', async () => {
+    const { socket, stream } = await connected({ audioFormat: 'pcm_s16le', sampleRate: 16000, numChannels: 1 });
+    expect(JSON.parse(socket.sent[0])).toEqual({ model: 'stt-rt-v5', audio_format: 'pcm_s16le', sample_rate: 16000,
+      num_channels: 1, enable_speaker_diarization: true, enable_endpoint_detection: true });
+    stream.cancel();
+    const denied = new SonioxStream({ WebSocketClass: FakeSocket });
+    await expect(denied.connect({ apiKey: 'key', expiresAt: Date.now() + 60000, maxSessionSeconds: 60,
+      audioFormat: 'pcm_s16le', sampleRate: 48000, numChannels: 2 })).rejects.toThrow('supported audio format');
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
   it.each([{ speaker: 'x'.repeat(129) }, { start_ms: 10, end_ms: 9 }])('bounds token metadata before retaining or exporting it', async metadata => {
     const { socket, onFailure, onTranscript } = await connected();
     socket.receive({ tokens: [{ text: 'synthetic words', is_final: true, ...metadata }] });

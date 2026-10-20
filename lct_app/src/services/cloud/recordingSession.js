@@ -1,4 +1,5 @@
 import { SonioxStream } from './sonioxStream.js';
+import { requestTranscriptionSession } from './sonioxSessionClient.js';
 import { recordRecordingTiming } from './recordingTiming.js';
 
 const MAX_AUDIO_BYTES = 2097152;
@@ -8,44 +9,6 @@ const RECORDER_STOP_MS = 3000;
 const TYPES = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
 const error = (message) => new Error(`Recording ${message}`);
 
-async function readSessionResponse(response, signal) {
-  if (!response.body?.getReader) {
-    const raw = await response.text();
-    if (raw.length * 4 > 8192) throw error('authorization returned an oversized response.');
-    return raw;
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let raw = '';
-  let bytes = 0;
-  const abort = () => { void reader.cancel().catch(() => {}); };
-  signal.addEventListener('abort', abort, { once: true });
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return raw + decoder.decode();
-      bytes += value.byteLength;
-      if (bytes > 8192) {
-        await reader.cancel();
-        throw error('authorization returned an oversized response.');
-      }
-      raw += decoder.decode(value, { stream: true });
-    }
-  } finally { signal.removeEventListener('abort', abort); void reader.cancel().catch(() => {}); reader.releaseLock(); }
-}
-
-async function defaultRequestSession({ signal }) {
-  const response = await fetch('/api/cloud/soniox/session', {
-    method: 'POST', credentials: 'same-origin', headers: { 'X-LCT-Soniox-Consent': 'transcribe-v1' }, signal,
-  });
-  if (!response.ok) {
-    void response.body?.cancel().catch(() => {});
-    throw error(response.status === 401 ? 'requires ChatGPT sign-in for this transcription test.' : 'authorization failed; check shared session limits and provider availability before retrying.');
-  }
-  const raw = await readSessionResponse(response, signal);
-  try { return JSON.parse(raw); }
-  catch { throw error('authorization returned an invalid response.'); }
-}
 
 function bounded(promise, ms, signal, label, onTimeout) {
   return new Promise((resolve, reject) => {
@@ -77,7 +40,7 @@ function stopTracks(stream) {
 export class RecordingSession {
   constructor({ onStage, onAudio, onAudioChunk, onTranscript, onFailure, StreamClass = SonioxStream,
     mediaDevices = globalThis.navigator?.mediaDevices, MediaRecorderClass = globalThis.MediaRecorder,
-    requestSession = defaultRequestSession } = {}) {
+    requestSession = requestTranscriptionSession } = {}) {
     this.onStage = onStage;
     this.onAudio = onAudio;
     this.onAudioChunk = onAudioChunk;

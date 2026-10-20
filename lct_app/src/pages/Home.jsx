@@ -100,12 +100,10 @@ export default function Home() {
       {/* Secondary actions */}
       <div className="relative flex items-center gap-5">
         {import.meta.env.VITE_SITES_MODE === "true" && <button type="button" onClick={() => navigate("/private-files")} className="flex flex-col items-center gap-1.5 group"><span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition"><Cloud size={16} /></span><span className="text-[10px] font-medium text-gray-500 group-hover:text-gray-700 transition">Private files</span></button>}
-        {/* Import / Upload entry point. Routes to /new without ?autostart
-            so FileUpload remains visible on arrival (the autostart path
-            hides it — see NewConversation.jsx). */}
+        {/* Sites imports use their own local-first file journey; legacy uses /new. */}
         <button
           type="button"
-          onClick={() => navigate("/new")}
+          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/import-audio" : "/new")}
           className="flex flex-col items-center gap-1.5 group"
           title="Upload an audio file instead of recording live"
         >

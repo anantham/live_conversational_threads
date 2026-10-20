@@ -4,7 +4,7 @@ import PropTypes from 'prop-types';
 import { ArrowLeft, Network, MoreHorizontal, Globe, FolderLock, Download, Settings, HardDrive, UserRound, Video, X } from 'lucide-react';
 
 export const iconButton = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700';
-export default function ConversationNavigation({ panel, onPanelChange }) {
+export default function ConversationNavigation({ panel, onPanelChange, title = 'New conversation' }) {
   const [open, setOpen] = useState(false), root = useRef(null), trigger = useRef(null), first = useRef(null);
   function close() { setOpen(false); trigger.current?.focus(); }
   useEffect(() => {
@@ -18,7 +18,7 @@ export default function ConversationNavigation({ panel, onPanelChange }) {
   function show(name) { close(); onPanelChange(name); }
   const item = 'flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-slate-700';
   return <header className="flex items-center justify-between px-3 py-2 sm:px-4">
-    <h1 className="sr-only">New conversation</h1>
+    <h1 className="sr-only">{title}</h1>
     <Link to="/" aria-label="Back to home" title="Back" className={iconButton}><ArrowLeft size={21} aria-hidden="true" /></Link>
     <nav aria-label="Conversation navigation" className="flex items-center gap-1">
       <button type="button" className={iconButton} aria-label="AI map" title="AI map" aria-expanded={panel === 'map'} onClick={() => onPanelChange(panel === 'map' ? null : 'map')}><Network size={21} aria-hidden="true" /></button>
@@ -37,6 +37,6 @@ export default function ConversationNavigation({ panel, onPanelChange }) {
     </nav>
   </header>;
 }
-ConversationNavigation.propTypes = { panel: PropTypes.string, onPanelChange: PropTypes.func.isRequired };
+ConversationNavigation.propTypes = { title: PropTypes.string, panel: PropTypes.string, onPanelChange: PropTypes.func.isRequired };
 export function CloseConversationTools({ onClose }) { return <button type="button" aria-label="Close tools" title="Close" className={`${iconButton} sticky top-0 float-right bg-white`} onClick={onClose}><X size={18} aria-hidden="true" /></button>; }
 CloseConversationTools.propTypes = { onClose: PropTypes.func.isRequired };

@@ -1969,3 +1969,14 @@ Seventhguestbot nowpersists2captionrows+2validliveWAVparts/6.23seconds, mapfromr
 ## 2026-10-20 — Cloud Import audio entry opens recording without file import (deferred)
 
 ActualHome Import audio opens /new with nofilepicker. Legacy FileUpload/useFileUploadStream supports audio, but SitesNewConversation doesnotconnectit; /import handles transcripts only. Impact: userscannotimportMP3/WAV/M4A fortranscription/threads onthecloudSite. Separatejourney, not blockerforcurrentMeettest; useraskedstatusonly. Next: scopedfileimport/transcription/defaultlocalstorage/cancel/limits/privacyimplementation andrealacceptance aftercurrentjourney or explicitpivot. No realfile/providercallmade.
+
+
+## 2026-10-20 — Final Meet setup still times out (blocking Meet acceptance)
+
+Eighth approved synthetic bot instruments `language:close_button` TimeoutException; no positive setup, caption rows or live audio parts. Worker is stopped and cloud joins closed, all eight recordings/artifacts retained. Prior seventh run proves repaired presentation ingestion partially, but full sustained Meet journey is not accepted. Next safe step: precise caption-language dialog state/idempotency repro and independent review; any additional live bot needs a fresh bounded allowance. Audio import proceeds independently.
+
+## 2026-10-20 — Soniox metadata health refusal misstates transcription access (nonblocking import)
+
+GET/models health says provider access refused, while actual hosted temporary-key issuance returns201 and five-second synthetic audio yields30final tokens. Health result does not establish STT unusability. Next: separate status semantics repair using actual supported nonbillable readiness evidence; do not fabricate balance or consume speech sessions automatically per hover. Existing file import tests use real session evidence and preserve quota caps.
+
+2026-10-20 audio-import update: previously deferred missing entry is now explicitly approved and implemented locally with three real browser format decodes, refusal/local reload,1121 passing frontend tests and Sites build. Review, deployment and hosted file-to-map proof remain pending; do not call it delivered yet.

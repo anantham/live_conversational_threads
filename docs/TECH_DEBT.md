@@ -418,3 +418,8 @@ Public upstream GoogleMeetUIMethods is1297lines across joining, media/layout, la
 ## 2026-10-20 — Pinned Meet browser payload (2606→2619 lines)
 
 Presentation routing touches a 2606-line public upstream payload containing participant directory, media transport, protobuf decoding and DOM controls. Keep the narrow hash-pinned derivative for this repair; future upstream contribution/extraction should separate participant resolution, caption transport and audio/video transport with public wire-contract tests. No broad refactor in this approved journey.
+
+
+## 2026-10-20 — Capture-source decomposition during audio import
+
+RecordingSession mixed microphone capture with Soniox HTTP authorization. Extracted its unchanged bounded HTTP reader/request to sonioxSessionClient.js for microphone and file sources. SitesNewConversation remains a large mixed lifetime/UI component; reuse the existing small graph/transcript/archive components in SitesAudioImport without a broad recording-page rewrite. Future candidate: share a conversation-review shell after the two journeys stabilize; not required for this feature.

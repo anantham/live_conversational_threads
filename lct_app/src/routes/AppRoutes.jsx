@@ -3,6 +3,7 @@ import Home from "../pages/Home";
 import NewConversation from "../pages/NewConversation";
 import SitesNewConversation from "../pages/SitesNewConversation";
 import SitesMeetings from "../pages/SitesMeetings";
+import SitesAudioImport from "../pages/SitesAudioImport";
 import JoinMeeting from "../pages/JoinMeeting";
 import MeetingView from "../pages/MeetingView";
 import ViewConversation from "../pages/ViewConversation";
@@ -42,6 +43,7 @@ export default function AppRoutes() {
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/public" element={<PublicThreads />} />}
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/privacy" element={<SitesPrivacy />} />}
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/public/:publicId" element={<ThreadsViewer />} />}
+      {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/import-audio" element={<SitesAudioImport />} />}
       <Route path="/import" element={<Import />} />
       <Route path="/conversation/:conversationId" element={<ViewConversation />} />
       {/* Public read-only share. AUTH_TOKEN does not apply to recipients;

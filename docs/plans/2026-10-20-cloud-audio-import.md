@@ -1,0 +1,11 @@
+# Cloud audio import
+
+Approved outcome: MP3/WAV/M4A -> timed transcript -> source-linked threads -> original audio/transcript/map in browser storage by default. Same Site, existing Soniox temporary keys, Gemini/OpenRouter choice, unchanged session and generation caps; no automatic cloud save or publication.
+
+Root is integration owner in codex/lct-inference-choice. H1 missing UI/pipeline confirmed on live Home; H2 M4A needs normalization confirmed by Soniox's supported auto formats. Decode metadata/duration and audio locally to mono16kPCM before requesting a key; transmit near real-time through the existing WebSocket flow. Preserve original bytes. One deliberate import makes one STT session and one map request, no automatic retry. Existing five-minute/20-session limits stay; file limit20MiB. Real five-second synthetic probe minted201 and returned30finaltokens, disproving the inference that model-metadata403 means transcription is unusable. No raw audio/key/token text in diagnostics.
+
+Confidence0.9. Expected supported files yield original audio plus timed/speaker tokens and traceable threads. Invalid/oversize/long/cancelled inputs send no audio; provider refusal retains original/confirmed words. Quota failure shows retry/download; ephemeral mode writes no conversation. Fallback is retained local data and explicit retry, never unapproved legacy upload/provider.
+
+Finite checks: decoder format/duration/cancel; actual browser all3formats; public session protocol and PCM normalization; consent/provider choice/single request/cancel/failure/local reload/ephemeral/storage error; mobile/keyboard; adjacent microphone tests and full required suite/build; exact independent family review; native source push/archive/save/deploy existing Site and live synthetic import acceptance. No documents/test counts alone establish delivery. Estimate implementation/focused checks40–70active minutes, review/publication10–20minutes separately; provider/browser waits unknown.
+
+Meet continuation is consumed: eighth botfatal/0captions/0chunks, no positive setup events; exact285secondtimer stopsworker06:26:26.241Z. Site50/env62/deploymentappgdep_6ad709aca1cc819191743d7edfaedb2c closesjoins. Eightrecords/privateartifacts retained, hostleft/playerstopped. No extra bot; forensic followup separate from this import journey.
