@@ -4,6 +4,10 @@ import { validateThreadsArtifact } from '../threadsArtifact.js';
 
 const BACKENDS = new Set(['openrouter', 'gemini']);
 const uncertain = 'No new map is available. The attempt may remain counted; check setup and allowance before retrying.';
+const generationFailures = {
+  provider_refused: 'The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.',
+  invalid_completion: 'The AI provider returned an incomplete or invalid map. Your audio and transcript are preserved; the attempt remains counted.',
+};
 const messages = {
   401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',
   403: 'Confirm permission to send this transcript to the selected inference provider.',
@@ -51,8 +55,10 @@ async function request(path, signal, body, backend) {
   });
   const payload = await readJSON(response, signal, body ? 2 * 1024 * 1024 + 1024 : 8192);
   if (!response.ok) {
-    const error = new Error(messages[response.status] || uncertain);
+    const code = response.status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
+    const error = new Error(code ? generationFailures[code] : messages[response.status] || uncertain);
     error.status = response.status;
+    if (code) error.code = code;
     throw error;
   }
   return payload;

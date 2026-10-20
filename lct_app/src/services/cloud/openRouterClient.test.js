@@ -71,3 +71,15 @@ it('rejects readiness for a different backend before disclosing or generating so
   await expect(getRecordingMapStatus(undefined, 'unknown')).rejects.toThrow('Select Gemini');
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+// Intent: a failed import keeps a useful bounded failure reason without echoing provider text.
+it.each([
+  ['provider_refused', 'provider refused'],
+  ['invalid_completion', 'incomplete or invalid map'],
+])('explains the bounded %s failure without leaking arbitrary provider details', async (code, text) => {
+  fetch.mockResolvedValueOnce(response({ code, error: 'fixture sensitive provider detail' }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toContain(text); expect(error.message).toContain('remains counted');
+  expect(error.message).not.toContain('sensitive'); expect(error.code).toBe(code);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
