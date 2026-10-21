@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { useAudioImport } from '../hooks/useAudioImport.js';
+import { useImportPrivateFiles } from '../hooks/useImportPrivateFiles.js';
 import { createRecordingTranscript } from '../services/cloud/recordingTranscript.js';
 import ConversationNavigation, { CloseConversationTools } from '../components/recording/ConversationNavigation.jsx';
 import ConversationTranscriptPanel from '../components/recording/ConversationTranscriptPanel.jsx';
@@ -8,14 +9,16 @@ import LiveConversationGraph from '../components/recording/LiveConversationGraph
 import RecordingAudioFiles from '../components/recording/RecordingAudioFiles.jsx';
 import RecordingTranscriptFiles from '../components/recording/RecordingTranscriptFiles.jsx';
 import RecordingConversationMap from '../components/recording/RecordingConversationMap.jsx';
+import ImportPrivateFiles from '../components/recording/ImportPrivateFiles.jsx';
+import PublicTaskStatus from '../components/PublicTaskStatus.jsx';
 import { ConversationStorageSettings, ConversationStorageStatus } from '../components/recording/ConversationStorage.jsx';
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:opacity-50';
-const noPrivateSave = () => {};
 
 export default function SitesAudioImport() {
   const flow = useAudioImport();
   const [panel, setPanel] = useState(null), [minimized, setMinimized] = useState(false), [fullscreen, setFullscreen] = useState(false), [generating, setGenerating] = useState(false);
   const { archive, recording, audio, transcript, map, activity, busy, capability } = flow;
+  const privateFiles = useImportPrivateFiles(busy || generating);
   const artifact = useMemo(() => {
     if (!recording || !transcript.finalTokens.length) return null;
     const source = { recordingId: recording.id, startedAt: recording.startedAt, finalTokens: transcript.finalTokens,
@@ -24,13 +27,13 @@ export default function SitesAudioImport() {
     catch { return { error: 'The transcript file could not be prepared. Your audio and words are preserved.' }; }
   }, [recording, transcript, activity?.stage]);
   useEffect(() => {
-    if ((!recording || archive.status.state === 'saved') && !busy && !generating) return;
+    if ((!recording || archive.status.state === 'saved') && !busy && !generating && !privateFiles.saving) return;
     const protect = event => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
-  }, [recording, archive.status.state, busy, generating]);
+  }, [recording, archive.status.state, busy, generating, privateFiles.saving]);
   function guardNavigation(event) {
-    if ((!busy && !generating && archive.status.state === 'saved') || !recording) return;
+    if ((!busy && !generating && !privateFiles.saving && archive.status.state === 'saved') || !recording) return;
     const link = event.target.closest?.('a[href]');
     if (link && !link.hasAttribute('download') && !window.confirm('Leave this import? Processing will stop. Download unsaved files before leaving.')) event.preventDefault();
   }
@@ -41,6 +44,9 @@ export default function SitesAudioImport() {
         {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}</p>}
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} />}
         {flow.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{flow.error}</p>}
+        {privateFiles.message && <p role="status">{privateFiles.message}</p>}
+        {privateFiles.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{privateFiles.error}</p>}
+        <PublicTaskStatus activity={privateFiles.saving ? 'load' : null} elapsed={privateFiles.elapsed} cancel={privateFiles.cancel} loadingLabel={`Saving ${privateFiles.subject.toLowerCase()} privately`} />
       </div>
       {!recording && <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
         <form className="mx-auto max-w-xl space-y-5" onSubmit={event => { event.preventDefault(); void flow.start(); }}>
@@ -71,14 +77,15 @@ export default function SitesAudioImport() {
       </>}
       <aside hidden={!panel} aria-label="Import tools" className="absolute right-3 top-3 z-40 max-h-[calc(100%-1.5rem)] w-[28rem] max-w-[calc(100%-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
         <CloseConversationTools onClose={() => setPanel(null)} />
+        {recording && ['map', 'files'].includes(panel) && <ImportPrivateFiles status={privateFiles.status} saving={privateFiles.saving} onCheck={() => void privateFiles.check()} />}
         <div hidden={panel !== 'settings'}><h2 className="pt-12 text-lg font-medium">Settings</h2><fieldset disabled={busy || generating}><ConversationStorageSettings preference={archive.preference} onChange={archive.choose} error={archive.preferenceError} /></fieldset><ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} /></div>
         <div hidden={panel !== 'map'}>
           {!artifact?.source && <p className="pt-12 text-sm text-slate-600">Threads appear after your transcript is ready.</p>}
-          {artifact?.source && <RecordingConversationMap localOnly source={artifact.source} savedBundle={map} retention={recording.retention} backend={flow.backend} onBackendChange={flow.setBackend} privateEnabled={false} saving={busy} onGeneratingChange={setGenerating} onMapChange={flow.mapReady} onPrivateSave={noPrivateSave} />}
+          {artifact?.source && <RecordingConversationMap localOnly={!privateFiles.ready} source={artifact.source} savedBundle={map} retention={recording.retention} backend={flow.backend} onBackendChange={flow.setBackend} privateEnabled={privateFiles.ready} saving={busy || privateFiles.saving} onGeneratingChange={setGenerating} onMapChange={flow.mapReady} onPrivateSave={privateFiles.save} />}
         </div>
         <div hidden={panel !== 'files'}>
-          <RecordingAudioFiles localOnly retention={recording?.retention} audio={audio} recordingId={recording?.id} privateEnabled={false} busy={busy || generating} onPrivateSave={noPrivateSave} />
-          <RecordingTranscriptFiles localOnly retention={recording?.retention} artifact={artifact} privateEnabled={false} saving={busy || generating} onPrivateSave={noPrivateSave} />
+          <RecordingAudioFiles localOnly={!privateFiles.ready} retention={recording?.retention} audio={audio} recordingId={recording?.id} privateEnabled={privateFiles.ready} busy={busy || generating || privateFiles.saving} onPrivateSave={privateFiles.save} />
+          <RecordingTranscriptFiles localOnly={!privateFiles.ready} retention={recording?.retention} artifact={artifact} privateEnabled={privateFiles.ready} saving={busy || generating || privateFiles.saving} onPrivateSave={privateFiles.save} />
           {map && <button type="button" className={button + ' mt-4'} onClick={() => setPanel('map')}>Download your map</button>}
         </div>
       </aside>
