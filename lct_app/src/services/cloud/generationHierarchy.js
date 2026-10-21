@@ -1,3 +1,5 @@
+import { normalizeTieredGeneration } from './tieredGeneration.js';
+
 const FORMAT = 'parent-links-v1';
 const own = (value, key) => Object.hasOwn(value, key);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -11,6 +13,7 @@ function invalid(validationRule) {
 
 /** Expand each authored relationship once; the existing graph validator still owns acceptance. */
 export function expandGenerationHierarchy(graph) {
+  graph = normalizeTieredGeneration(graph);
   if (!own(graph, 'hierarchy_format')) {
     // Retain the fully validated legacy response contract, without accepting
     // an unversioned compact response whose secondary links could be ignored.

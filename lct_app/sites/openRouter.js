@@ -10,7 +10,7 @@ const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_
   'node_provenance', 'memberships', 'hierarchy', 'edges', 'threads', 'bundle_validation', 'bundle_json', 'bundle_size']);
 const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backlink', 'primary_mismatch',
   'membership_missing', 'membership_level', 'membership_backlink', 'secondary_duplicate',
-  'child_missing', 'child_level', 'child_backlink', 'cycle']);
+  'child_missing', 'child_level', 'child_backlink', 'cycle', 'typed_reference']);
 const PROVIDER_STATUSES = new Set(['INVALID_ARGUMENT', 'UNAUTHENTICATED', 'PERMISSION_DENIED',
   'NOT_FOUND', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION', 'UNAVAILABLE', 'INTERNAL']);
 
