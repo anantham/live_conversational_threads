@@ -1,3 +1,13 @@
+## 2026-10-21 19:05 IST — Tier-safe source served; capped real validation awaits ruling
+
+Root/same authoritative codex/lct-inference-choice checkout; product34a2620c6f293f98301039f84ce1574668db2630 committed/pushed, native7f2b371142c77139f3cf3003ba4921866fc352d4 served as Site54/env64/deploymentappgdep_6ad8bd8333ac81918be4c254f93dd2e9. Existing public Site, custom hostname and all351 curated files preserved. Full1160/130files,35independent schema cases and exact independent Gemini review PASS; actual Chrome HTTPS/mobile390/nooverflow/consent/defaultlocal+ephemeral switch verified, original preference/viewport restored. Live13attemptrows unchanged, no provider/bot/recovery.
+
+Complete audio-to-threads remains UNACCEPTED until the real provider check. One exact reviewed recovery plus <=31second synthetic import/one max8192output test is pending under PILOT-RECOVERY-A1; proposal 2026-10-21-audio-validation.md and SQL remain unapplied outside migrations,12safety cases+independent GeminiPASS. New schema may still encounter provider compatibility/semantic errors. Next checkpoint after ruling: actual valid source-linked map, audio/transcript/map exports and durable local reload/privacy; no automatic retry. Goal stays active and Meet remains next required journey, with no new bot allowance. Source/checks/review/publication completed within45-75 plus10-20active minute forecast; human wait and provider outcome unknown. Earlier failed forecasts preserved below.
+
+## 2026-10-21 18:42 IST — Active Goal / audio import generation repair
+
+Outcome audio imports -> source-linked threads -> durable local reopen/export, then Meet. Root is integration owner in the existing codex/lct-inference-choice worktree. Site53/public/custom hostname and native source0c1a2191584b25158162b293e017a15181440225 freshly verified. Plan/test intent: 2026-10-21-tier-safe-generation.md. Next evidence: schema-valid counterexample and typed-reference public-adapter acceptance/refusal; then combined checks, independent review, same-Site release. Generation/bot test allowances exhausted; no paid call/recovery/bot authorized. Source/checks45-75active minutes, review/release10-20 separately; live allowance/provider wait unknown. Historical forecasts and failed evidence retained below.
+
 ## 2026-10-20 13:08 IST — Import served; transcription accepted, threads and Meet blocked
 
 The approved journey is MP3/WAV/M4A → transcript → threads → local files. Root owns integration in the existing `codex/lct-inference-choice` worktree. Product source `c9d48ce` is served as native commit `0c1a2191584b25158162b293e017a15181440225`, Site version 53, deployment `appgdep_6ad71a01a6d081919b02c58967e4a1d0`, environment 64. The custom domain serves `index-BvIdeNzM.js`.
