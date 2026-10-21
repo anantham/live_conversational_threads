@@ -1,3 +1,7 @@
+## 2026-10-21 — Audio import omits optional private cloud saving
+
+The import page hard-coded localOnly and privateEnabled=false for audio/transcript/map, so signed-in users could not save exports to existing private history. Resolved in productacd588c / servedSite56 with explicit per-file private saves, fresh validated session, exact ready/private acknowledgement, retained2MiB cap and unchanged local/ephemeral archive. Full1188checks/build and independent GeminiPASS. Actual approved Google owner sign-in, separate original-audio and timed-transcript saves, ready/private history reload and signed-out refusal of both exact content URLs pass. No auto-upload/publication. Map save awaits a real generated map; fresh download observation awaits the existing Mac handoff, and full import/Meet acceptance remains open in the milestone board.
+
 ## 2026-10-21 — Import duplicates account entry outside More
 
 Actual mobile import shows a floating Sign in control and More -> Profile. The account-route grouping omits the new import route. Impact: contradicts approved compact navigation and competes with the footer on narrow screens. Resolved in sourceaa14b98 / servedSite55; four new route/session regressions, independent GeminiPASS and actual390px custom-host More/Profile/Close/focus checks pass. Generation live-test ruling remains separate. Preserve account/session semantics; add exact import route parity and reuse existing focus/open/close regression cases.
