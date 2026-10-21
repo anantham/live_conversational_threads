@@ -1,3 +1,7 @@
+## 2026-10-21 — Import duplicates account entry outside More
+
+Actual mobile import shows a floating Sign in control and More -> Profile. The account-route grouping omits the new import route. Impact: contradicts approved compact navigation and competes with the footer on narrow screens. Resolved in sourceaa14b98 / servedSite55; four new route/session regressions, independent GeminiPASS and actual390px custom-host More/Profile/Close/focus checks pass. Generation live-test ruling remains separate. Preserve account/session semantics; add exact import route parity and reuse existing focus/open/close regression cases.
+
 ## 2026-10-17 — Node26 test Web Storage global collides with jsdom
 
 Unflagged combined tests fail155/1060 at localStorage setup across15files while

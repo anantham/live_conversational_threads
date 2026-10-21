@@ -423,3 +423,8 @@ Presentation routing touches a 2606-line public upstream payload containing part
 ## 2026-10-20 — Capture-source decomposition during audio import
 
 RecordingSession mixed microphone capture with Soniox HTTP authorization. Extracted its unchanged bounded HTTP reader/request to sonioxSessionClient.js for microphone and file sources. SitesNewConversation remains a large mixed lifetime/UI component; reuse the existing small graph/transcript/archive components in SitesAudioImport without a broad recording-page rewrite. Future candidate: share a conversation-review shell after the two journeys stabilize; not required for this feature.
+
+
+## 2026-10-21 — Account presentation regression suite boundary
+
+SitesAccessPanel.jsx is261lines and the route-only import parity does not warrant a lifecycle refactor. SitesAccessPanel.test.jsx is550lines mixing account transport, Google challenge, sign-out, route placement and focus with shared fixtures. Existing split candidate remains: later move route/focus scenarios into a dedicated suite with shared synthetic response setup. Current change parameterizes an existing public behavior test rather than adding another copy or changing authentication logic.
