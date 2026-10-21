@@ -26,7 +26,7 @@ async function mount(initialPath = "/") {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => { root.render(<MemoryRouter initialEntries={[initialPath]}><NavigationCapture />{initialPath.startsWith("/new") && <ConversationNavigation panel={null} onPanelChange={() => {}} />}<SitesAccessPanel /></MemoryRouter>); });
+  await act(async () => { root.render(<MemoryRouter initialEntries={[initialPath]}><NavigationCapture />{(initialPath.startsWith("/new") || initialPath.startsWith("/import-audio")) && <ConversationNavigation panel={null} onPanelChange={() => {}} />}<SitesAccessPanel /></MemoryRouter>); });
 }
 
 async function settle() {
@@ -50,9 +50,9 @@ afterEach(async () => {
 });
 
 describe("SitesAccessPanel", () => {
-  it.each([401, 200])('opens Profile from More and restores focus without a separate trigger (session %i)', async status => {
+  it.each([401, 200].flatMap(status => ['/new', '/import-audio', '/import-audio/'].map(path => [status, path])))('opens Profile from More and restores focus without a separate trigger (session %i, route %s)', async (status, path) => {
     fetch.mockResolvedValue(sessionResponse(status));
-    await mount('/new');
+    await mount(path);
     const panel = container.querySelector('#site-access');
     const more = container.querySelector('button[aria-controls="conversation-more"]');
     expect(panel.hidden).toBe(true); expect(panel.querySelector('button')).toBeNull();
@@ -68,11 +68,11 @@ describe("SitesAccessPanel", () => {
       await act(async () => container.querySelector('[aria-label="Close site access"]').click());
       expect(panel.hidden).toBe(true); expect(document.activeElement).toBe(more);
     }
-    await act(async () => navigate('/new#site-access'));
+    await act(async () => navigate(path + '#site-access'));
     expect(panel.hidden).toBe(false); expect(document.activeElement).toBe(panel);
-    await act(async () => navigate('/new'));
+    await act(async () => navigate(path));
     expect(panel.hidden).toBe(true); expect(document.activeElement).toBe(more);
-    await act(async () => navigate('/new#site-access'));
+    await act(async () => navigate(path + '#site-access'));
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
     await act(async () => navigate('/public'));
     expect(panel.hidden).toBe(false); expect(panel.classList.contains('bottom-4')).toBe(true);

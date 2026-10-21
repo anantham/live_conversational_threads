@@ -44,7 +44,7 @@ function recordTiming(durationMs, outcome, retryCount) {
 export default function SitesAccessPanel() {
   const { pathname, search, hash } = useLocation();
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
-  const inRecording = pathname === "/new" || pathname === "/new/" || pathname.startsWith("/meeting/");
+  const inRecording = ["/new", "/new/", "/import-audio", "/import-audio/"].includes(pathname) || pathname.startsWith("/meeting/");
   const inMeetingEntry = pathname === "/meeting" || pathname === "/meeting/";
   const dismissedRef = useRef(wasDismissed());
   const [expanded, setExpanded] = useState(() => inPrivateFiles || (!inRecording && !inMeetingEntry && !dismissedRef.current) || hash === "#site-access");
