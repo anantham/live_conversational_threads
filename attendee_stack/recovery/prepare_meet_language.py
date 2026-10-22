@@ -53,7 +53,11 @@ def prepare(source, destination):
     old = 'self.driver.execute_script("return clickLanguageOption(arguments[0]);", language)'
     if body.count(old) != 1:
         raise ValueError('Public language-selection call differs')
-    body = body.replace(old, 'self.driver.execute_script(LCT_CAPTION_LANGUAGE_SCRIPT, language, True)')
+    body = body.replace(old, '''self.locate_element(
+            step="language:select_option",
+            condition=lambda driver: driver.execute_script(LCT_CAPTION_LANGUAGE_SCRIPT, language, True) is True,
+            wait_time_seconds=6,
+        )''')
     close = '        logger.info("Waiting for the close button")\n'
     if body.count(close) != 1:
         raise ValueError('Language confirmation point differs')

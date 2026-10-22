@@ -2,7 +2,7 @@
 
 Run with the exact public reviewed UI source path. Generator guards use isolated
 temporary files. Public select_language/locate/click methods run unchanged from
-their actual AST with a one-poll WebDriver contract; this is not an Asus/Django
+their actual AST with a bounded synthetic WebDriver wait; this is not an Asus/Django
 or real Selenium/browser result. Real DOM script effects are tested separately.
 """
 import ast
@@ -56,18 +56,23 @@ class Driver:
 
     def execute_script(self, script, language, *mode):
         self.requests.append((language, mode))
-        return self.selection if not mode or mode[0] else self.confirmation
+        if not mode or mode[0]:
+            if isinstance(self.selection, list):
+                return self.selection.pop(0) if len(self.selection) > 1 else self.selection[0]
+            return self.selection
+        return self.confirmation
 
 
-class OnePollWait:
+class BoundedWait:
     def __init__(self, driver, timeout):
         self.driver = driver
 
     def until(self, condition):
-        value = condition(self.driver)
-        if not value:
-            raise TimeoutError('Synthetic unmet public WebDriver condition')
-        return value
+        for _ in range(3):
+            value = condition(self.driver)
+            if value:
+                return value
+        raise TimeoutError('Synthetic unmet public WebDriver condition')
 
 
 def public_ui(source):
@@ -83,7 +88,7 @@ def public_ui(source):
     namespace = dict(logger=logging.getLogger('synthetic-meet-language'), os=os,
                      By=types.SimpleNamespace(CSS_SELECTOR='css selector', XPATH='xpath'),
                      EC=types.SimpleNamespace(presence_of_element_located=lambda locator: lambda driver: driver.find_element(*locator)),
-                     WebDriverWait=OnePollWait, UiCouldNotLocateElementException=Refused,
+                     WebDriverWait=BoundedWait, UiCouldNotLocateElementException=Refused,
                      UiCouldNotClickElementException=Refused, StaleElementReferenceException=Refused)
     exec(compile(selected, '<actual-public-meet-ui-methods>', 'exec'), namespace)
     return namespace['GoogleMeetUIMethods']
@@ -134,6 +139,10 @@ class MeetLanguagePreparationTests(unittest.TestCase):
 
     def test_confirmed_configuration_closes_only_its_own_settings(self):
         driver = self.invoke(self.proposed)
+        self.assertEqual([action for action in driver.actions if action.endswith('close')], ['owned-close'])
+
+    def test_settings_readiness_can_arrive_after_the_presence_lookup(self):
+        driver = self.invoke(self.proposed, selection=[False, True])
         self.assertEqual([action for action in driver.actions if action.endswith('close')], ['owned-close'])
 
     def test_unconfirmed_selection_refuses_without_closing(self):
