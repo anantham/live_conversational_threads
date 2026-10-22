@@ -1,0 +1,22 @@
+{
+  "status": "PROPOSAL ONLY - not installed or applied",
+  "sql_body_matches_reviewed": true,
+  "old_journal_preserved": true,
+  "schema_unchanged": true,
+  "sqlite_behavior_cases": 12,
+  "metadata_case": 1,
+  "files": [
+    {
+      "name": "0015_audio_validation_recovery_oct22.sql",
+      "sha256": "c5aea3edf5b84227da4fb1d23881e86fcd1c7011167f89293588915d94be21ca"
+    },
+    {
+      "name": "0015_snapshot.json",
+      "sha256": "fb02ea4410fe6f5d979f647f7abb9474b2d3e4b6e756f0d46fdfa7652ed1509f"
+    },
+    {
+      "name": "_journal.json",
+      "sha256": "2b188b820b1d3e1eef77cdc44689686d1f046fdba21f4de9caba414ad2ed239b"
+    }
+  ]
+}
