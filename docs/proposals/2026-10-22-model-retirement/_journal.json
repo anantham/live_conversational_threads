@@ -1,0 +1,125 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790882124805,
+      "tag": "0000_mysterious_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790884994120,
+      "tag": "0001_new_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790888966237,
+      "tag": "0002_square_surge",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790893200380,
+      "tag": "0003_smart_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790894246197,
+      "tag": "0004_bored_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790934266054,
+      "tag": "0005_pale_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791046815745,
+      "tag": "0006_simple_paladin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791351733025,
+      "tag": "0007_soniox_pilot_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791497166323,
+      "tag": "0008_openrouter_pilot_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791849600000,
+      "tag": "0009_soniox_pilot_recovery_oct13",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791953763901,
+      "tag": "0010_openrouter_pilot_recovery_oct14",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792068167467,
+      "tag": "0011_inference_test_recovery_oct15",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792072601115,
+      "tag": "0012_inference_diagnostic_recovery_oct15",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792214382216,
+      "tag": "0013_meeting_owner_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1792480630108,
+      "tag": "0014_audio_import_recovery_oct20",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1792659355343,
+      "tag": "0015_audio_validation_recovery_oct22",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1792662000000,
+      "tag": "0016_model_retirement_recovery_oct22",
+      "breakpoints": true
+    }
+  ]
+}

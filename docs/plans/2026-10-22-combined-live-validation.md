@@ -38,3 +38,12 @@ Owner explicitly approved this envelope on22October. Fresh exact13-row/two-holde
 ## 2026-10-22 — Explicit method ruling received
 
 Human approved this exact migration method. Install only the reviewed three-file proposal, deploy with bothgenerationflagsOFF, verify the target-only release, then restore prior OpenRouteron/Geminioff. ThreeSTT/fourmaps/oneMeet remain0used; no duplicateapproval required. Previous rejection/pause/restoration evidence above remains historical.
+
+
+## 2026-10-22 — Exact recovery served; first live map refused and bounded dispatch stops
+
+Task f1d87691dbcd0be15d6a6e31f6f325124c128a19 pushed.13focused/1202combined tests131files pass9.76s and Site builds pass. Only three byte-identical already-reviewed proposal files synchronized to native9f974d75c7d2f47a5b42ee947fb4aa13ff3d22b8. Site58/versionappgver_b2a6798ac2d88191879230543e670217/archive8f826d42/2027520bytes/45files, OFFenv67/deploymentappgdep_6ad9d56df5d88191b6e65b5e16fe8c72 succeeds09:21:09UTC. Exact complete D1postflight13rows: only819a33a2.recovery_released_at null→1792660858000; olderholder/completedfields/allotherfields unchanged. PriorOpenRoutertrue/Geminifalse restored env68/same58/deploymentappgdep_6ad9d5b1fc8081919936ad0f5d0811ce succeeds09:22:19UTC. ActualcustomHTTPS freehealthGET keyaccepted/account_balanceavailable/319ms; not modelgenerationproof.
+
+OrdinaryUI selects approved31.09secMP3/explicitconsent/one submit. Actualincremental two-speaker transcript succeeds, originalaudio preserved; automaticone map returns providerrefusal. New attemptd1445dc2 created1792661065333/max8192/nullcompleted/nullrelease;14total records. Bothholders nowoccupied again; do not recover without specific ruling. Combinedallowances used1STT/1map/0bots. The approved stop-on-any-failure rule now ends furtherpaid/botdispatch; WAV/M4A/Meet unrun. No retry or replacementcall. Continue free source/logdiagnosis, localreopen/export/audio/mobileproof; no completionclaim.
+
+A documentation-only append was mechanically rejected as a shared-deploy-checkout write although its absolute destination was the authoritative worktree. Read-only pwd/git-toplevel/worktreeinventory prove distinct taskworktree f1d8769 versus primarye339fca. This continuation names the correctworkingdirectory and asserts branch/path before writing; no protected-checkout edit or permission bypass.
