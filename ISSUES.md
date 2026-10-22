@@ -1,3 +1,11 @@
+## 2026-10-22 — Soniox model-metadata check refuses access; actual transcription not re-tested
+
+Live custom-host /api/cloud/health/soniox reports enabled/available=true but reachable=false, Provider access was refused, at22October. Source performs GET /v1/models, not transcription or temporary-key minting. Last actual successful import transcription is older; do not infer an invalid credential or a paid STT failure from this health result alone. Required readiness investigation: compare current official endpoint/auth/response contract, then gather bounded technical refusal evidence without exposing a key or minting a new session. Existing capped import-test decision remains pending. No credential/permission/provider changes are authorized by this issue.
+
+## 2026-10-22 — Meet caption-language selection can target another control
+
+Pinned public helper used a document-global locale selector; duplicate caption-bar/Settings options make it click the wrong owner and report success. Source repair now scopes/awaits visible Settings, confirms selected locale and closes only its own control. Finalc2c2185/pushed and actual stopped-worker sourcefb0e59ab applied with exact ACL/attributes and immutable original backup.21DOM,9source/method,9installed-runtime and6Windows checks plus final independent GeminiPASS; all8recording records retained/terminal. Sustained real Meet acceptance is still open and no new bot is authorized. See docs/reviews/2026-10-22-meet-language-scope.md for failures, limits and actual receipt.
+
 ## 2026-10-21 — Audio import omits optional private cloud saving
 
 The import page hard-coded localOnly and privateEnabled=false for audio/transcript/map, so signed-in users could not save exports to existing private history. Resolved in productacd588c / servedSite56 with explicit per-file private saves, fresh validated session, exact ready/private acknowledgement, retained2MiB cap and unchanged local/ephemeral archive. Full1188checks/build and independent GeminiPASS. Actual approved Google owner sign-in, separate original-audio and timed-transcript saves, ready/private history reload and signed-out refusal of both exact content URLs pass. No auto-upload/publication. Map save awaits a real generated map; fresh download observation awaits the existing Mac handoff, and full import/Meet acceptance remains open in the milestone board.

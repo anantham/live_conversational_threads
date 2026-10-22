@@ -428,3 +428,7 @@ RecordingSession mixed microphone capture with Soniox HTTP authorization. Extrac
 ## 2026-10-21 — Account presentation regression suite boundary
 
 SitesAccessPanel.jsx is261lines and the route-only import parity does not warrant a lifecycle refactor. SitesAccessPanel.test.jsx is550lines mixing account transport, Google challenge, sign-out, route placement and focus with shared fixtures. Existing split candidate remains: later move route/focus scenarios into a dedicated suite with shared synthetic response setup. Current change parameterizes an existing public behavior test rather than adding another copy or changing authentication logic.
+
+## 2026-10-21 — Pinned upstream Meet UI remains a large external integration surface
+
+The public GoogleMeetUIMethods source used by the isolated Asus recovery is1317lines with login, admission, layout, captions and diagnostics. This repair changes only the derived select_language boundary through a hash-pinned generator; avoid unrelated upstream rewrites while capture acceptance is incomplete. Future upstream contribution should separate idempotent caption-language configuration from login/layout and test its DOM ownership/postconditions. New generator and authored fixtures should remain cohesive and small. Not a blocker or new architecture decision for the current bounded repair.
