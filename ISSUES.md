@@ -1,3 +1,7 @@
+## 2026-10-22 — Export observation falsely treated as missing browser handoff
+
+Resolved acceptance-tooling class: event timeout plus narrow filename lookup missed completed numbered (2) audio/transcript exports. Exact current-window bytes/format now verify; local transcript/audio restores in Chrome. New audit_export_copies.py and six isolated tests distinguish verified/unverified/not_observed without origin claims or browser internals. Old Mac Save request withdrawn. Cloud-readback provenance and generated map still unverified; see export review receipt.
+
 ## 2026-10-22 — Soniox model-metadata check refuses access; actual transcription not re-tested
 
 Live custom-host /api/cloud/health/soniox reports enabled/available=true but reachable=false, Provider access was refused, at22October. Source performs GET /v1/models, not transcription or temporary-key minting. Last actual successful import transcription is older; do not infer an invalid credential or a paid STT failure from this health result alone. Required readiness investigation: compare current official endpoint/auth/response contract, then gather bounded technical refusal evidence without exposing a key or minting a new session. Existing capped import-test decision remains pending. No credential/permission/provider changes are authorized by this issue.
