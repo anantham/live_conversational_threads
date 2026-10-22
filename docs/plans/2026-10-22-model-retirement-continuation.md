@@ -45,3 +45,8 @@ Preserve original full acceptance: source-linked maps/timedtranscript/originalau
 Run retainedMP3 map first, so another refusal burns no furtherSTT. WAV/M4A sequentially only after success, Meet last. Any failed/uncertain paid action stops all furtherpaid/botdispatch; preserve artifacts/countedholder, no recovery/retry inferred. Existing key/account cap remains, no purchase/newpermission/key/provider/route. Recommendation confidence0.90 in routing/safety; real validmap and sustainedMeet still unproven. Forecast45–90active minutes after readiness/approval, separately from unknown provider/schema/host repair and humanwait.
 
 Owner/root, existing authoritative codex/lct-inference-choice checkout. Nextcheckpoint isolated recovery/config checks and independent review, then one concrete human ruling. Documents/review are preparation, not delivery.
+
+
+## 22October — Explicit authority received
+
+After ELI5 explanation, owner says you may, my permission is granted. This authorizes the exact reviewed model/recovery/durable method/remaining tests above. Fresh14rows/twoholders/age and existingSite58/env68 verified. Bothflags servedOFF atenv69/deploymentappgdep_6ad9fb5505308191b2bcfda59dac7d1c, successful12:02:53UTC; actualChrome confirms bothdisabled. No renewed paid/model/STT/bot dispatch yet.

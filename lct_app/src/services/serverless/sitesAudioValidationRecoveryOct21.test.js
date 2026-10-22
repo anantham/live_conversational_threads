@@ -54,10 +54,11 @@ it('refuses an insufficient age without changing rows', () => {
 
 it('preserves approved append-only journal history and unchanged schema snapshot', () => {
   const approvedJournal = JSON.parse(read(proposal + '_journal.json'));
-  expect(journal).toEqual(approvedJournal);
-  expect(journal.entries).toHaveLength(16);
-  expect(journal.entries.at(-1)).toMatchObject({ idx: 15, tag: '0015_audio_validation_recovery_oct22' });
-  expect(journal.entries.at(-1).when).toBeGreaterThan(journal.entries.at(-2).when);
+  // Later approved migrations may append; this receipt protects its entire prefix.
+  expect({ ...journal, entries: journal.entries.slice(0, 16) }).toEqual(approvedJournal);
+  expect(journal.entries.length).toBeGreaterThanOrEqual(16);
+  expect(journal.entries[15]).toMatchObject({ idx: 15, tag: '0015_audio_validation_recovery_oct22' });
+  expect(journal.entries[15].when).toBeGreaterThan(journal.entries[14].when);
   const previous = JSON.parse(read('../../../drizzle/meta/0014_snapshot.json'));
   const current = JSON.parse(read('../../../drizzle/meta/0015_snapshot.json'));
   expect(current.prevId).toBe(previous.id);

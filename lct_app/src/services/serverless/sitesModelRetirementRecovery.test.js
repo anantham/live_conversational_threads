@@ -1,12 +1,12 @@
 // @vitest-environment node
-// Intent: validate the PROPOSED ONLY recovery against isolated schema.
+// Intent: validate the owner-approved installed recovery against isolated schema.
 // See tests/intent/model-retirement-proposal.md; no live state or provider calls.
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const proposal = '../../../../docs/proposals/2026-10-22-model-retirement/';
-const sql = read(proposal + '0016_model_retirement_recovery_oct22.sql');
+const sql = read('../../../drizzle/0016_model_retirement_recovery_oct22.sql');
 const journal = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
 const target = 'd1445dc2-618c-4279-a207-33c401b369e0', older = '23de48fb-9c8e-47dd-a41d-1a9552e7ec9b';
 let db, now;
@@ -22,6 +22,7 @@ beforeEach(() => {
 });
 afterEach(() => db.close());
 it('changes only the one target release timestamp, retains all fourteen records and the older holder, and is idempotent', () => {
+  expect(sql).toBe(read(proposal + '0016_model_retirement_recovery_oct22.sql'));
   const before = rows(); db.exec(sql); const after = rows();
   expect(after).toHaveLength(14);
   expect(after.find(row => row.id === target).recovery_released_at).toBe(now * 1000);
@@ -50,12 +51,13 @@ it('refuses an insufficient age without changing rows', () => {
 
 it('only appends migration16, preserves schema and proposes one model-only setting', () => {
   const proposed = JSON.parse(read(proposal + '_journal.json'));
-  expect(proposed.entries.slice(0, -1)).toEqual(journal.entries);
+  expect(proposed).toEqual(journal);
   expect(proposed.entries).toHaveLength(17);
   expect(proposed.entries.at(-1)).toMatchObject({ idx: 16, tag: '0016_model_retirement_recovery_oct22' });
-  expect(proposed.entries.at(-1).when).toBeGreaterThan(journal.entries.at(-1).when);
+  expect(proposed.entries.at(-1).when).toBeGreaterThan(journal.entries.at(-2).when);
   const previous = JSON.parse(read('../../../drizzle/meta/0015_snapshot.json'));
-  const current = JSON.parse(read(proposal + '0016_snapshot.json'));
+  expect(read('../../../drizzle/meta/0016_snapshot.json')).toBe(read(proposal + '0016_snapshot.json'));
+  const current = JSON.parse(read('../../../drizzle/meta/0016_snapshot.json'));
   expect(current.prevId).toBe(previous.id);
   expect(current.id).not.toBe(previous.id);
   expect({ ...current, id: previous.id, prevId: previous.prevId }).toEqual(previous);
