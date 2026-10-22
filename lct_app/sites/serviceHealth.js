@@ -8,6 +8,31 @@ const TTL = 60_000;
 const policies = { soniox: sonioxPolicy, openrouter: openRouterPolicy, gemini: geminiPolicy };
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 
+// Model listing has separate permissions from STT. Never forward provider error text.
+async function sonioxModelRefusal(response, signal) {
+  let access = 'unknown';
+  let detail = response.status === 401 || response.status === 403
+    ? 'The model-listing check was refused. Transcription has not been tested.'
+    : 'The model-listing check could not finish. Transcription has not been tested.';
+  const type = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+  try {
+    if ((response.status === 401 || response.status === 403) && type === 'application/json') {
+      const body = await readOpenRouterJSON(response, signal, 8192, true);
+      if (body?.status_code === response.status) {
+        if (response.status === 401 && body.error_type === 'unauthenticated') {
+          access = 'unauthenticated';
+          detail = 'The model-listing check could not authenticate this key. Transcription has not been tested.';
+        } else if (response.status === 403 && body.error_type === 'permission_denied') {
+          access = 'permission_denied';
+          detail = 'This key cannot list Soniox models. Transcription permissions have not been checked.';
+        }
+      }
+    }
+  } catch { /* An unreadable refusal cannot establish its cause. */ }
+  finally { void response.body?.cancel().catch(() => {}); }
+  return { probe: 'model_listing', access, detail };
+}
+
 // Account totals stay server-side; this public endpoint exposes only coarse state.
 async function accountBalance(key, parentSignal) {
   try {
@@ -42,9 +67,11 @@ async function providerCheck(service, policy, env) {
         const response = await fetch(url, { method: 'GET', redirect: 'manual', signal,
           headers: service === 'gemini' ? { 'x-goog-api-key': key } : { Authorization: `Bearer ${key}` } });
         if (response.status !== 200) {
-          void response.body?.cancel().catch(() => {});
+          const refusal = service === 'soniox' ? await sonioxModelRefusal(response, signal)
+            : { detail: response.status === 401 || response.status === 403 ? 'Provider access was refused.' : 'Provider check could not finish.' };
+          if (service !== 'soniox') void response.body?.cancel().catch(() => {});
           return { reachable: false, allowance: response.status === 402 ? 'exhausted' : 'unknown',
-            detail: response.status === 401 || response.status === 403 ? 'Provider access was refused.' : 'Provider check could not finish.', latency_ms: Date.now() - start };
+            ...refusal, latency_ms: Date.now() - start };
         }
         const body = await readOpenRouterJSON(response, signal, 256 * 1024, true);
         if (service === 'soniox' && (!Array.isArray(body.models) || !body.models.length)) throw new Error('Unusable models');
@@ -56,11 +83,16 @@ async function providerCheck(service, policy, env) {
         const account = balance ? await balance : null;
         const allowance = account === 'exhausted' || limits.some(n => n <= 0) ? 'exhausted' : limits.length ? 'key_available' : 'unknown';
         return { reachable: true, allowance, ...(account ? { account_balance: account } : {}), latency_ms: Date.now() - start,
+          ...(service === 'soniox' ? { probe: 'model_listing', access: 'accepted' } : {}),
           detail: allowance === 'exhausted' ? 'The provider reports an exhausted allowance.'
             : service === 'openrouter' ? 'API key accepted. This check does not run model generation.'
+              : service === 'soniox' ? 'Model listing responded. Transcription and credit balance have not been tested.'
               : 'Provider API responded. Billing balance and live processing are not tested by this check.' };
       });
-    } catch { return { reachable: false, allowance: 'unknown', detail: 'Provider check timed out or returned an unreadable response.', latency_ms: Date.now() - start }; }
+    } catch { return { reachable: false, allowance: 'unknown',
+      ...(service === 'soniox' ? { probe: 'model_listing', access: 'unknown' } : {}),
+      detail: service === 'soniox' ? 'The model-listing check timed out or returned an unreadable response. Transcription has not been tested.'
+        : 'Provider check timed out or returned an unreadable response.', latency_ms: Date.now() - start }; }
   })().then(result => ({ ...result, checked_at: Date.now() }));
   checks.set(service, entry);
   return entry.promise;

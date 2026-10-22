@@ -1,5 +1,6 @@
 // @vitest-environment node
-// Intent: tests/intent/sites-conversation-controls.md. Real disposable schema; synthetic providers only.
+// Intent: tests/intent/sites-conversation-controls.md and soniox-model-health.md.
+// Real disposable schema; synthetic providers only.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
@@ -86,4 +87,61 @@ it('bounds an account-only stall without losing the completed key check', async 
   const pending = get('openrouter'); await vi.advanceTimersByTimeAsync(2501);
   expect(await (await pending).json()).toMatchObject({ reachable: true, allowance: 'key_available', account_balance: 'unavailable' });
   await get('openrouter'); expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  [401, 'unauthenticated', 'could not authenticate this key'],
+  [403, 'permission_denied', 'cannot list Soniox models'],
+])('classifies only the documented model-listing refusal for HTTP%s', async (status, access, detail) => {
+  fetch.mockResolvedValue(new Response(JSON.stringify({ status_code: status, error_type: access,
+    message: 'PRIVATE ERROR BODY', request_id: 'PRIVATE REQUEST ID' }), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } }));
+  const response = await get('soniox'); const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body).toMatchObject({ available: true, reachable: false, allowance: 'unknown', probe: 'model_listing', access });
+  expect(body.detail).toContain(detail); expect(body.detail).toMatch(/Transcription.*not/);
+  expect(JSON.stringify(body)).not.toMatch(/PRIVATE|status_code|error_type|request_id/);
+  expect(JSON.stringify(body)).not.toContain(env.SONIOX_API_KEY);
+  expect(fetch.mock.calls.map(([url, init]) => [url, init.method, init.body])).toEqual([['https://api.soniox.com/v1/models', 'GET', undefined]]);
+  expect(db.prepare('SELECT COUNT(*) AS n FROM lct_soniox_sessions').get().n).toBe(0);
+  expect(db.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts').get().n).toBe(0);
+});
+
+it.each([
+  [401, { status_code: 403, error_type: 'unauthenticated' }, 'application/json'],
+  [403, { status_code: 403, error_type: 'unauthenticated' }, 'application/json'],
+  [403, { status_code: '403', error_type: 'permission_denied' }, 'application/json'],
+  [403, { error_type: 'permission_denied' }, 'application/json'],
+  [403, { status_code: 403, error_type: 'other' }, 'application/json'],
+  [403, { status_code: 403, error_type: 'permission_denied' }, 'text/html'],
+  [500, { status_code: 403, error_type: 'permission_denied' }, 'application/json'],
+  [403, '<html>PRIVATE ERROR BODY</html>', 'application/json'],
+  [403, { status_code: 403, error_type: 'permission_denied', message: 'PRIVATE'.repeat(2000) }, 'application/json'],
+])('keeps ambiguous model-check metadata unknown: case%# / HTTP%s', async (status, value, type) => {
+  fetch.mockResolvedValue(new Response(typeof value === 'string' ? value : JSON.stringify(value), { status, headers: { 'Content-Type': type } }));
+  const body = await (await get('soniox')).json();
+  expect(body).toMatchObject({ available: true, reachable: false, allowance: 'unknown', probe: 'model_listing', access: 'unknown' });
+  expect(body.detail).toMatch(/model-listing.*Transcription has not been tested/);
+  expect(JSON.stringify(body)).not.toMatch(/PRIVATE|permission_denied|unauthenticated|request_id/);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('reports successful model listing without asserting live transcription or billing', async () => {
+  const body = await (await get('soniox')).json();
+  expect(body).toMatchObject({ reachable: true, probe: 'model_listing', access: 'accepted', allowance: 'unknown' });
+  expect(body.detail).toBe('Model listing responded. Transcription and credit balance have not been tested.');
+});
+
+it('bounds a stalled Soniox error body, caches unknown and permits the next window to diagnose it', async () => {
+  vi.useFakeTimers();
+  fetch.mockResolvedValue(new Response(new ReadableStream({ pull: () => new Promise(() => {}) }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } }));
+  const pending = get('soniox'); await vi.advanceTimersByTimeAsync(6001);
+  expect(await (await pending).json()).toMatchObject({ reachable: false, access: 'unknown', probe: 'model_listing' });
+  await get('soniox'); expect(fetch).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(60_000);
+  fetch.mockResolvedValue(new Response(JSON.stringify({ status_code: 403, error_type: 'permission_denied' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } }));
+  expect(await (await get('soniox')).json()).toMatchObject({ reachable: false, access: 'permission_denied' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(db.prepare('SELECT COUNT(*) AS n FROM lct_soniox_sessions').get().n).toBe(0);
 });
