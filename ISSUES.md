@@ -2023,3 +2023,8 @@ Blocking fullaudioimport/Meetacceptance. Existinggoogle/gemini-2.5-flash-lite pi
 Asus IPv4 SSH/SFTP/Tailscale data probes timed out; the same existing peer/account/host key works over its TailscaleIPv6 address. Read-only service check confirms sshd/Tailscale running and22listening; exact recorder/source/eightterminalrecord gates pass. No service reset, route, permission or data changes. New guard files staged/hash-checked only; worker stopped, joins closed, bot/map unused.
 
 Meet host alone/AVoff is verified. Browser ShareScreen repeatedly yields generic failure before the picker; native Chrome/RustDesk input reports noWindowsAvailable while viewing works. Cause of sharing failure is unconfirmed; do not infer missing OS permission or change security settings. Blocker: real synthetic audio cannot enter the room until sharing is established. Specific manual synthetic-tab/audio sharing handoff requested; no additional test approval needed. Fresh390px map proof obtained through IAB after Chrome viewport override falsely remained1512px; do not reuse the misnamed old screenshot as phone proof.
+
+
+### 2026-10-22 20:21 IST — Sharing-control follow-up
+
+The alternate keyboard activation also shows Meet's generic sharing error beforepicker; no captureerrorclass is exposed by logs. Native menus respond, but Meet native pagecontrols unavailable and a native-key actuation is stopped when activeChrome window changes. Do not claim all native input is dead from an immediate unchanged sample: dialog later disappeared and causality remainsunknown. No broad permission/restart/settings change is supported. ExactAsus preflight stillpasses/eightterminalrecords/worker stopped; bot/map unused. Currenthandoff remains synthetic-tabsharing only.
