@@ -13,3 +13,7 @@ Primary references: https://soniox.com/docs/guides/api-key-permissions and https
 ## Validated/reviewed source checkpoint
 
 Twelve new cases fail before repair, all25health/8status and combined1201/131files pass afterward; Site builds pass. Exact independent GeminiPASS/no findings, packetf84b5eff/26655bytes, receipt docs/reviews/2026-10-22-soniox-model-health.md. Native source opened before edits; only reviewed health module/test synchronization, environment64/audiencepublic preserved. Live refusal remains unclassified until the release/freeGET; no paid or credential action.
+
+## Served checkpoint
+
+Reviewed product40655fd/taskpushed; native5d6e3f1/Site57/environment64/deploymentappgdep_6ad9bfc9f8808191baf5b072a3e09bff succeeds07:48:50UTC. Actual Chrome custom-host popover reports model-listing permission refusal, explicitly leaving transcription untested; no key/permission change. Standalone Python Site-boundary403 did not yield provider evidence and was not retried. Current diagnostic is delivered, full Goal is not. New live actions remain reserved; complete receipt in review2026-10-22-soniox-model-health.md.

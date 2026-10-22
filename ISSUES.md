@@ -4,6 +4,8 @@ Resolved acceptance-tooling class: event timeout plus narrow filename lookup mis
 
 ## 2026-10-22 — Soniox model-metadata check refuses access; actual transcription not re-tested
 
+Update: resolved diagnostic ambiguity in reviewed/pushed product40655fd, servedSite57/env64. Actual Chrome now specifically reports model-listing permission refusal; this does not establish STT/temporary-key failure. Existing credential/permissions unchanged. Source25health +full1201checks/build/independent GeminiPASS, sameSitepublication and actual UI proof recorded in docs/reviews/2026-10-22-soniox-model-health.md. No live STT/recovery/model/bot test yet.
+
 Live custom-host /api/cloud/health/soniox reports enabled/available=true but reachable=false, Provider access was refused, at22October. Source performs GET /v1/models, not transcription or temporary-key minting. Last actual successful import transcription is older; do not infer an invalid credential or a paid STT failure from this health result alone. Required readiness investigation: compare current official endpoint/auth/response contract, then gather bounded technical refusal evidence without exposing a key or minting a new session. Existing capped import-test decision remains pending. No credential/permission/provider changes are authorized by this issue.
 
 ## 2026-10-22 — Meet caption-language selection can target another control
