@@ -50,3 +50,10 @@ Owner/root, existing authoritative codex/lct-inference-choice checkout. Nextchec
 ## 22October — Explicit authority received
 
 After ELI5 explanation, owner says you may, my permission is granted. This authorizes the exact reviewed model/recovery/durable method/remaining tests above. Fresh14rows/twoholders/age and existingSite58/env68 verified. Bothflags servedOFF atenv69/deploymentappgdep_6ad9fb5505308191b2bcfda59dac7d1c, successful12:02:53UTC; actualChrome confirms bothdisabled. No renewed paid/model/STT/bot dispatch yet.
+
+
+## 22 October — Approved activation and format acceptance delivered
+
+The proposal title/status above is historical. Explicit authority is applied: exact0016/nativecb661df7/Site59/env70 served, target-only14row recovery postflight passes, newmodel live. Full1215/132files/build pass and unchanged reviewed production bytes match. MP3/WAV/M4A actual guest transcript/map/originalaudio/export/fullplayback/localreload all pass. Renewed usage3maps/2STT/0bots; only one Meet map and the same unused bot remain approved. Currentmodelledger17rows/one older unresolved; STT16/no live lease. All records/caps retained.
+
+Actual390px Graph/Discussion now fit in separate IAB; Chrome override failure is excluded. SSH IPv4 failure resolved operationally through the same known Asus TailscaleIPv6/key/account. Source/runtime/eight retained terminal records/hash/syntax preflight passes, worker stays stopped. Host alone/AVoff. No joinwindow/timer/bot/map has started. Share picker cannot be opened through browser control; native input bridge unavailable. Existing synthetic-tab sharing handoff is the concrete next dependency, no duplicate permission needed.

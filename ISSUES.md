@@ -2016,3 +2016,10 @@ Eighth final Meet check separately fails caption-language close lookup before po
 ## 2026-10-22 — Vertex retirement blocks maps after successful transcription
 
 Blocking fullaudioimport/Meetacceptance. Existinggoogle/gemini-2.5-flash-lite pinnedgoogle-vertex receivesactual404; officialretirement20October andfreshpubliccataloguezeroVertexendpoint. Key/accountfreecheckpasses butdoesnotestablishmodelrouting. Sourcegenerator: readinesscheckskey/credit/localcapacity separatelyfrommodelroute/lifecycle, so audioSTTcanfinishbeforemaproutefails. Preserve1successfulMP3/localexports; noautomaticretry/holderrelease. Recommendednextstep exactreviewed3.5FlashLite/Vertexreplacement+oneguardedholderrecovery+boundedcontinuation, reservedhumanrulingrequired. Follow-up lifecycle/routepreflightbeforeSTT is captured, not silently implemented or addedtoacceptance. See docs/plans/2026-10-22-model-retirement-continuation.md andmatchingreview.
+
+
+## 2026-10-22 18:16 IST — Meet synthetic sharing is the current acceptance dependency
+
+Asus IPv4 SSH/SFTP/Tailscale data probes timed out; the same existing peer/account/host key works over its TailscaleIPv6 address. Read-only service check confirms sshd/Tailscale running and22listening; exact recorder/source/eightterminalrecord gates pass. No service reset, route, permission or data changes. New guard files staged/hash-checked only; worker stopped, joins closed, bot/map unused.
+
+Meet host alone/AVoff is verified. Browser ShareScreen repeatedly yields generic failure before the picker; native Chrome/RustDesk input reports noWindowsAvailable while viewing works. Cause of sharing failure is unconfirmed; do not infer missing OS permission or change security settings. Blocker: real synthetic audio cannot enter the room until sharing is established. Specific manual synthetic-tab/audio sharing handoff requested; no additional test approval needed. Fresh390px map proof obtained through IAB after Chrome viewport override falsely remained1512px; do not reuse the misnamed old screenshot as phone proof.
