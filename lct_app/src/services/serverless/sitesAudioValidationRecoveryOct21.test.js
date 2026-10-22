@@ -1,10 +1,14 @@
 // @vitest-environment node
-// Intent: validate a PREPARED ONLY operation against isolated actual schema.
-// This test never installs a migration, releases live state or authorizes a retry.
+// Intent: validate the owner-approved exact activation against isolated schema.
+// See tests/intent/audio-validation-activation.md; no live state or provider calls.
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-const sql = readFileSync(new URL('../../../../docs/plans/2026-10-21-audio-validation-recovery.sql', import.meta.url), 'utf8');
+const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const sql = read('../../../drizzle/0015_audio_validation_recovery_oct22.sql');
+const reviewedSql = read('../../../../docs/plans/2026-10-21-audio-validation-recovery.sql');
+const proposal = '../../../../docs/proposals/2026-10-22-recovery-migration/';
+const statement = text => text.slice(text.indexOf('UPDATE lct_openrouter_attempts')).trim();
 const journal = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
 const target = '819a33a2-cfac-482d-98cf-cf7beaec617b', older = '23de48fb-9c8e-47dd-a41d-1a9552e7ec9b';
 let db, now;
@@ -26,7 +30,8 @@ it('changes only the one target release timestamp, retains all thirteen records 
   expect(after.map((row, index) => ({ ...row, recovery_released_at: before[index].recovery_released_at }))).toEqual(before);
   expect(after.find(row => row.id === older)).toEqual(before.find(row => row.id === older));
   db.exec(sql); expect(rows()).toEqual(after);
-  expect(journal.entries.some(entry => entry.tag.includes('oct21'))).toBe(false);
+  expect(statement(sql)).toBe(statement(reviewedSql));
+  expect(sql).toBe(read(proposal + '0015_audio_validation_recovery_oct22.sql'));
 });
 it.each([
   `UPDATE lct_openrouter_attempts SET id='different' WHERE id='${target}'`,
@@ -45,4 +50,18 @@ it.each([
 it('refuses an insufficient age without changing rows', () => {
   now = Math.floor(1792481117816 / 1000) + 899;
   const before = rows(); db.exec(sql); expect(rows()).toEqual(before);
+});
+
+it('preserves approved append-only journal history and unchanged schema snapshot', () => {
+  const approvedJournal = JSON.parse(read(proposal + '_journal.json'));
+  expect(journal).toEqual(approvedJournal);
+  expect(journal.entries).toHaveLength(16);
+  expect(journal.entries.at(-1)).toMatchObject({ idx: 15, tag: '0015_audio_validation_recovery_oct22' });
+  expect(journal.entries.at(-1).when).toBeGreaterThan(journal.entries.at(-2).when);
+  const previous = JSON.parse(read('../../../drizzle/meta/0014_snapshot.json'));
+  const current = JSON.parse(read('../../../drizzle/meta/0015_snapshot.json'));
+  expect(current.prevId).toBe(previous.id);
+  expect(current.id).not.toBe(previous.id);
+  expect({ ...current, id: previous.id, prevId: previous.prevId }).toEqual(previous);
+  expect(read('../../../drizzle/meta/0015_snapshot.json')).toBe(read(proposal + '0015_snapshot.json'));
 });

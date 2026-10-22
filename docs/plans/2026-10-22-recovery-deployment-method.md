@@ -23,3 +23,8 @@ Approve installing only those three prepared files, synchronizing through the of
 A deployment failure can still leave a migration applied: inspect actual rows/history before any retry; never rerun blindly or call an observation timeout terminal. If preflight drifts, leave the target unchanged. Do not delete the migration afterward or rewrite applied history. Nearby alternative: keep recovery unapplied (current state) and tests stopped, or use a future supported one-time write surface if one becomes available. Do not add a temporary production mutation endpoint or grant broader database access to avoid this ruling.
 
 Recommendation: approve this explicit bounded method, confidence0.95 in target-only/idempotent behavior from exact SQL/fixture evidence. Liveprovider/Meet success remains uncertain. The earlier45–90active-minute test forecast now has an additional method-approval wait; no test allowance has been consumed. Previous settings are restored at env66/Site57 while waiting; all13actual reservation rows compare byte-for-byte equal to preflight. This proposal is H1/reserved durable effect, no grey area, one-time and distinct from routine implementation approval.
+
+
+## 2026-10-22 — Explicit method ruling received
+
+Human approved this exact migration method. Install only the reviewed three-file proposal, deploy with bothgenerationflagsOFF, verify the target-only release, then restore prior OpenRouteron/Geminioff. ThreeSTT/fourmaps/oneMeet remain0used; no duplicateapproval required. Previous rejection/pause/restoration evidence above remains historical.

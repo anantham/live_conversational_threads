@@ -1,0 +1,6 @@
+# Approved audio-validation recovery activation
+
+- Run the promoted, reviewed SQL against isolated in-memory SQLite, retaining the exact target-only, replay, age and drift refusal checks.
+- Assert the installed SQL statement equals the previously reviewed statement and the approved proposal bytes.
+- Assert the journal only appends entry15 and snapshot0015 changes identity/predecessor only; old migration history is preserved.
+- No live provider, database, bot, credential or network action is performed by these tests.

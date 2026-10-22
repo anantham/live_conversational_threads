@@ -1,3 +1,7 @@
+## 2026-10-22 — Approved recovery activation in progress
+
+Outcome: full audio imports first, then guest Meet captions/live threads/audio. Integration owner root; authoritative existing codex/lct-inference-choice worktree. Exact durable three-file migration approved; both generation flags servedOFF atenv67/deploymentappgdep_6ad9d2f3b1fc8191a2a80077e2114886. Finite checks: exact SQL+append-only metadata, isolated refusals/replay, full required tests/build, existingSiteOFFpublication, live13-rowtarget-onlypostflight, priorflagsrestore. Remaining dependency: provider/key readiness then real3formatimports andoneMeet. Nextcheckpoint actualone-rowrelease, not documents/review alone. Allcombinedtestallowancesunused. Prior45–90active-minute test forecast resumes after recovery; provider/host waits unknown.
+
 ## 2026-10-22 — Combined tests approved; migration method needs explicit durable-effect ruling
 
 Human approves exact combined release/3STT/4map/oneMeet envelope. Root/sameauthoritativeworktree747fac7, existingSite57/public/customdomain/env64 freshlyconfirmed. Exact13-row/two-holder/targetage/cap preflight passes. Approved pauseenv65 is deployed and actualChrome confirms bothgenerationoff. Automatic approval review rejects installing/journaling0015: the one-time SQL approval does not explicitly include persistent production migration/automatic-deploy effects. No commandfiles were written, task/nativejournals remain15entries, no live release. No denial bypass or temporary mutation route added.

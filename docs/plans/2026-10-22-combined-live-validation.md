@@ -33,3 +33,8 @@ Recommendation: approve this single finite envelope, confidence0.85 in its safet
 ## Approved envelope; deployment-method enforcement mismatch
 
 Owner explicitly approved this envelope on22October. Fresh exact13-row/two-holder/age/cap preflight passes. Both inference flags servedoff atenv65 before recovery preparation. Automatic approval review rejects creating/journaling persistent0015 as an additional durable effect; command did not execute. Task/native journals remain15entries and no live release/call/bot happened. Prior flags restored atenv66 on sameSite57; complete13rows compare unchanged. All3STT/4map/1bot allowances remain unused/valid. No duplicate test approval is required. Exact three-file migration proposal is prepared only outside migration roots,13isolated checks/independentGeminiPASS. One additional ruling concerns only that durable method: docs/plans/2026-10-22-recovery-deployment-method.md and docs/reviews/2026-10-22-recovery-deployment-method.md. Do not install until explicit method authority; do not route around rejection.
+
+
+## 2026-10-22 — Explicit method ruling received
+
+Human approved this exact migration method. Install only the reviewed three-file proposal, deploy with bothgenerationflagsOFF, verify the target-only release, then restore prior OpenRouteron/Geminioff. ThreeSTT/fourmaps/oneMeet remain0used; no duplicateapproval required. Previous rejection/pause/restoration evidence above remains historical.
