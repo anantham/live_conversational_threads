@@ -2028,3 +2028,8 @@ Meet host alone/AVoff is verified. Browser ShareScreen repeatedly yields generic
 ### 2026-10-22 20:21 IST — Sharing-control follow-up
 
 The alternate keyboard activation also shows Meet's generic sharing error beforepicker; no captureerrorclass is exposed by logs. Native menus respond, but Meet native pagecontrols unavailable and a native-key actuation is stopped when activeChrome window changes. Do not claim all native input is dead from an immediate unchanged sample: dialog later disappeared and causality remainsunknown. No broad permission/restart/settings change is supported. ExactAsus preflight stillpasses/eightterminalrecords/worker stopped; bot/map unused. Currenthandoff remains synthetic-tabsharing only.
+
+
+## 2026-10-23 20:16 IST — Terminal recorder task can be redelivered after hard stop
+
+Read-only isolatedbrokercheckfindsoneexpiredunacknowledgedrun_bot deliveryforthealreadyfatalprevioussyntheticrecord;0newqueuedjobs. Taskentryconstructscontrollerwithoutterminalguard. Controllerstatehandlingavoidsjoinbutstillrunsagainstfinishedrecord. Blocker: avoidreplayingoldcontrollerbeforethenewboundedMeettest. Preparedterminalentryguard+source/metadata-pinnedstopped-containerinstaller;15isolatedchecksPASS, actualWindowsdryrun/real-stateintegration/review/applicationpending. Preservequeue/data; nomannualpurge/ack/budgetrecovery. Existingfrontend1215/build/MeetUIevidenceunchanged. SharingitselfisresolvedthroughnativeaccessibilityintheWorkspaceprofile; ordinaryinjectedSharefails, macOSnormalChromepermissionON. No paidtestslotconsumed.

@@ -1,5 +1,14 @@
 ## CURRENT — 22 October: imports accepted; guarded Meet dispatch still pending
 
+## Current checkpoint — 2026-10-23 22:53 IST
+
+Outcome: guest Meet link to captions, live threads, audio and local reload. Integration owner root; authoritative `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, `codex/lct-inference-choice`. MP3/WAV/M4A acceptance is delivered and unchanged. Native synthetic-tab sharing worked in the approved repub Workspace profile; it must be re-established after the execution gap. No new bot/map has run.
+
+The terminal redelivery guard is prepared: 16 isolated checks, exact independent Gemini PASS, actual Windows default dry-run and real Django terminal-record refusal all pass; eight retained rows unchanged. Source application remains pending. Finite remaining checks: candidate hash/owner/mode readback with worker stopped; fresh runtime/queue/credit/host readiness; independent285second stop guard; one normal guest UI bot, streamed incremental captions, one valid live map, nonzero audio/final playback, browser-local reload and opt-in privacy; finally joins closed, worker stopped, host left. Sole remaining bot and map allowance are unused. No task purge, additional recovery, key/cap/provider or permission change.
+
+Next evidence checkpoint is stopped-worker source application/readback, then fresh host sharing. Forecast25–45active minutes once those dependencies hold; intermittent transport/browser waits and new live defects have unknown duration. Prior30–60minute repair range missed because transport failures and execution gaps intervened. Documents/review are not live acceptance.
+
+
 Outcome: complete MP3/WAV/M4A imports and guest Meet captions, live threads and audio, with local saving by default. Integration owner root; authoritative checkout `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, branch `codex/lct-inference-choice`. Primary deploy checkout remains untouched.
 
 Served: existing public Site59/native `cb661df7a12a90892b67341fe404636c3c34273d`, environment70/deployment `appgdep_6ad9fc81b7508191a760718232da2a77`. Exact approved migration0016 changes only the failed target release timestamp; all history/caps/older holder retained. Model is the approved Gemini3.5FlashLite through the existing OpenRouter/Vertex route; direct Gemini remains off. Task source31fedc5 is pushed. Independent exact production-byte review PASS, focused26/full1215tests132files/build pass.

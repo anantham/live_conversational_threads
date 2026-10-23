@@ -1,0 +1,13 @@
+{
+  "original_source_sha256": "7c264ffa44726ded798bb2c5f8382572e1b1c2e08a6dc75a26d2710fde6e9254",
+  "candidate_source_sha256": "f9d671d4e5f913c2333d16b06a4b01bb0d7a305202709bab7d52f0fad00003b6",
+  "original_tar_sha256": "005e9d70e8055755a860d169a39f61783d740efe29afd8e7b2ccb0166ee3110a",
+  "candidate_tar_sha256": "0254a85e87df6fde3d28f6fb1ac8f8ea968d02e466b6395502202fdaa3f75e81",
+  "inspector_sha256": "66b036b660e835b3260e6bab15690b16259612c0d959637a6a9824311bd15306",
+  "uid": 1000,
+  "gid": 1000,
+  "mode": 493,
+  "no_worker_started": true,
+  "no_queue_changed": true,
+  "stage_version": 2
+}
