@@ -1,3 +1,7 @@
+## 2026-10-25 — Native Sites control read unavailable
+
+Latest environment read fails at ChatGPT MCP HTTP transport before a Site response. Impact: fresh hosting/environment confirmation is unavailable; do not infer an application failure, change cloud state through an unreviewed route, or state last-knownSite59/env70 as freshly verified. No env mutation/deploy was attempted. Blocker for future live-window activation; use the normal native read again only after control connectivity returns. Current exact task branch checkpoint is verified remotely; preserve the existing Site and data.
+
 ## 2026-10-25 — Asus runtime access unavailable after bounded recovery
 
 Current blocking dependency for Meet; completed imports remain separate. One approved Desktop restart timed out; read-only postflight proved stopped Desktop/missing engine pipe. One reviewed start-phase completion returnedCLI0; no second stop/restart/reset. Current engine/source/data state remains unverified after execution gap: IPv4SSH banner timeout, IPv6TCPtimeout, RustDesk rendezvous/fallback failure, native Tailscale inspection stall. Do not infer host power, cause, healthycontainers or currentstoppedworker. Last passing preflight retains8terminal records and applied f9d671d4 guard; current source eedf0e8 pushed. Joins remain closed/no bot/map used. Next step is restoration of one existing host access path, fresh exact postflight and same unused one-bot/one-map validation. No new product approval is missing. See docs/plans/2026-10-24-docker-engine-recovery.md.

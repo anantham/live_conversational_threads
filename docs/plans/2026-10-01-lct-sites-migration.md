@@ -2,6 +2,8 @@
 
 ## Current checkpoint — 2026-10-25 00:23 IST
 
+00:48 update: exact checkpoint14707de is remotely verified. Latest native Sites environment read fails at MCP transport; Site59/env70/closedjoins are last-verified, with no subsequent env write/deployment by this task. Fresh cloud control and Asus runtime confirmation must precede activation.
+
 Outcome remains guest Meet link to streamed captions, source-linked threads, audio and browser-local reload. Integration owner root; authoritative `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, `codex/lct-inference-choice`. MP3/WAV/M4A acceptance delivered; physical Safari still unverified. Guard eedf0e8 is pushed and was applied/read back in the stopped worker; old8rows/fingerprint last verified unchanged. Current runtime cannot be asserted after the gap.
 
 The approved one Desktop restart times out, then exact read-only receipts prove it stopped. Independently reviewed one start-phase completion returnsCLI0; no second restart, reset, newpermission or dataremoval. New current access checks fail: IPv4banner, IPv6TCP, RustDesk rendezvous/fallback, native Tailscale inspection. Same Workspace sharing was proven while host+ownpresentation/AVoff/pausedclip, but that call is no longer active after the gap. No bot/map, timer or join-window activation occurred; sole allowance unused and valid. Site59/env70 unchanged/joins closed.
