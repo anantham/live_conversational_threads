@@ -1,5 +1,21 @@
 ## CURRENT — 22 October: imports accepted; guarded Meet dispatch still pending
 
+## Current checkpoint — 2026-10-25 00:23 IST
+
+Outcome remains guest Meet link to streamed captions, source-linked threads, audio and browser-local reload. Integration owner root; authoritative `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, `codex/lct-inference-choice`. MP3/WAV/M4A acceptance delivered; physical Safari still unverified. Guard eedf0e8 is pushed and was applied/read back in the stopped worker; old8rows/fingerprint last verified unchanged. Current runtime cannot be asserted after the gap.
+
+The approved one Desktop restart times out, then exact read-only receipts prove it stopped. Independently reviewed one start-phase completion returnsCLI0; no second restart, reset, newpermission or dataremoval. New current access checks fail: IPv4banner, IPv6TCP, RustDesk rendezvous/fallback, native Tailscale inspection. Same Workspace sharing was proven while host+ownpresentation/AVoff/pausedclip, but that call is no longer active after the gap. No bot/map, timer or join-window activation occurred; sole allowance unused and valid. Site59/env70 unchanged/joins closed.
+
+Remaining dependency: one existing Asus access path restored. Next evidence: fresh exact container/source/data/queue checks and empty Workspace host sharing; then285second guard/PID/command/deadline, one ordinary guest UI bot, clip, incremental captions/nonzeroaudio, one valid map, normal leave, local reload/export/privacy and safe shutdown. No reliable ETA until connection and readiness are stable; prior recovery/live ranges missed due engine failure and long execution gaps. Goal remains incomplete/blocked, without asking for repeated product permission.
+
+
+## Current checkpoint — 2026-10-24 07:02 IST
+
+Outcome: complete guest Meet captions/live threads/audio/local reload. Root integration owner; authoritative existing codex/lct-inference-choice worktree. Reviewed guard eedf0e8 is pushed and applied to stopped exact worker (f9d671d4/owner/mode verified);8 retained rows unchanged at last passing preflight. All MP3/WAV/M4A journeys remain delivered. Approved Workspace synthetic-tab/audio sharing now works, host+own presentation only, AVoff, clip paused. Mac unlock handoff resolved. Site59/env70 unchanged, joins closed, sole bot/map unused.
+
+Fresh guarded activation after the overnight gap fails before worker/timer start because Docker engine returns500. Alternate engine queries stall; SSH/Desktop/WSL running does not prove engine ready. The operator approves one independently reviewed host-wide graceful Desktop restart; one invocation dispatched, result pending, no repeat/reset/delete. Remaining dependency: healthy exact runtime/source/data reconciliation. Finite next checks: old8records/knownterminaldelivery retained, source+UI+image/user exact, then supervisor285seconds/PID/command acknowledgement, one ordinary guest UI bot and clip, incremental captions/nonzeroaudio/one valid source-linked map, normal leave/finalplayback/localreload/export/privacy, joins closed/workerstopped/hostleft. Next evidence is restart result plus postflight, not another health claim. Recovery5–15active minutes then15–25live after readiness; human/browser/transport waits and new failures unknown. Prior forecastmiss explained by engine failure after execution gap.
+
+
 ## Current checkpoint — 2026-10-23 22:53 IST
 
 Outcome: guest Meet link to captions, live threads, audio and local reload. Integration owner root; authoritative `/Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads`, `codex/lct-inference-choice`. MP3/WAV/M4A acceptance is delivered and unchanged. Native synthetic-tab sharing worked in the approved repub Workspace profile; it must be re-established after the execution gap. No new bot/map has run.

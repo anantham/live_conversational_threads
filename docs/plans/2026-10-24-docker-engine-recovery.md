@@ -1,0 +1,35 @@
+# One-time Asus Docker Desktop recovery proposal
+
+Status: prepared H1 decision; no restart approved or performed. Integration owner root; authoritative codex/lct-inference-choice worktree. Outcome remains one guest Meet journey with local captions, threads and audio. Existing Site59/env70, data, keys, provider and caps are preserved.
+
+## Decisive evidence and uncertainty
+
+The reviewed terminal-task guard is committed/pushed as eedf0e8 and applied to the exact stopped worker. Readback f9d671d4/UID1000/GID1000/mode0755 passes; original archive retained. Independent exact Google review, sixteen isolated cases, actual Windows dry-run and real Django retained-record refusal pass. Subsequent read-only source/UI/capture/queue preflight passes with eight terminal records unchanged and only the known terminal redelivery. No bot or new map ran.
+
+After the overnight gap, the guarded activation's first Docker inspect returns HTTP500 after78.663seconds; it exits before docker start, timer creation or bot dispatch. Alternate exact-worker inspection times out35seconds. A distinct bounded host diagnostic succeeds17.504seconds: SSH/Tailscale running, Desktop status running, Docker version query times out8seconds. Windows/WSL metadata succeeds8.717seconds: docker-desktop running, other listed distributions stopped; 718000KiB of32947224KiB host RAM free and15472177152bytes of1972924035072bytes onC:. This establishes an unhealthy/unresponsive engine boundary; low-memory causation and API mismatch remain unproven. No DOCKER_API_VERSION override is set. Installed restart-help/unused-namespace query times out25seconds without output; do not count it as a gate pass. Stop repeated engine queries/activation attempts.
+
+Native Workspace synthetic-tab sharing is visibly working at the same empty test room; AVoff, host plus own presentation only, audio checked and31second clip paused at0. Ordinary guest form refuses while the testing window is closed. The single unused bot/map allowance remains valid; this proposal grants none beyond it.
+
+## Reserved action and blast radius
+
+Policy docs/AUTONOMY_AND_AUTHORITY_POLICY.md classifies expansion of deployment scope or acceptance of consequential uncertainty asH1. The existing approval targets the dedicated recorder. A Docker Desktop restart affects every container on the host, and engine failure prevents a current complete workload inventory. The operator must accept that broader temporary interruption before execution. Persistent volumes, files, container definitions and logs are retained; in-flight unrelated work could still be interrupted and cannot be promised recoverable.
+
+Proposed one-time action through the existing owner SSH account: verify exact hostname, then invoke `docker desktop restart --timeout 60` ONCE. Official syntax: https://docs.docker.com/reference/cli/docker/desktop/restart/. The supported flag bounds the command but does not guarantee the restart completed at timeout. Keep the owning SSH command attached until its result or a110second transport bound; record an uncertain result without another restart. No Windows reboot, wsl shutdown/terminate, API override, service-permission change, reset, prune, delete, reinstall, upgrade, new credential or new route.
+
+After that single attempt, run one bounded read-only reconciliation of Desktop status and exact app/worker identities. If the exact worker is running, stop only that known container before further work; preserve all recordings, volumes and original logs. Require candidate task source/hash/owner/mode, existing reviewed UI bind/image/user/project, eight retained terminal rows/fingerprint, dedicated DB/organization/gates and no unknown queued work before activation. Unknown identity, changed data, unavailable API or missing receipt leaves joins closed and sends no bot. Do not kill Docker/WSL or automatically retry the restart.
+
+Only after complete recovery/readiness and fresh empty-host sharing: use the existing unused guard namespace if confirmed absent; do not rearm a used namespace. Require independent285second supervisor PID/command/deadline acknowledgement; use one ordinary guest UI submission, normal admission, one31second synthetic clip, incremental captions/nonzero live audio, one valid source-linked map, normal leave and finalized playback/local reload/export/privacy checks. Close joins, stop exact worker, host leave and player pause at handoff. Existing bot/map caps and no-auto-retry rule persist.
+
+## Alternatives, recommendation and finite checkpoint
+
+Defer leaves Meet unavailable while completed MP3/WAV/M4A imports remain usable. A current human workload inventory can narrow the restart risk, but is not required if the owner explicitly accepts host-wide interruption. Recommendation: one graceful Desktop restart, confidence0.75 that it restores engine responsiveness, not a claim of root-cause repair. Predict successful exact-container inspect or a decisive failure; fallback is retain state and stop, never reset data or widen permissions.
+
+Review the authored recovery procedure independently before presenting the decision. No mutating dry-run is possible without performing the reserved restart; this is an operations-only slice using the official existing CLI, not a new product feature. Existing source tests/review are reused unchanged. Forecast5–15active minutes recovery plus15–25live validation once host readiness holds, separately from human/browser/transport waits; new engine or capture defects have unknown effort. Prior repair/live estimates were missed due the newly observed engine failure, not new spending or an exhausted bot allowance.
+
+## 2026-10-24 07:02 IST — Review and operator ruling
+
+Exact independent Google review PASS/no findings; receipt docs/reviews/2026-10-24-docker-engine-recovery.md. Operator explicitly answers Approve one Docker Desktop restart. One hostname-guarded invocation is dispatched; result pending. This supersedes the initial proposed/not-approved status without granting a repeated restart or another bot/map.
+
+## 2026-10-25 00:23 IST — Actual result and stopped method
+
+One restart invocation times out without completion; single read-only postflight proves Desktop stopped/engine pipe missing. One independently reviewed, bounded start of that stopped Desktop completes the start phase of the same approved operation, with no second stop/restart. StartCLI exits0 in61.795seconds; source/container/data readiness is not thereby established. After the long gap, both existing SSH routes and RustDesk fail; native local Tailscale inspection stalls. No further lifecycle operation is inferred. Source guard is saved/pushed/applied and original data retained at last verification; fresh state is unconfirmed. No bot/map/window/guard has been dispatched. Dependency now is restoring one existing access path, then fresh exact postflight before the sole guarded guest test. Prior forecast is no longer reliable; next range only after access/readiness. See review/worklog for exact receipts and limitations.
