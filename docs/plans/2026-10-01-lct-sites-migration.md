@@ -1,5 +1,14 @@
 ## CURRENT — 22 October: imports accepted; guarded Meet dispatch still pending
 
+## Current checkpoint — 2026-10-25 07:35 IST
+
+User reports Asus back. Fresh Tailscale client read (normal client access outside the filesystem sandbox) confirms BackendState Running and the exact Asus peer Online/Active with a fresh 07:27:37 IST handshake. The earlier default-sandbox preferences error is not evidence of a broken Tailscale client. This proves peer presence, not Windows SSH or Docker readiness.
+
+Existing IPv4 SSH fails during banner exchange after19.906seconds/no remote receipt; existing IPv6 SSH times out30.006seconds/no hostname receipt. One fresh saved RustDesk connection reaches Connecting then Connection error, without a remote desktop; screenshot inspection subsequently reports App quit. The current error detail was not exposed, so do not reuse the earlier rendezvous cause as a fresh diagnosis. These access methods are now bounded/stopped; no restart, worker/timer, Site mutation, provider call or bot occurred.
+
+Root/same authoritative checkout and branch, source guard unchanged. Outcome and finite acceptance remain the single guest Meet captions/source-linked threads/audio/local reload journey. Dependency is an existing working Windows control path, then fresh runtime/source/eight-record/queue and Site readiness, approved empty Workspace host sharing and the unused guarded one-bot/one-map test. No reliable ETA while access fails; previous recovery estimate remains missed for the documented engine/transport gaps. Completed import acceptance remains separate. This checkpoint adds evidence, not live delivery or a request for repeated permission.
+
+
 ## Current checkpoint — 2026-10-25 00:23 IST
 
 00:48 update: exact checkpoint14707de is remotely verified. Latest native Sites environment read fails at MCP transport; Site59/env70/closedjoins are last-verified, with no subsequent env write/deployment by this task. Fresh cloud control and Asus runtime confirmation must precede activation.
