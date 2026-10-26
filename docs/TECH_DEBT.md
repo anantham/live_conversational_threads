@@ -432,3 +432,8 @@ SitesAccessPanel.jsx is261lines and the route-only import parity does not warran
 ## 2026-10-21 — Pinned upstream Meet UI remains a large external integration surface
 
 The public GoogleMeetUIMethods source used by the isolated Asus recovery is1317lines with login, admission, layout, captions and diagnostics. This repair changes only the derived select_language boundary through a hash-pinned generator; avoid unrelated upstream rewrites while capture acceptance is incomplete. Future upstream contribution should separate idempotent caption-language configuration from login/layout and test its DOM ownership/postconditions. New generator and authored fixtures should remain cohesive and small. Not a blocker or new architecture decision for the current bounded repair.
+
+
+## 2026-10-26 — Native source dependency-link and prerequisite-receipt safeguards
+
+Official native source tracks a node_modules link into the task checkout. Calling an installer despite dependencies_present=true can mutate that shared target; a successful tool transport does not imply a successful prerequisite command. Current incident recovered with lock-inventory-equal preserved packages, original link and passing full1236checks/build. Follow-up: source workflow should refuse redundant install on a present shared dependency link, and wrap dependent save/publish in explicit successful-check receipts. Current clean archive was inspected and payload-compared before successful publication; this is not a claim that a general orchestration guard is implemented. Do not broaden this provider trial into dependency upgrades or tooling redesign.

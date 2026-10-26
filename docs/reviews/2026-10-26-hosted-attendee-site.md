@@ -1,0 +1,35 @@
+# Protected hosted Attendee Site trial — 26 October 2026
+
+Outcome: owner-only one-lifetime synthetic provider trial at https://threads.adityaarpitha.com/meeting-trial. It is deployed but real provider capture remains unaccepted. No guest release, map call, automatic browser archive or public contribution is claimed.
+
+## Exact source and independent review
+
+Integration owner root; authoritative checkout /Users/aditya/.codex/worktrees/lct-inference-choice/live_conversational_threads, branch codex/lct-inference-choice. Product commit5072b4a5a8fe8e33e3ae603e5c86763511bc3576 is committed/pushed. Nine production paths were mirrored byte-for-byte into official native source bf8e898d50967fc8375d020fbf25d4181c5ac0d7; task-only tests/tooling/docs were not substituted for deployable source.
+
+Standing review authorization was read before disclosure. Saved, inspected, scanned packet:71105bytes, SHA256 6d629639329dcbf18fccd9ad10d99a1f9e673a42fbabda46bce7912794448e3a. Full transport/controller/UI/tests/migration/test intent, integration diffs and unchanged auth/policy context only. No credential, real meeting/account identity, private transcript/memory/log, media or raw artifact. Google Gemini3.8FlashLow on existing AGY subscription, fresh conversation a645d564-6def-48cf-8e4f-3e3a666c51d3, SUCCESS/PASS with no findings;15.935seconds transport/4.692766reported/one turn. Plan mode, sandbox and slash expansion disabled; no stronger isolation claim than the actual harness. Packet/manifest/response retained privately at /private/tmp/lct-hosted-site-review-20261026. This verdict applies to exact5072b4a source, not runtime acceptance.
+
+## Validation
+
+- Fifty focused/adjacent public Worker, UI and existing-meeting/guest checks pass. Error-path tests found unawaited async results escaping JSON handling; both boundaries were repaired before review.
+- Full mandatory runner:1236/1236 tests in135files,13.82seconds with inherited compatibility flag;10.88seconds through corrected runner without a caller flag. Final post-dependency-restoration rerun:1236/1236 in135files,9.74seconds at09:25:10IST; log /private/tmp/lct-hosted-final-ci-20261026.log. Its first sandboxed invocation was denied a Vite temporary-config write before tests; normal authorized worktree invocation then passed.
+- Known Node26 global Web Storage fixture collision is addressed only in test launcher NODE_OPTIONS on Node25+; no product storage or assertion weakening. Historical0016 checks retain the exact approved17-entry prefix/proposal/SQL/snapshot. Real in-memory SQLite0017 check preserves every old schema definition and retained synthetic old holder while enforcing the singleton.
+- Task and native client/Worker builds pass; Worker192.41kB, native client index-BsgANi9m.js and index-XzAL1HEm.css. No dependency/lockfile change.
+- Synthetic closed localhost preview at390CSSpx: document width390, input350x44, both actions44high. Screenshot /private/tmp/lct-hosted-site-mobile-20261026.png. It refused all writes and is layout proof only.
+
+## Packaging and recovered orchestration mistakes
+
+Official native dependency link originally reported dependencies present. Unnecessary official installation followed its tracked link and emptied the shared task dependency target, then placed the locked installation in native node_modules. No source/data was lost. Preserved installation parked at /private/tmp/lct-hosted-site-installed-deps-20261026; complete task/native package inventories compared equal. Confirmed empty original target was restored from that exact installation, original tracked link retained, both Vite resolutions/native build and final full suite pass. No further install/audit fix/upgrade. Installer reports16 locked-package audit findings (6moderate/8high/2critical); these are untriaged dependency metadata, not proven exploits.
+
+Initial archive preflight failed on macOS AppleDouble sidecars, but orchestration incorrectly proceeded to save before checking the failure. No publication happened at that point. Rebuilt with the same official helper, COPYFILE_DISABLE=1 and no redundant build/install. Clean archive /private/tmp/lct-hosted-site-20261026-clean.tar.gz:649071bytes, SHA2561675b9518b9ff9744502c9226e3d0f6759f42ab1bb34c83c9aaa799633946d50,56entries/49regularfiles, no sidecars/secrets/env/node_modules/git artifacts, exact0017 once. Every regular payload file matches the first archive. Clean save deduplicated to the same version60/canonical payload, not61. Both artifacts retained. The controlling correction is to inspect a successful prerequisite receipt before any dependent mutation; neither failed check is called passing evidence.
+
+## Publication and live proof
+
+Existing Site appgprj_6abe98e1b1b08191b2b763a78e1da819, active/public audience preserved. Saved version60: appgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_0e54f7cbb4b08191960bf92ba04044f7. Canonical storage file_0000000077f882089069b42714f19e68, SHA2560568d4d0ffd7b682b403574b84a2c1008269284132caed97aa470b23c6a26329,2088960bytes/49files. Deployment appgdep_6adecd8efdc88191b10f90573b8e104e succeeded2026-10-26T03:48:58.404273Z, failure null, environment71. Custom-domain page actually serves the trial UI.
+
+Only hosted ENABLED=false and fixed approved room were added to existing server configuration. Hosted API-key name is absent at fresh environment71 read; deadline absent; old relay/generation/STT/auth settings retained. All seven old DB table names remain; new lct_hosted_attendee_trials complete read returns columns and zero rows/next_offsetnull. This proves no hosted reservation at the observation, not old-table row counts. Isolated migration tests and additive-only SQL provide nonmutation evidence separately.
+
+Approved Google owner selected in existing chooser; popup closed, actual deployed trial recognizes owner and account panel displays Your account/Signed in/Sign out. One transient CDP read timeout did not establish session failure; later current DOM/AX proved success. Screenshot /private/tmp/lct-hosted-site-live-20261026.png shows actual custom-domain closed trial. No password/token/cookie was read or exposed.
+
+## Remaining acceptance
+
+The user must privately enter existing Attendee key in existing Site secrets as LCT_HOSTED_ATTENDEE_API_KEY; preserve LCT_ATTENDEE_API_KEY. Computer control explicitly denies Terminal and the desktop Site-settings app; do not bypass those denials. No new key/rotation inferred. Apply key configuration with admission still closed, prove positive authenticated empty-project check, then fresh free allowance/empty approved Workspace host/AVoff/synthetic tab audio. Same unused one180second bot only: multiple nonempty incremental caption snapshots, terminal state, final nonzero playable MP3, local transcript/audio downloads and shutdown. No replacement bot/paid STT/map/recovery. No real provider check, bot, recording or inference was dispatched by this deployment. Full LCT live threads, guest automatic local persistence and unattended acceptance remain unproven and later than provider proof.
