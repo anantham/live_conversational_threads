@@ -9,7 +9,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from trial import HostedTrial, TrialError, NoRedirect
+from trial import HostedTrial, TrialError, NoRedirect, DirectAPI
+from email.message import Message
+from io import BytesIO
+from unittest.mock import patch
 
 ID = 'bot_0123456789abcdef'
 ROOM = 'https://meet.google.com/abc-defg-hij'
@@ -65,6 +68,7 @@ class TrialTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):trial.start(ROOM)
             self.assertEqual(sum(c[0]=='POST' for c in api.calls),1)
             self.assertTrue((trial.root/'create-attempted.json').exists())
+            self.assertEqual(json.loads((trial.root/'intent.json').read_text())['deduplication_key'],json.loads((trial.root/'create-attempted.json').read_text())['deduplication_key'])
     def test_invalid_room_and_existing_output_refuse(self):
         with tempfile.TemporaryDirectory() as d:
             api=API();trial=self.make(d,api);trial.preflight()
@@ -76,7 +80,57 @@ class TrialTests(unittest.TestCase):
             api=API();trial=self.make(d,api);trial.preflight();trial.start(ROOM);api.state='fatal_error'
             with self.assertRaises(TrialError):trial.finish()
             self.assertFalse((trial.root/'recording.mp3').exists())
+            self.assertEqual(json.loads((trial.root/'finalization.json').read_text())['state'],'fatal_error')
     def test_no_redirect_forwarding(self):
         self.assertIsNone(NoRedirect().redirect_request(None,None,302,'redirect',{},'https://example.com'))
+
+    def test_unconfirmed_cleanup_is_recorded_and_not_retried(self):
+        with tempfile.TemporaryDirectory() as d:
+            class Broken(API):
+                def request(self, method, suffix='', body=None):
+                    if suffix == '/' + ID: raise TrialError('transport')
+                    return super().request(method,suffix,body)
+            api=Broken();trial=self.make(d,api);trial.preflight();trial.start(ROOM)
+            with self.assertRaises(TrialError):trial.leave()
+            self.assertEqual(trial.leave(),{'leave_sent':False})
+            self.assertEqual(json.loads((trial.root/'leave.json').read_text()),{'leave_sent':False,'confirmed_terminal':False})
+
+class TransportTests(unittest.TestCase):
+    def fixture(self, raw, content_type):
+        class Response(BytesIO):
+            headers=Message()
+        response=Response(raw);response.headers['Content-Type']=content_type
+        class Opener:
+            calls=[]
+            def open(self, req, timeout):self.calls.append(req);return response
+        return Opener()
+    def test_api_request_uses_only_documented_origin(self):
+        opener=self.fixture(b'{"results":[],"next":null}','application/json')
+        with patch('urllib.request.build_opener',return_value=opener):api=DirectAPI('SYNTHETIC-ONLY-KEY-12345')
+        self.assertEqual(api.request('GET'),{'results':[],'next':None})
+        self.assertEqual(opener.calls[0].full_url,'https://app.attendee.dev/api/v1/bots')
+        self.assertEqual(opener.calls[0].get_header('Authorization'),'Token SYNTHETIC-ONLY-KEY-12345')
+        with self.assertRaises(TrialError):api.request('GET','/other')
+        self.assertEqual(len(opener.calls),1)
+    def test_presigned_mp3_query_does_not_forward_api_key(self):
+        opener=self.fixture(b'ID3'+bytes(256),'audio/mpeg')
+        with patch('urllib.request.build_opener',return_value=opener):api=DirectAPI('SYNTHETIC-ONLY-KEY-12345')
+        url='https://attendee-short-term-storage-production.s3.amazonaws.com/fixture.mp3?X-Amz-Signature=synthetic'
+        self.assertEqual(api.download(url),b'ID3'+bytes(256))
+        self.assertIsNone(opener.calls[0].get_header('Authorization'))
+        self.assertEqual(opener.calls[0].full_url,url)
+    def test_unknown_media_origin_refuses_before_network(self):
+        opener=self.fixture(b'ID3'+bytes(256),'audio/mpeg')
+        with patch('urllib.request.build_opener',return_value=opener):api=DirectAPI('SYNTHETIC-ONLY-KEY-12345')
+        for url in ['http://attendee-short-term-storage-production.s3.amazonaws.com/a.mp3',
+                    'https://attendee-short-term-storage-production.s3.us-east-1.amazonaws.com/a.mp3',
+                    'https://example.com/a.mp3']:
+            with self.subTest(url=url),self.assertRaises(TrialError):api.download(url)
+        self.assertEqual(opener.calls,[])
+    def test_oversized_or_non_json_api_response_refuses(self):
+        for raw,typ in [(b'x'*(1_048_576+1),'application/json'),(b'html','text/html')]:
+            opener=self.fixture(raw,typ)
+            with patch('urllib.request.build_opener',return_value=opener):api=DirectAPI('SYNTHETIC-ONLY-KEY-12345')
+            with self.assertRaises(TrialError):api.request('GET')
 
 if __name__=='__main__':unittest.main()

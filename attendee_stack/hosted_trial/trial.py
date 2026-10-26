@@ -91,11 +91,12 @@ class HostedTrial:
         # New private root before any provider request; never reuse another run.
         self.root.mkdir(mode=0o700, parents=False, exist_ok=False)
         self.bot = None
-        self.left = False
+        self.leave_attempted = False
+        self.dedup_key = 'lct-hosted-' + uuid.uuid4().hex
         self.prepared = False
         self.snapshots = set()
         self._save('intent.json', {'purpose': 'one synthetic hosted pilot', 'max_seconds': 180,
-                                  'no_retry': True, 'production_adapter': False})
+                                  'no_retry': True, 'production_adapter': False, 'deduplication_key': self.dedup_key})
 
     def _save(self, name, data):
         path = self.root / name
@@ -116,7 +117,7 @@ class HostedTrial:
         # Exclusive durable marker precedes POST, including timeout/invalid reply.
         fd = os.open(self.root / 'create-attempted.json', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as handle:
-            json.dump({'attempted': True, 'deduplication_key': 'lct-hosted-' + uuid.uuid4().hex}, handle)
+            json.dump({'attempted': True, 'deduplication_key': self.dedup_key}, handle)
         marker = json.loads((self.root / 'create-attempted.json').read_text())
         body = {'meeting_url': meeting_url, 'bot_name': 'LCT synthetic trial — captions and audio',
                 'deduplication_key': marker['deduplication_key'],
@@ -157,20 +158,29 @@ class HostedTrial:
         return status
 
     def leave(self):
-        if not self.bot or self.left:
+        if not self.bot or self.leave_attempted:
             return {'leave_sent': False}
-        self.left = True  # no automatic retry of a failed leave; server cap is set
-        state = self.api.request('GET', '/' + self.bot)
-        if state.get('id') != self.bot or state.get('state') not in STATES:
-            raise TrialError('Leave identity/state differs')
-        if state['state'] not in TERMINAL | {'leaving', 'post_processing'}:
-            self.api.request('POST', '/' + self.bot + '/leave')
-        return {'leave_sent': True}
+        self.leave_attempted = True  # one bounded cleanup attempt, not proof of leaving
+        receipt = {'leave_sent': False, 'confirmed_terminal': False}
+        try:
+            state = self.api.request('GET', '/' + self.bot)
+            if not isinstance(state, dict) or state.get('id') != self.bot or state.get('state') not in STATES:
+                raise TrialError('Leave identity/state differs')
+            receipt['confirmed_terminal'] = state['state'] in TERMINAL
+            if state['state'] not in TERMINAL | {'leaving', 'post_processing'}:
+                self.api.request('POST', '/' + self.bot + '/leave')
+                receipt['leave_sent'] = True
+            return receipt
+        finally:
+            self._save('leave.json', receipt)
 
     def finish(self):
         state = self.api.request('GET', '/' + self.bot)
-        if state.get('id') != self.bot or state.get('state') != 'ended':
-            raise TrialError('Successful terminal state not verified')
+        if not isinstance(state, dict) or state.get('id') != self.bot or state.get('state') not in STATES:
+            raise TrialError('Final bot identity/state differs')
+        if state['state'] != 'ended':
+            self._save('finalization.json', {'state': state['state'], 'audio_downloaded': False, 'provider_pilot_passed': False})
+            raise TrialError('Recording not finalized successfully: ' + state['state'])
         recording = self.api.request('GET', '/' + self.bot + '/recording')
         if not isinstance(recording, dict) or not isinstance(recording.get('url'), str):
             raise TrialError('Recording response differs')
@@ -180,7 +190,8 @@ class HostedTrial:
             handle.write(raw)
         result = {'terminal': True, 'audio_bytes': len(raw), 'audio_sha256': hashlib.sha256(raw).hexdigest(),
                   'distinct_nonempty_snapshots': len(self.snapshots), 'local_artifacts': True,
-                  'provider_pilot_only': True, 'lct_end_to_end': False}
+                  'provider_pilot_only': True, 'lct_end_to_end': False,
+                  'incremental_captions': len(self.snapshots) >= 2, 'requires_audio_playback_verification': True}
         self._save('result.json', result)
         return result
 
