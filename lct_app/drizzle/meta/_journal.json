@@ -120,6 +120,13 @@
       "when": 1792662000000,
       "tag": "0016_model_retirement_recovery_oct22",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1792985034987,
+      "tag": "0017_hosted_attendee_trial",
+      "breakpoints": true
     }
   ]
 }

@@ -102,3 +102,21 @@ export const meetings = sqliteTable('lct_meetings', {
   check('lct_meetings_state_check', sql`${table.state} in ('starting', 'uncertain', 'active', 'ended')`),
   check('lct_meetings_duration_check', sql`${table.endsAt} > ${table.createdAt} and ${table.endsAt} <= ${table.createdAt} + 300000`),
 ]);
+
+
+// Separate one-time hosted provider pilot. One lifetime row; never reuse old Asus receipts.
+export const hostedAttendeeTrials = sqliteTable('lct_hosted_attendee_trials', {
+  id: integer('id').primaryKey(),
+  requestId: text('request_id').notNull(),
+  owner: text('owner').notNull(),
+  urlHash: text('url_hash').notNull(),
+  botId: text('bot_id'),
+  state: text('state', { enum: ['starting', 'uncertain', 'active', 'ended'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+  endsAt: integer('ends_at').notNull(),
+  leaveAttemptedAt: integer('leave_attempted_at'),
+}, table => [
+  check('lct_hosted_attendee_singleton', sql`${table.id} = 1`),
+  check('lct_hosted_attendee_state', sql`${table.state} in ('starting', 'uncertain', 'active', 'ended')`),
+  check('lct_hosted_attendee_duration', sql`${table.endsAt} = ${table.createdAt} + 180000`),
+]);

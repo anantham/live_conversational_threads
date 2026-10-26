@@ -142,3 +142,28 @@ setting a key alone cannot connect the current Asus-only snapshot/audio routes.
 Present it as an alternative for the user to select, not authority inferred from
 asking what other ways exist. Rollback disables the hosted path and keeps prior
 Site data/Asus settings. No new Site, VM, billing upgrade or Google Cloud host.
+
+
+## Selected continuation: existing Site route
+
+User explicitly adopts the proposed server-secret route. Root owns the same
+integration checkout and official native source. Add an owner-only /meeting-trial
+page and /api/cloud/hosted-trial HTTP controller. A separate schema-only singleton
+receipt holds exactly one lifetime attempt, leaving the old Asus table/holders
+unchanged. Existing LCT_MEETINGS_OWNER is the authorized account; new server key,
+fixed approved room and admission deadline are independent of the old relay.
+
+Fresh remote empty-project read precedes atomic reservation and one create;
+uncertainty remains reserved, with original-dedup GET reconciliation only. Server
+180second cap, native captions, MP3 and no debug recording/paid STT. Reads and
+one durable leave attempt remain available after admission closes. Signed media
+is pinned to the documented host, bounded20MiB and fetched without API auth. No
+key/URL/body is logged. Browser receives captions and its own audio proxy only.
+No automatic join, replacement bot, media playback, map or public publication.
+Full guest/live-thread/browser persistence acceptance remains deferred.
+
+The user enters LCT_HOSTED_ATTENDEE_API_KEY in existing Site secrets; no native
+ChatGPT/Terminal UI automation is permitted. Native Sites tools support server
+configuration, but they do not reveal the provider's one-time key. No new key or
+rotation inferred. Implement/refuse/review/build before enabling the one pilot;
+verify all old data and default-off posture at deployment and shutdown.

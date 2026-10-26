@@ -3,6 +3,7 @@ import Home from "../pages/Home";
 import NewConversation from "../pages/NewConversation";
 import SitesNewConversation from "../pages/SitesNewConversation";
 import SitesMeetings from "../pages/SitesMeetings";
+import SitesHostedTrial from "../pages/SitesHostedTrial";
 import SitesAudioImport from "../pages/SitesAudioImport";
 import JoinMeeting from "../pages/JoinMeeting";
 import MeetingView from "../pages/MeetingView";
@@ -36,6 +37,7 @@ export default function AppRoutes() {
       <Route path="/" element={<Home />} />
       <Route path="/new" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesNewConversation /> : <NewConversation />} />
       {/* Attendee meeting bot: paste a Meet link, then watch the live graph. */}
+      {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/meeting-trial" element={<SitesHostedTrial />} />}
       <Route path="/meeting" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesMeetings /> : <JoinMeeting />} />
       <Route path="/meeting/:conversationId" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesMeetings /> : <MeetingView />} />
       <Route path="/browse" element={<Browse />} />

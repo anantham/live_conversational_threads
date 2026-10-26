@@ -51,10 +51,11 @@ it('refuses an insufficient age without changing rows', () => {
 
 it('only appends migration16, preserves schema and proposes one model-only setting', () => {
   const proposed = JSON.parse(read(proposal + '_journal.json'));
-  expect(proposed).toEqual(journal);
+  // This historical approval fixes the first17 entries; later schema migrations may append.
+  expect(proposed).toEqual({ ...journal, entries: journal.entries.slice(0, proposed.entries.length) });
   expect(proposed.entries).toHaveLength(17);
   expect(proposed.entries.at(-1)).toMatchObject({ idx: 16, tag: '0016_model_retirement_recovery_oct22' });
-  expect(proposed.entries.at(-1).when).toBeGreaterThan(journal.entries.at(-2).when);
+  expect(proposed.entries.at(-1).when).toBeGreaterThan(proposed.entries.at(-2).when);
   const previous = JSON.parse(read('../../../drizzle/meta/0015_snapshot.json'));
   expect(read('../../../drizzle/meta/0016_snapshot.json')).toBe(read(proposal + '0016_snapshot.json'));
   const current = JSON.parse(read('../../../drizzle/meta/0016_snapshot.json'));
