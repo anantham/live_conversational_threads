@@ -177,3 +177,8 @@ Implementation5072b4a is pushed, exact Google review PASS, final mandatory1236/1
 ## New-room request — evening26October
 
 User selects a new Meet room; only normalized fixed-room secret changes, SHA256661620244833768cebdaa8a9cf95891c39ba34411879bedc6615f5025adf48fd. Environment72/same saved60 deployment succeeds. Key-name remains absent/admissionOFF/new table0rows. Pre-join shows an active Workspace call, so empty synthetic readiness is not satisfied; do not transfer/record that conversation or infer participant consent. Pre-join microphone input is rejected by automatic approval and not retried. One180second allowance unused. Private key handoff and genuinely empty room readiness remain prerequisites; all privacy/cost/no-replacement boundaries persist.
+
+
+## 27October — Hosted secret saved; runtime value not yet valid
+
+Exact supported web settings opened and user privately saved key (native73/is_secrettrue). LCT Google owner sign-in restored. Reviewed source057343e/native7ff40d2a/configuration diagnostic served61/env73 after1242tests/build/GooglePASS. Actual runtime key predicate fails; owner/room pass. No raw key or readback, provider request, bot, paid STT/map or reservation. Chrome extension UI blocks Replace before input; user handoff asks dismiss/correct or report lost value. No new credential/rotation. Keep same180second allowance unused, no actual remaining-balance/empty-provider-project or fresh room readiness claim. Exact receipts in docs/reviews/2026-10-27-hosted-configuration.md.

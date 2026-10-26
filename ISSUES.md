@@ -1,3 +1,7 @@
+## 2026-10-27 — Hosted runtime key format remains unresolved after private save
+
+The settings handoff is resolved: exact supported web route works in existing Chrome, key privately saved/is_secrettrue in73, owner sign-in restored. Source057343e/native7ff40d2a served61/env73 with1242tests/build/independent GooglePASS. Owner-only status now identifies only runtime key missing/format failure; room/owner pass. No key value read or provider authentication attempted; exact input versus mapping cause remains unknown. Chrome extension UI blocks normal Replace before input; no retry/workaround. Private correction/extension dismissal requested, with lost-value alternative; no new credential inferred. Blocks provider pilot, not reviewed deployment. One180second allowance unused. See docs/reviews/2026-10-27-hosted-configuration.md.
+
 ## 2026-10-27 — Hosted status hides which configuration field is invalid
 
 Key is now privately saved/is_secrettrue and deployed on existing Site60/env73; owner Google session restored. Owner-only status still reports configuredfalse without field evidence. This blocks even read-only provider preflight. Do not infer bad credentials or ask another blind paste. Prepare fixed redacted key/room validation diagnostics with unchanged validators/gates; test no disclosure/outbound/row changes and independent review before publication. Native metadata presence and deployment success do not prove runtime key validity.
