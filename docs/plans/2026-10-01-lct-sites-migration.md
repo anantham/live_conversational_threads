@@ -1,5 +1,14 @@
 ## CURRENT — 22 October: imports accepted; guarded Meet dispatch still pending
 
+## Current slice — 2026-10-26: small hosted Attendee provider trial
+
+User selects hosted trial first. Root integrates in the existing codex/lct-inference-choice checkout. Same LCT Site/data retained and live join window closed; Asus methods stay stopped. Actual Google basic sign-in reaches hosted dashboard for the existing chosen LCT owner, confirms five free hours and an empty project with no bots or keys. Dedicated key dialog named/prepared but not submitted; no purchase or bot.
+
+Bounded next journey: one native-caption/MP3 synthetic bot, server maximum180seconds, empty approved Workspace room, direct API only, original transcript/audio saved locally. This is provider proof before the LCT adapter; live threads/IndexedDB/cross-device acceptance remain incomplete. Isolated client prepared with six passing public-interface cases, positive empty-project gate, exclusive one-create marker, no key in args/env/files/logs, direct fixed HTTPS/no proxy/redirect and bounded exact-host media download. Official schema/retention inspected. No credential sent through Scalar's browser client, which can proxy requests externally.
+
+Next evidence: exact independent review, action-time key creation/secure-entry step, fresh empty host/synthetic sharing, then one real provider capture and terminal/audio/local-file proof. No new map/STT provider use or automatic replacement bot. Forecast20–40active minutes after credential/host readiness; external verification and capture failures unknown. See docs/plans/2026-10-26-hosted-attendee-trial.md. Full LCT journey remains unaccepted; one hosted trial does not prove the adapter or both-computers-off LCT behavior.
+
+
 ## Current checkpoint — 2026-10-26 07:30 IST
 
 Outcome remains guest Meet captions, source-linked live threads, recorded audio and browser-local reload. Integration owner root; same authoritative codex/lct-inference-choice checkout. Resumed read-only checks find the exact Asus peer Online/Active with fresh 07:21:57 IST handshake, but IPv4 and IPv6 SSH each time out at TCP connection (10.021/10.011 seconds), before authentication or a hostname receipt. One saved RustDesk connection reaches its real remote window then reports rendezvous failure for both WebRTC and fallback. No Windows desktop or remote command was reached. These three failed access methods are stopped; local service/listener output requested as a connection handoff, not new repair/test authority.
