@@ -7,3 +7,5 @@
 - Browser UI never auto-joins/retries/plays media, requires synthetic-room consent, renders errors and streamed caption changes, and keeps mobile controls within the viewport.
 
 - Preserve the approved migration16 prefix byte-for-byte in meaning while later schema migrations append. Run actual singleton/schema/data preservation against isolated SQLite. On Node25+, the CI launcher inherits the established webstorage compatibility flag into test workers; do not alter product storage or weaken fixtures/assertions.
+
+- Owner-only status identifies invalid key/room configuration using fixed redacted messages, without returning values, contacting a provider, relaxing validation or reserving a trial. Guests still receive only sign-in refusal; the UI names the failed setup prerequisite and keeps Check/Send disabled.

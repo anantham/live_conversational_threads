@@ -55,11 +55,33 @@ describe('one owner-only hosted Attendee Site pilot', () => {
   });
   it('keeps old Asus data intact while status is read-only and a configured check proves empty project', async () => {
     const before = db.prepare('SELECT * FROM lct_meetings').all();
-    expect(await (await run('/status')).json()).toMatchObject({ canJoin: true, maxSeconds: 180, trial: null });
+    expect(await (await run('/status')).json()).toMatchObject({ canJoin: true, maxSeconds: 180, trial: null, configurationIssues: [] });
     expect(calls).toEqual([]);
     expect(await (await run('/check', { method: 'POST', body: {} })).json()).toMatchObject({ authenticated: true, emptyProject: true });
     expect(calls).toHaveLength(1); expect(calls[0].options.method).toBe('GET'); expect(row()).toBeUndefined();
     expect(db.prepare('SELECT * FROM lct_meetings').all()).toEqual(before);
+  });
+  it.each([
+    ['LCT_HOSTED_ATTENDEE_API_KEY', '', 'Hosted Attendee API key is missing or has an invalid format.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', KEY + '\n', 'Hosted Attendee API key is missing or has an invalid format.'],
+    ['LCT_HOSTED_ATTENDEE_MEETING_URL', '', 'Approved Meet room configuration is missing or invalid.'],
+    ['LCT_HOSTED_ATTENDEE_MEETING_URL', ROOM + '?browser=1', 'Approved Meet room configuration is missing or invalid.'],
+  ])('reports only redacted owner setup issues for %s', async (name, value, message) => {
+    env[name] = value;
+    const response = await run('/status'), body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ configured: false, canJoin: false, configurationIssues: [message], trial: null });
+    expect(JSON.stringify(body)).not.toContain(KEY); expect(JSON.stringify(body)).not.toContain(ROOM);
+    expect((await run('/check', { method: 'POST', body: {} })).status).toBe(503);
+    expect(row()).toBeUndefined(); expect(calls).toEqual([]);
+  });
+  it('withholds setup diagnostics from guests and other owners', async () => {
+    env.LCT_HOSTED_ATTENDEE_API_KEY = '';
+    for (const [id, status] of [['', 401], ['other', 403]]) {
+      const response = await run('/status', { headers: { 'oai-authenticated-user-id': id } });
+      expect(response.status).toBe(status); expect(await response.text()).not.toContain('configurationIssues');
+    }
+    expect(row()).toBeUndefined(); expect(calls).toEqual([]);
   });
   it('refuses missing key, expired/default-off configuration, wrong room, consent and origin before create', async () => {
     for (const [key, value] of [['LCT_HOSTED_ATTENDEE_API_KEY',''], ['LCT_HOSTED_ATTENDEE_ENABLED','false'], ['LCT_HOSTED_ATTENDEE_TEST_END','2000-01-01']]) {

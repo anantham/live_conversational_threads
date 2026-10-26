@@ -90,7 +90,7 @@ export default function SitesHostedTrial() {
       <p className="mt-3 text-sm leading-6 text-slate-600">One synthetic recording, up to three minutes. This checks hosted captions and audio before connecting live threads. Nothing is published.</p>
       {error && <p role="alert" className="mt-4 break-words text-sm text-rose-800">{error.message} {error.status === 401 && <Link className="underline" to="#site-access">Sign in</Link>}</p>}
       {message && <p role="status" className="mt-4 text-sm">{message}</p>}
-      {status && !status.configured && <p className="mt-4 text-sm">The hosted recorder is waiting for its server secret and approved room configuration.</p>}
+      {status && !status.configured && <p className="mt-4 text-sm">{Array.isArray(status.configurationIssues) && status.configurationIssues.length ? status.configurationIssues.join(' ') : 'The hosted recorder is waiting for its server secret and approved room configuration.'}</p>}
       {!status?.trial && <form onSubmit={join} className="mt-6 space-y-4">
         <label className="block text-sm font-medium" htmlFor="hosted-room">Approved empty Google Meet room</label>
         <input id="hosted-room" type="url" required value={url} onChange={event => setURL(event.target.value)} disabled={busy || attempted} placeholder="https://meet.google.com/abc-defg-hij" className="min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-sm" />

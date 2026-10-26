@@ -83,7 +83,7 @@ export async function handleHostedTrial(request, env) {
     const row = await read(env);
     if (row && row.owner !== owner) throw new MeetingError(403, 'owner', 'This trial belongs to a different owner.');
     if (suffix === '/status') return meetingJSON(200, { configured: Boolean(config.configured),
-      canJoin: config.canJoin && !row, maxSeconds: 180, trial: receipt(row) });
+      configurationIssues: config.configurationIssues, canJoin: config.canJoin && !row, maxSeconds: 180, trial: receipt(row) });
     if (!config.configured) throw new MeetingError(503, 'inactive', 'Add the hosted Attendee server secret and approved room configuration.');
     if (request.method === 'POST') requireMeetingWrite(request);
     if (suffix === '/check') {

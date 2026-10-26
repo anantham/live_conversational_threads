@@ -1,3 +1,11 @@
+## 2026-10-27 — Hosted status hides which configuration field is invalid
+
+Key is now privately saved/is_secrettrue and deployed on existing Site60/env73; owner Google session restored. Owner-only status still reports configuredfalse without field evidence. This blocks even read-only provider preflight. Do not infer bad credentials or ask another blind paste. Prepare fixed redacted key/room validation diagnostics with unchanged validators/gates; test no disclosure/outbound/row changes and independent review before publication. Native metadata presence and deployment success do not prove runtime key validity.
+
+## 2026-10-27 — Same-hash sign-in link does not reopen closed account panel
+
+Nonblocking: current trial URL already ends #site-access while its panel is closed. Clicking its Sign in link leaves state unchanged; the ordinary account Sign in button opens it and permits successful Google flow. Impact: confusing account reentry link; next separate UI repair should use the shared open-panel event/action rather than rely solely on hash change. Do not derail current hosted configuration/provider test.
+
 ## 2026-10-26 evening — Requested hosted room is active; key still absent
 
 New user-selected room is configured/deployed on same Site60/env72, hosted admissionOFF. Fresh trial-table read empty. Key-name LCT_HOSTED_ATTENDEE_API_KEY remains absent. Actual pre-join reports an active Workspace call with another participant; empty-room synthetic precondition is unmet. No call transfer/join/recording/bot dispatched. Automatic approval rejected pre-join mic control as live-call actuation; no retry. Blocking next provider proof, not completed source delivery. Next: private key handoff/positive server check and genuinely empty synthetic room; keep all previous caps/privacy and owner identity. Current trial owner attempt expired after the existing chooser; no success/root-cause claim or repeated sign-in, and no credentials inspected. Establish owner readiness before activation.

@@ -11,11 +11,13 @@ export function hostedConfig(env) {
   const key = env.LCT_HOSTED_ATTENDEE_API_KEY;
   const owner = env.LCT_MEETINGS_OWNER;
   const room = env.LCT_HOSTED_ATTENDEE_MEETING_URL;
-  const configured = typeof key === 'string' && /^[!-~]{20,512}$/.test(key) &&
-    typeof owner === 'string' && /^(google|chatgpt):.{1,255}$/.test(owner) &&
-    typeof room === 'string' && /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(room);
+  const configurationIssues = [];
+  if (!(typeof key === 'string' && /^[!-~]{20,512}$/.test(key))) configurationIssues.push('Hosted Attendee API key is missing or has an invalid format.');
+  if (!(typeof owner === 'string' && /^(google|chatgpt):.{1,255}$/.test(owner))) configurationIssues.push('Hosted trial owner configuration is invalid.');
+  if (!(typeof room === 'string' && /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(room))) configurationIssues.push('Approved Meet room configuration is missing or invalid.');
+  const configured = configurationIssues.length === 0;
   const deadline = Date.parse(env.LCT_HOSTED_ATTENDEE_TEST_END || '');
-  return { key, owner, room, configured, canJoin: configured && env.LCT_HOSTED_ATTENDEE_ENABLED === 'true' &&
+  return { key, owner, room, configured, configurationIssues, canJoin: configured && env.LCT_HOSTED_ATTENDEE_ENABLED === 'true' &&
     Number.isFinite(deadline) && deadline - Date.now() >= 180_000 };
 }
 

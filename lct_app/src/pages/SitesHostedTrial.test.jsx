@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = () => 'blob:synthetic-transcript'; static revokeObjectURL = () => {}; });
   vi.stubGlobal('fetch', vi.fn(async (path, options = {}) => {
     calls.push({ path, options });
-    if (path === BASE + '/status') return server.denied ? json({ error: 'Trial owner sign-in required.' }, 401) : json({ configured: server.configured, canJoin: server.canJoin && !server.trial, trial: server.trial });
+    if (path === BASE + '/status') return server.denied ? json({ error: 'Trial owner sign-in required.' }, 401) : json({ configured: server.configured, canJoin: server.canJoin && !server.trial, trial: server.trial, configurationIssues: server.configurationIssues || [] });
     if (path === BASE + '/check') return json({ authenticated: true, emptyProject: true });
     if (path === BASE && options.method === 'POST') {
       server.trial = { requestId: JSON.parse(options.body).requestId, state: server.lost ? 'uncertain' : 'active', leaveAttempted: false };
@@ -54,6 +54,14 @@ describe('hosted trial controls', () => {
     server.configured = false; server.canJoin = false; await mount();
     expect(btn('Send test recorder').disabled).toBe(true); expect(btn('Check hosted connection').disabled).toBe(true);
     expect(container.textContent).toContain('server secret'); expect(creates()).toHaveLength(0);
+  });
+  it('names the redacted invalid setup field and keeps dispatch disabled', async () => {
+    server.configured = false; server.canJoin = false;
+    server.configurationIssues = ['Hosted Attendee API key is missing or has an invalid format.'];
+    await mount(); expect(container.textContent).toContain(server.configurationIssues[0]);
+    expect(container.textContent).not.toContain('waiting for its server secret');
+    expect(btn('Check hosted connection').disabled).toBe(true); expect(btn('Send test recorder').disabled).toBe(true);
+    expect(creates()).toHaveLength(0);
   });
   it('retains the original trial after a lost response and only reads it on reload/reconnect', async () => {
     server.lost = true; await mount(); await prepare(); await click('Send test recorder');
