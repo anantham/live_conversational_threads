@@ -1,3 +1,7 @@
+## 2026-10-26 — Hosted trial private credential entry needs user input
+
+Impact/blocker: yes for the single <=180second hosted provider pilot, not a missing product approval. Reviewed source6ef5a40 passes12 isolated cases and independent Gemini review. User explicitly authorizes the dedicated key; it is created/copied using the provider's UI and the one-time display closed. No key is exposed in chat/log/file/tester. Computer use explicitly denies Terminal.app; alternate-app/input/clipboard extraction is not a permitted workaround. The prepared direct client accepts a hidden key, verifies an empty project and waits ten minutes without dispatch. Next: user runs the supplied command and pastes privately; agent requires its preflight receipt plus freshly empty approved host/synthetic sharing before START. No bot or Site change yet; live captions/audio and the later LCT adapter remain unproven.
+
 ## 2026-10-26 — Temporary acceptance helpers require recovery before activation
 
 The Mac /private/tmp/lct-final-acceptance-20261022 copies of read_only_preflight_oct22.ps1, preflight_after_guard.py and start_guarded_worker.py are absent. Retained Asus staging copies are not currently readable. Blocking activation readiness; do not run the tracked older verify_acceptance_ready.py against the current eight-record runtime because its fixture expects five bots. Recover/hash-check the existing host scripts after access returns, or reconstruct and review exact current preconditions before any timer/worker/bot start. No data or guard namespace was altered.

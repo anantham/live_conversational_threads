@@ -10,3 +10,12 @@ Disposition against the exact code, before any real bot:
 - F4: prior guard represented one cleanup attempt, not proof of leaving; automatic retry was deliberately excluded. Renamed it to leave_attempted and added a durable accurate receipt: leave_sent only after POST succeeds, confirmed_terminal only from valid state. Transport failure retains both false and does not repeat leave. Provider180-second cap remains independent of this client.
 
 Revised source:11 isolated public-interface/security-boundary cases pass, py_compile/diff checks pass. No real provider request or credential. Revised exact review pending; first FINDINGS receipt is not converted into PASS by local checks.
+
+
+## Reviewed continuations — 2026-10-26
+
+Second packet: exact41970c3c707484934b43fa46272ebcdf21e3719e,29,242bytes/SHA16cba37bcd4e01eb9ce7328f07891f9fa108524a9b2eaa7a99d0bcd33befbd1e. Same existing Google Gemini3.8FlashLow/AGY route, fresh d4981070-4e34-4ad2-8198-ea313b3e132f, SUCCESS/PASS/no findings,17.722seconds transport (5.771425reported), one turn. Inventory: trial.py, test_trial.py, trial plan and first review dispositions. Eleven isolated cases passed before review. This verdict applies to that revision; the subsequent handoff gate was separately reviewed.
+
+Final packet: exact6ef5a403995e992c3cc40a76a5ed5ad373c8d06e,28,706bytes/SHAf108b946a04faba39c5eb252ca652c020861553fbc7f092f585898fb26ce1395. Same Google/AGY subscription, fresh7b460025-906e-4cc8-9255-ad4698032054, SUCCESS/PASS/no findings,16.122seconds transport (4.646481reported), one turn. Inventory: attendee_stack/hosted_trial/trial.py, test_trial.py and docs/plans/2026-10-26-hosted-attendee-trial.md. Twelve isolated cases passed, compile/diff checks passed. Optional --wait-for-start adds a positive preflight receipt and bounded ten-minute marker wait; it cannot itself create a bot.
+
+Both packets were saved, inspected and secret-scanned before invocation. They contain only source, authored synthetic fixtures and technical intent, excluding credentials, actual room/account identities, media, private transcripts/memory/logs and unrelated artifacts. Fresh plan-mode/sandbox/slash-disabled AGY invocation requested read-only review. No stronger account isolation or tool-suppression claim is made than the actual harness supports. These are code-review verdicts, not provider or LCT end-to-end acceptance.
