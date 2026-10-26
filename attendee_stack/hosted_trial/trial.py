@@ -36,8 +36,14 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class DirectAPI:
     def __init__(self, key):
-        if not isinstance(key, str) or not re.fullmatch(r'[!-~]{20,512}', key):
-            raise TrialError('Invalid key input; use the dedicated trial key')
+        if not isinstance(key, str) or not key:
+            raise TrialError('Key entry is empty or not text; no API request sent')
+        if any(ord(char) < 32 or ord(char) > 126 for char in key):
+            raise TrialError('Key entry contains control or non-ASCII characters; no API request sent')
+        if ' ' in key:
+            raise TrialError('Key entry contains spaces; no API request sent')
+        if not 20 <= len(key) <= 512:
+            raise TrialError('Key entry length is outside 20-512 characters; no API request sent')
         self.key = key
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
@@ -213,7 +219,12 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--wait-for-start', action='store_true', help='Wait up to ten minutes for START in this run root; no bot before readiness')
     args = parser.parse_args()
-    key = getpass.getpass('Dedicated Attendee trial key (hidden; never paste into chat): ')
+    output = Path(args.output)
+    if os.path.lexists(output):
+        raise TrialError('Output path already exists and is preserved; choose a fresh --output path before key entry')
+    if not output.parent.is_dir():
+        raise TrialError('Output parent directory does not exist; no key entry or API request')
+    key = getpass.getpass('Dedicated Attendee API key value (hidden; never paste into chat): ')
     trial = HostedTrial(DirectAPI(key), args.output)
     del key
     print(json.dumps(trial.preflight()), flush=True)

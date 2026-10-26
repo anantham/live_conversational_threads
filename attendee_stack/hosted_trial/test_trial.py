@@ -4,8 +4,12 @@
 - Send one capped caption/MP3 create, preserve intent after uncertain response.
 - Retain actual transcript/audio effects and distinguish provider from LCT proof.
 - Never send a second leave; redirects do not forward a key.
+- Classify invalid hidden input without revealing it or weakening acceptance.
+- Refuse occupied output roots before credential entry, retaining every file.
 """
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -103,6 +107,51 @@ class TrialTests(unittest.TestCase):
             (trial.root/'START').write_text('START')
             self.assertTrue(trial.wait_for_start(timeout=1))
             self.assertFalse(any(c[0]=='POST' for c in api.calls))
+
+class InputTests(unittest.TestCase):
+    def test_invalid_entries_have_precise_redacted_reasons(self):
+        cases = [('', 'empty or not text'), (None, 'empty or not text'),
+                 ('LCT', 'length is outside'), ('SYNTHETIC KEY VALUE ONLY', 'contains spaces'),
+                 ('\x1b[200~SYNTHETIC-ONLY-KEY-12345\x1b[201~', 'control or non-ASCII'),
+                 ('SYNTHETIC-ONLY-KEY-12345\n', 'control or non-ASCII'),
+                 ('SYNTHETIC-ONLY-KEY-é12345', 'control or non-ASCII'),
+                 ('SYNTHETIC-ONLY-' * 40, 'length is outside')]
+        for entry, reason in cases:
+            with self.subTest(reason=reason), self.assertRaises(TrialError) as raised:
+                DirectAPI(entry)
+            message = str(raised.exception)
+            self.assertIn(reason, message)
+            self.assertIn('no API request sent', message)
+            if entry: self.assertNotIn(entry, message)
+        # Acceptance is unchanged: valid boundary lengths and punctuation pass.
+        for entry in ['A' * 20, 'Z' * 512, 'SYNTHETIC-ONLY-KEY-12345!@#$%^&*()']:
+            self.assertIsInstance(DirectAPI(entry), DirectAPI)
+
+    def test_occupied_output_refuses_before_hidden_prompt_and_retains_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = Path(d) / 'preserved'
+            output.mkdir()
+            marker = output / 'intent.json'
+            marker.write_text('{"synthetic":true}')
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('trial.py')),
+                         '--meeting-url', ROOM, '--output', str(output), '--wait-for-start'],
+                         input='', text=True, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('Output path already exists and is preserved', json.loads(result.stdout)['detail'])
+            self.assertNotIn('hidden', result.stderr)
+            self.assertEqual(marker.read_text(), '{"synthetic":true}')
+            self.assertEqual(sorted(x.name for x in output.iterdir()), ['intent.json'])
+
+    def test_missing_output_parent_refuses_before_key_entry(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = Path(d) / 'missing-parent' / 'new-trial'
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('trial.py')),
+                         '--meeting-url', ROOM, '--output', str(output), '--wait-for-start'],
+                         input='', text=True, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('Output parent directory does not exist', json.loads(result.stdout)['detail'])
+            self.assertNotIn('hidden', result.stderr)
+            self.assertEqual(list(Path(d).iterdir()), [])
 
 class TransportTests(unittest.TestCase):
     def fixture(self, raw, content_type):

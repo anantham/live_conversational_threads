@@ -91,3 +91,54 @@ https://docs.attendee.dev/api-reference/tag/bots/get/api/v1/bots/object_id/trans
 https://docs.attendee.dev/api-reference/tag/bots/get/api/v1/bots/object_id/recording ;
 https://attendee.dev/privacy_policy ; https://attendee.dev/pricing ;
 https://scalar.com/resources/changelog/api-client .
+
+
+## 26 October input-handoff correction
+
+The first provider authentication preflight returned401; subsequent user-supplied
+Terminal output reports local input refusal, before API or root mutation. Current
+clipboard shape passes the unchanged printable-ASCII20-512 rule, but this does
+not establish past prompt contents. User confirms Command+V; no Control+V cause
+is inferred. The first run root stays preserved and must not be reused.
+
+The handoff ordering was fragile: copy a command first, open the hidden prompt,
+then copy the actual key value last and paste privately. Never ask the user to
+copy another command after the secret, or close a one-time key display before
+authentication succeeds. Existing key names do not reveal their secret value;
+no additional key creation, deletion or rotation is authorized by an input error.
+Computer-use Terminal denial remains binding; no alternate UI/clipboard-to-shell
+route. Stop blind entry retries and use precise local refusal evidence first.
+
+Client input diagnostics now distinguish empty/text type, control/non-ASCII,
+spaces and invalid length without echoing input or stripping characters. Accepted
+values are unchanged. Occupied roots and absent parent folders refuse before
+asking for any secret; constructor's exclusive root/create safeguards remain.
+New synthetic tests cover these public errors, unchanged valid boundaries and
+real CLI preservation/refusal before the hidden prompt. No live input/API test
+or replacement bot is performed by these regressions.
+
+
+## Alternative requested — Site server-secret connection (proposed, not selected)
+
+Read-only verification confirms existing Site59 remains active/public/owner at
+its custom domain, environment revision70 unchanged. Installed Sites identity
+and secrets reference supports server-only runtime values and HTTP external
+connections. Secret values in native reads are redacted; do not infer missing
+credentials from those omitted values. No environment/source/deployment mutation.
+
+Proposed replacement for Terminal credential entry: user enters a hosted key
+once in this existing Site's server secrets under LCT_HOSTED_ATTENDEE_API_KEY;
+leave the separate Asus LCT_ATTENDEE_API_KEY unchanged. Implement/review a small
+hosted provider adapter using fixed app.attendee.dev endpoints and the existing
+owner/consent/idempotency boundaries. Keep joins closed until readiness; first
+use remains the same one synthetic <=180second provider pilot with no purchase,
+paid STT/map, replacement bot or automatic retry. Attendee runs the bot; Site
+routes authenticate/poll/download over HTTP, with keys absent from client code.
+Native-caption/MP3 capture and local retrieval still require real proof. Later
+live threads/guest browser persistence remain separate acceptance gates.
+
+This is a different credential destination and requires a Site source deployment;
+setting a key alone cannot connect the current Asus-only snapshot/audio routes.
+Present it as an alternative for the user to select, not authority inferred from
+asking what other ways exist. Rollback disables the hosted path and keeps prior
+Site data/Asus settings. No new Site, VM, billing upgrade or Google Cloud host.
