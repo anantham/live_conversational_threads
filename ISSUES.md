@@ -1,5 +1,7 @@
 ## 2026-10-26 — Hosted trial private credential entry needs user input
 
+Update: user runs hidden entry; first list-bots preflight returns HTTP401 before any create marker. Fixed URL/Token header agree with official docs, so precise credential/copy/account cause is unknown. Preserve first run; one fresh-root private preflight requested using the user-created second key, without generating another credential or authorizing a replacement bot. Terminal control restriction remains; no secret or bot was sent through browser API tester.
+
 Impact/blocker: yes for the single <=180second hosted provider pilot, not a missing product approval. Reviewed source6ef5a40 passes12 isolated cases and independent Gemini review. User explicitly authorizes the dedicated key; it is created/copied using the provider's UI and the one-time display closed. No key is exposed in chat/log/file/tester. Computer use explicitly denies Terminal.app; alternate-app/input/clipboard extraction is not a permitted workaround. The prepared direct client accepts a hidden key, verifies an empty project and waits ten minutes without dispatch. Next: user runs the supplied command and pastes privately; agent requires its preflight receipt plus freshly empty approved host/synthetic sharing before START. No bot or Site change yet; live captions/audio and the later LCT adapter remain unproven.
 
 ## 2026-10-26 — Temporary acceptance helpers require recovery before activation
