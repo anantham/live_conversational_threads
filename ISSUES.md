@@ -1,8 +1,16 @@
+## 2026-10-26 — Temporary acceptance helpers require recovery before activation
+
+The Mac /private/tmp/lct-final-acceptance-20261022 copies of read_only_preflight_oct22.ps1, preflight_after_guard.py and start_guarded_worker.py are absent. Retained Asus staging copies are not currently readable. Blocking activation readiness; do not run the tracked older verify_acceptance_ready.py against the current eight-record runtime because its fixture expects five bots. Recover/hash-check the existing host scripts after access returns, or reconstruct and review exact current preconditions before any timer/worker/bot start. No data or guard namespace was altered.
+
 ## 2026-10-25 — Native Sites control read unavailable
+
+Resolved 26 October: normal native Site/environment reads succeed; Site59 active/public and env70 freshly confirmed, with test window expired/closed. No configuration write or deployment. The old transport failure is historical.
 
 Latest environment read fails at ChatGPT MCP HTTP transport before a Site response. Impact: fresh hosting/environment confirmation is unavailable; do not infer an application failure, change cloud state through an unreviewed route, or state last-knownSite59/env70 as freshly verified. No env mutation/deploy was attempted. Blocker for future live-window activation; use the normal native read again only after control connectivity returns. Current exact task branch checkpoint is verified remotely; preserve the existing Site and data.
 
 ## 2026-10-25 — Asus runtime access unavailable after bounded recovery
+
+26 October update: peer Online/Active does not restore access. Both existing SSH addresses time out TCP connection in about10 seconds; saved RustDesk reports WebRTC/fallback rendezvous failure. No authenticated command or Windows desktop reached, no Docker/runtime mutation. Access methods stopped after three failures; local service/listener handoff requested. Operator asks cloud alternatives; no new hosting/account/spend decision inferred.
 
 07:35 update: exact Asus peer is freshly Online/Active in the running Tailscale client, handshake07:27:37IST; earlier default-sandbox preferences refusal is not a client failure. IPv4 SSH still fails banner exchange (19.906s), IPv6 SSH times out without a hostname receipt (30.006s), and saved RustDesk reaches Connection error/no desktop. Current RustDesk cause was not exposed; screenshot call reports App quit. Blocker is Windows control, not established host power/network absence. Stop these bounded attempts; preserve the same unused bot/map authority and obtain fresh runtime proof only once an existing access path works. No runtime or Site mutation in this check.
 

@@ -1,5 +1,16 @@
 ## CURRENT — 22 October: imports accepted; guarded Meet dispatch still pending
 
+## Current checkpoint — 2026-10-26 07:30 IST
+
+Outcome remains guest Meet captions, source-linked live threads, recorded audio and browser-local reload. Integration owner root; same authoritative codex/lct-inference-choice checkout. Resumed read-only checks find the exact Asus peer Online/Active with fresh 07:21:57 IST handshake, but IPv4 and IPv6 SSH each time out at TCP connection (10.021/10.011 seconds), before authentication or a hostname receipt. One saved RustDesk connection reaches its real remote window then reports rendezvous failure for both WebRTC and fallback. No Windows desktop or remote command was reached. These three failed access methods are stopped; local service/listener output requested as a connection handoff, not new repair/test authority.
+
+Independent cloud dependency resolves: native get_site/get_environment_variables now succeed. Existing Site59 is active/public/owner-accessible at https://threads.adityaarpitha.com, env70 unchanged, expired test window still closed; OpenRouter enabled with approved google/gemini-3.5-flash-lite, direct Gemini off. No cloud mutation, deployment, worker/timer, bot, map or STT dispatch. Same sole bot/map allowance remains unused. Fresh Docker/source/data/queue state remains unknown.
+
+Mac temporary acceptance helpers from22 October no longer exist. Before any activation, recover and hash-check their retained Asus copies or reconstruct/review them; do not substitute the tracked older five-bot preflight for the current eight-record boundary. No host-copy readiness claim is made.
+
+User asks alternatives if Asus is unreliable. Discussing managed Attendee versus an owned cloud VM; no provider/host/account/retention/spending choice or migration is authorized by that question. Keep existing data/Site and current journey. Next evidence remains either restored existing access plus full exact preflight, or an explicit cloud-hosting selection with bounded setup authority; then the same real captions/audio/map/local-save acceptance. No defensible ETA until access or host selection is settled; prior forecasts remain missed for documented engine/transport failures. Source unchanged, imports accepted, Meet not delivered.
+
+
 ## Current checkpoint — 2026-10-25 07:35 IST
 
 User reports Asus back. Fresh Tailscale client read (normal client access outside the filesystem sandbox) confirms BackendState Running and the exact Asus peer Online/Active with a fresh 07:27:37 IST handshake. The earlier default-sandbox preferences error is not evidence of a broken Tailscale client. This proves peer presence, not Windows SSH or Docker readiness.
