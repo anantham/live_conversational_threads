@@ -172,3 +172,8 @@ verify all old data and default-off posture at deployment and shutdown.
 ## 26 October09:30IST checkpoint — reviewed default-off Site deployed
 
 Implementation5072b4a is pushed, exact Google review PASS, final mandatory1236/1236checks and client/Worker build pass. Nativebf8e898/version60/env71 succeeded09:18:58IST; actual custom-domain page and owner Google session verified. All seven prior tables retained, new singleton empty. Hosted key name absent, admissionOFF, no deadline/provider check/bot/STT/map. Prior CLI method remains stopped. Only private Site-secret entry is pending; use same saved60 for environment application, positive closed-gate key/empty-project check, then fresh host readiness and same one180second pilot. No new key, purchase, general guest activation or provider capture claim. Exact evidence and recovered tooling mistakes: docs/reviews/2026-10-26-hosted-attendee-site.md. Forecast15–30active pilot minutes after credential/host readiness; external waits/new defects unknown.
+
+
+## New-room request — evening26October
+
+User selects a new Meet room; only normalized fixed-room secret changes, SHA256661620244833768cebdaa8a9cf95891c39ba34411879bedc6615f5025adf48fd. Environment72/same saved60 deployment succeeds. Key-name remains absent/admissionOFF/new table0rows. Pre-join shows an active Workspace call, so empty synthetic readiness is not satisfied; do not transfer/record that conversation or infer participant consent. Pre-join microphone input is rejected by automatic approval and not retried. One180second allowance unused. Private key handoff and genuinely empty room readiness remain prerequisites; all privacy/cost/no-replacement boundaries persist.
