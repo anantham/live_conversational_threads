@@ -8562,3 +8562,9 @@ Root/same authoritative checkout; protected provider journey remains incomplete 
 
 
 Final closed-gate postflight: native environment still73, hosted key name/is_secrettrue/admissionfalse; fresh exact DB overview and complete lct_hosted_attendee_trials read returns0rows/next_offsetnull. No provider bot or reserved attempt. Extension/private correction handoff remains pending; no time elapsed is treated as approval or input. No further browser actuation after the extension block. Exact Settings tab was marked for handoff before private entry. Source057343e is pushed, native61 deployment successful, full acceptance remains incomplete. These docs are committed/pushed for custody; no unchanged source re-review or repeat tests.
+
+
+Follow-up before asking another blind paste: current diagnostic establishes key predicate failure but conflates unavailable runtime material with malformed input. That leaves H3 open and makes input correction premature. Add only fixed key-failure categories, no material/length/hash/type echo, preserving the exact accepted token language and all gates. Test intent appended before edits. Required independent review and focused/combined/build proof precede publication; private correction request is verbally held pending decisive binding/value evidence. No new provider or bot authority.
+
+
+Refined key diagnostics:32focused cases and1248/1248 combined135files pass (4.87seconds combined). Valid20/512boundaries and unavailable/empty/whitespace/length/unsupported categories are tested through public Worker routes with zero outbound calls/rows, plus continued owner-only disclosure. No accepted-language expansion or raw/numeric-length/type/hash echo. Existing UI displays fixed returned messages without new product changes. Exact independent review required for this substantive diagnostic refinement before publication.

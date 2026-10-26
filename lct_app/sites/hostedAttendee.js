@@ -12,7 +12,11 @@ export function hostedConfig(env) {
   const owner = env.LCT_MEETINGS_OWNER;
   const room = env.LCT_HOSTED_ATTENDEE_MEETING_URL;
   const configurationIssues = [];
-  if (!(typeof key === 'string' && /^[!-~]{20,512}$/.test(key))) configurationIssues.push('Hosted Attendee API key is missing or has an invalid format.');
+  if (typeof key !== 'string') configurationIssues.push('Hosted Attendee API key is unavailable to the deployed server.');
+  else if (!key.length) configurationIssues.push('Hosted Attendee API key value is empty.');
+  else if (/\s/.test(key)) configurationIssues.push('Hosted Attendee API key contains whitespace.');
+  else if (key.length < 20 || key.length > 512) configurationIssues.push('Hosted Attendee API key length is outside the accepted range.');
+  else if (!/^[!-~]+$/.test(key)) configurationIssues.push('Hosted Attendee API key contains unsupported characters.');
   if (!(typeof owner === 'string' && /^(google|chatgpt):.{1,255}$/.test(owner))) configurationIssues.push('Hosted trial owner configuration is invalid.');
   if (!(typeof room === 'string' && /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/.test(room))) configurationIssues.push('Approved Meet room configuration is missing or invalid.');
   const configured = configurationIssues.length === 0;

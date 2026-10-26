@@ -62,8 +62,12 @@ describe('one owner-only hosted Attendee Site pilot', () => {
     expect(db.prepare('SELECT * FROM lct_meetings').all()).toEqual(before);
   });
   it.each([
-    ['LCT_HOSTED_ATTENDEE_API_KEY', '', 'Hosted Attendee API key is missing or has an invalid format.'],
-    ['LCT_HOSTED_ATTENDEE_API_KEY', KEY + '\n', 'Hosted Attendee API key is missing or has an invalid format.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', undefined, 'Hosted Attendee API key is unavailable to the deployed server.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', '', 'Hosted Attendee API key value is empty.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', KEY + '\n', 'Hosted Attendee API key contains whitespace.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', 'SYNTHETIC', 'Hosted Attendee API key length is outside the accepted range.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', 'X'.repeat(513), 'Hosted Attendee API key length is outside the accepted range.'],
+    ['LCT_HOSTED_ATTENDEE_API_KEY', KEY + '\u200b', 'Hosted Attendee API key contains unsupported characters.'],
     ['LCT_HOSTED_ATTENDEE_MEETING_URL', '', 'Approved Meet room configuration is missing or invalid.'],
     ['LCT_HOSTED_ATTENDEE_MEETING_URL', ROOM + '?browser=1', 'Approved Meet room configuration is missing or invalid.'],
   ])('reports only redacted owner setup issues for %s', async (name, value, message) => {
@@ -73,6 +77,11 @@ describe('one owner-only hosted Attendee Site pilot', () => {
     expect(body).toMatchObject({ configured: false, canJoin: false, configurationIssues: [message], trial: null });
     expect(JSON.stringify(body)).not.toContain(KEY); expect(JSON.stringify(body)).not.toContain(ROOM);
     expect((await run('/check', { method: 'POST', body: {} })).status).toBe(503);
+    expect(row()).toBeUndefined(); expect(calls).toEqual([]);
+  });
+  it.each(['X'.repeat(20), 'X'.repeat(512)])('retains exact valid token boundaries', async key => {
+    env.LCT_HOSTED_ATTENDEE_API_KEY = key;
+    expect(await (await run('/status')).json()).toMatchObject({ configured: true, configurationIssues: [], trial: null });
     expect(row()).toBeUndefined(); expect(calls).toEqual([]);
   });
   it('withholds setup diagnostics from guests and other owners', async () => {

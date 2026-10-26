@@ -57,7 +57,7 @@ describe('hosted trial controls', () => {
   });
   it('names the redacted invalid setup field and keeps dispatch disabled', async () => {
     server.configured = false; server.canJoin = false;
-    server.configurationIssues = ['Hosted Attendee API key is missing or has an invalid format.'];
+    server.configurationIssues = ['Hosted Attendee API key value is empty.'];
     await mount(); expect(container.textContent).toContain(server.configurationIssues[0]);
     expect(container.textContent).not.toContain('waiting for its server secret');
     expect(btn('Check hosted connection').disabled).toBe(true); expect(btn('Send test recorder').disabled).toBe(true);
