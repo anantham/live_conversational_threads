@@ -66,8 +66,13 @@ submitted. Creating that credential needs action-time confirmation under the
 computer-use security rule; trial selection already supplies product/host scope.
 Do not ask for the hosted-provider decision again. Do not put a key in the
 embedded browser API client: Scalar's web client can default to an external proxy.
-If private direct credential entry/control cannot be completed, retain preparation
-and use a clearly identified user credential handoff; no key in chat or disk.
+Computer Use refuses Terminal.app access. Use one user credential-entry handoff
+for the direct client, with --wait-for-start: hidden key entry and preflight only.
+The client writes a preflight receipt and waits up to ten minutes for START in
+its new private run root. The agent writes that marker only after fresh empty-host
+and synthetic-sharing proof; expiry exits without a bot. No credentials enter
+chat, disk or the browser API client. This uses the public client input boundary,
+not a workaround of the blocked Terminal control. No terminal UI automation.
 
 ## Finite checks and next checkpoint
 

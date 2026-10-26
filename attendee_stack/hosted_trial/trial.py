@@ -109,7 +109,18 @@ class HostedTrial:
         if not isinstance(page, dict) or page.get('results') != [] or page.get('next') is not None or 'next' not in page:
             raise TrialError('Project is not positively empty; no bot')
         self.prepared = True
-        return {'ready': True, 'existing_bots': 0, 'create_sent': False}
+        result = {'ready': True, 'existing_bots': 0, 'create_sent': False}
+        self._save('preflight.json', result)
+        return result
+
+    def wait_for_start(self, timeout=600):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            marker = self.root / 'START'
+            if marker.is_file() and marker.read_text().strip() == 'START':
+                return True
+            time.sleep(1)
+        return False
 
     def start(self, meeting_url):
         if not self.prepared or not MEET.fullmatch(meeting_url):
@@ -200,12 +211,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--meeting-url', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--wait-for-start', action='store_true', help='Wait up to ten minutes for START in this run root; no bot before readiness')
     args = parser.parse_args()
     key = getpass.getpass('Dedicated Attendee trial key (hidden; never paste into chat): ')
     trial = HostedTrial(DirectAPI(key), args.output)
     del key
     print(json.dumps(trial.preflight()), flush=True)
-    if input('Verify free allowance, empty approved room, mic/camera off and synthetic tab sharing; type START or QUIT: ').strip() != 'START':
+    if args.wait_for_start:
+        print('Waiting for the agent readiness marker; no bot sent.', flush=True)
+        if not trial.wait_for_start():
+            return
+    elif input('Verify free allowance, empty approved room, mic/camera off and synthetic tab sharing; type START or QUIT: ').strip() != 'START':
         return
     started = time.monotonic()
     try:

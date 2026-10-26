@@ -95,6 +95,15 @@ class TrialTests(unittest.TestCase):
             self.assertEqual(trial.leave(),{'leave_sent':False})
             self.assertEqual(json.loads((trial.root/'leave.json').read_text()),{'leave_sent':False,'confirmed_terminal':False})
 
+    def test_readiness_marker_never_dispatches_and_timeout_cancels(self):
+        with tempfile.TemporaryDirectory() as d:
+            api=API();trial=self.make(d,api);trial.preflight()
+            self.assertTrue(json.loads((trial.root/'preflight.json').read_text())['ready'])
+            self.assertFalse(trial.wait_for_start(timeout=0))
+            (trial.root/'START').write_text('START')
+            self.assertTrue(trial.wait_for_start(timeout=1))
+            self.assertFalse(any(c[0]=='POST' for c in api.calls))
+
 class TransportTests(unittest.TestCase):
     def fixture(self, raw, content_type):
         class Response(BytesIO):
