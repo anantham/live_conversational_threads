@@ -182,3 +182,8 @@ User selects a new Meet room; only normalized fixed-room secret changes, SHA2566
 ## 27October — Hosted secret saved; runtime value not yet valid
 
 Exact supported web settings opened and user privately saved key (native73/is_secrettrue). LCT Google owner sign-in restored. Reviewed source057343e/native7ff40d2a/configuration diagnostic served61/env73 after1242tests/build/GooglePASS. Actual runtime key predicate fails; owner/room pass. No raw key or readback, provider request, bot, paid STT/map or reservation. Chrome extension UI blocks Replace before input; user handoff asks dismiss/correct or report lost value. No new credential/rotation. Keep same180second allowance unused, no actual remaining-balance/empty-provider-project or fresh room readiness claim. Exact receipts in docs/reviews/2026-10-27-hosted-configuration.md.
+
+
+## Refined27October checkpoint
+
+Same hosted allowance unused. Reviewed refinement0b16467/nativef52e9e7 served62/env73,1248tests/build/GooglePASS. Owner status now identifies runtime key length outside retained20–512 range; unavailable/empty/whitespace branches are disconfirmed, exact value/length/source unknown. Published upstream ApiKey.create uses32characters, accepted by this validator. No provider call or key recovery/readback/normalization. Current private correction is justified by field evidence after Chrome extension dismissal; if original value lost, reserve the new-credential decision. Keep admissionOFF until authenticated empty-project/allowance/fresh empty synthetic-host gates pass. Exact receipts in docs/reviews/2026-10-27-hosted-configuration.md.
