@@ -322,3 +322,37 @@ it('stops the audio stream and map wait together, retaining confirmed words and 
   expect(fixture.writes.at(-1).snapshot.transcript.finalText).toBe(transcript.finalText);
   expect(fixture.writes.flatMap(write => write.chunks)[0].blob.size).toBeGreaterThan(0);
 });
+
+
+it('keeps a late partial map honest after the transcript completes, without replacing the full transcript', async () => {
+  fixture.holdTranscript = true; holdMap = true;
+  await mount(); await choose(); await permit(); await click('Create transcript & threads');
+  await enableLive(); await click('Generate conversation map');
+  fixture.liveTranscript = { ...transcript, finalText: transcript.finalText + ' More confirmed words.',
+    finalTokens: [...transcript.finalTokens, { text: ' More confirmed words.', speaker: '2', startMs: 1000, endMs: 2000 }] };
+  await act(async () => fixture.finishTranscript());
+  expect(posts).toHaveLength(1); expect(posts[0].source.complete).toBe(false);
+  await act(async () => finishMap()); await flushArchive();
+  const saved = fixture.writes.at(-1).snapshot;
+  expect(saved.transcript.finalText).toBe(fixture.liveTranscript.finalText);
+  expect(saved.map.full_transcript).toBe(transcript.finalText);
+  expect(saved.map.transcription_complete).toBe(false);
+  expect(container.textContent).toContain('The map covers an earlier snapshot.');
+  expect(posts).toHaveLength(1);
+});
+it('uses the existing automatic cadence to catch up with the completed transcript without an immediate extra call', async () => {
+  vi.useFakeTimers(); fixture.holdTranscript = true;
+  await mount(); await choose(); await permit(); await click('Create transcript & threads');
+  await enableLive(); await click('Generate conversation map');
+  fixture.liveTranscript = { ...transcript, finalText: transcript.finalText + ' More confirmed words.',
+    finalTokens: [...transcript.finalTokens, { text: ' More confirmed words.', speaker: '2', startMs: 1000, endMs: 2000 }] };
+  await act(async () => fixture.finishTranscript());
+  await act(async () => vi.advanceTimersByTimeAsync(1000)); expect(posts).toHaveLength(1);
+  await act(async () => vi.advanceTimersByTimeAsync(45001));
+  expect(posts).toHaveLength(2); expect(posts[1].source.complete).toBe(true);
+  expect(posts[1].source.finalTokens).toEqual(fixture.liveTranscript.finalTokens);
+  await act(async () => vi.advanceTimersByTimeAsync(300));
+  expect(fixture.writes.at(-1).snapshot.map.transcription_complete).toBe(true);
+  expect(fixture.writes.at(-1).snapshot.map.full_transcript).toBe(fixture.liveTranscript.finalText);
+  await act(async () => vi.advanceTimersByTimeAsync(90000)); expect(posts).toHaveLength(2);
+});
