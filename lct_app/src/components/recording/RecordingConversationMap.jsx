@@ -11,7 +11,7 @@ import { stageGeneratedMap } from '../../services/cloud/generatedMapHandoff.js';
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
 const interrupted = 'Waiting stopped. The attempt may still be running or counted; stopping this view does not confirm billing stopped. Keep your transcript and check setup before a deliberate retry.';
 
-export default function RecordingConversationMap({ localOnly = false, source, savedBundle, retention = 'ephemeral', backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false }) {
+export default function RecordingConversationMap({ localOnly = false, source, savedBundle, retention = 'ephemeral', backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false, onMapAttempt, stopSignal }) {
   const [localBackend, setLocalBackend] = useState('openrouter');
   const backend = selectedBackend ?? localBackend;
   const setBackend = value => { setLocalBackend(value); onBackendChange?.(value); };
@@ -40,6 +40,12 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
   useEffect(() => { setResult(null); setAutomatic(false); attempts.current = 0; setAttemptCount(0); lastText.current = ''; lastAttempt.current = 0; }, [source.recordingId]);
   useEffect(() => { setAutomatic(false); }, [backend]);
   useEffect(() => {
+    const stop = () => { setAutomatic(false); cancel(); };
+    stopSignal?.addEventListener('abort', stop, { once: true });
+    if (stopSignal?.aborted) stop();
+    return () => stopSignal?.removeEventListener('abort', stop);
+  }, [stopSignal, cancel]);
+  useEffect(() => {
     if (!savedBundle || result?.bundle === savedBundle || savedBundle.conversation_id !== source.recordingId) return;
     const json = JSON.stringify(savedBundle), filename = `recording-${source.recordingId}.threads`;
     setResult({ bundle: savedBundle, json, filename, file: new File([json], filename, { type: 'application/json' }) });
@@ -61,9 +67,10 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
   }, [source, result, onMapChange]);
   async function generate(fromTimer = false) {
     if (fromTimer && (!automatic || attempts.current >= 6)) { setAutomatic(false); return; }
-    if (!consent || !status?.enabled || !status.available || activity || generating.current || saving) return;
+    if (stopSignal?.aborted || !consent || !status?.enabled || !status.available || activity || generating.current || saving) return;
     const requestedSource = source;
     generating.current = true;
+    onMapAttempt?.();
     lastAttempt.current = Date.now();
     lastText.current = requestedSource.finalTokens.map(t => t.text).join('');
     attempts.current++;
@@ -72,7 +79,7 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
     const healthStarted = Date.now();
     const response = await run('generate', signal => generateRecordingMap(requestedSource, signal, backend));
     generating.current = false;
-    if (!alive.current || currentSource.current.recordingId !== requestedSource.recordingId) return;
+    if (!alive.current || stopSignal?.aborted || currentSource.current.recordingId !== requestedSource.recordingId) return;
     onHealthChange?.({ service: backend, ok: response.data ? true : ['cancelled', 'timeout'].includes(response.outcome) ? null : false, at: Date.now(), detail: response.data ? `Last map completed in ${((Date.now() - healthStarted) / 1000).toFixed(1)} s.` : 'Map generation did not complete. Check the map panel for details.' });
     if (response.data) { setResult(response.data); onMapChange?.(response.data.bundle); }
     else { setAutomatic(false); setError(response.outcome === 'cancelled' || response.outcome === 'timeout' ? interrupted : response.error.message); }
@@ -120,4 +127,4 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
 }
 
 RecordingConversationMap.propTypes = { localOnly: PropTypes.bool, savedBundle: PropTypes.object, retention: PropTypes.string, backend: PropTypes.string, onBackendChange: PropTypes.func, onHealthChange: PropTypes.func, source: PropTypes.object.isRequired, privateEnabled: PropTypes.bool,
-  saving: PropTypes.bool.isRequired, onPrivateSave: PropTypes.func.isRequired, onGeneratingChange: PropTypes.func.isRequired, onMapChange: PropTypes.func, onMapStatusChange: PropTypes.func, liveActive: PropTypes.bool, recordingBusy: PropTypes.bool };
+  saving: PropTypes.bool.isRequired, onPrivateSave: PropTypes.func.isRequired, onGeneratingChange: PropTypes.func.isRequired, onMapChange: PropTypes.func, onMapStatusChange: PropTypes.func, liveActive: PropTypes.bool, recordingBusy: PropTypes.bool, onMapAttempt: PropTypes.func, stopSignal: PropTypes.object };

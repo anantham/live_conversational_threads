@@ -71,7 +71,8 @@ export default function SitesAudioImport() {
         {map ? <LiveConversationGraph bundle={map} transcriptVisible={!minimized} onConfigure={() => setPanel('map')} recording /> :
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center" aria-label="Imported conversation graph">
             <p className="text-sm font-medium text-slate-700">{busy ? 'Your threads will take shape here' : 'No thread map is saved'}</p>
-            <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{busy ? 'Threads are created after transcription finishes.' : 'Open AI map to check generation availability.'} {(audio || artifact) && 'Your available audio and transcript are in Files & export.'}</p>
+            {busy && artifact?.source && <button className="mt-3 min-h-11 px-3 text-xs underline" onClick={() => setPanel('map')}>Set up live map</button>}
+            <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{busy ? 'Open AI map to build threads from confirmed words while audio arrives.' : 'Open AI map to check generation availability.'} {(audio || artifact) && 'Your available audio and transcript are in Files & export.'}</p>
           </div>}
         <ConversationTranscriptPanel transcript={transcript} status={busy ? 'Importing' : artifact?.source?.complete ? 'Finished' : 'Partial'} minimized={minimized} onMinimize={() => { setMinimized(value => !value); setFullscreen(false); }} fullscreen={fullscreen} onFullscreen={() => setFullscreen(value => !value)} />
       </>}
@@ -81,7 +82,7 @@ export default function SitesAudioImport() {
         <div hidden={panel !== 'settings'}><h2 className="pt-12 text-lg font-medium">Settings</h2><fieldset disabled={busy || generating}><ConversationStorageSettings preference={archive.preference} onChange={archive.choose} error={archive.preferenceError} /></fieldset><ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} /></div>
         <div hidden={panel !== 'map'}>
           {!artifact?.source && <p className="pt-12 text-sm text-slate-600">Threads appear after your transcript is ready.</p>}
-          {artifact?.source && <RecordingConversationMap localOnly={!privateFiles.ready} source={artifact.source} savedBundle={map} retention={recording.retention} backend={flow.backend} onBackendChange={flow.setBackend} privateEnabled={privateFiles.ready} saving={busy || privateFiles.saving} onGeneratingChange={setGenerating} onMapChange={flow.mapReady} onPrivateSave={privateFiles.save} />}
+          {artifact?.source && <RecordingConversationMap localOnly={!privateFiles.ready} source={artifact.source} savedBundle={map} retention={recording.retention} backend={flow.backend} onBackendChange={flow.setBackend} privateEnabled={privateFiles.ready} saving={activity?.stage === 'mapping' || privateFiles.saving} recordingBusy={busy} liveActive={['transcribing', 'finalizing'].includes(activity?.stage)} onMapAttempt={flow.claimLiveMap} stopSignal={flow.mapStopSignal} onGeneratingChange={setGenerating} onMapChange={flow.mapReady} onPrivateSave={privateFiles.save} />}
         </div>
         <div hidden={panel !== 'files'}>
           <RecordingAudioFiles localOnly={!privateFiles.ready} retention={recording?.retention} audio={audio} recordingId={recording?.id} privateEnabled={privateFiles.ready} busy={busy || generating || privateFiles.saving} onPrivateSave={privateFiles.save} />

@@ -15,6 +15,9 @@ export function useAudioImport() {
   const [setupError, setSetupError] = useState('');
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
+  const [mapStopSignal, setMapStopSignal] = useState(null);
+  const mapStop = useRef(null), liveMapClaimed = useRef(false);
+  const claimLiveMap = useCallback(() => { liveMapClaimed.current = true; }, []);
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
@@ -32,7 +35,7 @@ export function useAudioImport() {
   }, []);
   useEffect(() => {
     alive.current = true; void check();
-    return () => { alive.current = false; epoch.current++; current.current?.cancel(); };
+    return () => { alive.current = false; epoch.current++; current.current?.cancel(); mapStop.current?.abort(); };
   }, [check]);
   useEffect(() => {
     if (!localId || recording) return;
@@ -64,6 +67,8 @@ export function useAudioImport() {
     const id = globalThis.crypto?.randomUUID?.();
     if (!id) { running.current = false; setError('This browser cannot create a conversation identifier. No file was sent.'); return; }
     const generation = ++epoch.current;
+    mapStop.current?.abort(); mapStop.current = new AbortController();
+    setMapStopSignal(mapStop.current.signal); liveMapClaimed.current = false;
     const next = { id, startedAt: Date.now(), transcribe: true, retention: archive.preference,
       source: 'audio-import', originalFilename: file.name.slice(0, 240) };
     setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError('');
@@ -83,6 +88,11 @@ export function useAudioImport() {
       const words = await session.start({ file, maxSessionSeconds: capability.max_session_seconds });
       if (!valid()) return;
       archive.update({ stage: 'stopped' });
+      // One owner: an explicit live attempt must never gain an implicit final retry.
+      if (liveMapClaimed.current) {
+        setActivity({ stage: 'complete', message: 'Audio and transcript are ready. Check AI map for live thread updates.' });
+        return;
+      }
       const source = { recordingId: id, startedAt: next.startedAt, finalTokens: words.finalTokens, complete: true };
       setActivity({ stage: 'mapping', message: 'Creating threads from your transcript.' });
       const response = await task.run('generate', async signal => {
@@ -97,10 +107,11 @@ export function useAudioImport() {
         : response.error.message);
       setActivity({ stage: 'complete', message: response.data ? 'Audio, transcript and threads are ready.' : 'Audio and transcript are ready.' });
     } catch (failure) {
+      mapStop.current?.abort();
       if (valid() && failure.name !== 'AbortError') setError(failure.message);
     } finally { running.current = false; }
   }
-  function cancel() { current.current?.cancel(); task.cancel(); }
+  function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
   return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
-    mapReady, activity, busy, loading, elapsed, error: error || setupError, capability, check, start, cancel };
+    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || setupError, capability, check, start, cancel };
 }

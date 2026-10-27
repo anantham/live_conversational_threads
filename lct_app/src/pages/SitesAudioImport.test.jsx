@@ -19,10 +19,14 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
     const blob = file.slice(0, file.size, mimeType);
     this.callbacks.onAudio({ blob, mimeType, complete: true, segments: [{ number: 1, blob, mimeType, complete: true }] });
     if (fixture.fail) { this.callbacks.onStage({ stage: 'error', message: 'Provider refused' }); throw new Error('Provider refused'); }
-    this.callbacks.onTranscript(transcript); this.callbacks.onStage({ stage: 'stopped', message: 'Transcript ready.' });
-    return transcript;
+    this.callbacks.onTranscript(transcript);
+    if (fixture.holdTranscript) await new Promise(resolve => { fixture.finishTranscript = resolve; });
+    if (this.cancelled) throw new DOMException('Aborted', 'AbortError');
+    const words = fixture.liveTranscript || transcript;
+    this.callbacks.onTranscript(words); this.callbacks.onStage({ stage: 'stopped', message: 'Transcript ready.' });
+    return words;
   }
-  cancel() { this.cancelled = true; }
+  cancel() { this.cancelled = true; this.callbacks.onStage({ stage: 'cancelled', message: 'Import stopped.' }); }
 } }));
 import SitesAudioImport from './SitesAudioImport.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
@@ -49,7 +53,7 @@ beforeEach(() => {
   fixture.sessions = []; fixture.writes = []; fixture.restored = null; fixture.fail = false;
   fixture.signedIn = false; fixture.uploads = []; fixture.holdUpload = false; fixture.badReceipt = false;
   fixture.sessionHTML = false; fixture.storagePatch = {}; fixture.uploadStatus = 201;
-  finishUpload = null;
+  finishUpload = null; fixture.holdTranscript = false; fixture.liveTranscript = null; fixture.finishTranscript = null; fixture.mapFailure = false;
   posts = []; holdMap = false; finishMap = null; localStorage.clear();
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:synthetic-import'; static revokeObjectURL() {} });
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
@@ -68,7 +72,8 @@ beforeEach(() => {
     const backend = url.includes('/gemini/') ? 'gemini' : 'openrouter';
     if (url.endsWith('/status')) return response({ backend, enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'synthetic-model', provider: 'synthetic-provider' });
     if (url.endsWith('/generate')) {
-      const source = JSON.parse(options.body).source; posts.push({ url, source });
+      const source = JSON.parse(options.body).source; posts.push({ url, source, signal: options.signal });
+      if (fixture.mapFailure) return response({ code: 'provider_refused' }, 502);
       const result = response({ request_id: '00000000-0000-4000-8000-000000000001', artifact: mapped(source) });
       if (holdMap) return new Promise(resolve => { finishMap = () => resolve(result); });
       return result;
@@ -263,4 +268,57 @@ it('accurately describes a restored transcript when no map was saved', async () 
   expect(container.textContent).toContain('No thread map is saved');
   expect(container.textContent).not.toContain('Threads appear after your transcript is ready.');
   expect(posts).toHaveLength(0); expect(fixture.sessions).toHaveLength(0);
+});
+
+
+// Live intent: render real public map results while a streamed import remains unfinished;
+// completion never duplicates or retries live attempts, cancellation ignores late output.
+async function enableLive() {
+  await click('AI map');
+  await act(async () => [...container.querySelectorAll('label')].find(label => label.textContent.includes('I have permission to send these finalized words')).querySelector('input').click());
+  await act(async () => container.querySelector('input[aria-label="Update map while I speak"]').click());
+}
+it('updates the visible map twice during input and does not add an implicit completion request', async () => {
+  vi.useFakeTimers(); fixture.holdTranscript = true;
+  await mount(); await choose(); await permit(); await click('Create transcript & threads');
+  expect(posts).toHaveLength(0); expect(container.textContent).toContain('Transcribing your audio.');
+  await enableLive(); await click('Generate conversation map');
+  expect(posts).toHaveLength(1); expect(posts[0].source.complete).toBe(false);
+  expect(container.querySelector('[aria-label="Rendered graph"]').textContent).toContain('Garden watering');
+  const later = { ...transcript, finalTokens: [...transcript.finalTokens, { text: ' We should grow vegetables for the community and share the harvest. '.repeat(3), speaker: '2', startMs: 1000, endMs: 1500 }] };
+  later.finalText = later.finalTokens.map(token => token.text).join('');
+  await act(async () => fixture.sessions[0].callbacks.onTranscript(later)); fixture.liveTranscript = later;
+  await act(async () => vi.advanceTimersByTimeAsync(45001));
+  expect(posts).toHaveLength(2); expect(posts[1].source.complete).toBe(false);
+  expect(posts[1].source.finalTokens).toEqual(later.finalTokens);
+  expect(container.textContent).toContain('Transcribing your audio.');
+  await act(async () => container.querySelector('input[aria-label="Update map while I speak"]').click());
+  await act(async () => fixture.finishTranscript());
+  await act(async () => vi.advanceTimersByTimeAsync(300));
+  expect(posts).toHaveLength(2);
+  expect(fixture.writes.at(-1).snapshot.transcript.finalText).toBe(later.finalText);
+  expect(fixture.writes.at(-1).snapshot.map.full_transcript).toBe(later.finalText);
+  expect(fixture.uploads).toHaveLength(0);
+});
+it('does not retry a refused live request when the import finishes', async () => {
+  fixture.holdTranscript = true; fixture.mapFailure = true;
+  await mount(); await choose(); await permit(); await click('Create transcript & threads');
+  await enableLive(); await click('Generate conversation map');
+  expect(posts).toHaveLength(1); expect(container.textContent).toContain('provider refused');
+  expect(container.querySelector('input[aria-label="Update map while I speak"]').checked).toBe(false);
+  await act(async () => fixture.finishTranscript()); await flushArchive();
+  expect(posts).toHaveLength(1); expect(fixture.writes.at(-1).snapshot.map).toBeNull();
+  expect(fixture.writes.at(-1).snapshot.transcript.finalText).toBe(transcript.finalText);
+});
+it('stops the audio stream and map wait together, retaining confirmed words and ignoring late output', async () => {
+  fixture.holdTranscript = true; holdMap = true;
+  await mount(); await choose(); await permit(); await click('Create transcript & threads');
+  await enableLive(); await click('Generate conversation map');
+  expect(posts).toHaveLength(1);
+  await click('Stop processing');
+  expect(fixture.sessions[0].cancelled).toBe(true); expect(posts[0].signal.aborted).toBe(true);
+  await act(async () => { finishMap(); fixture.finishTranscript(); }); await flushArchive();
+  expect(fixture.writes.at(-1).snapshot.map).toBeNull(); expect(posts).toHaveLength(1);
+  expect(fixture.writes.at(-1).snapshot.transcript.finalText).toBe(transcript.finalText);
+  expect(fixture.writes.flatMap(write => write.chunks)[0].blob.size).toBeGreaterThan(0);
 });

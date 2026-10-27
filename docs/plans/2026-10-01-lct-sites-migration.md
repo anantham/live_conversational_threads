@@ -1,3 +1,7 @@
+## Current slice — 27 October: selected Recorder replay with visible live threads
+
+Outcome: actual paced audio input with transcript and at least two source-linked canvas updates before input ends, then local reload. Root integrates in the existing codex/lct-inference-choice worktree; same Site62/env73 and all data/caps retained. User authorizes selected Recorder audio;150second local excerpt, one STT/two maps maximum, no Meet bot/recovery. Import's post-finish map gate is identified; reuse existing live scheduler with single generation ownership and cancellation. Plan tests/review/publication before dispatch. Dependency: validated repair plus actual provider readiness. Next checkpoint: focused tests and code-only independent review, followed by real browser evidence. Forecast30–60active engineering minutes plus3–5minute replay; external waits/new defects unknown. Hosted Attendee is parked at its unchanged private key-length gate.
+
 ## CURRENT — 22 October: imports accepted; guarded Meet dispatch still pending
 
 ## Current slice — 2026-10-26: small hosted Attendee provider trial

@@ -437,3 +437,6 @@ The public GoogleMeetUIMethods source used by the isolated Asus recovery is1317l
 ## 2026-10-26 — Native source dependency-link and prerequisite-receipt safeguards
 
 Official native source tracks a node_modules link into the task checkout. Calling an installer despite dependencies_present=true can mutate that shared target; a successful tool transport does not imply a successful prerequisite command. Current incident recovered with lock-inventory-equal preserved packages, original link and passing full1236checks/build. Follow-up: source workflow should refuse redundant install on a present shared dependency link, and wrap dependent save/publish in explicit successful-check receipts. Current clean archive was inspected and payload-compared before successful publication; this is not a claim that a general orchestration guard is implemented. Do not broaden this provider trial into dependency upgrades or tooling redesign.
+
+
+27 October 2026: SitesAudioImport.test.jsx grows258→324lines with three live-import/cancellation regressions. Its fixture currently supports import, private saving and live maps; a future fixture-module extraction and separate live-import suite would improve concern separation. Production hook/page/map controls remain117/99/130lines and need no decomposition for this slice. No refactor included.
