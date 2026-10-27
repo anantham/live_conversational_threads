@@ -2106,3 +2106,6 @@ Read-only isolatedbrokercheckfindsoneexpiredunacknowledgedrun_bot deliveryforthe
 ### 2026-10-27 16:36 IST — Private replay owner-session handoff (blocking live validation)
 
 The20minute trial is reviewed/deployeddefault-off with empty metadata tables. Google challenge120seconds expires in two browser-controlled attempts; grouped final selector mistakenly consumes diff-only AX rather than full state. Automatic review blocks more authentication clicks as exceeding final-attempt bound. No bypass. User normal Google-owner session handoff pending; actual balance and20minute provider stability remain untested, allowance unused. Recommended next step: finish normal owner sign-in, checkread-only credit, run exact approved single replay. No auth-policy weakening or session-credential extraction.
+
+
+27October replay sign-in dependency follow-up: read-only Worker timeline establishes153984ms between challenge200and exchange401, exceeding120second challenge cookie. User-authorized renewed attempt fails; automatic review refuses another auth attempt. Exact five-minute challenge proposal and three-attempt bound prepared in docs/plans/2026-10-27-replay-signin-window.md; new human ruling pending. No actual auth-source/runtime change and no private replay dispatch.

@@ -1325,3 +1325,6 @@ Outcome: sustained actual audio→transcript→visible live maps→complete fina
 
 
 Private20minute checkpoint 2026-10-27 16:36 IST: reviewedc9cf055 pushed/native38df4db/Site64/env74 served, gateoff;1269combined pass. Real long-run acceptance remains blocked at owner browser sign-in, not test authority.0trial/0attempts, original19model/17STTrows unchanged. User handoff requested after automatic review rejects more auth clicks beyond bounded final attempt. Integrationownerroot/samecheckout; next checkpoint owner credit sufficient before temporary activation. Approved provider allowance unused.
+
+
+Renewed owner sign-in checkpoint27October: user asks agent to do it; fresh attempt reaches chooser but exchange follows challenge153984ms later and returns401/missing-expired, beyond120second cookie. Further auth attempt rejected by automatic review as outside renewed one-attempt scope. Proposed exact120→300second unused-challenge window plus at most3normal owner attempts; actual auth code/runtime untouched pending human security-window ruling. Existing nonce/signature/same-origin/single-use/session constraints preserved in proposal. Twenty-minute test still unused/disabled, source/review/deployment complete; next evidence approved timing repair/regressions/review then real owner credit.
