@@ -8,6 +8,7 @@ import { handleServiceHealth } from './serviceHealth.js';
 import { handleAuth } from './auth.js';
 import { handleMeetings } from './meetings.js';
 import { handleHostedTrial } from './hostedTrial.js';
+import { handleReplayTrial } from './replayTrial.js';
 
 // The original proxy routes remain BYOK. Cloud handlers enforce separate admission.
 // Never log keys, request headers/payloads or upstream errors. NO_LOG_BYOK_KEY_ASSERTION
@@ -40,6 +41,8 @@ export default {
     const url = new URL(request.url);
     const auth = await handleAuth(request, env);
     if (auth) return auth;
+    const replayTrial = await handleReplayTrial(request, env);
+    if (replayTrial) return replayTrial;
     const hostedTrial = await handleHostedTrial(request, env);
     if (hostedTrial) return hostedTrial;
     const meetings = await handleMeetings(request, env);

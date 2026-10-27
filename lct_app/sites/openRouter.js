@@ -71,7 +71,7 @@ async function generate(request, env, policy) {
     SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_openrouter_attempts) < ?
       AND NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
       AND (SELECT COUNT(*) FROM lct_openrouter_attempts
-           WHERE completed_at IS NULL AND recovery_released_at IS NULL) < ?
+           WHERE completed_at IS NULL AND recovery_released_at IS NULL) ${env.LCT_REPLAY_TEST_RECORDING_ID ? "+ (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'map' AND state IN ('reserved','dispatching','uncertain'))" : ''} < ?
     RETURNING id`).bind(id, now, policy.maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
 

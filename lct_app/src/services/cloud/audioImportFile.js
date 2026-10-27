@@ -51,9 +51,9 @@ async function durationOf(file, signal, AudioClass, urlAPI) {
 }
 /** Decode on this device before requesting any provider credential. No microphone. */
 export async function decodeAudioImport(file, { maxSeconds, signal, AudioClass = globalThis.Audio,
-  ContextClass = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext, urlAPI = globalThis.URL } = {}) {
+  ContextClass = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext, urlAPI = globalThis.URL, maxAllowedSeconds = 900 } = {}) {
   const mimeType = importFileType(file);
-  if (!Number.isInteger(maxSeconds) || maxSeconds < 15 || maxSeconds > 900) throw failure('has no usable duration limit.');
+  if (!Number.isInteger(maxSeconds) || maxSeconds < 15 || maxSeconds > maxAllowedSeconds || ![900, 1260].includes(maxAllowedSeconds)) throw failure('has no usable duration limit.');
   if (signal?.aborted) throw cancelledImport();
   const duration = await durationOf(file, signal, AudioClass, urlAPI);
   if (!Number.isFinite(duration) || duration <= 0 || duration > maxSeconds) throw failure('needs audio up to ' + maxSeconds + ' seconds. Longer files were not sent.');

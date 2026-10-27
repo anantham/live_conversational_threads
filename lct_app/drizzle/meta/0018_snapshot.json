@@ -1,0 +1,837 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "f28f1b3f-71c6-45b5-b18a-c10a54dbda5e",
+  "prevId": "92f92594-0050-44ba-ac50-e5242b4666df",
+  "tables": {
+    "lct_audio_replay_attempts": {
+      "name": "lct_audio_replay_attempts",
+      "columns": {
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trial_id": {
+          "name": "trial_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_bytes": {
+          "name": "input_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_end_ms": {
+          "name": "source_end_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "audio_replay_sequence": {
+          "name": "audio_replay_sequence",
+          "columns": [
+            "trial_id",
+            "kind",
+            "sequence"
+          ],
+          "isUnique": true
+        },
+        "audio_replay_stt_once": {
+          "name": "audio_replay_stt_once",
+          "columns": [
+            "trial_id"
+          ],
+          "isUnique": true,
+          "where": "\"lct_audio_replay_attempts\".\"kind\" = 'stt'"
+        },
+        "audio_replay_one_active": {
+          "name": "audio_replay_one_active",
+          "columns": [
+            "trial_id"
+          ],
+          "isUnique": true,
+          "where": "\"lct_audio_replay_attempts\".\"state\" in ('reserved','dispatching','uncertain')"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audio_replay_kind": {
+          "name": "audio_replay_kind",
+          "value": "\"lct_audio_replay_attempts\".\"trial_id\" = 1 and \"lct_audio_replay_attempts\".\"kind\" in ('stt','map')"
+        },
+        "audio_replay_sequence_bound": {
+          "name": "audio_replay_sequence_bound",
+          "value": "(\"lct_audio_replay_attempts\".\"kind\" = 'stt' and \"lct_audio_replay_attempts\".\"sequence\" = 0 and \"lct_audio_replay_attempts\".\"phase\" = 'start') or (\"lct_audio_replay_attempts\".\"kind\" = 'map' and \"lct_audio_replay_attempts\".\"sequence\" >= 1 and \"lct_audio_replay_attempts\".\"sequence\" <= 28 and \"lct_audio_replay_attempts\".\"phase\" in ('periodic','final'))"
+        },
+        "audio_replay_attempt_state": {
+          "name": "audio_replay_attempt_state",
+          "value": "\"lct_audio_replay_attempts\".\"state\" in ('reserved','dispatching','completed','uncertain')"
+        },
+        "audio_replay_input": {
+          "name": "audio_replay_input",
+          "value": "\"lct_audio_replay_attempts\".\"input_bytes\" >= 0 and \"lct_audio_replay_attempts\".\"input_bytes\" <= 131072 and \"lct_audio_replay_attempts\".\"source_end_ms\" >= 0"
+        }
+      }
+    },
+    "lct_audio_replay_trial": {
+      "name": "lct_audio_replay_trial",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recording_id": {
+          "name": "recording_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_request_id": {
+          "name": "start_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audio_replay_singleton": {
+          "name": "audio_replay_singleton",
+          "value": "\"lct_audio_replay_trial\".\"id\" = 1"
+        },
+        "audio_replay_state": {
+          "name": "audio_replay_state",
+          "value": "\"lct_audio_replay_trial\".\"state\" in ('active','failed','completed')"
+        },
+        "audio_replay_lifetime": {
+          "name": "audio_replay_lifetime",
+          "value": "\"lct_audio_replay_trial\".\"ends_at\" > \"lct_audio_replay_trial\".\"created_at\" and \"lct_audio_replay_trial\".\"ends_at\" <= \"lct_audio_replay_trial\".\"created_at\" + 1500000"
+        }
+      }
+    },
+    "lct_cloud_files": {
+      "name": "lct_cloud_files",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_provider": {
+          "name": "owner_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'chatgpt'"
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_cloud_files_object_key_unique": {
+          "name": "lct_cloud_files_object_key_unique",
+          "columns": [
+            "object_key"
+          ],
+          "isUnique": true
+        },
+        "lct_cloud_files_owner_state_created_id_idx": {
+          "name": "lct_cloud_files_owner_state_created_id_idx",
+          "columns": [
+            "owner_user_id",
+            "state",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "lct_cloud_files_provider_owner_idx": {
+          "name": "lct_cloud_files_provider_owner_idx",
+          "columns": [
+            "owner_provider",
+            "owner_user_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_cloud_files_kind_check": {
+          "name": "lct_cloud_files_kind_check",
+          "value": "\"lct_cloud_files\".\"kind\" in ('file', 'threads', 'audio')"
+        },
+        "lct_cloud_files_state_check": {
+          "name": "lct_cloud_files_state_check",
+          "value": "\"lct_cloud_files\".\"state\" in ('staging', 'ready', 'deleting')"
+        },
+        "lct_cloud_files_byte_size_check": {
+          "name": "lct_cloud_files_byte_size_check",
+          "value": "\"lct_cloud_files\".\"byte_size\" > 0"
+        }
+      }
+    },
+    "lct_cloud_file_fences": {
+      "name": "lct_cloud_file_fences",
+      "columns": {
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "lct_google_sessions": {
+      "name": "lct_google_sessions",
+      "columns": {
+        "jti_hash": {
+          "name": "jti_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "google_sub": {
+          "name": "google_sub",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "challenge_hash": {
+          "name": "challenge_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_google_sessions_challenge_unique": {
+          "name": "lct_google_sessions_challenge_unique",
+          "columns": [
+            "challenge_hash"
+          ],
+          "isUnique": true
+        },
+        "lct_google_sessions_sub_idx": {
+          "name": "lct_google_sessions_sub_idx",
+          "columns": [
+            "google_sub"
+          ],
+          "isUnique": false
+        },
+        "lct_google_sessions_expiry_idx": {
+          "name": "lct_google_sessions_expiry_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "lct_hosted_attendee_trials": {
+      "name": "lct_hosted_attendee_trials",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url_hash": {
+          "name": "url_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "bot_id": {
+          "name": "bot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "leave_attempted_at": {
+          "name": "leave_attempted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_hosted_attendee_singleton": {
+          "name": "lct_hosted_attendee_singleton",
+          "value": "\"lct_hosted_attendee_trials\".\"id\" = 1"
+        },
+        "lct_hosted_attendee_state": {
+          "name": "lct_hosted_attendee_state",
+          "value": "\"lct_hosted_attendee_trials\".\"state\" in ('starting', 'uncertain', 'active', 'ended')"
+        },
+        "lct_hosted_attendee_duration": {
+          "name": "lct_hosted_attendee_duration",
+          "value": "\"lct_hosted_attendee_trials\".\"ends_at\" = \"lct_hosted_attendee_trials\".\"created_at\" + 180000"
+        }
+      }
+    },
+    "lct_meetings": {
+      "name": "lct_meetings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "url_hash": {
+          "name": "url_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "bot_id": {
+          "name": "bot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ends_at": {
+          "name": "ends_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_meetings_bot_unique": {
+          "name": "lct_meetings_bot_unique",
+          "columns": [
+            "bot_id"
+          ],
+          "isUnique": true
+        },
+        "lct_meetings_owner_created_idx": {
+          "name": "lct_meetings_owner_created_idx",
+          "columns": [
+            "owner",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_meetings_state_check": {
+          "name": "lct_meetings_state_check",
+          "value": "\"lct_meetings\".\"state\" in ('starting', 'uncertain', 'active', 'ended')"
+        },
+        "lct_meetings_duration_check": {
+          "name": "lct_meetings_duration_check",
+          "value": "\"lct_meetings\".\"ends_at\" > \"lct_meetings\".\"created_at\" and \"lct_meetings\".\"ends_at\" <= \"lct_meetings\".\"created_at\" + 300000"
+        }
+      }
+    },
+    "lct_openrouter_attempts": {
+      "name": "lct_openrouter_attempts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_output_tokens": {
+          "name": "max_output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recovery_released_at": {
+          "name": "recovery_released_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_openrouter_attempts_created_idx": {
+          "name": "lct_openrouter_attempts_created_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_openrouter_attempts_tokens_check": {
+          "name": "lct_openrouter_attempts_tokens_check",
+          "value": "\"lct_openrouter_attempts\".\"max_output_tokens\" >= 1 and \"lct_openrouter_attempts\".\"max_output_tokens\" <= 8192"
+        }
+      }
+    },
+    "lct_public_threads": {
+      "name": "lct_public_threads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "node_count": {
+          "name": "node_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "delete_hash": {
+          "name": "delete_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_public_threads_state_created_id_idx": {
+          "name": "lct_public_threads_state_created_id_idx",
+          "columns": [
+            "state",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "lct_public_threads_created_idx": {
+          "name": "lct_public_threads_created_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_public_threads_state_check": {
+          "name": "lct_public_threads_state_check",
+          "value": "\"lct_public_threads\".\"state\" in ('ready', 'removed')"
+        },
+        "lct_public_threads_payload_check": {
+          "name": "lct_public_threads_payload_check",
+          "value": "(\"lct_public_threads\".\"state\" = 'ready' and \"lct_public_threads\".\"payload\" is not null and \"lct_public_threads\".\"payload_hash\" is not null and \"lct_public_threads\".\"byte_size\" > 0 and \"lct_public_threads\".\"byte_size\" <= 524288) or (\"lct_public_threads\".\"state\" = 'removed' and \"lct_public_threads\".\"payload\" is null and \"lct_public_threads\".\"payload_hash\" is null and \"lct_public_threads\".\"byte_size\" = 0 and \"lct_public_threads\".\"node_count\" = 0 and \"lct_public_threads\".\"title\" = '')"
+        }
+      }
+    },
+    "lct_soniox_sessions": {
+      "name": "lct_soniox_sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_session_seconds": {
+          "name": "max_session_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_soniox_sessions_created_idx": {
+          "name": "lct_soniox_sessions_created_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_soniox_sessions_duration_check": {
+          "name": "lct_soniox_sessions_duration_check",
+          "value": "\"lct_soniox_sessions\".\"max_session_seconds\" >= 15 and \"lct_soniox_sessions\".\"max_session_seconds\" <= 900"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

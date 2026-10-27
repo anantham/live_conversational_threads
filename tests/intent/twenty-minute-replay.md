@@ -1,0 +1,7 @@
+# Approved private 20-minute replay intent
+
+- One default-off, exact-owner/same-origin trial admits one single-use1260second key and at most28map requests. Atomic SQLite uniqueness/conditional admission refuses duplicates, concurrent requests, out-of-order sequences, expired/dead/failed trials before provider calls. Reserved or uncertain operations never regain allowance.
+- Dedicated additive schema leaves all original tables/constraints/holders/data and public300second/20request/six-auto policies unchanged. Crash injection at reserve/dispatch/response/receipt boundaries retains receipts and closes dispatch.
+- No purchase/key-limit increase; owner-only read-only preflight proves sufficient actual available allowance against current route pricing. No key or private payload appears in errors/logs/metadata. Provider refusal/timeout/invalid output stops further calls; cancellations retain local media/confirmed words.
+- Reuse real audio decode, Soniox stream, strict source-linked generation, canvas and local archive.1200second input,45second serial cadence,27periodic slots plus one final catch-up. Actual final words/source prefixes survive reload, which sends no provider POST. Synthetic mocked tests do not count as provider stability.
+- Collect bounded latency/source-size/frame/optional heap diagnostics without transcript content; state sample window/denominators and unsupported measurements. Full1200second replay plus late maps/final coverage and local reload are required for operational acceptance.

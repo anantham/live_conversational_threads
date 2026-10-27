@@ -69,3 +69,8 @@ The plan was challenged by independent Google and Anthropic reviews; neither is 
 - Closed-gate preflight must verify actual available key/account allowance and existing provider limits through documented server-side read-only endpoints without exposing the key. If sufficient allowance cannot be established, do not dispatch; preserve the proposed allowance and report the concrete balance/permission constraint. No key-limit increase or top-up is inferred. Shared-provider credit consumption remains an explicit consequence the operator accepts for this one run.
 - Latency reports state the small sample denominator (at most28attempts) and20minute window. Report timeouts/refusals as failures and censored >=95second observations, not deleted fast samples. No statistical performance guarantee from this one run. Operational continuity, quantitative latency target and final full-coverage acceptance are reported separately.
 
+
+
+## Approval and implementation checkpoint — 27 October 2026
+
+The owner approved the exact private one-stream/28-map allowance, schema-only receipts and existing-Site deployment. No cap increase, purchase, retry or recovery. Implementation and1269combined isolated checks pass; exact code review and closed-gate live credit preflight are next. All earlier proposal statuses above are historical. Actual twenty-minute provider acceptance has not run.

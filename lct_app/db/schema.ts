@@ -120,3 +120,24 @@ export const hostedAttendeeTrials = sqliteTable('lct_hosted_attendee_trials', {
   check('lct_hosted_attendee_state', sql`${table.state} in ('starting', 'uncertain', 'active', 'ended')`),
   check('lct_hosted_attendee_duration', sql`${table.endsAt} = ${table.createdAt} + 180000`),
 ]);
+
+// One explicitly approved owner-only audio validation, separate from public budgets.
+export const audioReplayTrial = sqliteTable('lct_audio_replay_trial', {
+  id: integer('id').primaryKey(), owner: text('owner').notNull(), recordingId: text('recording_id').notNull(),
+  startRequestId: text('start_request_id').notNull(), state: text('state').notNull(),
+  createdAt: integer('created_at').notNull(), endsAt: integer('ends_at').notNull(), closedAt: integer('closed_at'),
+}, t => [check('audio_replay_singleton', sql`${t.id} = 1`),
+  check('audio_replay_state', sql`${t.state} in ('active','failed','completed')`),
+  check('audio_replay_lifetime', sql`${t.endsAt} > ${t.createdAt} and ${t.endsAt} <= ${t.createdAt} + 1500000`)]);
+export const audioReplayAttempts = sqliteTable('lct_audio_replay_attempts', {
+  requestId: text('request_id').primaryKey(), trialId: integer('trial_id').notNull(), kind: text('kind').notNull(),
+  sequence: integer('sequence').notNull(), phase: text('phase').notNull(), state: text('state').notNull(),
+  createdAt: integer('created_at').notNull(), completedAt: integer('completed_at'), leaseUntil: integer('lease_until'),
+  inputBytes: integer('input_bytes').notNull(), sourceEndMs: integer('source_end_ms').notNull(),
+}, t => [uniqueIndex('audio_replay_sequence').on(t.trialId, t.kind, t.sequence),
+  uniqueIndex('audio_replay_stt_once').on(t.trialId).where(sql`${t.kind} = 'stt'`),
+  uniqueIndex('audio_replay_one_active').on(t.trialId).where(sql`${t.state} in ('reserved','dispatching','uncertain')`),
+  check('audio_replay_kind', sql`${t.trialId} = 1 and ${t.kind} in ('stt','map')`),
+  check('audio_replay_sequence_bound', sql`(${t.kind} = 'stt' and ${t.sequence} = 0 and ${t.phase} = 'start') or (${t.kind} = 'map' and ${t.sequence} >= 1 and ${t.sequence} <= 28 and ${t.phase} in ('periodic','final'))`),
+  check('audio_replay_attempt_state', sql`${t.state} in ('reserved','dispatching','completed','uncertain')`),
+  check('audio_replay_input', sql`${t.inputBytes} >= 0 and ${t.inputBytes} <= 131072 and ${t.sourceEndMs} >= 0`)]);

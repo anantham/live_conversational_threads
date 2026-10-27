@@ -39,12 +39,12 @@ export async function requestTranscriptionSession({ signal }) {
   catch { throw error('authorization returned an invalid response.'); }
 }
 
-export function validateTranscriptionSession(response) {
+export function validateTranscriptionSession(response, maximumSeconds = 900) {
   if (!response || typeof response !== 'object' || Array.isArray(response) ||
       typeof response.api_key !== 'string' || !response.api_key || response.api_key.length > 4096 ||
       typeof response.expires_at !== 'string' || response.expires_at.length > 64 ||
       typeof response.session_id !== 'string' || !response.session_id || response.session_id.length > 256 ||
-      !Number.isInteger(response.max_session_seconds) || response.max_session_seconds < 15 || response.max_session_seconds > 900) {
+      !Number.isInteger(response.max_session_seconds) || response.max_session_seconds < 15 || response.max_session_seconds > maximumSeconds || ![900, 1260].includes(maximumSeconds)) {
     throw error('authorization returned an invalid session.');
   }
   return response;

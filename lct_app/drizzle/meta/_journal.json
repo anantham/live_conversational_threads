@@ -127,6 +127,13 @@
       "when": 1792985034987,
       "tag": "0017_hosted_attendee_trial",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793094982309,
+      "tag": "0018_audio_replay_trial",
+      "breakpoints": true
     }
   ]
 }

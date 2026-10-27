@@ -47,7 +47,7 @@ async function mint(request, env, policy, diagnostic) {
   const reserved = await env.DB.prepare(`INSERT INTO lct_soniox_sessions (id, created_at, max_session_seconds)
     SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_soniox_sessions) < ?
       AND NOT EXISTS (SELECT 1 FROM lct_soniox_sessions WHERE created_at > ?)
-      AND (SELECT COUNT(*) FROM lct_soniox_sessions WHERE lease_until IS NULL OR lease_until > ?) < ?
+      AND (SELECT COUNT(*) FROM lct_soniox_sessions WHERE lease_until IS NULL OR lease_until > ?) ${env.LCT_REPLAY_TEST_RECORDING_ID ? "+ (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'stt' AND (state IN ('reserved','dispatching','uncertain') OR lease_until > strftime('%s','now') * 1000))" : ''} < ?
     RETURNING id`).bind(id, now, policy.maxSessionSeconds, policy.maxSessions, now - policy.mintIntervalMs, now, policy.maxConcurrent).first();
   if (!reserved) throw new SonioxError(429, 'session_limit', 'The shared transcription session limit is reached or another session is starting. Wait before trying again; the lifetime limit needs an owner review.');
 

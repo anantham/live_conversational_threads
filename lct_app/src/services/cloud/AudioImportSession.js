@@ -5,8 +5,8 @@ import { decodeAudioImport, importDelay, importWait, cancelledImport, IMPORT_RAT
 /** One original file, one temporary key, one stream. No automatic retry. */
 export class AudioImportSession {
   constructor({ onStage, onAudio, onTranscript, StreamClass = SonioxStream,
-    decode = decodeAudioImport, requestSession = requestTranscriptionSession } = {}) {
-    Object.assign(this, { onStage, onAudio, onTranscript, StreamClass, decode, requestSession });
+    decode = decodeAudioImport, requestSession = requestTranscriptionSession, validateSession = validateTranscriptionSession } = {}) {
+    Object.assign(this, { onStage, onAudio, onTranscript, StreamClass, decode, requestSession, validateSession });
     this.state = 'idle'; this.generation = 0;
   }
   stage(stage, message, progress = null) { this.state = stage; this.onStage?.({ stage, message, progress, startedAt: Date.now() }); }
@@ -33,7 +33,7 @@ export class AudioImportSession {
       const blob = file.slice(0, file.size, decoded.mimeType);
       this.onAudio?.({ blob, mimeType: decoded.mimeType, complete: true, segments: [{ number: 1, blob, mimeType: decoded.mimeType, complete: true }] });
       this.stage('authorizing', 'Authorizing transcription.');
-      const key = validateTranscriptionSession(await importWait(this.requestSession({ signal: this.abort.signal }), this.abort.signal, 10000));
+      const key = this.validateSession(await importWait(this.requestSession({ signal: this.abort.signal }), this.abort.signal, 10000));
       current();
       if (decoded.durationMs > key.max_session_seconds * 1000) throw new Error('Audio import exceeds the current provider session limit. No audio was sent.');
       this.stream = new this.StreamClass({
