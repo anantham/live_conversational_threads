@@ -2101,3 +2101,8 @@ Read-only isolatedbrokercheckfindsoneexpiredunacknowledgedrun_bot deliveryforthe
 
 - Actual Soniox transcription succeeds in one150second stream, while generic service health says Needs attention because the key cannot list models. The message distinguishes model-list permission from transcription permission, but red status still overstates that readiness observation. Preexisting, non-blocking; follow up health-state semantics separately, do not change keys to gain unnecessary model-list permission.
 - Connected Chrome cannot verify blob-export receipts: download event timeout followed by explicit downloadMedia unsupported. This is a tool limitation, not established product download failure; retain original/local archive and prior export proof, avoid claiming fresh exact-byte export acceptance. No further method retry in this slice.
+
+
+### 2026-10-27 16:36 IST — Private replay owner-session handoff (blocking live validation)
+
+The20minute trial is reviewed/deployeddefault-off with empty metadata tables. Google challenge120seconds expires in two browser-controlled attempts; grouped final selector mistakenly consumes diff-only AX rather than full state. Automatic review blocks more authentication clicks as exceeding final-attempt bound. No bypass. User normal Google-owner session handoff pending; actual balance and20minute provider stability remain untested, allowance unused. Recommended next step: finish normal owner sign-in, checkread-only credit, run exact approved single replay. No auth-policy weakening or session-credential extraction.

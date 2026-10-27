@@ -74,3 +74,8 @@ The plan was challenged by independent Google and Anthropic reviews; neither is 
 ## Approval and implementation checkpoint — 27 October 2026
 
 The owner approved the exact private one-stream/28-map allowance, schema-only receipts and existing-Site deployment. No cap increase, purchase, retry or recovery. Implementation and1269combined isolated checks pass; exact code review and closed-gate live credit preflight are next. All earlier proposal statuses above are historical. Actual twenty-minute provider acceptance has not run.
+
+
+## Closed deployment checkpoint — 2026-10-27 16:36 IST
+
+Sourcec9cf055 pushed, exact independent GooglePASS,1269combined tests pass, native38df4db/Site64/env74 deployed with flagfalse. New tables empty, old19map/17STTrows unchanged; no provider test operation. Live owner balance not yet observable because Google sign-in expires under browser control. Automatic approval review rejects further clicks after final bounded attempt; user session handoff pending. No additional test approval requested, and no test allowance spent. Acceptance remains incomplete; next evidence is successful owner read-only credit preflight, then the approved full replay.
