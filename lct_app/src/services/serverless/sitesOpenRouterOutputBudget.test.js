@@ -55,6 +55,17 @@ describe('output budget before migration 0019', () => {
   });
 });
 
+describe('admission storage failures other than the 0019 constraint', () => {
+  it('reports a generic storage failure, not the migration message, and makes no provider call', async () => {
+    const prepare = env.DB.prepare;
+    env.DB = { prepare(sql) { if (sql.includes('INSERT INTO lct_openrouter_attempts')) throw new Error('SYNTHETIC database is locked'); return prepare(sql); } };
+    const response = await generate(1_200_000);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'generation_failed' });
+    expect(generations).toEqual([]); expect(attempts()).toEqual([]);
+  });
+});
+
 describe('output budget by transcript length', () => {
   it('keeps the live cap for a transcript inside the 5-minute envelope, including exactly 5 minutes', async () => {
     expect((await generate(300_000)).status).toBe(200);

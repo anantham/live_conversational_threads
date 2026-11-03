@@ -7,3 +7,8 @@ Context: on 2026-11-03 the owner chose "Raise to 16k for imports": live 5-minute
 - The attempt ledger records the cap actually reserved. Migration 0019 widens its CHECK to 16,384 with unqualified column names and preserves every row; the snapshot changes nothing else. If the long cap is set before 0019 is applied, a long admission returns 503 `schema_unavailable` with no provider call, and short transcripts still work.
 - Status reports both caps. Replay maps (always long) send the long cap, and the replay preflight prices it. The preflight accepts a bare provider endpoint tag as well as regional tags, matching the health check.
 - Synthetic fixtures only; no provider is called.
+
+## Error paths (added 2026-11-04)
+- A replay source the transcript validator rejects returns 400 `source` from output-cap sizing, reserves nothing and calls no provider.
+- An admission storage error other than the 0019 CHECK failure stays a generic 503 `generation_failed`, never the "apply migration 0019" message, with no provider call.
+- Both were red-proven by removing the guard each protects.

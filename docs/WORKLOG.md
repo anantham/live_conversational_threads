@@ -8782,3 +8782,8 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Cost: $0.0163 billed. Goal ledger total $0.616 across 47 runs, within the $1 per-task and $5 weekly budget.
 - `reference_repair`: null. As predicted, the id repair was not exercised live; the drift has now been seen 0 times in 47 runs since the first observation.
 - Timestamp correction: the WORKLOG headings for this slice from 20:52 through "01:40" had been estimated rather than read from a clock, and ran up to about two hours ahead. They are now set to the time of the commit that added each one.
+
+## 2026-11-04 01:37 IST — Tests for two untested error paths from PR #220
+- Coverage of the changed files showed two of my new branches untested: replay's invalid-source 400 (`sites/replayProvider.js:42`) and the admission rethrow for non-CHECK errors (`sites/openRouter.js:113`).
+- Added `replayTrial.test.js` "refuses a source the transcript validator rejects…" and `sitesOpenRouterOutputBudget.test.js` "admission storage failures other than the 0019 constraint". Both red-proven by removing the guard; code restored.
+- Branch `test/long-input-error-paths` from `fix/openrouter-approved-model-fallback` @ b9358e3a.
