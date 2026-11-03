@@ -68,6 +68,23 @@ describe('deterministic reference repair through the public adapter', () => {
     expect(convert(value).referenceRepair).toEqual({ operation: 'add_prefix', affix: 'node-', references: 6 });
   });
 
+  // The 3 November reply: 20 chunk->idea parents omitted `node-` while the 7 higher-tier parents kept it.
+  it.each([['already use declared ids', id => `node-${id}`], ['also omit the prefix', id => id]])(
+    'repairs the observed shape (only chunk->idea parents drift) when edges and paths %s', (_label, endpoint) => {
+      const value = drifted();
+      for (const n of value.nodes) if (n.semantic_level > 1) {
+        n.parent_id = n.parent_id && ref(n.parent_id.semantic_level, `node-${n.parent_id.id}`);
+        n.secondary_parent_ids = n.secondary_parent_ids.map(r => ref(r.semantic_level, `node-${r.id}`));
+      }
+      value.nodes[1].secondary_parent_ids = [];
+      for (const r of [...value.edges.flatMap(e => [e.from_node_id, e.to_node_id]),
+        ...value.conversation_threads[0].steps.map(step => step.moment_id)]) r.id = endpoint(r.id);
+      const result = convert(value);
+      expect(result.referenceRepair).toEqual({ operation: 'add_prefix', affix: 'node-',
+        references: endpoint('x') === 'x' ? 6 : 2 });
+      expect(result.bundle.graph_data.find(n => n.id === '1:node-water').parent_id).toBe('2:node-needs');
+    });
+
   it('declines to repair around a malformed reference slot', () => {
     const value = drifted(); value.nodes[0].parent_id = ref(2, '');
     expect(repairGeneratedReferences(value)).toEqual({ graph: value, repair: null });

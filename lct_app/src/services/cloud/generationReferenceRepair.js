@@ -38,7 +38,8 @@ function affixesBetween(id, declared) {
  * naming drift: a single delimiter-bounded affix operation maps every dangling
  * reference to exactly one declared node at its own level; at each level it
  * touches, every declared id carries the added affix (or none carries the
- * stripped one); each reference family is wholly resolved or wholly dangling;
+ * stripped one); within each reference family, references to one level are
+ * wholly resolved or wholly dangling;
  * any reference that already resolves carries the added affix (and nothing is
  * stripped beside resolved references); and no dangling id is declared
  * verbatim at another level. Resolved references never
@@ -67,10 +68,16 @@ export function repairGeneratedReferences(graph) {
   const families = Object.values(slots);
   // A malformed slot is the validator's to reject; never repair around it.
   if (families.some(family => family.some(value => !reference(value)))) return none;
-  // Drift is systematic per reference family: parents, edges and thread steps are each either
-  // wholly resolved or wholly dangling. Mixed use (`x` here, `node-x` there) in one family
-  // means the model distinguished the names, so a lone dangling reference is never re-pointed.
-  if (families.some(family => family.some(resolves) && family.some(value => !resolves(value)))) return none;
+  // Drift is systematic per reference family and target level: e.g. every chunk->idea parent
+  // omits `node-` while topic/theme/arc parents keep it (the 3 November reply). Mixed use
+  // (`x` here, `node-x` there) for one family and level means the model distinguished the
+  // names, so a lone dangling reference is never re-pointed.
+  const uniform = new Map();
+  for (const [index, family] of families.entries()) for (const value of family) {
+    const group = `${index}:${value.semantic_level}`, state = resolves(value);
+    if (uniform.has(group) && uniform.get(group) !== state) return none;
+    uniform.set(group, state);
+  }
   const dangling = families.flat().filter(value => !resolves(value));
   if (!dangling.length) return none;
 

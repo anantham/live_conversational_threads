@@ -8709,3 +8709,10 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Round 3: same reviewer/model, packet 22,290 bytes (sha256 `526044cd…`). No throws found and no resolved reference changed. Two traced acceptances, both reproduced red: a `-2` strip on edge endpoints beside threads that already resolve, and `water`→`non-water` when only level 1 carries the prefix. Fix: when any reference resolves, every resolved reference must carry the added affix and no strip applies. Not adopted: its same-level clause, which would refuse the motivating case whenever an edge links idea and topic nodes using declared ids.
 - Both halves of the new guard are mutation-killed (a third case isolates the no-strip clause). Full suite 140 files / 1,324 tests; Worker build and built-bundle harness OK.
 
+## 2026-11-03 22:30 IST — The per-family rule refused the real failure; now per family and level
+
+- Facts relayed by the parent session (measured before the raw reply was overwritten): 28 nodes (1:20, 2:3, 3:3, 4:1, 5:1), 27 typed parent refs. The 20 chunk→idea parents omitted `node-` and the 7 higher-tier parents resolved with it. Edges and threads were NOT checked.
+- The round-2 per-family rule (parents wholly resolved or wholly dangling) would have refused this exact reply. A red test reproduced it. Fix: uniformity is per (family, target level). Every earlier attack case still fails. The real shape is accepted whether edges and threads use the declared ids or omit the prefix. Mutation-killed.
+- Built-Worker harness now mirrors the real reply (20/3/3/1/1, only chunk→idea drifted): 200, 20 references repaired, 28 nodes. Full suite passes.
+- Lesson: a guard designed from an attacker's inputs rather than the observed failure can quietly reject the case it exists for. Keep the motivating shape as a pinned test.
+
