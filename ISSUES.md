@@ -2811,3 +2811,13 @@ existing history regression, actual pointer/keyboard stepping with details and
 Source at desktop/narrow sizes. Next checkpoint: red/green behavior test, then
 bounded independent review, required CI, integration and served walkthrough.
 Review/CI waits are separate; model/media/search/backend holds remain unchanged.
+
+## 2026-11-03 — Pre-existing viewer issues surfaced by the PR #218 Gemini review (non-blocking)
+
+Found by an independent Gemini review of the main → Sites merge (`docs/reviews/2026-11-03-pr218-merge-resolution-agy.md`). Each was verified against both parents; none was introduced by the merge.
+
+- **Should-fix: `/view?src=` reload overwrites speaker renames.** The `?src=` effect in `ThreadsViewer.jsx` re-fetches and `ingest`s the remote file on every load (with `remember` on), while the source editor tells the reader "Edits stay in this browser". A rename saved to the library is replaced by the unedited remote copy on refresh. Next step: check the library record for the same `sourceName` before ingesting, as the `?driveFile=` path does, or change the caption for `?src=`.
+- **Compact `cards` view: the toolbar's Source toggle has no effect.** The cards branch renders `{header}{toolbar}` and `MobileConversationDeck`, but never `renderSourcePanel`. A text-only map in cards view can't open the transcript or rename speakers. (Was already on main.)
+- **Generated-map handoff isn't guarded in the `?src=` / `?driveFile=` effects.** They check `location.state?.threadsBundle` but not `generatedMapId`, so a handoff URL that also carries `?src=` could replace the generated map. Unlikely in practice. (Migration branch.)
+- **Low: `DiscussionView` reads `#discussion=` in private mode.** `openLinkedBranch` ignores `linkBase === null` and may expand the hash's branch. It's a read only, with no history or storage write. (Both sides.)
+- **Minor: `useViewerHistory` scroll listener after a cancelled Drive refresh** stays attached to the unmounted root until `viewMode` changes. (Was already on main.)

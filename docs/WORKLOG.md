@@ -9495,3 +9495,9 @@ Fresh separate live guest browser confirms `/assets/index-CxdC-Qt3.js`, Profile 
   - Public route (Sites mode, `/api/cloud/public-threads/<id>/content` served by a local stand-in after 1.5 s): "Loading public conversation · 0s elapsed" → full render with "Public copy · visible to everyone · edits stay in this view". **No hook-order error**, which is the exact path the merge commit fixed. Source editor caption: "Names change in this view only. The stored copy stays the same." The rename shows; localStorage holds only timing keys.
   - Console: no React/hook errors. The only errors were `/api/import/health` with no backend running (expected).
 - Notes: in the normal (non-Sites) build `/public/:id` has no route and no catch-all, so it renders a blank page (pre-existing; out of scope). Not exercised live: private cloud copy (needs a signed-in Sites session) and generated-map handoff (covered by vitest).
+
+## 2026-11-03 22:15 IST — Independent Gemini review of the merge resolution
+
+- At the owner's request, Gemini via Antigravity (`gemini-4-argon-high`, pinned so the review is cross-family) stood in for the unavailable ultrareview: no GitHub account is connected to Claude. Packet: remerge diff of `ecfd2fb` + the three follow-up commits + 7 final files; code only, scanned, manifest SHA256 `4620b50ad155ca3f…`.
+- Verdict GO WITH FIXES (5 should-fix, 2 nits, 0 blockers). Author adjudication: **none of the findings was introduced by the merge**. Four pre-existing defects and one minor issue were logged in ISSUES.md; one finding is by design (main's "incomplete timing stays neutral"); one was rejected (`renameSpeaker` keeps `sourceName`/`driveFileId` via `options.existing`). Receipt: `docs/reviews/2026-11-03-pr218-merge-resolution-agy.md`.
+- The repo's CLAUDE.md merge gate names a *Claude* review. Whether this cross-family review satisfies it is an owner decision; not assumed.
