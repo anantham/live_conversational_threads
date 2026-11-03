@@ -554,7 +554,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     setMobileMapOpen(saved.mobileMapOpen); setMapTarget(saved.mapTarget);
     setMobileDeckState(saved.mobileDeckState); setMobileReadingPath(saved.mobileReadingPath);
   }, []);
-  const history = useViewerHistory({ enabled: Boolean(bundle), sessionKey: historySession,
+  // Private cloud copies promise no router/history writes, so they get no
+  // browser-backed exploration history.
+  const history = useViewerHistory({ enabled: Boolean(bundle) && !privateMode, sessionKey: historySession,
     state: exploration, onRestore: restoreExploration, rootRef: viewerRoot });
   const seekSourcePassage = useCallback((seconds) => {
     const video = selectYouTubeRef(bundle);
@@ -671,7 +673,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
     graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult}
-    history={history}
+    history={privateMode ? null : history}
     sourceAvailable={Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube") || bundle.full_transcript || bundle.utterances?.length)} sourceOpen={sourceOpen} onToggleSource={() => { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen((value) => !value); }}
     onDownloadTranscript={downloadTranscript}
     onEnterFocus={() => { if (renderedViewMode === "discussion") setViewMode("graph"); setSourceOpen(false); setMobileMapOpen(false); setFocusMode(true); }}
