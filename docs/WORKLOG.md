@@ -7688,3 +7688,44 @@ User observed an empty desktop transcript until node selection, with only the cu
   Remaining resumed-session question is falsifiable from the current-session
   hierarchy-consolidation function (no prior graph reads); include that tracked
   function in final review. Earlier ORM/reconnect findings were withdrawn.
+## 2026-09-29 02:50 IST - Bound recording identity before review integration
+
+- User confirmed the current-main-native route and approved the recommendation
+  to compare sources for quality while allowing only validated word timestamps
+  to seek audio. Keep each recording separate; preserve the selected canonical
+  transcript and its existing corrections until a distinct explicit source
+  choice. Source disagreement is evidence to review, not an accuracy label.
+- Hypothesis H1 (0.95): when distinct Drive recordings share a transcript group,
+  item-based keys conflate their words, state, audio, comparison, and verdicts.
+  Predicted regression: the public sweep should complete two jobs, call M5 twice,
+  and persist two independently keyed artifact sets; status should expose each
+  distinct review URL. Legacy comparison/corrections must remain byte-for-byte
+  untouched. H2 (0.05): another durable recording identity already isolates
+  every artifact; the regression would disprove H1.
+- Test intent added first at
+  `grimoire/IndrasNet/tests/intent/meet_recording_comparison_identity.md`.
+  The previously recorded synthetic public-sweep probe already confirms the
+  collision; the next step is to make that behavior a durable public-API test,
+  then introduce only the smallest identity adapter needed. No migrations of
+  existing meeting data, runtime writes, push, deployment, or publishing.
+- Relevant current-main owners read for this slice: `core/stt_compare/build.py`,
+  `core/stt_compare/canonical.py`, `core/stt_compare/verdicts.py`,
+  `agents/meet_ingestion/stt_compare_pipeline.py`, `core/meet_status/` and their
+  focused tests. Worktree is local `codex/meet-angel-unification-current-main`.
+- The first new behavioral regression failed as predicted: after adding a
+  sibling recording, the sweep reported `(done=0, failed=0, skipped=2)` and made
+  no second M5 call because the shared words marker suppressed it. The same
+  regression now passes after adding a path-safe recording key and a resolver
+  that retains a legacy key only for the exact marker owner/default first
+  recording. A second red/green check verifies status exposes distinct review
+  URLs for two recordings sharing one transcript. The existing status fixtures
+  had omitted the exact `drive_file_id` now required to attribute a legacy
+  marker; adding that field made them match the production marker contract,
+  rather than relaxing the identity rule. These are local synthetic results;
+  no live records were read.
+- Before integrating the source/audio editor, updated test intents at
+  `grimoire/IndrasNet/tests/intent/meet_review_workspace.md` and
+  `grimoire/IndrasNet/tests/intent/meet_review_angels_ui.md`. The review view
+  must distinguish Meet, local STT, and currently unavailable Attendee text;
+  distinguish source viewing from canonical selection; and never treat source
+  agreement or source selection as proof of accuracy.

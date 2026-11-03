@@ -135,3 +135,36 @@ groups:
         annotations:
           summary: "Host process thread count is above the evidence threshold"
           description: "Observed processes exceeded 12,000 threads for ten minutes, compared with a measured baseline near 8,400. Compare by process_executable_name and process_pid; this threshold is diagnostic, not a capacity target."
+
+      # M5 STT tiers (probed by the Indra's Net telemetry exporter, :9109).
+      # 2026-09-28: :5095 and :5096 both refused for ~11h and nothing fired; every
+      # voice note silently fell back to the cold-start local WhisperX (~10+ min).
+      - alert: RemoteSttServiceDown
+        expr: indras_remote_service_up{job="indrasnet-telemetry",service=~"m5_stt_mlx|m5_stt_parakeet"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          domain: stt
+        annotations:
+          summary: "M5 STT {{ $labels.service }} is down ({{ $labels.url }})"
+          description: "The /health probe has failed for five minutes (reason: see indras_remote_service_probe_reason). Voice notes are falling back to the slow local WhisperX on the Asus. On the M5: launchctl list | grep stt, then curl {{ $labels.url }}/health."
+
+      - alert: RemoteSttIndicTierDown
+        expr: indras_remote_service_up{job="indrasnet-telemetry",service="m5_stt_sravaani"} == 0
+        for: 15m
+        labels:
+          severity: warning
+          domain: stt
+        annotations:
+          summary: "M5 SraVaani (Malayalam/Manglish STT) is down ({{ $labels.url }})"
+          description: "The Indic tier has no local fallback; Malayalam escalations will fail until it is back."
+
+      - alert: RemoteSttProbeMissing
+        expr: absent(indras_remote_service_up{job="indrasnet-telemetry",service="m5_stt_mlx"}) or max(indras_remote_service_probe_age_seconds{job="indrasnet-telemetry"}) > 180
+        for: 5m
+        labels:
+          severity: warning
+          domain: stt
+        annotations:
+          summary: "M5 STT probe is not reporting"
+          description: "The telemetry exporter (scheduled task IndrasTelemetryExporter, :9109) is down or its probe thread stalled, so an M5 STT outage would go unnoticed. Restart the task."

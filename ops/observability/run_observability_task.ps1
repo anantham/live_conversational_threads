@@ -134,7 +134,7 @@ try {
                 -StartupTimeoutSeconds $StartupTimeoutSeconds `
                 -HealthCheckIntervalSeconds $HealthCheckIntervalSeconds `
                 -HealthFailureThreshold $HealthFailureThreshold `
-                -SkipDownload *>> $TaskOutputLog
+                -SkipDownload *>&1 | Tee-Object -FilePath $TaskOutputLog -Append
             $exitCode = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $previousErrorActionPreference

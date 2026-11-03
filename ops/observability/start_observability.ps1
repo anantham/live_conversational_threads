@@ -14,6 +14,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+try { if ($Component) { $host.ui.RawUI.WindowTitle = "LCT Observability - $Component" } else { $host.ui.RawUI.WindowTitle = "LCT Observability" } } catch {}
 $ProgressPreference = "SilentlyContinue"
 
 if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
