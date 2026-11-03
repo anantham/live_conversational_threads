@@ -8792,3 +8792,14 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Before this, map quality had been judged only mechanically (validity, coverage, node counts, summary whitespace). Read the 16k map against its 32-utterance transcript, then counted each pattern across all 28 valid 20-minute maps. Findings are in `docs/reviews/2026-11-03-long-input-envelope.md` under "Reading the maps against the transcript".
 - The main risks are a turn-level granularity floor (a 607-word turn is one card), chunk counts from 3 to 32 for the same input, pass-through tiers, and 2/28 maps misfiling the intro (one with 14 chunks under ideas whose evidence excludes them).
 - Corrected the doc: the 293 count is transcript segments, not turns (the map sees 32 speaker turns). "Map quality held" now reads as mechanical checks only.
+
+## 2026-11-04 01:43 IST — Gemini review of the error-path tests (agy, gemini-4-argon-high): NO-GO, adjudicated
+- Adopted (tests only):
+  - The replay test asserts the exact sizing-refusal message, so the earlier recording/phase check (same 400 `source`) can't satisfy it.
+  - It uses an invalid source spanning more than 5 minutes, checks for no map-kind reservation and no new `lct_openrouter_attempts` row, and checks that the same sequence still maps afterwards.
+  - The admission stub keeps the real DB for other statements, fails asynchronously in `first()` (as D1 does) and only for the admission INSERT, and counts that it was reached. The test asserts the body names neither 0019 nor the internal error.
+  - Red-proven by three changes to the guarded code (remove the sizing catch; make sizing fall back to the live cap; map every admission error to 0019). Each fails one test.
+- Declined:
+  - Narrowing the 0019 regex to the constraint name. The INSERT touches one table whose only CHECK is `lct_openrouter_attempts_tokens_check` (node:sqlite message verified), and narrowing would rely on D1's message format, which can't be verified locally.
+  - The bare catch in `replayWire` hiding policy bugs: the policy is validated on the line above, and only the transcript validator throws there.
+  - "The stub skips real SQL": SQL correctness is covered by the ledger tests that use the real migrations.
