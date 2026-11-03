@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-11-04 01:42 IST — Deploy #221 to the M5 local STT service
+
+- Owner approved the merge and deploy in chat. #221 was squash-merged as
+  `dda93db3`, pinned to the reviewed head `df660e61`.
+- The M5 main clone was on `feat/cost-tracking-wire-up`, one commit ahead of
+  origin. That branch was pushed first (`dc83d3f4..92da5920`), so none of its
+  14 commits not on main are local-only any more.
+- Checkout trap: the clone's local `main` is an UNRELATED history (no merge
+  base with `origin/main`; last commit 2026-06-29; ahead 879 / behind 1097),
+  left over from before origin was rewritten, as are most old local branches.
+  `git pull` on it fails with "refusing to merge unrelated histories". It was
+  left untouched. The clone now runs from `deploy/origin-main`, which tracks
+  `origin/main`. Future deploys: `git pull --ff-only` on that branch.
+- `local_stt/server.py` on disk = SHA256 `2db12747…` (the reviewed packet).
+  Only `com.aditya.mlx-stt` was restarted (`launchctl kickstart -k`, pid
+  1289 → 59464, idle at the time). `com.aditya.fluidaudio-stt` also runs from
+  this clone, but its sources are unchanged and it was not restarted.
+- Live checks, synthetic `say` audio only: speech transcribed verbatim with
+  `_vad_analysis` regions; a 4 s silent clip VAD-gated in 0.17 s (empty text,
+  model skipped); a two-voice clip gave 2 speakers + 192-dim ECAPA embeddings.
+  `/health` reports `saturated_rejections`; healthy probes are absent from the
+  new `~/Library/Logs/mlx-stt.log`; no errors since the restart.
+- Still open: `MLX_STT_MAX_CONCURRENCY=4` with one shared Silero VAD model (see
+  ISSUES 2026-11-03). Silent clips print a harmless numpy "Mean of empty
+  slice" warning to stderr.
+
 ## 2026-11-03 23:40 IST — Port the M5's local STT fixes onto main
 
 - Owner ruling 2026-11-03: port only the STT fixes now. The M5
