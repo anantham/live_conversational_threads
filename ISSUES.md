@@ -24,6 +24,57 @@ Actual Google sign-in fails400/origin_mismatch for the cloud Site origin. Owner 
 
 # ISSUES
 
+Last updated: 2026-11-03
+
+## 2026-11-03 - Local STT enrichment follow-ups found while porting M5 fixes (OPEN, NON-BLOCKING)
+
+- ECAPA speaker embeddings still decode through `torchaudio.load`, which uses
+  TorchCodec. It loads on the M5 only because the `com.aditya.mlx-stt`
+  LaunchAgent sets `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/opt/ffmpeg@8/lib`;
+  from a plain shell (Homebrew default FFmpeg 9) the same call fails with
+  "Could not load libtorchcodec". VAD and diarization no longer depend on that
+  variable. Impact: removing the variable or ffmpeg@8 would silently degrade
+  `include_embeddings` to an `embeddings.error` field. Next step: reuse
+  `_decode_audio_for_model` in `_embed_segments`.
+- The live log since 2026-09-28 shows 271 embedding successes and 2
+  failures, both `Padding size should be less than the corresponding input
+  dimension ... input [1, 80, 1]`. Hypothesis (unverified): a Whisper segment
+  end past the decoded audio length, so the tensor slice is shorter than the
+  0.2 s guard computed from timestamps. The transcript is returned; only vectors
+  are lost. Next step: reproduce, then check the actual slice length.
+- 17 `VAD check failed` lines in the same window are FFmpeg CLI decode errors;
+  the log keeps the command but not FFmpeg's stderr, so the cause of each is
+  not recorded. The gate fails open as designed. Next step: include a bounded
+  stderr excerpt in the decode error.
+- The local STT suite's async tests needed `pytest-asyncio`, which is not in
+  `requirements.txt`; they now use the `anyio` plugin that Starlette already
+  installs (fixed in the port PR).
+- Independent review (Gemini 4 Argon High via Antigravity, 2026-11-03) raised
+  these against code that is identical in the deployed file and on main, so the
+  port left them unchanged. Each is a hypothesis until reproduced:
+  - Shared model objects across worker threads. The M5 LaunchAgent sets
+    `MLX_STT_MAX_CONCURRENCY=4`. One Silero VAD model is shared and its
+    recurrent state is reset per call, so two requests' VAD calls could
+    interleave. The risky outcome is wrong regions on a file with speech, which
+    the gate could then drop as silence. Lazy model loaders have no lock, and
+    `mx.clear_cache()` runs while another request is mid-inference. Next step:
+    a lock around VAD inference (cheap), then decide the concurrency default
+    deliberately. That is an owner decision because it changes throughput.
+  - If the handler task is cancelled (server shutdown; whether Uvicorn cancels
+    it on client disconnect here is unverified), the `finally` frees the slot
+    and unlinks the temp file while the worker thread is still running.
+    Next step: reproduce, then shield the worker future and wait for it before
+    releasing the slot.
+  - `ffmpeg` subprocesses have no timeout, so a hung decode holds a slot
+    indefinitely. Decoding a long file holds several full-length float32 copies,
+    and diarization decodes the file a second time.
+  - `/health` is a plain `def`, so it runs in the same AnyIO threadpool as the
+    compute work; `async def` would answer on the loop. A health probe
+    cancelled before it responds is not logged.
+  - A failed model load (`_get_vad`, `_get_diarizer`, `_get_ecapa`) is cached
+    until restart, and `/health` reports no VAD status. `_embed_segments` leaks
+    its `.ecapa16k.wav` if FFmpeg fails mid-write.
+
 ## 2026-10-14 10:08 IST — Sites Windows package-manager launch fails before build
 
 Resolved10:15IST: a materially different version-only official-manager probe with complete existing Node22.18/npm11.12.1 image first in task-local PATH passes; official build/helper/package then succeeds. Diagnostic source is served public33/env29 with exact data/settings preservation. No install, plugin/system/source workaround or new provider call. Keep absolute path/toolchain preflight for future helper launches. Browser attachment and actual live map acceptance remain separate incomplete issues.

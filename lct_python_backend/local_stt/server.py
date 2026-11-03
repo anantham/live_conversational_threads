@@ -17,9 +17,11 @@ NETWORK NOTE: binds IPv4 (0.0.0.0). Callers MUST use `http://127.0.0.1:<port>`
 NOT `http://localhost:<port>` — on macOS `localhost` can resolve to IPv6 `::1`,
 which this server does not listen on (this exact gotcha cost a debugging cycle).
 
-Logging (AGENTS.md §9 — no silent failures): every request is logged on receipt
-and on completion/error; set LOCAL_STT_DEBUG=1 for transcript previews + uvicorn
-debug. Run:
+Logging (AGENTS.md §9 — no silent failures): non-health requests are logged on
+receipt and completion/error; healthy, fast `/health` probes are suppressed while
+failures and slow probes remain visible. When launched as `python server.py`,
+logs go to LOCAL_STT_LOG_PATH (default ~/Library/Logs/mlx-stt.log), rotating at
+10 MiB with five backups. Set LOCAL_STT_DEBUG=1 for transcript previews + uvicorn debug. Run:
     cd lct_python_backend/local_stt
     uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -r requirements.txt
     LOCAL_STT_PORT=5095 .venv/bin/python server.py
@@ -29,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+from logging.handlers import RotatingFileHandler
 import math
 import os
 import tempfile
@@ -67,12 +70,23 @@ ANTI_HALLUCINATION_OPTS = {
 # LOCAL_STT_CORS_ORIGINS to a comma-separated allowlist to tighten.
 CORS_ORIGINS = os.getenv("LOCAL_STT_CORS_ORIGINS", "*").strip()
 
-# Blocking MLX/PyTorch inference must never run on the ASGI event loop. Bound
-# the complete request-processing lane as well: reject before a parsed/spooled
+# LIVENESS CONTRACT (added 2026-07-26 after a 7-day wedge).
+#
+# The endpoint is `async def`, so its body runs ON THE EVENT LOOP. Every blocking
+# call in it (mlx_whisper.transcribe, the VAD gate, the diarizer) therefore froze
+# the whole server — including `/health`, which then could not answer at all. The
+# process stayed alive and kept LISTENING, so launchd's KeepAlive saw nothing wrong
+# (it only restarts on process EXIT) and the wedge persisted for 7 days at 47% CPU.
+#
+# Fix: blocking MLX/PyTorch work never runs on the ASGI event loop. Bound the
+# complete request-processing lane as well: reject before a parsed/spooled
 # UploadFile is copied into application memory by ``UploadFile.read()``, then
 # retain the slot through import, temp-file I/O, VAD/inference/diarization, and
 # cleanup. An unlimited worker or memory queue makes saturation look exactly
 # like a dead server to callers/watchdogs.
+#
+# Contract for clients: refused = down · 503 = healthy but saturated (retry later)
+# · accepts-but-silent must never happen again.
 MAX_CONCURRENCY = max(1, int(os.getenv("MLX_STT_MAX_CONCURRENCY", "2")))
 RETRY_AFTER_S = max(1, int(os.getenv("MLX_STT_RETRY_AFTER_S", "30")))
 _slots = asyncio.BoundedSemaphore(MAX_CONCURRENCY)
@@ -83,6 +97,42 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [local_stt] %(message)s",
 )
 log = logging.getLogger("lct_local_stt")
+
+LOG_MAX_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 5
+HEALTH_SLOW_LOG_MS = 1000.0
+
+
+def _configure_runtime_logging() -> None:
+    """Route application and Uvicorn errors through a size-capped log file."""
+    log_path = Path(os.getenv(
+        "LOCAL_STT_LOG_PATH",
+        str(Path.home() / "Library" / "Logs" / "mlx-stt.log"),
+    )).expanduser()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding="utf-8",
+    )
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG else logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        handlers=[handler],
+        force=True,
+    )
+
+    # Uvicorn's access logger would otherwise bypass the middleware's
+    # health-check filter. Keep its errors flowing to the rotating root handler.
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False
+    access_logger.disabled = True
+    error_logger = logging.getLogger("uvicorn.error")
+    error_logger.handlers.clear()
+    error_logger.propagate = True
+    error_logger.disabled = False
 
 app = FastAPI(title="LCT Local STT (mlx-whisper)")
 app.add_middleware(
@@ -96,23 +146,31 @@ _state = {"ready": False, "requests": 0, "failures": 0, "saturated_rejections": 
 
 @app.middleware("http")
 async def _access_log(request: Request, call_next):
-    # One line per request so connection/routing problems are never silent.
+    # Keep normal request traces, but suppress successful fast watchdog noise.
     rid = uuid.uuid4().hex[:8]
     t0 = time.perf_counter()
     client = request.client.host if request.client else "?"
-    log.info("[%s] --> %s %s from %s", rid, request.method, request.url.path, client)
+    health_probe = request.method == "GET" and request.url.path == "/health"
+    if not health_probe:
+        log.info("[%s] --> %s %s from %s", rid, request.method, request.url.path, client)
     try:
         response = await call_next(request)
     except Exception:
         log.exception("[%s] !! unhandled error on %s %s", rid, request.method, request.url.path)
         raise
-    log.info("[%s] <-- %s %s %d (%.0fms)", rid, request.method, request.url.path,
-             response.status_code, (time.perf_counter() - t0) * 1000)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    if not health_probe or response.status_code >= 400 or elapsed_ms >= HEALTH_SLOW_LOG_MS:
+        level = logging.WARNING if health_probe and response.status_code >= 400 else logging.INFO
+        log.log(level, "[%s] <-- %s %s %d (%.0fms)", rid, request.method, request.url.path,
+                response.status_code, elapsed_ms)
     return response
 
 
 @app.get("/health")
 def health() -> dict:
+    # Reports SATURATION, not just liveness: a caller (or watchdog) can now tell
+    # "busy" apart from "wedged" — previously indistinguishable, because a wedged
+    # server simply never answered.
     return {
         "status": "healthy" if _state["ready"] else "starting",
         "engine": "mlx-whisper",
@@ -186,6 +244,30 @@ def _assign_speakers(segments, diarization):
     return segments, sorted({t[2] for t in turns})
 
 
+def _decode_audio_for_model(path: str) -> dict:
+    """Decode with the service's FFmpeg CLI for in-memory model inputs.
+
+    Pyannote accepts ``{"waveform", "sample_rate"}``; Silero VAD accepts the
+    waveform tensor. Keeping both on this boundary avoids TorchCodec's file
+    decoder and its FFmpeg shared-library ABI, while retaining explicit decode
+    errors when service FFmpeg is unavailable or the input is unreadable.
+    """
+    import subprocess
+    import numpy as np
+    import torch
+
+    decoded = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-i", path,
+         "-f", "f32le", "-acodec", "pcm_f32le", "-ac", "1", "-ar", "16000", "pipe:1"],
+        check=True,
+        capture_output=True,
+    )
+    samples = np.frombuffer(decoded.stdout, dtype=np.float32)
+    if samples.size == 0:
+        raise ValueError("FFmpeg decoded no audio samples for diarization")
+    return {"waveform": torch.from_numpy(samples.copy()).unsqueeze(0), "sample_rate": 16000}
+
+
 # ---------------------------------------------------------------------------
 # Optional speaker EMBEDDINGS — speechbrain ECAPA-TDNN (spkrec-ecapa-voxceleb, 192-dim).
 # CRITICAL: this is the SAME embedding space Strix/IndrasNet store (ADR-022). pyannote
@@ -253,21 +335,42 @@ def _dbfs(chunk) -> float:
 
 
 def _vad_analyze(path: str):
-    """Return speech regions and relative levels, or None when VAD cannot run.
+    """{regions, speech_dbfs, head_dbfs, tail_dbfs, total_s} — or None if VAD can't run.
 
-    Silero already tells us *where* speech occurs. Keeping only the summed
-    duration made a long recording with a silent head indistinguishable from a
-    tightly cropped recording, which prevented evidence-based cropping and
-    hallucination diagnosis. Levels remain advisory: a neural VAD miss must not
-    silently delete quiet real speech.
+    THE REGIONS ARE THE POINT. silero already returns WHERE the speech is; the
+    previous version summed them into a scalar and threw the locations away:
+
+        speech_s = sum(t["end"] - t["start"] for t in ts) / 16000.0
+        return speech_s >= VAD_MIN_SPEECH_S
+
+    which makes the gate WHOLE-FILE. A 40-minute meeting with 10 minutes of
+    silent lead-in has ~1800s of speech, sails past a 0.25s threshold, and the
+    ENTIRE file — silence included — goes to the model. Whisper fills that
+    silence with filler: 3,739 measured blocks of "Thank you." and similar from
+    this engine, in exactly-30.0s spans (its window length), clustered at
+    recording heads. Zero such blocks came from the whisperx path, which
+    VAD-segments by design.
+
+    ALSO RETURNS LEVELS, because silero is a NEURAL classifier, not a level
+    meter, and acting on it alone is only safe in one direction. Failing to gate
+    costs hallucinated filler — visible junk. Wrongly cropping costs REAL SPEECH
+    — invisible loss. A soft talker, a distant mic, or a quiet non-English
+    passage can all score as non-speech. So the caller gets the actual measured
+    level of the dead air AND of the confirmed speech, and can require a real
+    gap between them before deleting anything. Normalised per-recording, not an
+    absolute threshold: what counts as silence in a loud room is not what counts
+    in a quiet one.
+
+    Audio is decoded by the service FFmpeg CLI (_decode_audio_for_model), not
+    silero's read_audio, which goes through TorchCodec and broke under FFmpeg 9.
     """
     m = _get_vad()
     if m is None:
         return None
     try:
-        from silero_vad import read_audio, get_speech_timestamps
+        from silero_vad import get_speech_timestamps
 
-        wav = read_audio(path, sampling_rate=16000)
+        wav = _decode_audio_for_model(path)["waveform"].squeeze(0)
         ts = get_speech_timestamps(wav, m, sampling_rate=16000)
         regions = [
             (float(item["start"]) / 16000.0, float(item["end"]) / 16000.0)
@@ -495,6 +598,7 @@ async def transcribe(
             kwargs["hallucination_silence_threshold"] = 2.0  # skip silent spans it tries to fill (needs word ts)
 
         t0 = time.perf_counter()
+        # BLOCKING (seconds-to-minutes of Metal/ANE compute) -> must not run on the loop
         result = await run_in_threadpool(
             lambda: mlx_whisper.transcribe(tmp_path, **kwargs)
         )
@@ -521,14 +625,22 @@ async def transcribe(
                 log.warning("diarize requested but unavailable: %s", diar_info["error"])
             else:
                 d0 = time.perf_counter()
-                diarization = await run_in_threadpool(pipe, tmp_path)
-                segments, speakers = _assign_speakers(segments, diarization)
-                d_elapsed = time.perf_counter() - d0
-                diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
-                             "elapsed_seconds": round(d_elapsed, 3),
-                             "realtime_x": round(audio_dur / d_elapsed, 2) if (audio_dur and d_elapsed) else None}
-                log.info("diarize ok: %d speaker(s) on %s in %.2fs (%.1fx realtime)", len(speakers),
-                         _diar.get("device"), d_elapsed, (audio_dur / d_elapsed) if (audio_dur and d_elapsed) else 0.0)
+                try:
+                    audio_for_diarization = await run_in_threadpool(_decode_audio_for_model, tmp_path)
+                    diarization = await run_in_threadpool(pipe, audio_for_diarization)
+                    segments, speakers = _assign_speakers(segments, diarization)
+                    d_elapsed = time.perf_counter() - d0
+                    diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
+                                 "elapsed_seconds": round(d_elapsed, 3),
+                                 "realtime_x": round(audio_dur / d_elapsed, 2) if (audio_dur and d_elapsed) else None}
+                    log.info("diarize ok: %d speaker(s) on %s in %.2fs (%.1fx realtime)", len(speakers),
+                             _diar.get("device"), d_elapsed, (audio_dur / d_elapsed) if (audio_dur and d_elapsed) else 0.0)
+                except Exception as exc:
+                    # The transcript has already been computed. Speaker labels are optional
+                    # enrichment, so a decoder/model failure must not throw the transcript
+                    # away or make callers retry the whole recording on another machine.
+                    diar_info = {"error": f"{type(exc).__name__}: {exc}"}
+                    log.exception("diarize FAILED after transcription; returning unlabelled transcript")
 
         emb_info = None
         speaker_embeddings = None
@@ -588,8 +700,10 @@ async def transcribe(
                     except OSError:
                         pass
                 # Release GPU memory caches after every request. mlx-whisper
-                # (Metal) and pyannote-on-MPS retain high-water buffers while
-                # model weights remain cached.
+                # (Metal) and pyannote-on-MPS each keep a buffer cache at the
+                # high-water mark of the largest allocation and never free it on
+                # their own -> the server creeps (observed ~11 GB after 7 days).
+                # clear_cache() returns those buffers; model weights stay resident.
                 try:
                     import mlx.core as mx
                     mx.clear_cache()
@@ -609,6 +723,7 @@ async def transcribe(
 
 
 if __name__ == "__main__":
+    _configure_runtime_logging()
     # Loopback by default — the endpoint is unauthenticated, so don't expose it
     # on the LAN unless the operator explicitly opts in via LOCAL_STT_HOST.
     host = os.getenv("LOCAL_STT_HOST", "127.0.0.1").strip() or "127.0.0.1"
@@ -619,4 +734,11 @@ if __name__ == "__main__":
         "engine=mlx-whisper model=%s debug=%s",
         host, PORT, PORT, DEFAULT_MODEL, DEBUG,
     )
-    uvicorn.run(app, host=host, port=PORT, log_level="debug" if DEBUG else "info", access_log=True)
+    uvicorn.run(
+        app,
+        host=host,
+        port=PORT,
+        log_level="debug" if DEBUG else "info",
+        access_log=False,
+        log_config=None,
+    )
