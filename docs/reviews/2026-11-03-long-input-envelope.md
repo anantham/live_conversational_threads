@@ -63,6 +63,49 @@ The checks above count things. They do not say whether the grouping is right. On
 
 What this changes: the 19/20 result shows the reply fits and validates. It does not show the maps are good at 20 minutes. Map quality varies widely between runs of the same input, and the two clear misfiles and the turn-level granularity floor are the main quality risks. Splitting long turns before generation would address the floor. A semantic check (a chunk's parent should share its evidence span) would catch misfiles like the 14-chunk case.
 
+## Map structure A/B (2026-11-04, owner-approved)
+
+**Changes tested** (branch `fix/map-structure-quality`):
+- **Split:** long same-speaker turns now break at sentence ends after 60 s or 150 words, or at any segment boundary after 120 s or 300 words when no sentence end arrives.
+- **Prompt:** four lines asking for one coherent moment per chunk, single children only where a tier adds meaning, a parent's evidence covering its children, and digressions as their own node.
+
+**Method:**
+- 30 paid runs: three versions (base, split, split + prompt) × two inputs × five runs, interleaved. Same model, route and harness as above, with the 16,384 long cap.
+- Inputs: minutes 0–20 and 40–60 of the same podcast. That is the same speakers, so this is still one conversation, not a second genre.
+- Both inputs were rebuilt with spaces between transcript segments. All 47 earlier runs had segments glued together ("firstepisode"), an artifact of how I built the test input; live speech-to-text tokens carry their own spacing.
+- Total billed: **$0.361**.
+
+| Input | Version | Valid | Turns | Chunks | Backchannel chunks | Largest chunk (words) | Single-child / parents | L1 mismatches | Completion tokens | $/run |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0–20 | base | 5/5 | 32 | 4–32 | 3 | 665–1,746 | 2/7, 2/7, 6/8, 3/7, 2/6 | 0 | 3,006–5,405 | 0.0110 |
+| 0–20 | split | 5/5 | 41 | 8–11 | 0 | 629–1,355 | 5/10, 2/7, 1/5, 4/8, 2/6 | 0 | 3,833–6,119 | 0.0121 |
+| 0–20 | split + prompt | 4/5 | 41 | 8–10 | 0 | 726 | 1/5, 1/5, 2/6, 2/7 | 0 | 3,587–6,333 | 0.0145 |
+| 40–60 | base | 5/5 | 27 | 4–27 | 2 | 824–1,768 | 2/9, 7/14, 1/8, 2/11, 1/7 | 0 | 2,914–5,559 | 0.0106 |
+| 40–60 | split | 5/5 | 38 | 6–38 | 2 | 215–1,768 | 4/7, 2/9, 1/5, 1/13, 2/8 | 0 | 3,882–7,068 | 0.0148 |
+| 40–60 | split + prompt | 4/5 | 38 | 7–9 | 0 | 566–1,568 | 2/8, 3/7, 3/10, 3/8 | 0 | 3,602–4,996 | 0.0093 |
+
+**What the counts show:**
+- **The prompt makes chunk granularity consistent.** With it, chunk counts were 7–10 in all 8 valid maps. Without it they ranged from 4 to 38, and 4 maps made one card per turn, including cards for "Right.".
+- **Splitting alone did not change what the model chooses.** The split version still produced a 38-chunk map and a 6-chunk map. Splitting makes finer cards possible, and the prompt is what gets them used. On minutes 40–60, an 824-word monologue became five utterances. Only the split + prompt map divided it ("Life theory and moderate intelligence at scale", then "High actuation spaces and abundance"); the split-only map kept one 1,700-word card for utterances 25–38.
+- **Largest chunk size did not fall much.** About 9 chunks for 20 minutes is roughly 2 minutes per card. Whether that is the right grain for a "moment" is a product choice, not something these counts decide.
+- **No evidence mismatches in any of the 28 valid maps,** base included. The earlier 2 of 28 misfiles were all on glued input. So the prompt's coverage line cannot be credited, and the `evidence_mismatch` log stays as detection.
+- **Failures with split + prompt:**
+  - One was a provider error (`finish: error`, no tokens, not billed).
+  - One was the `node-` id drift on the idea tier only. The reference repair declined it because references at the other tiers resolve without the prefix, and the repair's resolved-reference guard checks every tier. This is the second real drift seen. See ISSUES.md.
+- **Cost:** split + prompt averaged $0.0145 per run on 0–20 (vs $0.0110 base) and $0.0093 on 40–60 (vs $0.0106), within noise.
+
+**What the reading shows** (one map per version and input, read against the transcript):
+- Both newer versions separate the podcast's scheduling talk (40–60, utterances 11–18) from the content. The split + prompt map then put logistics and the theory under one topic, "Life Theory, Actuation Spaces, and Logistics", a new grouping error.
+- **Hollow tiers recur in every version** (1/10 base, 2/10 split, 2/8 split + prompt). Chunks attach straight to topics, and each idea sits beside them as a childless copy of its topic, with the same span. The scorer now counts these (`childlessHigherNodes`). The prompt does not cause them and does not fix them.
+- In the base map on 0–20, the host's schoolmate story got its own chunk; the split + prompt map merged it with Logo programming. So the digression line did not reliably work.
+- Speech-to-text spellings carry through ("life theory" and "live theory" for the same organisation).
+
+**Verdict:**
+- Keep both changes. Splitting is necessary and not sufficient. The prompt removes the extreme granularity spread, at no clear cost.
+- The evidence is two inputs from one conversation and 8–10 maps per version, so it shows a direction, not a guarantee.
+- Not fixed: hollow tiers, occasional topic-level misgrouping, and the repair guard that refuses single-tier drift.
+- Two-stage generation (chunks first, then hierarchy with enum-constrained parents) remains the structural fix for hollow tiers and misfiles.
+
 ## Limits
 
 - **One transcript, one model/route.** 19/20 has a 95% Clopper-Pearson lower bound of about 75%. That is evidence the 4-of-5 bar is met on this input, not a guarantee for 20-minute conversations in general.
