@@ -3,7 +3,6 @@ import { sonioxPolicy, readSonioxJSON } from './sonioxPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
 import { replayError, REPLAY_SECONDS } from './replayAdmission.js';
-import { logReferenceRepair } from './openRouter.js';
 const valid = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 async function getJSON(url, key, signal) {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${key}` }, redirect: 'manual', signal });
@@ -49,7 +48,6 @@ export async function replayGenerate(request, env, source, wire) {
     if (response.status !== 200) { void response.body?.cancel().catch(() => {}); throw replayError(502, 'provider_refused', 'The model refused the replay request. This trial stops; the attempt remains counted.'); }
     const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
     const { bundle, referenceRepair } = recordingThreadsFromOpenRouterResponse({ source, response: completion });
-    logReferenceRepair(referenceRepair);
     return { artifact: bundle, repair: referenceRepair };
   });
 }

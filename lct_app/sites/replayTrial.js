@@ -3,6 +3,7 @@ import { openRouterJSON, OpenRouterError } from './openRouterPolicy.js';
 import { readOpenRouterJSON } from './openRouterIO.js';
 import { replayConfig, replayError, readReplay, replayRows, reserveReplay, completeReplay, failReplay, closeReplay, REPLAY_PREFIX } from './replayAdmission.js';
 import { replayBudget, replayWire, replayGenerate, replayMint } from './replayProvider.js';
+import { logReferenceRepair } from './openRouter.js';
 
 export async function handleReplayTrial(request, env) {
   const url = new URL(request.url);
@@ -43,6 +44,7 @@ export async function handleReplayTrial(request, env) {
       inputBytes: new TextEncoder().encode(wire.body).byteLength, sourceEnd: Math.max(0, ...input.source.finalTokens.map(t => t.endMs || 0)) });
     const { artifact, repair } = await replayGenerate(request, env, input.source, wire);
     await completeReplay(env, attempted);
+    logReferenceRepair(repair);
     return openRouterJSON(200, { request_id: attempted, artifact, ...(repair ? { reference_repair: repair } : {}) });
   } catch (error) {
     if (!attempted && requestedId) { try { const pending = await env.DB.prepare("SELECT request_id FROM lct_audio_replay_attempts WHERE request_id = ? AND state IN ('reserved','dispatching','uncertain')").bind(requestedId).first(); if (pending) attempted = pending.request_id; } catch { /* The retained active slot still refuses another dispatch. */ } }

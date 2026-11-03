@@ -2,7 +2,7 @@ import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterRespons
 import { resolveIdentity } from './auth.js';
 import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
-import { MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
+import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 
 const PREFIXES = { '/api/cloud/openrouter': openRouterPolicy, '/api/cloud/gemini': geminiPolicy };
 const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_finish', 'choice_message',
@@ -73,7 +73,7 @@ async function generate(request, env, policy) {
   if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     throw new OpenRouterError(415, 'content_type', 'Send recording source as JSON. No attempt was requested.');
   }
-  const input = await openRouterWait(request.signal, 30_000, signal => readOpenRouterJSON(request, signal, 512 * 1024));
+  const input = await openRouterWait(request.signal, MAP_INPUT_WINDOW_MS, signal => readOpenRouterJSON(request, signal, 512 * 1024));
   let wire;
   try { wire = buildOpenRouterGenerationRequest({ source: input?.source, model: policy.backend === 'gemini' ? `google/${policy.model}` : policy.model, maxTokens: policy.maxTokens }); }
   catch { throw new OpenRouterError(400, 'source', 'The recording source is invalid or too large. No attempt was requested.'); }

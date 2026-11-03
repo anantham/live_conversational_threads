@@ -5,12 +5,21 @@ const PREFIX = /^[A-Za-z0-9]{1,24}[-_.:]$/;
 const SUFFIX = /^[-_.:][A-Za-z0-9]{1,24}$/;
 const OPERATIONS = {
   add_prefix: (id, affix) => affix + id,
-  strip_prefix: (id, affix) => id.startsWith(affix) ? id.slice(affix.length) : null,
+  strip_prefix: (id, affix) => id.slice(affix.length),
   add_suffix: (id, affix) => id + affix,
-  strip_suffix: (id, affix) => id.endsWith(affix) ? id.slice(0, -affix.length) : null,
+  strip_suffix: (id, affix) => id.slice(0, -affix.length),
+};
+// Whether a declared id carries the affix the operation adds (add_*) or removes (strip_*).
+const CARRIES = {
+  add_prefix: (id, affix) => id.startsWith(affix), strip_prefix: (id, affix) => id.startsWith(affix),
+  add_suffix: (id, affix) => id.endsWith(affix), strip_suffix: (id, affix) => id.endsWith(affix),
 };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const reference = value => object(value) && Number.isInteger(value.semantic_level) && typeof value.id === 'string';
+// Only identities the downstream validator itself would accept (tieredGeneration.qualifiedReference)
+// take part, so a repair can never turn an empty, padded or overlong id into a valid one.
+const identity = id => typeof id === 'string' && id.length > 0 && id.length <= 158 && id === id.trim();
+const reference = value => object(value) && Number.isInteger(value.semantic_level) && identity(value.id);
+const key = value => `${value.semantic_level}:${value.id}`;
 
 // Every way `id` differs from `declared` by exactly one delimiter-bounded affix.
 function affixesBetween(id, declared) {
@@ -26,19 +35,25 @@ function affixesBetween(id, declared) {
 }
 
 /**
- * Resolve dangling typed references only when ONE affix operation, shared by
- * the whole reply, maps each of them to exactly one declared node at its own
- * level. Resolved references are never changed; anything else is returned
- * untouched so the unchanged validator rejects it. Never mutates its input.
+ * Resolve dangling typed references only when the reply shows ONE systematic
+ * naming drift: a single delimiter-bounded affix operation maps every dangling
+ * reference to exactly one declared node at its own level; at each level it
+ * touches, every declared id carries the added affix (or none carries the
+ * stripped one); no repaired target is also referenced directly; and no
+ * dangling id is declared verbatim at another level. Resolved references never
+ * change. Anything else is returned untouched so the unchanged validator
+ * rejects it. Never mutates its input.
  */
 export function repairGeneratedReferences(graph) {
   const none = { graph, repair: null };
   if (!object(graph) || graph.hierarchy_format !== GENERATION_HIERARCHY_FORMAT || !Array.isArray(graph.nodes)) return none;
   const declared = new Map();
   for (const node of graph.nodes) {
-    if (!object(node) || !Number.isInteger(node.semantic_level) || typeof node.id !== 'string') continue;
+    if (!reference(node)) continue;
     if (!declared.has(node.semantic_level)) declared.set(node.semantic_level, new Set());
-    declared.get(node.semantic_level).add(node.id);
+    const ids = declared.get(node.semantic_level);
+    if (ids.has(node.id)) return none; // Duplicate declarations: let the validator reject them.
+    ids.add(node.id);
   }
   const resolves = value => declared.get(value.semantic_level)?.has(value.id) === true;
   const all = [
@@ -47,24 +62,38 @@ export function repairGeneratedReferences(graph) {
     ...(Array.isArray(graph.edges) ? graph.edges.filter(object).flatMap(edge => [edge.from_node_id, edge.to_node_id]) : []),
     ...(Array.isArray(graph.conversation_threads) ? graph.conversation_threads.filter(object)
       .flatMap(path => Array.isArray(path.steps) ? path.steps.filter(object).map(step => step.moment_id) : []) : []),
-  ];
-  const dangling = all.filter(value => reference(value) && !resolves(value));
+  ].filter(reference);
+  const dangling = all.filter(value => !resolves(value));
   if (!dangling.length) return none;
+  const directlyReferenced = new Set(all.filter(resolves).map(key));
 
   let shared = null;
+  const targets = new Set(), levels = new Set();
   for (const value of dangling) {
+    // A wrong-tier reference to a verbatim node is not a naming drift.
+    if ([...declared].some(([level, ids]) => level !== value.semantic_level && ids.has(value.id))) return none;
     const matches = [...(declared.get(value.semantic_level) || [])].flatMap(id => affixesBetween(value.id, id));
     // A reference with two possible targets (or two readings) is ambiguous on its own.
     if (matches.length !== 1) return none;
     const [operation, affix] = matches[0];
     if (shared && (shared.operation !== operation || shared.affix !== affix)) return none;
     shared = { operation, affix };
+    targets.add(key({ semantic_level: value.semantic_level, id: OPERATIONS[operation](value.id, affix) }));
+    levels.add(value.semantic_level);
   }
+  // Mixed use (`x` here, `node-x` there) means the model distinguished the names.
+  if ([...targets].some(target => directlyReferenced.has(target))) return none;
+  const adds = shared.operation.startsWith('add');
+  for (const level of levels) {
+    const carried = [...declared.get(level)].map(id => CARRIES[shared.operation](id, shared.affix));
+    if (adds ? carried.includes(false) : carried.includes(true)) return none;
+  }
+
   const apply = value => reference(value) && !resolves(value)
     ? { ...value, id: OPERATIONS[shared.operation](value.id, shared.affix) } : value;
   // Rewrite only keys that exist, so a missing field stays missing for the validator.
   const rewrite = (holder, ...keys) => ({ ...holder,
-    ...Object.fromEntries(keys.filter(key => Object.hasOwn(holder, key)).map(key => [key, apply(holder[key])])) });
+    ...Object.fromEntries(keys.filter(name => Object.hasOwn(holder, name)).map(name => [name, apply(holder[name])])) });
   return {
     graph: { ...graph,
       nodes: graph.nodes.map(node => !object(node) ? node : { ...rewrite(node, 'parent_id'),

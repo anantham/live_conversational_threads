@@ -16,6 +16,7 @@ vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: clas
 import SitesNewConversation from './SitesNewConversation.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
 import { readGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
+import { MAP_CLIENT_DEADLINE_MS } from '../services/cloud/generationDeadlines.js';
 
 let root, container, transcribe, privateUploads, generation, createURL, revokeURL;
 const dialogMethods = Object.fromEntries(['showModal', 'close'].map(name => [name, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name)]));
@@ -572,7 +573,7 @@ describe('Sites recording page', () => {
     expect(button('Save audio privately').disabled).toBe(true);
     expect(button('Save transcript privately').disabled).toBe(true);
     if (mode === 'navigation') { await act(async () => root.unmount()); root = null; }
-    else if (mode === 'timeout') await act(async () => vi.advanceTimersByTimeAsync(64_000));
+    else if (mode === 'timeout') await act(async () => vi.advanceTimersByTimeAsync(MAP_CLIENT_DEADLINE_MS - 31_000));
     else await click('Cancel');
     expect(signal.aborted).toBe(true);
     await act(async () => finish(jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(source).bundle })));
