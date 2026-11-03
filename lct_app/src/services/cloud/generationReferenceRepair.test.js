@@ -136,11 +136,12 @@ describe('deterministic reference repair through the public adapter', () => {
       g.nodes[4].parent_id = ref(5, 'garden'); }],
     // Gemini review round 2: every declared id at the tier must name it once the prefix is off;
     // a lone node gives no repetition; a name needs a letter or digit; no plural or numbered tier word.
-    ['a declared id at the tier that does not name it', g => { g.nodes[3].id = 'node-shade';
-      g.nodes[1].parent_id = ref(2, 'idea-water'); }],
-    ['a word prefix on a bare sibling beside one tier-named id', g => {
-      g.nodes[2].id = 'water-idea-supply'; g.nodes[3].id = 'water-shortage';
-      g.nodes[0].parent_id = ref(2, 'idea-supply'); g.nodes[1].parent_id = ref(2, 'idea-supply');
+    // Both drifted targets are tier-named, so only the sibling check can refuse these.
+    ['an unreferenced declared id at the tier that does not name it', g => {
+      g.nodes.push(node(2, 'node-sun', ref(3, 'topic-care'))); }],
+    ['a word prefix on a bare sibling beside tier-named ids', g => {
+      ideas(g, n => `water-idea-${n}`, n => `idea-${n}`);
+      g.nodes.push(node(2, 'water-shortage', ref(3, 'topic-care')));
       g.edges.push({ ...g.edges[0], id: 'e2', from_node_id: ref(2, 'water-shortage'), to_node_id: ref(3, 'topic-care') }); }],
     ['a delimiter with no name after the tier word', g => ideas(g, n => `node-idea-${n === 'water' ? '-' : '.'}`,
       n => `idea-${n === 'water' ? '-' : '.'}`)],
