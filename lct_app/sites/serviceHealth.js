@@ -85,7 +85,8 @@ function routeDetail(routes, provider) {
 
 async function providerCheck(service, policy, env) {
   const key = service === 'soniox' ? env.SONIOX_API_KEY.trim() : policy.key;
-  const models = policy.models?.join(',') ?? policy.model;
+  // Route counts depend on the provider as well as the model list.
+  const models = `${policy.provider ?? ''}|${policy.models?.join(',') ?? policy.model}`;
   const previous = checks.get(service);
   if (previous?.key === key && previous.models === models && Date.now() - previous.at < TTL) return previous.promise;
   const entry = { key, models, at: Date.now() };

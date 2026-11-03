@@ -105,3 +105,10 @@ it('describes the model route with every approved fallback before consent', () =
     .toBe('Model: vendor/primary, or vendor/second, then vendor/third if it is unavailable · Provider: approved-provider');
   expect(describeModelRoute({ model: null })).toBeNull();
 });
+it('explains when no approved model had a route', async () => {
+  fetch.mockResolvedValueOnce(response({ error: 'server text', code: 'no_model_route' }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.code).toBe('no_model_route');
+  expect(error.message).toMatch(/No approved AI model currently has a route/);
+  expect(error.message).toMatch(/audio and transcript are preserved/);
+});

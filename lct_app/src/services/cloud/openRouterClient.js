@@ -7,6 +7,7 @@ const uncertain = 'No new map is available. The attempt may remain counted; chec
 const generationFailures = {
   provider_refused: 'The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.',
   invalid_completion: 'The AI provider returned an incomplete or invalid map. Your audio and transcript are preserved; the attempt remains counted.',
+  no_model_route: 'No approved AI model currently has a route through the selected provider. Your audio and transcript are preserved; the attempt remains counted.',
 };
 const messages = {
   401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',

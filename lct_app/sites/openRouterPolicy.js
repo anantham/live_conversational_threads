@@ -20,13 +20,16 @@ function text(value, maximum) {
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const MAX_FALLBACK_MODELS = 3;
 
+const MAX_MODEL_ID = 160; // the client refuses longer ids, so the Worker must too
+
 // Owner-approved models tried in order when the primary has no route. Absent means none;
-// any malformed entry makes the whole list (and so generation) unconfigured, never shorter.
+// spaces around commas are ignored; any malformed entry makes the whole list (and so
+// generation) unconfigured, never shorter.
 function fallbackModels(value, primary) {
   if (value === undefined || value === '') return [];
-  const list = text(value, 4 * 160 + 3)?.split(',');
+  const list = text(value, MAX_FALLBACK_MODELS * (MAX_MODEL_ID + 3))?.split(',').map(model => model.trim());
   if (!list || list.length > MAX_FALLBACK_MODELS) return null;
-  const valid = list.every(model => MODEL_ID.test(model) && model !== primary);
+  const valid = list.every(model => model.length <= MAX_MODEL_ID && MODEL_ID.test(model) && model !== primary);
   return valid && new Set(list).size === list.length ? list : null;
 }
 
