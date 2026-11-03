@@ -8839,3 +8839,17 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Attacks added (all refused with `hierarchy/parent_missing`): untyped ids, only one id typed, another tier's word, `ideas-`/`…idea` without a delimiter, the affix being the tier word, a strip at that tier, the target declared at another level. Every earlier case is unchanged.
 - Mutation sweep, 8 mutants (always/never accept, every→some, drop the no-strip clause, drop the leading or trailing branch, off-by-one level, no delimiter on either side): all killed. Two survived the first pass and needed the `ideas-`/`…idea` cases.
 - Full suite 144 files / 1,379 tests (Node 26, `--no-experimental-webstorage`). Docs: `lct_app/sites/README.md`, `tests/intent/generation-reference-repair.md`, ISSUES.md resolution entry.
+
+## 2026-11-04 03:40 IST — Gemini review of the one-tier repair (agy, gemini-4-argon-high): NO-GO, adjudicated
+- Packet: scratchpad `review1/` (BRIEF.md, change.diff, 4 source files; SHA256SUMS there; change.diff `b8fb022f…`). Reviewed commit 1fb53c5b. Code only.
+- Adopted (all reproduced first against 1fb53c5b, then red tests):
+  - P0: `namesTier` ignored which side the affix landed on, so `idea-water` → `idea-water-shortage` (add_suffix) was accepted. The confined path now requires `add_prefix` before a *leading* tier word, so trailing tier words (`x-idea`) no longer count.
+  - P1: the new path skipped the resolved check across tiers, so a four-tier drift beside a bare resolved `other` was accepted. It now requires one touched tier, and every resolved id at another tier must name its tier.
+  - P1: a tier-word affix (`topic-` + `idea-water`) and a bare `idea-` were accepted. The affix may not be a tier word (case-insensitive), and the name after the tier word must be non-empty.
+  - P2: the "affix is the tier word" test failed for an unrelated reason. Rewritten so its dangling ids are tier-named.
+- Declined:
+  - Restricting the affix to literal `node-`. It would drop generality on the strength of two sightings; the residual (`non-idea-x`) is documented in the README.
+  - Requiring ≥2 dangling references. Per-family uniformity already applies, and the 3 November path has no such floor.
+  - Forbidding resolved references at the touched tier. They necessarily carry the affix (evidence *for* the drift), and the "edge already uses the declared id" shape is pinned as accepted.
+- Mutation sweep v2, 15 mutants: 14 killed. M15 is equivalent (the `everywhere` guard is only consulted when resolved is non-empty). The no-strip clause survived until a "one tier declared bare, every resolved reference prefixed" case was added.
+- Real reply still repairs 2 references and passes the hierarchy validator. The other 29 replies get the same outcome; the reviewer's three probes return null. Full suite 144 files / 1,385 tests; lint clean.

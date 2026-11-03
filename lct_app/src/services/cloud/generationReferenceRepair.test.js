@@ -108,16 +108,15 @@ describe('deterministic reference repair through the public adapter', () => {
     expect(byId.get('2:node-idea-water').parent_id).toBe('3:topic-care');
   });
 
-  it('repairs the same confined drift when ids name their tier as a trailing token', () => {
+  it('repairs the confined drift when an edge already uses a declared idea id', () => {
     const value = singleTier();
-    for (const [index, name] of [[2, 'water'], [3, 'shade']]) {
-      value.nodes[index].id = `node-${name}-idea`; value.nodes[index - 2].parent_id = ref(2, `${name}-idea`);
-    }
+    value.edges.push({ ...value.edges[0], id: 'idea-topic', from_node_id: ref(2, 'node-idea-water'),
+      to_node_id: ref(3, 'topic-care') });
     expect(convert(value).referenceRepair).toEqual({ operation: 'add_prefix', affix: 'node-', references: 2 });
   });
 
-  // Beside references that already resolve, a drift confined to one tier is repaired only when
-  // every dangling id names that tier; each case is rejected exactly as without any repair.
+  // Beside references that already resolve, a drift confined to one tier is repaired only as a
+  // prefix before tier-named ids; each case is rejected exactly as without any repair.
   const ideas = (g, declared, referenced) => { for (const [index, name] of [[2, 'water'], [3, 'shade']]) {
     g.nodes[index].id = declared(name); g.nodes[index - 2].parent_id = ref(2, referenced(name)); } };
   it.each([
@@ -125,8 +124,16 @@ describe('deterministic reference repair through the public adapter', () => {
     ['only one dangling id naming its tier', g => { g.nodes[3].id = 'node-shade'; g.nodes[1].parent_id = ref(2, 'shade'); }],
     ['ids that name another tier', g => ideas(g, n => `node-topic-${n}`, n => `topic-${n}`)],
     ['a tier word that only begins a word', g => ideas(g, n => `node-ideas-${n}`, n => `ideas-${n}`)],
-    ['a tier word that only ends a word', g => ideas(g, n => `node-${n}idea`, n => `${n}idea`)],
-    ['an affix that is the tier name itself', g => ideas(g, n => `idea-${n}`, n => n)],
+    ['a prefix before a trailing tier word', g => ideas(g, n => `non-${n}-idea`, n => `${n}-idea`)],
+    ['a suffix on the name after the tier word', g => ideas(g, n => `idea-${n}-shortage`, n => `idea-${n}`)],
+    ['an affix that is the tier word itself', g => ideas(g, n => `idea-idea-${n}`, n => `idea-${n}`)],
+    ['an affix that is another tier word', g => ideas(g, n => `Topic-idea-${n}`, n => `idea-${n}`)],
+    ['a tier word with no name after it', g => { g.nodes.splice(3, 1); g.nodes[2].id = 'node-idea-';
+      g.nodes[0].parent_id = ref(2, 'idea-'); g.nodes[1].parent_id = ref(2, 'idea-'); }],
+    ['the same prefix drifting at two tiers', g => { g.nodes[4].id = 'node-topic-care';
+      g.nodes[2].parent_id = ref(3, 'topic-care'); g.nodes[3].parent_id = ref(3, 'topic-care'); }],
+    ['a resolved id elsewhere that does not name its tier', g => { g.nodes[5].id = 'garden';
+      g.nodes[4].parent_id = ref(5, 'garden'); }],
     ['a strip at that tier', g => ideas(g, n => `idea-${n}`, n => `idea-${n}-x`)],
     ['a repaired target also declared at another level', g => {
       g.nodes.push(node(3, 'node-idea-water', ref(5, 'arc-garden'))); }],
@@ -193,6 +200,10 @@ describe('deterministic reference repair through the public adapter', () => {
     ['edge and path moments whose declarations share a word prefix the resolved hierarchy lacks', undefined, g => {
       for (const n of g.nodes) n.id = n.semantic_level > 1 ? n.id.slice(5) : n.id.replace('node-', 'non-');
       for (const r of references(g)) if (r.semantic_level > 1) r.id = r.id.replace(/^node-/, ''); }],
+    // The reverse of the 4 November shape: one tier declared bare while every resolved reference
+    // carries the prefix. Nothing is stripped beside resolved references.
+    ['edge endpoints that would lose a prefix every resolved reference carries', undefined, g => { resolved(g);
+      for (const n of g.nodes) if (n.semantic_level === 1) n.id = n.id.slice(5); }],
     ['edge endpoints that would lose a suffix the resolved hierarchy keeps', undefined, g => {
       for (const n of g.nodes) n.id = n.semantic_level > 1 ? `${n.id.slice(5)}-2` : n.id.slice(5);
       for (const r of references(g)) r.id = `${r.id}-2`; }],
