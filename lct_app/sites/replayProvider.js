@@ -1,4 +1,4 @@
-import { openRouterPolicy } from './openRouterPolicy.js';
+import { openRouterPolicy, outputCapFor } from './openRouterPolicy.js';
 import { sonioxPolicy, readSonioxJSON } from './sonioxPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
@@ -37,8 +37,10 @@ export async function replayBudget(env, parentSignal) {
 export function replayWire(env, source) {
   const p = openRouterPolicy(env);
   if (!p.enabled || p.maxTokens !== 8192) throw replayError(503, 'inactive', 'The existing approved model configuration is not ready.');
-  // Replay maps are long transcripts, so they use the long cap (the live cap when none is set).
-  const wire = buildOpenRouterGenerationRequest({ source, model: p.model, maxTokens: p.longMaxTokens });
+  // Same length rule as the map route; the preflight prices every replay map at the long cap.
+  let maxTokens;
+  try { maxTokens = outputCapFor(p, source); } catch { throw replayError(400, 'source', 'Use the assigned replay source. No request was reserved.'); }
+  const wire = buildOpenRouterGenerationRequest({ source, model: p.model, maxTokens });
   wire.provider = { ...wire.provider, only: [p.provider], data_collection: p.dataCollection };
   const body = JSON.stringify(wire);
   if (new TextEncoder().encode(body).byteLength > 131072) throw replayError(413, 'input_limit', 'Replay model input exceeds 128 KiB. No request was reserved; keep the full local transcript.');

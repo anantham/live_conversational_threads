@@ -5,7 +5,7 @@ CREATE TABLE `__new_lct_openrouter_attempts` (
 	`max_output_tokens` integer NOT NULL,
 	`completed_at` integer,
 	`recovery_released_at` integer,
-	CONSTRAINT "lct_openrouter_attempts_tokens_check" CHECK("__new_lct_openrouter_attempts"."max_output_tokens" >= 1 and "__new_lct_openrouter_attempts"."max_output_tokens" <= 16384)
+	CONSTRAINT "lct_openrouter_attempts_tokens_check" CHECK("max_output_tokens" >= 1 and "max_output_tokens" <= 16384)
 );
 --> statement-breakpoint
 INSERT INTO `__new_lct_openrouter_attempts`("id", "created_at", "max_output_tokens", "completed_at", "recovery_released_at") SELECT "id", "created_at", "max_output_tokens", "completed_at", "recovery_released_at" FROM `lct_openrouter_attempts`;--> statement-breakpoint

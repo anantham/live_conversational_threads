@@ -1,3 +1,5 @@
+import { createRecordingTranscript } from '../src/services/cloud/recordingTranscript.js';
+
 export class OpenRouterError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
@@ -15,6 +17,21 @@ function integer(value, maximum) {
 // Transcripts longer than the live-session envelope (5 minutes) may use the long output cap:
 // a 20-minute map needed up to 7.6k compact tokens against 8,192 (docs/reviews/2026-11-03-long-input-envelope.md).
 export const LONG_INPUT_MS = 300_000;
+
+/**
+ * The output cap for a transcript, from its validated span (last end minus first start).
+ * Throws the transcript validator's error for an invalid source. A client can pad timestamps
+ * on a short clip, but then gets at most the long cap, the owner-approved worst case.
+ */
+export function outputCapFor(policy, source) {
+  const { document } = createRecordingTranscript(source);
+  let first = Infinity, last = 0;
+  for (const token of document.source_tokens) {
+    if (token.start_ms != null) first = Math.min(first, token.start_ms);
+    if (token.end_ms != null) last = Math.max(last, token.end_ms);
+  }
+  return last - (Number.isFinite(first) ? first : 0) > LONG_INPUT_MS ? policy.longMaxTokens : policy.maxTokens;
+}
 
 // Optional owner-approved cap for long transcripts. Unset or empty keeps the live cap; a value
 // that is malformed, above 16,384 or below the live cap leaves generation unconfigured.

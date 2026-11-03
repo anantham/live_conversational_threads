@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "aa210a48-7bc0-4907-b1bc-619416a31a3b",
+  "id": "aeda674c-04c3-4294-b63f-2e7d7c6bc479",
   "prevId": "f28f1b3f-71c6-45b5-b18a-c10a54dbda5e",
   "tables": {
     "lct_audio_replay_attempts": {
@@ -669,7 +669,7 @@
       "checkConstraints": {
         "lct_openrouter_attempts_tokens_check": {
           "name": "lct_openrouter_attempts_tokens_check",
-          "value": "\"lct_openrouter_attempts\".\"max_output_tokens\" >= 1 and \"lct_openrouter_attempts\".\"max_output_tokens\" <= 16384"
+          "value": "\"max_output_tokens\" >= 1 and \"max_output_tokens\" <= 16384"
         }
       }
     },

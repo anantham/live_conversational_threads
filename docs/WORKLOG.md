@@ -8758,3 +8758,20 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Tests: `sitesOpenRouterOutputBudget.test.js` (red, then green), `openRouterLongCapMigration.test.js`, replay case, builder bound. Full suite 142 files / 1,345 tests.
 - Deploy implications (owner): apply D1 migration 0019 before setting the long cap. Replay preflight now requires ~$2.37 of allowance with 16,384 (it was ~$1.76).
 
+## 2026-11-04 01:40 IST — Review round 6 of the 16k slice, adjudicated
+
+- agy → gemini-4-argon-high, packet `203d0a09…` (36,658 bytes): NO-GO with 12 findings.
+- Adopted (red-first where testable):
+  - The cap now comes from the validated transcript's span via a shared `outputCapFor` (map route and replay). This fixes offset-timestamp spoofing, the pre-validation spread and silent reads of unvalidated timing.
+  - A long-cap admission before 0019 now returns 503 `schema_unavailable` with no provider call.
+  - 0019 regenerated with an unqualified CHECK, so the rebuild never leaves `__new_…` in the constraint.
+  - Deploy-order note: disable, apply 0019, re-enable, then set the cap.
+  - Added a Gemini-route test; migration assertions match `CHECK constraint failed` and the exact constraint value; the replay preflight asserts its JSON.
+- Declined, with reasons:
+  - Lifetime exposure via COUNT: maxRequests × long cap is the approved per-attempt worst case.
+  - Gemini inheriting the long cap: the token settings are shared by design (review 2026-10-15).
+  - Replay preflight/env TOCTOU: changing the env needs a deploy.
+  - Leading zeros in `integer()`: pre-existing and harmless.
+  - The test mock "lacks `.run()`": false; completion uses `UPDATE … RETURNING` + `.first()`.
+- Full suite 142 files / 1,349 tests.
+

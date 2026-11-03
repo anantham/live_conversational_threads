@@ -88,11 +88,17 @@ describe('private one-time long replay',()=>{
   expect((await (await run('/preflight')).json()).required_usd).toBe(1.76);
   env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS='16384';
   expect((await (await run('/preflight')).json()).required_usd).toBe(2.37);
+  // Same length rule as the map route: an early periodic map inside 5 minutes keeps the live cap.
   await mint();expect((await map(1)).status).toBe(200);
-  expect(JSON.parse(calls.find(c=>c.url.includes('/chat/completions')).options.body).max_tokens).toBe(16384);
+  const sent=()=>calls.filter(c=>c.url.includes('/chat/completions')).map(c=>JSON.parse(c.options.body).max_tokens);
+  expect(sent()).toEqual([8192]);
+  await vi.advanceTimersByTimeAsync(45001);
+  const long={...source(),finalTokens:[...source().finalTokens,{text:' Later.',speaker:'1',startMs:1199000,endMs:1200000}]};
+  expect((await run('/generate','POST',{source:long,phase:'periodic'},{'x-lct-replay-sequence':'2'})).status).toBe(200);
+  expect(sent()).toEqual([8192,16384]);
   const original=globalThis.fetch;
   vi.stubGlobal('fetch',vi.fn(async(url,options)=>url.endsWith('/endpoints')?response({data:{endpoints:[{tag:'google-vertex',pricing:{prompt:'0.0000003',completion:'0.0000025'}}]}}):original(url,options)));
-  expect((await run('/preflight')).status).toBe(200);
+  expect(await (await run('/preflight')).json()).toMatchObject({sufficient:true,required_usd:2.37});
  });
  it('stops after provider refusal, retaining the spent operation',async()=>{
   await mint();failMap=true;expect((await map(1)).status).toBe(502);expect(trial().state).toBe('failed');expect(attempts().at(-1).state).toBe('uncertain');await vi.advanceTimersByTimeAsync(45001);expect((await map(2)).status).toBe(409);
