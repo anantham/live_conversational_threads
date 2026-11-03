@@ -1,6 +1,14 @@
 const MAX_TOKENS = 8192;
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
 const SAFE_RECORDING_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
+// A map chunk links whole utterances, so a long monologue would otherwise be one card at most.
+// A same-speaker turn that has reached either bound starts a new utterance after its next sentence end.
+// Unpunctuated speech (some imported transcripts) splits at the next token boundary once it reaches twice
+// either bound, so one utterance stays bounded even when no sentence end arrives.
+export const SPLIT_TURN_MS = 60_000;
+export const SPLIT_TURN_WORDS = 150;
+const HARD_SPLIT_FACTOR = 2;
+const SENTENCE_END = /[.?!]["')\]]*\s*$/;
 
 function invalid() {
   return new Error('Invalid recording transcript.');
@@ -46,11 +54,18 @@ export function createRecordingTranscript({ recordingId, startedAt, finalTokens,
 
   const utterances = [];
   let lastSpeaker = null;
+  // Decided only from tokens already seen, so a growing live transcript never renumbers earlier utterances.
+  let turnWords = 0, sentenceEnded = false;
   for (const token of sourceTokens) {
     const speaker = token.speaker ?? lastSpeaker;
     if (token.speaker != null) lastSpeaker = token.speaker;
     let current = utterances.at(-1);
-    if (!current || current.speaker_id !== speaker) {
+    const turnMs = current?.timestamp_start != null && current.timestamp_end != null
+      ? (current.timestamp_end - current.timestamp_start) * 1000 : 0;
+    const reached = factor => turnWords >= SPLIT_TURN_WORDS * factor || turnMs >= SPLIT_TURN_MS * factor;
+    const longTurn = current && (sentenceEnded ? reached(1) : reached(HARD_SPLIT_FACTOR));
+    if (!current || current.speaker_id !== speaker || longTurn) {
+      turnWords = 0;
       current = {
         id: `utterance-${String(utterances.length + 1).padStart(4, '0')}`,
         sequence_number: utterances.length + 1,
@@ -63,6 +78,8 @@ export function createRecordingTranscript({ recordingId, startedAt, finalTokens,
       utterances.push(current);
     }
     current.text += token.text;
+    turnWords += token.text.split(/\s+/).filter(Boolean).length;
+    if (token.text.trim()) sentenceEnded = SENTENCE_END.test(token.text);
     if (token.start_ms != null) {
       const seconds = token.start_ms / 1000;
       current.timestamp_start = current.timestamp_start == null ? seconds : Math.min(current.timestamp_start, seconds);
