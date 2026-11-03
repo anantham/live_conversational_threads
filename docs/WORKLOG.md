@@ -8680,3 +8680,105 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - End to end: the run-4 map, with the episode's YouTube ref attached, opened in the merged viewer (PR #218 branch, local dev). All five tiers present; Discussion speaker shares 79%/21%; YouTube player renders; clicking 2:26 seeks to the guest's turn; no console errors.
 - Findings logged in ISSUES.md (generation beyond the 5-minute envelope). README now warns that fallbacks share the 60 s window.
 - Records (no secrets, metadata only) kept locally under the session scratchpad `e2e/live-run-*-record.json`; not committed.
+
+## 2026-11-03 20:50 IST — Long-input map generation: recorded reference repair + 90 s window (owner chose A + D)
+
+- Branch `fix/long-input-reference-repair` off `fix/openrouter-approved-model-fallback` (PR #219). Options A–D and the long-input path inventory are in the side-session notes (`long-input-generation-options.md`). The owner picked A (deterministic reference repair) + D (longer map window).
+- A: new `lct_app/src/services/cloud/generationReferenceRepair.js`, called from `recordingThreadsFromOpenRouterResponse` (`openRouterGeneration.js`), which now also returns `referenceRepair`. `normalizeTieredGeneration` keeps its never-repair contract. The Worker (`sites/openRouter.js` `logReferenceRepair`, `sites/replayProvider.js`, `sites/replayTrial.js`) always logs `reference_repair` and adds `reference_repair` to the 200 response.
+- D: `lct_app/src/services/cloud/generationDeadlines.js` holds the provider window (90 s, was 60 s, used in `sites/openRouter.js`) and the client deadline (95 s, used in `src/hooks/useCloudTask.js`). The stalled-provider test asserts window < deadline.
+- Tests (red first, synthetic only): `generationReferenceRepair.test.js` (12; 6 accept-path tests red before wiring, 6 reject-path tests green throughout), `sitesOpenRouterReferenceRepair.test.js` (3; red first), replay case in `replayTrial.test.js`, stalled-provider timing in `sitesOpenRouter.test.js` (red at 60 s). Intent: `tests/intent/generation-reference-repair.md`.
+- Checks: full suite 140 files / 1,308 tests pass with `NODE_OPTIONS=--no-experimental-webstorage` (Node 26; without the flag 4 unrelated localStorage files fail, a known environment issue). `npm run build:sites-worker` OK. Built-bundle harness (scratchpad, in-memory SQLite, synthetic 240-turn ~20-min source, local reply with the `node-` drift; no network): 200, 28 references repaired, 29 nodes, 100% coverage, warning logged.
+- Not done: no paid run (needs owner approval). Repair is not yet stored in the `.threads` file or shown in the UI (follow-up). Output-token headroom at 20 min (7,067/8,192) is unaddressed; only chunked generation (option B) fixes it.
+
+## 2026-11-03 21:03 IST — Independent review of the long-input slice, findings fixed
+
+- Reviewer: Antigravity (`agy`) pinned to `gemini-4-argon-high` (Google). Plan/sandbox, clean scratchpad dir with only the packet. Packet = new module, the unchanged normaliser/validator, and the code diff vs `origin/fix/openrouter-approved-model-fallback` (51,365 bytes, sha256 `64b29526…8bed`, synthetic only). Verdict NO-GO, 7 findings.
+- Adjudicated and fixed (all red-proven against the pre-review module; 5 of the new rejection cases failed there): repair of an empty id against a node named like the affix; stripping an overlong (>158) reference into an accepted one; a word-like prefix capturing an undeclared node when the target is also referenced directly; declarations that don't all carry the affix; a dangling id declared verbatim at another level; duplicate declarations (bail out). Rejection tests now assert the exact rule per case, and the "two operations" case truly has two targets.
+- Timing (finding 6, correct): the old ADR invariant was 30 s input + 60 s provider < 95 s client. 90 s broke it. The client deadline is now 125 s (`generationDeadlines.js` holds input/provider/client), the input read uses the shared constant, and the test asserts input + provider < client. `SitesNewConversation.test.jsx` follows the constant. Replay logs the repair only after `completeReplay`, like the map route.
+- Not adopted: reduplicated `node-node` ambiguity (it is rejected, which is the safe direction).
+- Checks: full suite 140 files / 1,315 tests pass (Node 26, `--no-experimental-webstorage`); lint clean on touched files; Worker build OK.
+
+## 2026-11-03 21:18 IST — Second review round, per-family drift rule
+
+- Round 2: same reviewer/model, packet 46,277 bytes (sha256 `e9f62de1…`), NO-GO with 5 findings. Real: (1) the global "target referenced directly" guard wrongly refused the motivating case when edges/threads used `node-`; (2) a lone dangling reference among resolved ones (e.g. a `-2` suffix strip) was still accepted. Both are resolved by one rule: each reference family (parents, edges, thread steps) must be wholly resolved or wholly dangling. That rule replaces the global guard. (4) Three tests could not fail; rebuilt. (5) Malformed slots now disable the repair. Not adopted: (3) checking the affix on every declared level, because it would refuse replies whose chunk ids lack `node-` and is otherwise covered by the family rule.
+- Guard mutation sweep (remove each guard, run the unit tests): 11/12 killed. The survivor is the shared-operation check, which the per-level affix check also enforces (commented in code).
+- Checks: full suite 140 files / 1,321 tests pass; lint clean; Worker build OK; built-bundle harness still 200 with 28 references repaired.
+
+## 2026-11-03 21:28 IST — Third review round, resolved-reference convention guard
+
+- Round 3: same reviewer/model, packet 22,290 bytes (sha256 `526044cd…`). No throws found and no resolved reference changed. Two traced acceptances, both reproduced red: a `-2` strip on edge endpoints beside threads that already resolve, and `water`→`non-water` when only level 1 carries the prefix. Fix: when any reference resolves, every resolved reference must carry the added affix and no strip applies. Not adopted: its same-level clause, which would refuse the motivating case whenever an edge links idea and topic nodes using declared ids.
+- Both halves of the new guard are mutation-killed (a third case isolates the no-strip clause). Full suite 140 files / 1,324 tests; Worker build and built-bundle harness OK.
+
+## 2026-11-03 21:41 IST — The per-family rule refused the real failure; now per family and level
+
+- Facts relayed by the parent session (measured before the raw reply was overwritten): 28 nodes (1:20, 2:3, 3:3, 4:1, 5:1), 27 typed parent refs. The 20 chunk→idea parents omitted `node-` and the 7 higher-tier parents resolved with it. Edges and threads were NOT checked.
+- The round-2 per-family rule (parents wholly resolved or wholly dangling) would have refused this exact reply. A red test reproduced it. Fix: uniformity is per (family, target level). Every earlier attack case still fails. The real shape is accepted whether edges and threads use the declared ids or omit the prefix. Mutation-killed.
+- Built-Worker harness now mirrors the real reply (20/3/3/1/1, only chunk→idea drifted): 200, 20 references repaired, 28 nodes. Full suite passes.
+- Lesson: a guard designed from an attacker's inputs rather than the observed failure can quietly reject the case it exists for. Keep the motivating shape as a pinned test.
+
+## 2026-11-03 21:53 IST — Fourth review round; stopping the loop
+
+- Round 4 (packet sha256 prefix in scratchpad review4; reviewed 3c26a5af, before the per-level fix). Both findings re-traced against 2b0e2f21. Adopted: purely numeric affixes never count (`water`→`water-2` beside resolved `*-2`), and the cross-level check now also tests the repaired target. Both red first, mutation-killed. Declined: a reply where EVERY node and resolved reference starts with one word (`no-`) is structurally identical to `node-`; no deterministic rule separates them. Recorded as remaining risk in sites/README; every repair is logged.
+- Four rounds took the findings from structural holes down to inherent residue, so I stopped the review loop here. Full suite and harness green.
+
+## 2026-11-03 22:00 IST — Paid confirmation run of PR #220 (owner-approved, one run)
+
+- Harness: the parent session's `run.mjs` copied to this session's scratchpad and pointed at this branch's built Worker (`dist/server/index.js`, b296fa8e), in-memory SQLite, debug on. Input: the same `source-first-20min.json` (293 turns, 19.9 min, from `public/experiments/overlapping.threads`). Health first (free): key accepted, 1/1 route.
+- Generation, `google/gemini-3.5-flash-lite` on `google-vertex`, deny data collection: **502 `invalid_completion` at `choice_finish`**. `finish_reason: length` (native `MAX_TOKENS`), 8,607 prompt / 8,175 completion tokens, **$0.0230**, 19.3 s. The repair never ran: a truncated reply is refused before graph validation. Attempt row counted, not completed. No retry.
+- The truncated reply (counts only, kept in the scratchpad, not committed): 41 nodes declared before the cut (32/4/3/1/1). Of 40 typed refs, 1 dangling, a level-3 topic not yet declared at the cut. **No `node-` drift this time.** The reply was pretty-printed: 6,850 of 25,035 chars were indentation/newlines.
+- Conclusion: on the same input the earlier run finished in 7,067 completion tokens and this one exceeded 8,192. The output budget is now the observed blocker at 20 minutes. A + D cannot help it. Next options for the owner: compact-JSON output (no indentation), a higher `max_tokens` (the replay budget formula assumes 8,192), or chunked generation (B).
+
+## 2026-11-03 23:03 IST — Owner goal: measure, then make 20-minute maps pass (≥4/5), budget ~$1
+
+- Harness: as in the previous entry, plus a sequential, cost-capped sweep runner (scratchpad `live/sweep.sh`, ledger in `live/ledger.jsonl`). Production route `gemini-3.5-flash-lite` / `google-vertex` / deny.
+- Baseline (pretty JSON as the model chose it): 5 min 3/3, 10 min 3/3, 15 min 1/3, 20 min 1/4. Every failure was `finish_reason: length` at 8,192. Replies were 27–31% whitespace.
+- Fix 1, `openRouterGeneration.js`: one system-prompt line asking for compact single-line JSON. Test in `openRouterGeneration.test.js` (red, then green). Result: **20 min 10/10, 15 min 3/3**, completion 2.4k–7.6k tokens, ~$0.012/map, coverage 100% on all. Fix 2 (raise `max_tokens`) was not needed for the pass test and is left to the owner, because it raises the per-attempt cost ceiling and the replay budget.
+- Total spend: $0.369 across 26 runs (including the earlier confirmation run). No id drift seen, so the reference repair was not exercised live.
+- Write-up with the table: `docs/reviews/2026-11-03-long-input-envelope.md`. Full suite 140 files / 1,328 tests pass.
+
+## 2026-11-03 23:16 IST — Review round 5 on the compact-JSON slice; final envelope numbers
+
+- Round 5 (agy → gemini-4-argon-high, packet `d1c87f14…`, 13,744 bytes): NO-GO.
+  - Adopted: report uncached cost (Vertex implicitly cached the repeated input, so billed cost understates a fresh transcript); include the derived quality metrics in the doc; qualify everything as one transcript and one route (19/20 has a 95% CP lower bound of ~75%); soften the "chunking not needed" claim.
+  - Tested, then rejected on data: the reviewer's alternative wording B ("Minify the JSON…"). B got 7/10 at 20 min (one 90 s timeout, one dangling thread moment, one paraphrased idea id) and was reverted. Its concern that A's rationale clause compresses content is not visible in node counts or summary text.
+- Final compact-A numbers on the benchmark transcript: **20 min 19/20, 15 min 3/3, 0 of 30 compact runs at the cap**. The one A failure was a wrong-tier parent reference, correctly not repaired. Correction to the 23:40 entry: not every compact reply was unindented. One of 20 A replies ignored the instruction, and it is the 7,594-token tail run.
+- Spend: $0.600 billed across 46 runs, plus the unreported cost of one timed-out run (≤ ~$0.02). Within the ~$1 goal budget.
+- Doc rebuilt from the ledger: `docs/reviews/2026-11-03-long-input-envelope.md` (summary table, per-run table, wordings, limits). Prompt unchanged from 18d59569 (wording A).
+
+## 2026-11-03 23:23 IST — Long-input output cap (owner ruling relayed by the parent session)
+
+- Ruling (via `local_c040abbd`, not yet confirmed directly in this session): live 5-minute sessions keep 8,192; imports and replay get 16,384 with the 90 s window.
+- Merged base `58910f4` (#219 Gemini-review fixes) into this branch first; clean, all tests passed.
+- Implementation:
+  - `sites/openRouterPolicy.js`: optional `LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS` (validated, ≥ live cap, ≤ 16,384; unset or empty = unchanged) and `LONG_INPUT_MS = 300_000`.
+  - `sites/openRouter.js`: the cap comes from the transcript's last token end, recorded in the ledger and reported in status.
+  - `sites/replayProvider.js`: replay uses and prices the long cap; the bare provider tag is matched (the #219 review note).
+  - `openRouterGeneration.js`: builder bound 16,384.
+  - `db/schema.ts` plus drizzle-generated `0019_openrouter_long_output_cap.sql` and snapshot: the ledger CHECK widened from 8,192 (found when the red test returned 503 on the constraint).
+- Tests: `sitesOpenRouterOutputBudget.test.js` (red, then green), `openRouterLongCapMigration.test.js`, replay case, builder bound. Full suite 142 files / 1,345 tests.
+- Deploy implications (owner): apply D1 migration 0019 before setting the long cap. Replay preflight now requires ~$2.37 of allowance with 16,384 (it was ~$1.76).
+
+## 2026-11-03 23:31 IST — Review round 6 of the 16k slice, adjudicated
+
+- agy → gemini-4-argon-high, packet `203d0a09…` (36,658 bytes): NO-GO with 12 findings.
+- Adopted (red-first where testable):
+  - The cap now comes from the validated transcript's span via a shared `outputCapFor` (map route and replay). This fixes offset-timestamp spoofing, the pre-validation spread and silent reads of unvalidated timing.
+  - A long-cap admission before 0019 now returns 503 `schema_unavailable` with no provider call.
+  - 0019 regenerated with an unqualified CHECK, so the rebuild never leaves `__new_…` in the constraint.
+  - Deploy-order note: disable, apply 0019, re-enable, then set the cap.
+  - Added a Gemini-route test; migration assertions match `CHECK constraint failed` and the exact constraint value; the replay preflight asserts its JSON.
+- Declined, with reasons:
+  - Lifetime exposure via COUNT: maxRequests × long cap is the approved per-attempt worst case.
+  - Gemini inheriting the long cap: the token settings are shared by design (review 2026-10-15).
+  - Replay preflight/env TOCTOU: changing the env needs a deploy.
+  - Leading zeros in `integer()`: pre-existing and harmless.
+  - The test mock "lacks `.run()`": false; completion uses `UPDATE … RETURNING` + `.first()`.
+- Full suite 142 files / 1,349 tests.
+
+
+## 2026-11-04 00:54 IST — Paid 16k run (owner-approved here, "Yes, both")
+- One 20-minute run (`source-first-20min.json`, `google/gemini-3.5-flash-lite` on `google-vertex`), Worker built from `2417acf0`, harness DB from all repo migrations including 0019, `LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS=16384`.
+- Result: 200, valid map with 43 nodes in 14.9 s. The wire request carried `max_tokens: 16384`, so the long cap applied and the admission row passed the widened CHECK. `finish_reason: stop`, 8,633 prompt / 5,480 completion tokens.
+- Cost: $0.0163 billed. Goal ledger total $0.616 across 47 runs, within the $1 per-task and $5 weekly budget.
+- `reference_repair`: null. As predicted, the id repair was not exercised live; the drift has now been seen 0 times in 47 runs since the first observation.
+- Timestamp correction: the WORKLOG headings for this slice from 20:52 through "01:40" had been estimated rather than read from a clock, and ran up to about two hours ahead. They are now set to the time of the commit that added each one.

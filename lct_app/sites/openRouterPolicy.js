@@ -1,3 +1,5 @@
+import { createRecordingTranscript } from '../src/services/cloud/recordingTranscript.js';
+
 export class OpenRouterError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
@@ -9,7 +11,34 @@ export function openRouterJSON(status, body) {
 }
 
 function integer(value, maximum) {
-  return typeof value === 'string' && /^\d{1,4}$/.test(value) && Number(value) >= 1 && Number(value) <= maximum ? Number(value) : null;
+  return typeof value === 'string' && /^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= maximum ? Number(value) : null;
+}
+
+// Transcripts longer than the live-session envelope (5 minutes) may use the long output cap:
+// a 20-minute map needed up to 7.6k compact tokens against 8,192 (docs/reviews/2026-11-03-long-input-envelope.md).
+export const LONG_INPUT_MS = 300_000;
+
+/**
+ * The output cap for a transcript, from its validated span (last end minus first start).
+ * Throws the transcript validator's error for an invalid source. A client can pad timestamps
+ * on a short clip, but then gets at most the long cap, the owner-approved worst case.
+ */
+export function outputCapFor(policy, source) {
+  const { document } = createRecordingTranscript(source);
+  let first = Infinity, last = 0;
+  for (const token of document.source_tokens) {
+    if (token.start_ms != null) first = Math.min(first, token.start_ms);
+    if (token.end_ms != null) last = Math.max(last, token.end_ms);
+  }
+  return last - (Number.isFinite(first) ? first : 0) > LONG_INPUT_MS ? policy.longMaxTokens : policy.maxTokens;
+}
+
+// Optional owner-approved cap for long transcripts. Unset or empty keeps the live cap; a value
+// that is malformed, above 16,384 or below the live cap leaves generation unconfigured.
+function longMaxTokens(value, maxTokens) {
+  if (value === undefined || value === '') return maxTokens;
+  const tokens = integer(value, 16384);
+  return tokens && maxTokens && tokens >= maxTokens ? tokens : null;
 }
 
 function text(value, maximum) {
@@ -42,10 +71,11 @@ export function openRouterPolicy(env) {
   const audience = ['public', 'authenticated'].includes(env.LCT_OPENROUTER_AUDIENCE) ? env.LCT_OPENROUTER_AUDIENCE : null;
   const maxRequests = integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200);
   const maxTokens = integer(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS, 8192);
+  const longTokens = longMaxTokens(env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS, maxTokens);
   const key = text(env.OPENROUTER_API_KEY_2 ?? env.OPENROUTER_API_KEY, 4096);
-  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && maxTokens && key && env.DB?.prepare);
+  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && maxTokens && longTokens && key && env.DB?.prepare);
   return { configured, model, fallbackModels: fallbacks || [], models: model && fallbacks ? [model, ...fallbacks] : [],
-    provider, dataCollection, audience, maxRequests, maxTokens, key,
+    provider, dataCollection, audience, maxRequests, maxTokens, longMaxTokens: longTokens, key,
     backend: 'openrouter', label: 'OpenRouter', consentHeader: 'x-lct-openrouter-consent',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     enabled: configured && env.LCT_OPENROUTER_ENABLED === 'true' && env.LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED === 'true',
@@ -70,7 +100,7 @@ export function geminiPolicy(env) {
   const modelValue = text(env.LCT_GEMINI_MODEL, 160);
   const model = modelValue && /^gemini-[A-Za-z0-9._-]+$/.test(modelValue) ? modelValue : null;
   const key = text(env.GEMINI_API_KEY, 4096);
-  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.maxTokens && env.DB?.prepare);
+  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
   return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
     backend: 'gemini', label: 'Gemini', provider: 'Google AI Studio', dataCollection: null,
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',

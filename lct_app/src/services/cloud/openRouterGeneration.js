@@ -1,11 +1,12 @@
 import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { expandGenerationHierarchy } from './generationHierarchy.js';
+import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
 
 const MAX_REQUEST_BYTES = 512 * 1024;
 const MAX_CONTENT_BYTES = 2 * 1024 * 1024;
-const MAX_OUTPUT_TOKENS = 8192;
+const MAX_OUTPUT_TOKENS = 16384;
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const encoder = new TextEncoder();
 
@@ -44,6 +45,7 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens } = 
         'Create an evidence-linked conversation map from the supplied exact utterances.',
         'Use all semantic tiers that the conversation supports: chunk (1), idea (2), topic (3), theme (4), arc (5).',
         'Return authored nodes, explicit edges, metadata, and optional conversation thread paths as JSON only.',
+        'Return compact JSON on one line: no indentation, line breaks or spaces between tokens, so the whole map fits the output limit.',
         'Every chunk must link to original utterance IDs; link higher tiers where evidence supports them.',
         'Set hierarchy_format to tiered-parent-links-v2. Author each parent relationship only on the child node.',
         'Node ids are local to a semantic level. Every node reference is an object with semantic_level and id copied exactly from that node, never a bare string.',
@@ -72,7 +74,10 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens } = 
   return request;
 }
 
-/** Accept a completed OpenRouter chat response and package source-owned v2 evidence. */
+/**
+ * Accept a completed OpenRouter chat response and package source-owned v2 evidence.
+ * `referenceRepair` is null, or the one recorded affix repair the caller must report.
+ */
 export function recordingThreadsFromOpenRouterResponse({ source, response } = {}) {
   // Validate source first, even when the provider rejected the request.
   createRecordingTranscript(source);
@@ -101,5 +106,6 @@ export function recordingThreadsFromOpenRouterResponse({ source, response } = {}
     || !object(graph.metadata) || !Array.isArray(graph.conversation_threads)) {
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
-  return createRecordingThreads({ ...source, graph: expandGenerationHierarchy(graph) });
+  const { graph: repaired, repair } = repairGeneratedReferences(graph);
+  return { ...createRecordingThreads({ ...source, graph: expandGenerationHierarchy(repaired) }), referenceRepair: repair };
 }
