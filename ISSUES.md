@@ -2,6 +2,21 @@
 
 Last updated: 2026-11-04
 
+## 2026-11-04 - Waiting STT jobs can starve behind a long import (OPEN, NON-BLOCKING)
+
+- PR #224 makes the backend wait (up to 900 s) for the local STT's busy
+  signal instead of failing after ~22 s. Remaining limit: a long import sends
+  its next chunk the instant the previous one returns, while a waiting job
+  polls every 30 s, so the waiter rarely wins the gap and can wait until the
+  whole other import finishes. Past the budget it raises `SttSaturatedError`
+  and falls back or fails (still retryable). Impact: only when two jobs use
+  the M5 Whisper STT at once. Next step: a short FIFO wait queue on the
+  server (a change to its admission/liveness contract, so a deliberate
+  decision), or jitter plus a brief yield between chunks.
+- Review side note (pre-existing, not changed): `attendee_audio_downloader`
+  holds its DB session open across a slow-pass STT call of up to 600 s. It
+  targets IndrasNet `:7777`, so PR #224's wait never triggers there.
+
 ## 2026-11-04 - M5 local STT now admits one request at a time; backend retries may give up first (OPEN, NON-BLOCKING)
 
 - Owner ruling 2026-11-04: `MLX_STT_MAX_CONCURRENCY` on the M5

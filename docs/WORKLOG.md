@@ -1,5 +1,28 @@
 # WORKLOG
 
+## 2026-11-04 02:40 IST — STT client waits for a busy local STT (PR #224)
+
+- Follows the concurrency change below. Branch `fix/stt-honour-retry-after`,
+  commit `30a86a59`, PR #224 (not merged; main is the owner's click).
+- `lct_python_backend/services/audio_transcriber.py`:
+  `transcribe_audio_file_detailed` now waits on the local STT's busy signal
+  only (503 + finite Retry-After + `local_stt_saturated` body code), sleeping
+  Retry-After (min 1 s) within `STT_SATURATED_WAIT_BUDGET_S` (new, in
+  `services/transcript/transcription_utils.py`, default 900 s). On exhaustion
+  it raises `SttSaturatedError`; the chunk loop skips it via the new
+  `_is_retryable_chunk_error`, while the global `_is_retryable_stt_error`
+  still treats it as retryable so imports show as retryable to the user.
+- Tests: `tests/unit/test_stt_saturation_wait.py` (13, red-first, every guard
+  mutation-tested). Unit suite 2100 passed; 4 failures are pre-existing on
+  main in the M5 venv.
+- Gemini 4 Argon High review, two rounds. Round 1's suggestion to exclude the
+  error globally would have made busy-server imports non-retryable; caught by
+  reading the classifier's consumers, fixed by moving the exclusion into the
+  chunk loop. Round 2: nothing significant. Record in the shared notes folder
+  (`stt-retry-after-review-2026-11-04.md`).
+- Not deployed: the backend runs on the Asus; it picks this up after merge +
+  `git pull` + restart there.
+
 ## 2026-11-04 01:55 IST — M5 local STT concurrency 4 → 1
 
 - Owner approved in chat. Changed `MLX_STT_MAX_CONCURRENCY` from `"4"` to `"1"`
