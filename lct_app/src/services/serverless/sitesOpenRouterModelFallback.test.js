@@ -70,11 +70,24 @@ describe('approved fallback configuration', () => {
     ['a duplicate', `${SECOND},${SECOND}`],
     ['the primary repeated', `${PRIMARY},${SECOND}`],
     ['an empty entry', `${SECOND},,${THIRD}`],
+    ['an id longer than the client accepts', `vendor/${'a'.repeat(160)}`],
+    ['a blank entry between spaces', `${SECOND}, ,${THIRD}`],
   ])('leaves generation unconfigured for %s, with no upstream call or reservation', async (_label, value) => {
     env.LCT_OPENROUTER_FALLBACK_MODELS = value;
     expect(await status()).toMatchObject({ enabled: false, configured: false });
     expect((await generate()).status).toBe(503);
     expect(fetch).not.toHaveBeenCalled(); expect(attempts()).toHaveLength(0);
+  });
+  it('tolerates spaces around commas without changing the approved ids', async () => {
+    env.LCT_OPENROUTER_FALLBACK_MODELS = `${SECOND} , ${THIRD}`;
+    expect(await status()).toMatchObject({ enabled: true, fallback_models: [SECOND, THIRD] });
+  });
+
+  it('keeps Gemini single-model even when an OpenRouter fallback list is set', async () => {
+    Object.assign(env, { GEMINI_API_KEY: 'synthetic-gemini-key', LCT_GEMINI_MODEL: 'gemini-fixture',
+      LCT_GEMINI_ENABLED: 'true', LCT_GEMINI_PROJECT_BUDGET_CONFIRMED: 'true' });
+    const gemini = await (await worker.fetch(new Request(SITE + '/api/cloud/gemini/status', { headers: { origin: SITE } }), env)).json();
+    expect(gemini).toMatchObject({ backend: 'gemini', model: 'gemini-fixture', fallback_models: [] });
   });
 });
 
@@ -164,6 +177,19 @@ describe('model route preflight in the health check', () => {
     const body = await health();
     expect(body).toMatchObject({ reachable: false, model_routes: { approved: 3, available: 0, unknown: 0 } });
     expect(body.detail).toMatch(/No approved model/);
+  });
+
+  it('re-checks routes when the provider or the approved list changes for the same key', async () => {
+    endpointsFor[PRIMARY] = tags(['approved-provider/global']);
+    endpointsFor[SECOND] = tags(['approved-provider/global']);
+    endpointsFor[THIRD] = tags(['approved-provider/global']);
+    expect((await health()).model_routes).toMatchObject({ available: 3 });
+    env.LCT_OPENROUTER_PROVIDER = 'other-provider';
+    const moved = await health();
+    expect(moved).toMatchObject({ reachable: false, model_routes: { available: 0 } });
+    expect(moved.detail).toContain('other-provider');
+    env.LCT_OPENROUTER_PROVIDER = 'approved-provider'; env.LCT_OPENROUTER_FALLBACK_MODELS = SECOND;
+    expect((await health()).model_routes).toMatchObject({ approved: 2, available: 2 });
   });
 
   it('counts an unreadable listing as unknown rather than missing', async () => {

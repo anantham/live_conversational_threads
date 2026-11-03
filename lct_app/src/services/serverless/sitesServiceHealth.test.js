@@ -17,12 +17,12 @@ beforeEach(() => {
     LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true', LCT_OPENROUTER_MAX_REQUESTS: '20', LCT_OPENROUTER_MAX_OUTPUT_TOKENS: '8192', LCT_OPENROUTER_AUDIENCE: 'public', LCT_OPENROUTER_MODEL: 'google/fixture', LCT_OPENROUTER_PROVIDER: 'google-vertex', LCT_OPENROUTER_DATA_COLLECTION: 'deny',
     LCT_GEMINI_ENABLED: 'false', LCT_GEMINI_MODEL: 'gemini-fixture', LCT_GEMINI_PROJECT_BUDGET_CONFIRMED: 'true',
     DB: { prepare(sql) { let args = []; return { bind(...v) { args = v; return this; }, async first() { return db.prepare(sql).get(...args); } }; } } };
-  vi.stubGlobal('fetch', vi.fn(async url => new Response(JSON.stringify(url.includes('soniox') ? { models: [{ id: 'stt-rt-v4' }] } : url.endsWith('/credits') ? { data: { total_credits: 5.75, total_usage: 1.25 } } : { data: { limit_remaining: 0.5, label: 'DO NOT DISCLOSE' } }))));
+  vi.stubGlobal('fetch', vi.fn(async url => new Response(JSON.stringify(url.includes('soniox') ? { models: [{ id: 'stt-rt-v4' }] } : url.endsWith('/credits') ? { data: { total_credits: 5.75, total_usage: 1.25 } } : url.endsWith('/endpoints') ? { data: { endpoints: [{ tag: 'google-vertex/global' }] } } : { data: { limit_remaining: 0.5, label: 'DO NOT DISCLOSE' } }))));
 });
 afterEach(() => { db.close(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 it('checks fixed authenticated GETs once per cache window, exposes only coarse status and never consumes a reservation', async () => {
   const [a,b] = await Promise.all([get('openrouter'), get('openrouter')]);
-  const body = await a.json(); expect(body).toMatchObject({ service: 'openrouter', reachable: true, allowance: 'key_available', account_balance: 'available', available: true });
+  const body = await a.json(); expect(body).toMatchObject({ service: 'openrouter', reachable: true, allowance: 'key_available', account_balance: 'available', available: true, model_routes: { approved: 1, available: 1, unknown: 0 } });
   expect(await b.json()).toEqual(body); expect(fetch).toHaveBeenCalledTimes(3); // key, credits, one model-route listing
   expect(JSON.stringify(body)).not.toContain(env.OPENROUTER_API_KEY); expect(JSON.stringify(body)).not.toContain('DO NOT DISCLOSE'); expect(JSON.stringify(body)).not.toContain('0.5'); expect(JSON.stringify(body)).not.toContain('5.75'); expect(JSON.stringify(body)).not.toContain('1.25');
   const voice = await (await get('soniox')).json(); expect(voice).toMatchObject({ reachable: true, allowance: 'unknown' });
