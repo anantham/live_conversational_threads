@@ -8656,3 +8656,14 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Why not OpenRouter's `models` array: its docs (model-fallbacks, provider-selection) do not say whether `provider.only` / `data_collection` bind every listed model, and that is the transcript-privacy guarantee.
 - Verified (Node 26, `NODE_OPTIONS=--no-experimental-webstorage`): vitest 138 files / 1291 tests pass; `npm run build` and `build:sites` pass; eslint clean on all touched files.
 - Not done: the replay path still uses the primary only (its price ceiling assumes it). Fallback models are not chosen or deployed (owner decision; a fallback can cost more). The UI does not yet say which model served a map.
+
+## 2026-11-03 20:45 IST — Live verification of the approved model fallback
+
+- Harness: `scratchpad/e2e/harness/run.mjs` (outside the repo) imports the built Worker bundle (`npm run build:sites-worker` → `dist/server/index.js`, the deployed artifact) with in-memory SQLite from the repo migrations. It records only URL, status, and each generation's model/provider pin, and refuses to print anything containing a key.
+- Live catalogue, account calls stubbed (the local backend `.env` OpenRouter key is empty; the endpoint listings are public):
+  - Oct 20 configuration (`google/gemini-2.5-flash-lite` on `google-vertex`, alone): `reachable:false`, "No approved model currently has a route on google-vertex", so the Site would show "Needs attention" before any transcription.
+  - Retired primary + `google/gemini-3.5-flash-lite` fallback: `model_routes {approved:2, available:1}`, "1 of 2 approved models".
+  - Current production model alone: routed. Proposed list 3.5-flash-lite → 3.6-flash → 3.7-flash: 3 of 3 routed.
+- Real transcript dry run: the first 20 minutes of the episode in `lct_app/public/experiments/overlapping.threads` (YouTube `6HmR9IaqM88`, 293 turns, 2 speakers, 3,486 words, 40 KB) as Site `finalTokens`. Every generation was answered locally with 404. Source validation passes; both requests carry `only:["google-vertex"]` + `data_collection:"deny"`, differing only in model. `model_fallback` was logged once (404, 1→2); one attempt row; result `no_model_route`.
+- Found and fixed: "All 1 approved model has a route" wording (single-model detail).
+- Not yet run: the paid live generation (needs a non-empty OpenRouter key; ~$0.04 per map for this input). The harness command is `node run.mjs generate google/gemini-2.5-flash-lite google/gemini-3.5-flash-lite <source.json> <out.json>` with `LCT_HARNESS_OPENROUTER_KEY` set.
