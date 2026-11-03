@@ -1,8 +1,9 @@
 import { GENERATION_HIERARCHY_FORMAT } from './generationSchema.js';
 
 // One delimiter-bounded token, so `node-` qualifies and the `ic` in `top` -> `topic` does not.
-const PREFIX = /^[A-Za-z0-9]{1,24}[-_.:]$/;
-const SUFFIX = /^[-_.:][A-Za-z0-9]{1,24}$/;
+// A purely numeric token (`-2`, `1_`) is a node index, never a naming convention.
+const PREFIX = /^(?![0-9]+[-_.:]$)[A-Za-z0-9]{1,24}[-_.:]$/;
+const SUFFIX = /^[-_.:](?![0-9]+$)[A-Za-z0-9]{1,24}$/;
 const OPERATIONS = {
   add_prefix: (id, affix) => affix + id,
   strip_prefix: (id, affix) => id.slice(affix.length),
@@ -41,8 +42,8 @@ function affixesBetween(id, declared) {
  * stripped one); within each reference family, references to one level are
  * wholly resolved or wholly dangling;
  * any reference that already resolves carries the added affix (and nothing is
- * stripped beside resolved references); and no dangling id is declared
- * verbatim at another level. Resolved references never
+ * stripped beside resolved references); no numeric affix; and neither the
+ * dangling id nor its repaired target is declared at another level. Resolved references never
  * change. Anything else is returned untouched so the unchanged validator
  * rejects it. Never mutates its input.
  */
@@ -84,12 +85,13 @@ export function repairGeneratedReferences(graph) {
   let shared = null;
   const levels = new Set();
   for (const value of dangling) {
-    // A wrong-tier reference to a verbatim node is not a naming drift.
-    if ([...declared].some(([level, ids]) => level !== value.semantic_level && ids.has(value.id))) return none;
     const matches = [...(declared.get(value.semantic_level) || [])].flatMap(id => affixesBetween(value.id, id));
     // A reference with two possible targets (or two readings) is ambiguous on its own.
     if (matches.length !== 1) return none;
     const [operation, affix] = matches[0];
+    // A name declared at another tier, as written or as repaired, may be a wrong-tier reference.
+    const target = OPERATIONS[operation](value.id, affix);
+    if ([...declared].some(([level, ids]) => level !== value.semantic_level && (ids.has(value.id) || ids.has(target)))) return none;
     // Also implied by the affix check below, which tests every touched level against the final operation.
     if (shared && (shared.operation !== operation || shared.affix !== affix)) return none;
     shared = { operation, affix };

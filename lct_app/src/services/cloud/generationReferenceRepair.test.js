@@ -144,6 +144,14 @@ describe('deterministic reference repair through the public adapter', () => {
     ['edge endpoints that would lose a suffix the resolved hierarchy keeps', undefined, g => {
       for (const n of g.nodes) n.id = n.semantic_level > 1 ? `${n.id.slice(5)}-2` : n.id.slice(5);
       for (const r of references(g)) r.id = `${r.id}-2`; }],
+    // A number is a node index (part 1 vs part 2), never a naming convention.
+    ['edge endpoints that would gain a numeric suffix the resolved hierarchy carries', undefined, g => {
+      for (const n of g.nodes) n.id = `${n.id.slice(5)}-2`;
+      for (const n of g.nodes) { if (n.parent_id) n.parent_id.id = `${n.parent_id.id}-2`;
+        for (const r of n.secondary_parent_ids) r.id = `${r.id}-2`; }
+      for (const step of g.conversation_threads[0].steps) step.moment_id.id = `${step.moment_id.id}-2`; }],
+    ['a repaired target whose id is also declared at another level', 'parent_missing', g => {
+      g.nodes.push(node(4, 'node-needs', ref(5, 'garden'))); g.nodes[3].parent_id = ref(4, 'needs'); }],
     ['a dangling id declared verbatim at another level', 'parent_missing', g => {
       g.nodes.push({ ...node(4, 'needs'), parent_id: null }); }],
     ['duplicate declarations', undefined, g => { g.nodes.push({ ...node(2, 'node-needs'), parent_id: null }); }],

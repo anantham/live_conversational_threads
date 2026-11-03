@@ -8716,3 +8716,8 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Built-Worker harness now mirrors the real reply (20/3/3/1/1, only chunk→idea drifted): 200, 20 references repaired, 28 nodes. Full suite passes.
 - Lesson: a guard designed from an attacker's inputs rather than the observed failure can quietly reject the case it exists for. Keep the motivating shape as a pinned test.
 
+## 2026-11-03 22:50 IST — Fourth review round; stopping the loop
+
+- Round 4 (packet sha256 prefix in scratchpad review4; reviewed 3c26a5af, before the per-level fix). Both findings re-traced against 2b0e2f21. Adopted: purely numeric affixes never count (`water`→`water-2` beside resolved `*-2`), and the cross-level check now also tests the repaired target. Both red first, mutation-killed. Declined: a reply where EVERY node and resolved reference starts with one word (`no-`) is structurally identical to `node-`; no deterministic rule separates them. Recorded as remaining risk in sites/README; every repair is logged.
+- Four rounds took the findings from structural holes down to inherent residue, so I stopped the review loop here. Full suite and harness green.
+
