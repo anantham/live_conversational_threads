@@ -117,6 +117,16 @@ describe('deterministic reference repair through the public adapter', () => {
       for (const n of g.nodes) n.id = n.id.slice(5); for (const r of references(g)) r.id = `node-${r.id}`;
       const long = 'a'.repeat(155); g.nodes[2].id = long;
       for (const r of references(g)) if (r.id === 'node-needs') r.id = `node-${long}`; }],
+    // Beside references that already resolve, an affix seen in neither the declarations nor those
+    // references is not the reply's naming convention.
+    ['edge endpoints that would lose a suffix beside resolved references', undefined, g => { resolved(g);
+      g.edges[0].from_node_id = ref(1, 'node-water-2'); g.edges[0].to_node_id = ref(1, 'node-shade-2'); }],
+    ['edge and path moments whose declarations share a word prefix the resolved hierarchy lacks', undefined, g => {
+      for (const n of g.nodes) n.id = n.semantic_level > 1 ? n.id.slice(5) : n.id.replace('node-', 'non-');
+      for (const r of references(g)) if (r.semantic_level > 1) r.id = r.id.replace(/^node-/, ''); }],
+    ['edge endpoints that would lose a suffix the resolved hierarchy keeps', undefined, g => {
+      for (const n of g.nodes) n.id = n.semantic_level > 1 ? `${n.id.slice(5)}-2` : n.id.slice(5);
+      for (const r of references(g)) r.id = `${r.id}-2`; }],
     ['a dangling id declared verbatim at another level', 'parent_missing', g => {
       g.nodes.push({ ...node(4, 'needs'), parent_id: null }); }],
     ['duplicate declarations', undefined, g => { g.nodes.push({ ...node(2, 'node-needs'), parent_id: null }); }],

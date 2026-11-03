@@ -39,7 +39,9 @@ function affixesBetween(id, declared) {
  * reference to exactly one declared node at its own level; at each level it
  * touches, every declared id carries the added affix (or none carries the
  * stripped one); each reference family is wholly resolved or wholly dangling;
- * and no dangling id is declared verbatim at another level. Resolved references never
+ * any reference that already resolves carries the added affix (and nothing is
+ * stripped beside resolved references); and no dangling id is declared
+ * verbatim at another level. Resolved references never
  * change. Anything else is returned untouched so the unchanged validator
  * rejects it. Never mutates its input.
  */
@@ -87,6 +89,11 @@ export function repairGeneratedReferences(graph) {
     levels.add(value.semantic_level);
   }
   const adds = shared.operation.startsWith('add');
+  // Beside references that already resolve, the convention must be visible in them too: each
+  // carries the added affix, and an affix that would be stripped (seen in neither declarations
+  // nor resolved references) is never the reply's convention.
+  const resolved = families.flat().filter(resolves);
+  if (resolved.length && (!adds || resolved.some(value => !CARRIES[shared.operation](value.id, shared.affix)))) return none;
   for (const level of levels) {
     const carried = [...declared.get(level)].map(id => CARRIES[shared.operation](id, shared.affix));
     if (adds ? carried.includes(false) : carried.includes(true)) return none;

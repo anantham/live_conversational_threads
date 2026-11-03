@@ -8704,3 +8704,8 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Guard mutation sweep (remove each guard, run the unit tests): 11/12 killed. The survivor is the shared-operation check, which the per-level affix check also enforces (commented in code).
 - Checks: full suite 140 files / 1,321 tests pass; lint clean; Worker build OK; built-bundle harness still 200 with 28 references repaired.
 
+## 2026-11-03 22:05 IST — Third review round, resolved-reference convention guard
+
+- Round 3: same reviewer/model, packet 22,290 bytes (sha256 `526044cd…`). No throws found and no resolved reference changed. Two traced acceptances, both reproduced red: a `-2` strip on edge endpoints beside threads that already resolve, and `water`→`non-water` when only level 1 carries the prefix. Fix: when any reference resolves, every resolved reference must carry the added affix and no strip applies. Not adopted: its same-level clause, which would refuse the motivating case whenever an edge links idea and topic nodes using declared ids.
+- Both halves of the new guard are mutation-killed (a third case isolates the no-strip clause). Full suite 140 files / 1,324 tests; Worker build and built-bundle harness OK.
+
