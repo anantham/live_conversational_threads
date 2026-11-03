@@ -47,7 +47,8 @@ async def test_owner_local_enrichment_skips_context_lookup(monkeypatch):
     monkeypatch.setattr(edge_enrichment, "_call_enrich_llm", empty_valid_scan)
 
     edges, telemetry = await edge_enrichment.run_edge_enrichment(
-        nodes=[{"id": "a"}], query_summary="local", providers=[],
+        nodes=[{"id": "a", "utterance_ids": ["u1"]}],
+        utterances=[{"id": "u1", "text": "Synthetic source"}], query_summary="local", providers=[],
         skip_context_lookup=True,
     )
 
@@ -67,6 +68,7 @@ def _large_hierarchy_fixture():
             "node_name": f"Chunk {chunk_index}",
             "summary": f"Evidence unit {chunk_index}",
             "parent_id": f"idea-{idea_index:02d}",
+            "utterance_ids": [f"turn-{chunk_index}"],
         })
     for idea_index in range(7):
         topic_index = idea_index // 4
@@ -127,7 +129,8 @@ async def test_large_graph_uses_bounded_windows_with_complete_coverage(monkeypat
     monkeypatch.setattr(edge_enrichment, "_call_enrich_llm", valid_window_scan)
 
     edges, telemetry = await edge_enrichment.run_edge_enrichment(
-        nodes=nodes, query_summary="local", providers=[],
+        nodes=nodes, utterances=[{"id": f"turn-{index}", "text": f"Synthetic evidence {index}"}
+                                for index in range(35)], query_summary="local", providers=[],
         skip_context_lookup=True,
     )
 
@@ -183,7 +186,8 @@ async def test_one_invalid_required_window_fails_closed_without_partial_edges(mo
     monkeypatch.setattr(edge_enrichment, "_call_enrich_llm", second_window_invalid)
 
     edges, telemetry = await edge_enrichment.run_edge_enrichment(
-        nodes=nodes, query_summary="local", providers=[],
+        nodes=nodes, utterances=[{"id": f"turn-{index}", "text": f"Synthetic evidence {index}"}
+                                for index in range(35)], query_summary="local", providers=[],
         skip_context_lookup=True,
     )
 
@@ -251,15 +255,15 @@ def test_parser_canonicalizes_deduplicates_and_keeps_only_grounded_edge_evidence
     source_turn = "44444444-4444-4444-4444-444444444444"
     target_turn = "55555555-5555-5555-5555-555555555555"
     nodes = [
-        {"id": "claim-a", "utterance_ids": [target_turn]},
-        {"id": "evidence-b", "source_ref": {"utterance_ids": [source_turn]}},
+        {"id": "claim-a", "source_turns": [{"id": target_turn, "text": "A synthetic claim"}]},
+        {"id": "evidence-b", "source_turns": [{"id": source_turn, "text": "Synthetic counter-evidence"}]},
     ]
     raw = """{
       "edges": [
         {"from_node_id":"evidence-b","to_node_id":"claim-a","relation_type":"rebut",
-         "supporting_utterance_ids":["44444444-4444-4444-4444-444444444444","ghost"]},
+         "explanation":"Counter evidence", "supporting_utterance_ids":["44444444-4444-4444-4444-444444444444","ghost"]},
         {"from_node_id":"evidence-b","to_node_id":"claim-a","relation_type":"rebuts",
-         "supporting_utterance_ids":["55555555-5555-5555-5555-555555555555"]}
+         "explanation":"Counter evidence", "supporting_utterance_ids":["55555555-5555-5555-5555-555555555555"]}
       ]
     }"""
 
@@ -269,13 +273,13 @@ def test_parser_canonicalizes_deduplicates_and_keeps_only_grounded_edge_evidence
         "from_node_id": "evidence-b",
         "to_node_id": "claim-a",
         "relation_type": "rebuts",
-        "explanation": "",
+        "explanation": "Counter evidence",
         "confidence": None,
         "supporting_utterance_ids": [source_turn, target_turn],
     }]
 
 
-def test_parser_falls_back_to_source_node_turns_when_model_omits_evidence():
+def test_parser_rejects_relationship_when_model_omits_evidence():
     source_turn = "44444444-4444-4444-4444-444444444444"
     nodes = [
         {"id": "claim-a"},
@@ -284,9 +288,7 @@ def test_parser_falls_back_to_source_node_turns_when_model_omits_evidence():
     raw = """{"edges":[{"from_node_id":"evidence-b","to_node_id":"claim-a",
       "relation_type":"supports","explanation":"Direct evidence"}]}"""
 
-    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
-
-    assert edge["supporting_utterance_ids"] == [source_turn]
+    assert edge_enrichment._parse_edges_response(raw, nodes=nodes) == []
 
 
 def test_parser_does_not_mislabel_a_broad_source_set_as_edge_specific_evidence():
@@ -297,9 +299,7 @@ def test_parser_does_not_mislabel_a_broad_source_set_as_edge_specific_evidence()
     raw = """{"edges":[{"from_node_id":"theme-b","to_node_id":"claim-a",
       "relation_type":"supports"}]}"""
 
-    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
-
-    assert edge["supporting_utterance_ids"] == []
+    assert edge_enrichment._parse_edges_response(raw, nodes=nodes) == []
 
 
 def test_parser_rejects_endpoint_evidence_that_was_not_shown_to_the_model():
@@ -317,9 +317,7 @@ def test_parser_rejects_endpoint_evidence_that_was_not_shown_to_the_model():
         }],
     })
 
-    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
-
-    assert edge["supporting_utterance_ids"] == []
+    assert edge_enrichment._parse_edges_response(raw, nodes=nodes) == []
 
 
 @pytest.mark.asyncio

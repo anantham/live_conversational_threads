@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
  * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
  * - Render structured utterance turn summaries without repeating speaker names,
  *   while retaining names in the speaker-colour legend.
- * - Keep the conversation overview and thread timeline independently collapsible.
+ * - Open/collapse the overview through the conversation title, independently of the timeline.
  * - Route Drive-backed links to a Google authorization gate rather than the upload prompt.
  * - Reopen a previously validated Drive artifact without another Google prompt;
  *   its refresh action remains available under More.
@@ -148,9 +148,14 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(conversationCards.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
 
     await expect(page.getByText(summary)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    const overview = page.getByRole('button', { name: `Conversation overview: ${LOADED_TITLE}`, exact: true });
+    await expect(page.getByRole('button', { name: 'Overview', exact: true })).toHaveCount(0);
+    await expect(overview).toHaveAttribute('aria-expanded', 'false');
+    await overview.click();
+    await expect(overview).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByText(summary)).toBeVisible();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await overview.click();
+    await expect(overview).toHaveAttribute('aria-expanded', 'false');
     await expect(page.getByText(summary)).toHaveCount(0);
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
 

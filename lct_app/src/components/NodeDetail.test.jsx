@@ -15,6 +15,7 @@ import NodeDetail from "./NodeDetail";
  * - Elapsed timestamps distinguish an unlinked conversation from a recording deep link.
  * - A source_ref-only aggregate still reveals and highlights its exact raw turns.
  * - Semantic relationships disclose whether they cite exact raw turns.
+ * - Nearby moments follow an active authored reading path and offer keyboard buttons.
  */
 
 let container;
@@ -24,6 +25,7 @@ let navigationControl;
 let originalScrollTo;
 
 beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   originalScrollTo = HTMLElement.prototype.scrollTo;
   HTMLElement.prototype.scrollTo = vi.fn();
   opener = document.createElement("button");
@@ -47,9 +49,26 @@ afterEach(() => {
     delete HTMLElement.prototype.scrollTo;
   }
   vi.unstubAllGlobals();
+  globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
 describe("NodeDetail dialog behavior", () => {
+  it("keeps an embedded phone panel bounded and leaves toolbar navigation available", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({matches:true,addEventListener:()=>{},removeEventListener:()=>{}}));
+    act(() => root.render(<NodeDetail embedded node={{id:"m",node_name:"Embedded moment"}} onClose={vi.fn()} />));
+    const dialog=container.querySelector('[role="dialog"]');
+    expect(dialog.getAttribute("aria-modal")).toBeNull();
+    expect(dialog.className).toContain("absolute max-h-full");
+    const event=new KeyboardEvent("keydown",{key:"Tab",shiftKey:true,bubbles:true,cancelable:true});
+    act(()=>dialog.dispatchEvent(event));expect(event.defaultPrevented).toBe(false);
+    expect(container.querySelector('[data-viewer-scroll="node-detail"]')).not.toBeNull();
+  });
+  it("opens the exact artifact passage even when no verified recording exists", () => {
+    const onOpenPassage=vi.fn();
+    act(()=>root.render(<NodeDetail node={{id:"m",node_name:"Text moment",utterance_ids:["u"]}} artifactUtterances={[{id:"u",text:"Synthetic original words",speaker_id:"S",timestamp_start:12}]} onClose={vi.fn()} onOpenPassage={onOpenPassage}/>));
+    const source=container.querySelector('button[title="Open original source passage"]');
+    act(()=>source.click());expect(onOpenPassage).toHaveBeenCalledExactlyOnceWith({id:"u",seconds:12});
+  });
   it("focuses the named dialog, closes on Escape, and restores focus", () => {
     const onClose = vi.fn();
     act(() => {
@@ -260,5 +279,25 @@ describe("NodeDetail dialog behavior", () => {
 
     expect(container.textContent).toContain("2 cited turns");
     expect(container.textContent).toContain("no direct turn citation");
+  });
+
+  it("follows the selected thread in Nearby moments and falls back outside it", () => {
+    const onSelectNode = vi.fn();
+    const nodes = [
+      { id: "a", semantic_level: 1, node_name: "First moment" },
+      { id: "other", semantic_level: 1, node_name: "Interleaved moment" },
+      { id: "b", semantic_level: 1, node_name: "Second moment" },
+    ];
+    act(() => root.render(<NodeDetail node={nodes[0]} contextNodes={nodes} readingPathNodeIds={["a", "b"]} onSelectNode={onSelectNode} onClose={vi.fn()} />));
+    expect(container.textContent).toContain("Second moment");
+    expect(container.textContent).not.toContain("Interleaved moment");
+    const nearbyButton = container.querySelector('button[aria-label="Open nearby moment: Second moment"]');
+    expect(nearbyButton).not.toBeNull();
+    act(() => nearbyButton.click());
+    expect(onSelectNode).toHaveBeenCalledWith("b");
+
+    act(() => root.render(<NodeDetail node={nodes[1]} contextNodes={nodes} readingPathNodeIds={["a", "b"]} onSelectNode={onSelectNode} onClose={vi.fn()} />));
+    expect(container.textContent).toContain("First moment");
+    expect(container.textContent).toContain("Second moment");
   });
 });

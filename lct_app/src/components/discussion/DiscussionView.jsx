@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { ChevronDown, ChevronRight, CornerDownRight, Link2 } from "lucide-react";
 import { AUTHORED_LEVELS, SPEAKER_COLORS } from "../graphConstants";
 import { buildDiscussionModel } from "./discussionModel";
+import { buildSpeakerContributions } from "../graph/speakerContributions";
+import { mediaOffsetLabel } from "../../services/mediaSeek";
 
 const EMPTY = [];
 const control = "min-h-11 rounded px-2 text-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700";
@@ -17,12 +19,19 @@ const namedSpeaker = (row, id) => [row?.speaker_name, row?.speaker_display]
 const initialsOf = (label) => String(label).split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 const referencePrefix = { 5: "Arc", 4: "Theme", 3: "Topic", 2: "Idea", 1: "Moment" };
 
-export default function DiscussionView({ nodes, utterances = EMPTY, speakerColorMap = {}, evidenceStatus = "ready", onRenameSpeaker, focusRequest, linkBase, namesStayInView = false }) {
+export default function DiscussionView({ nodes, utterances = EMPTY, speakerColorMap = {}, evidenceStatus = "ready", focusRequest, linkBase, expandedIds, onExpandedChange, navigationRestoreKey = 0, onOpenPassage }) {
   const model = useMemo(() => buildDiscussionModel(nodes, utterances), [nodes, utterances]);
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [localExpanded, setLocalExpanded] = useState(() => new Set());
+  const expanded = useMemo(() => expandedIds ? new Set(expandedIds) : localExpanded, [expandedIds, localExpanded]);
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const setExpanded = useCallback((update) => {
+    const next = typeof update === "function" ? update(expandedRef.current) : update;
+    expandedRef.current = next;
+    if (onExpandedChange) onExpandedChange([...next]); else setLocalExpanded(next);
+  }, [onExpandedChange]);
   const [focusTarget, setFocusTarget] = useState(null);
-  const [speakerToName, setSpeakerToName] = useState("");
-  const [speakerName, setSpeakerName] = useState("");
+  const contributions = useMemo(() => buildSpeakerContributions(nodes, utterances), [nodes, utterances]);
   const [linkStatus, setLinkStatus] = useState("");
   const requestedNodeId = focusRequest?.id;
   const requestKey = focusRequest?.requestKey;
@@ -31,6 +40,12 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
   const handledHash = useRef(null);
   const copyCount = useRef(0);
   const prefix = useId();
+  useLayoutEffect(() => {
+    if (!navigationRestoreKey) return;
+    handledFocusRequest.current = requestedNodeId ? `${requestedNodeId}:${requestKey ?? ""}` : null;
+    try { handledHash.current = window.location.hash.startsWith("#discussion=") ? decodeURIComponent(window.location.hash.slice(12)) : null; }
+    catch { handledHash.current = null; }
+  }, [navigationRestoreKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const speakers = useMemo(() => {
     const labels = new Map();
     model.utteranceById.forEach((row) => {
@@ -102,7 +117,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       return next;
     });
     setFocusTarget(id);
-  }, [model]);
+  }, [model, setExpanded]);
   useEffect(() => {
     if (!requestedNodeId) {
       handledFocusRequest.current = null;
@@ -155,6 +170,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       style={speakerId ? { backgroundColor: `${colors[speakerId] || SPEAKER_COLORS[0]}1a` } : undefined}>
       {speakerId ? avatar(speakerId, "h-8 w-8") : <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-slate-900">{initialsOf(speaker)}</span>}
       <div className="min-w-0 flex-1">
+        {onOpenPassage && <button type="button" onClick={() => onOpenPassage({ id: row.id, seconds: row.timestamp_start })} className="min-h-11 rounded px-1 text-xs text-amber-800 underline underline-offset-2" aria-label={`Open source passage${mediaOffsetLabel(row.timestamp_start) ? ` at ${mediaOffsetLabel(row.timestamp_start)}` : ""}`}>{mediaOffsetLabel(row.timestamp_start) || "Source"}</button>}
         <p className="text-xs font-medium text-slate-600">{speaker}</p>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-7 text-slate-800">{typeof row.text === "string" && row.text.length ? row.text : "Exact utterance text unavailable."}</p>
       </div>
@@ -166,6 +182,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
     const children = model.childrenByParent.get(id) || EMPTY;
     const rows = model.utterancesByMoment.get(id) || EMPTY;
     const contributorIds = speakersByNode.get(id) || EMPTY;
+    const contribution = node.speaker_contributions || contributions.get(String(id));
     const reference = references.get(id);
     const open = expanded.has(id);
     const regionId = `${prefix}-${id}`;
@@ -177,8 +194,16 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
         className={`${control} flex min-w-0 flex-1 items-start gap-2 py-3 text-left`}>
         {open ? <ChevronDown aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronRight aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />}
         <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold ${tier?.chip || "bg-slate-100"} ${tier?.color || "text-slate-700"}`}>{reference}</span>
-        <span className="min-w-0 flex-1 break-words font-medium">{titleOf(node)}</span>
-        {contributorIds.length > 0 && <span aria-hidden="true" className="mt-0.5 inline-flex shrink-0 items-center gap-1">
+        <span className="min-w-0 flex-1">
+          <span className="block break-words font-medium">{titleOf(node)}</span>
+          {contribution?.complete && <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-normal text-slate-600" aria-label="Share of speaking time">
+            {contribution.speakers.map(({id: speakerId, percent}) => <span key={speakerId} className="inline-flex items-center gap-1" title={`${speakers.get(speakerId) || 'Unknown speaker'}: ${percent}% of linked speaking time`}>
+              {avatar(speakerId, "h-5 w-5")}<span>{percent}%</span><span className="sr-only">{speakers.get(speakerId) || 'Unknown speaker'} of linked speaking time</span>
+            </span>)}
+          </span>}
+          {contribution?.totalPassages > 0 && !contribution.complete && <span className="mt-1 block text-xs font-normal text-slate-500">Speaking-time shares unavailable: timing is incomplete.</span>}
+        </span>
+        {contributorIds.length > 0 && !contribution?.complete && <span aria-hidden="true" className="mt-0.5 inline-flex shrink-0 items-center gap-1">
           {contributorIds.slice(0, 3).map((speakerId) => avatar(speakerId, "h-5 w-5"))}
           {contributorIds.length > 3 && <span className="text-xs text-slate-600">+{contributorIds.length - 3}</span>}
         </span>}
@@ -206,7 +231,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       </div>}
     </li>;
   };
-  return <section aria-label="Discussion" className="h-full min-h-0 overflow-y-auto bg-[#fdfdfb] px-3 py-5 sm:px-6">
+  return <section data-viewer-scroll="discussion" aria-label="Discussion" className="h-full min-h-0 overflow-y-auto bg-[#fdfdfb] px-3 py-5 sm:px-6">
     <div className="mx-auto max-w-[75ch]">
       <p className="mb-3 text-sm leading-6 text-slate-600">Open a branch to follow its ideas and exact words. A moment can belong to several ideas{linkBase ? "; shared links lead to the same passage." : "."}</p>
       <p role={linkStatus ? "status" : undefined} aria-live="polite" aria-atomic="true"
@@ -214,26 +239,6 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       {speakers.size > 0 && <div role="group" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Speaker colors">
         {[...speakers].map(([id, label]) => <span key={id} className="inline-flex items-center gap-2 text-sm text-slate-800">{avatar(id)}<span>{label}</span></span>)}
       </div>}
-      {onRenameSpeaker && speakers.size > 0 && <details className="mb-4 text-sm text-slate-700">
-        <summary className="min-h-11 cursor-pointer py-2 underline underline-offset-4">Name speakers</summary>
-        <form className="flex flex-wrap items-end gap-2 pb-2" onSubmit={(event) => {
-          event.preventDefault();
-          if (!speakerName.trim()) return;
-          onRenameSpeaker(speakerToName || speakers.keys().next().value, speakerName.trim());
-          setSpeakerName("");
-        }}>
-          <label className="flex flex-col gap-1">Speaker
-            <select value={speakerToName || speakers.keys().next().value} onChange={(event) => setSpeakerToName(event.target.value)} className="min-h-11 rounded border border-slate-300 bg-white px-2">
-              {[...speakers].map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">Name
-            <input value={speakerName} onChange={(event) => setSpeakerName(event.target.value)} required maxLength={80} className="min-h-11 rounded border border-slate-300 bg-white px-2" />
-          </label>
-          <button type="submit" className="min-h-11 rounded bg-slate-800 px-3 text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700">Save name</button>
-        </form>
-        <p className="text-xs text-slate-600">{namesStayInView ? "Names change in this view only. The stored copy stays the same." : "Names save on this device. Download the reviewed file to share them."}</p>
-      </details>}
       <ul className="divide-y divide-slate-200">{model.rootIds.map(renderBranch)}</ul>
       {model.unlinkedUtteranceIds.length > 0 && <details className="mt-4 border-t border-slate-200 pt-2">
         <summary className={`${control} cursor-pointer py-3 font-medium`}>{model.rootIds.length ? "Other transcript passages" : "Transcript passages"} ({model.unlinkedUtteranceIds.length})</summary>
@@ -248,8 +253,10 @@ DiscussionView.propTypes = {
   utterances: PropTypes.arrayOf(PropTypes.object),
   speakerColorMap: PropTypes.object,
   evidenceStatus: PropTypes.oneOf(["ready", "loading", "error"]),
-  onRenameSpeaker: PropTypes.func,
   focusRequest: PropTypes.shape({ id: PropTypes.string, requestKey: PropTypes.number }),
   linkBase: PropTypes.string,
-  namesStayInView: PropTypes.bool,
+  expandedIds: PropTypes.arrayOf(PropTypes.string),
+  onExpandedChange: PropTypes.func,
+  navigationRestoreKey: PropTypes.number,
+  onOpenPassage: PropTypes.func,
 };

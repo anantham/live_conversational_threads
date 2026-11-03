@@ -103,10 +103,13 @@ export default function NodeDetail({
   onTraceAncestors,
   participantNames = [],
   contextNodes = null,
+  readingPathNodeIds = [],
   onSelectNode = null,
   artifactUtterances = null,
   mediaRefs = [],
   onSeekMedia,
+  onOpenPassage,
+  embedded = false,
 }) {
   const safeNode = node ?? null;
   const isOpen = Boolean(safeNode);
@@ -128,7 +131,7 @@ export default function NodeDetail({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !compact) return undefined;
+    if (!isOpen || !compact || embedded) return undefined;
     const panel = panelRef.current;
 
     const handleKeyDown = (event) => {
@@ -159,7 +162,7 @@ export default function NodeDetail({
     return () => {
       panel?.removeEventListener("keydown", handleKeyDown);
     };
-  }, [compact, isOpen]);
+  }, [compact, embedded, isOpen]);
 
   // ADR-032 Part H — structured utterances + windowed inline correction.
   const [utterances, setUtterances] = useState(() => artifactUtterances);
@@ -298,15 +301,20 @@ export default function NodeDetail({
   // "In context" — for a chunk-level moment, reconstruct a mini-transcript from
   // the neighboring chunks (who said what just before/after). Used in the static
   // .threads viewer, where there's no backend/utterance feed but every chunk
-  // (with speaker + source_excerpt) is present in the graph. ±4 in graph order.
+  // (with speaker + source_excerpt) is present in the graph. Follow the
+  // selected thread when this moment belongs to it; otherwise use graph order.
   const CONTEXT_WINDOW = 4;
   const contextWindow = useMemo(() => {
     if (!Array.isArray(contextNodes) || contextNodes.length === 0 || !safeNode) return null;
     const lvl = Number(safeNode.semantic_level || safeNode.level || 0);
     if (lvl !== 1) return null; // moments only
-    const chunks = contextNodes.filter(
+    const allMoments = contextNodes.filter(
       (n) => Number(n.semantic_level || n.level || 0) === 1
     );
+    const byId = new Map(allMoments.map((moment) => [String(moment.id), moment]));
+    const threadMoments = readingPathNodeIds.map((id) => byId.get(String(id))).filter(Boolean);
+    const chunks = threadMoments.some((moment) => String(moment.id) === String(safeNode.id))
+      ? threadMoments : allMoments;
     const idx = chunks.findIndex((n) => String(n.id) === String(safeNode.id));
     if (idx === -1) return null;
     const from = Math.max(0, idx - CONTEXT_WINDOW);
@@ -316,7 +324,7 @@ export default function NodeDetail({
       currentId: String(safeNode.id),
       truncated: from > 0 || to < chunks.length,
     };
-  }, [contextNodes, safeNode]);
+  }, [contextNodes, readingPathNodeIds, safeNode]);
 
   // Raw transcript for this node's chunk. NOTE: for live-recorded
   // conversations the backend (conversation_reader.build_chunk_dict...)
@@ -420,6 +428,10 @@ export default function NodeDetail({
     if (!safeNode) return undefined;
     const handleKeydown = (event) => {
       if (event.key === "Escape") {
+        // Focused toolbar help gets the first Escape. Its document capture
+        // listener can stop propagation before this panel's window listener.
+        const tooltipId = document.querySelector('[role="tooltip"]')?.id;
+        if (tooltipId && document.activeElement?.getAttribute("aria-describedby")?.split(/\s+/).includes(tooltipId)) return;
         // Escape cancels an open rename editor first, then closes the panel.
         if (editingUtteranceId) {
           setEditingUtteranceId(null);
@@ -428,8 +440,8 @@ export default function NodeDetail({
         }
       }
     };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+    document.addEventListener("keydown", handleKeydown, true);
+    return () => document.removeEventListener("keydown", handleKeydown, true);
   }, [safeNode, onClose, editingUtteranceId]);
 
   useEffect(() => {
@@ -575,14 +587,14 @@ export default function NodeDetail({
     <div
       ref={panelRef}
       role="dialog"
-      aria-modal={compact ? "true" : undefined}
+      aria-modal={compact && !embedded ? "true" : undefined}
       aria-labelledby={titleId}
       tabIndex={-1}
-      className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter outline-none sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l"
+      className={`${embedded ? "absolute max-h-full" : "fixed max-h-[75vh]"} left-0 right-0 bottom-0 rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter outline-none sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l`}
     >
       <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <div className="flex shrink-0 items-center justify-between px-4 py-3 border-b border-gray-100">
         <h2
           id={titleId}
           className="text-sm font-semibold text-gray-800 pr-2 break-words leading-snug"
@@ -602,7 +614,7 @@ export default function NodeDetail({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
+      <div data-viewer-scroll="node-detail" className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
         {/* Audio Player */}
         {audioUrl && (
           <div className="mb-4">
@@ -735,17 +747,18 @@ export default function NodeDetail({
                 const text = n.source_excerpt || n.summary || n.node_name || "";
                 const isCur = String(n.id) === contextWindow.currentId;
                 const clickable = !isCur && typeof onSelectNode === "function";
+                const content = <>
+                  {speaker && <span className="font-medium text-gray-500">{speaker}</span>}
+                  {speaker && <span className="text-gray-300">: </span>}
+                  <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
+                </>;
                 return (
-                  <div
-                    key={n.id}
-                    onClick={clickable ? () => onSelectNode(n.id) : undefined}
-                    className={`py-0.5 ${isCur ? "bg-amber-100 rounded px-0.5" : ""} ${
-                      clickable ? "cursor-pointer hover:bg-gray-100 rounded px-0.5" : ""
-                    }`}
-                  >
-                    {speaker && <span className="font-medium text-gray-500">{speaker}</span>}
-                    {speaker && <span className="text-gray-300">: </span>}
-                    <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
+                  <div key={n.id} className={`py-0.5 ${isCur ? "bg-amber-100 rounded px-0.5" : ""}`}>
+                    {clickable ? (
+                      <button type="button" onClick={() => onSelectNode(n.id)} className="w-full rounded px-0.5 text-left hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500" aria-label={`Open nearby moment: ${n.node_name || text}`}>
+                        {content}
+                      </button>
+                    ) : content}
                   </div>
                 );
               })}
@@ -788,6 +801,7 @@ export default function NodeDetail({
             {visibleUtterances ? (
               <div
                 ref={transcriptScrollRef}
+                data-viewer-scroll="node-evidence"
                 className="mt-1 max-h-56 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed"
               >
                 {visibleUtterances.rows.map((u) => {
@@ -806,7 +820,7 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
-                      {(elapsedClock || wallClock) && (elapsedClock && seekUrl && onSeekMedia && mediaRef?.provider === "youtube" ? (
+                      {onOpenPassage ? <button type="button" onClick={() => onOpenPassage({id: u.id, seconds: u.timestamp_start})} className="mr-1 text-[10px] tabular-nums text-amber-700" title={elapsedClock && mediaRef?.provider === "youtube" ? "Seek the inline recording" : "Open original source passage"}>{elapsedClock || "Source"}</button> : (elapsedClock || wallClock) && (elapsedClock && seekUrl && onSeekMedia && mediaRef?.provider === "youtube" ? (
                         <button type="button" onClick={() => onSeekMedia(u.timestamp_start)} className="mr-1 text-[10px] tabular-nums text-amber-700" title="Seek the inline recording">
                           {elapsedClock}
                         </button>
@@ -1160,8 +1174,11 @@ NodeDetail.propTypes = {
   onTraceAncestors: PropTypes.func,
   participantNames: PropTypes.arrayOf(PropTypes.string),
   contextNodes: PropTypes.arrayOf(PropTypes.object),
+  readingPathNodeIds: PropTypes.arrayOf(PropTypes.string),
   onSelectNode: PropTypes.func,
   artifactUtterances: PropTypes.arrayOf(PropTypes.object),
   mediaRefs: PropTypes.arrayOf(PropTypes.object),
   onSeekMedia: PropTypes.func,
+  onOpenPassage: PropTypes.func,
+  embedded: PropTypes.bool,
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isGraphNavigationKey, navigateGraphNode } from "./graphNavigation";
+import { isGraphNavigationKey, isReadingNavigationKey, navigateGraphNode, nextReadingPathNode } from "./graphNavigation";
 
 /*
  * Test intent:
@@ -7,6 +7,7 @@ import { isGraphNavigationKey, navigateGraphNode } from "./graphNavigation";
  * - Left/Right follows chronological neighbors at the current visible tier.
  * - Temporal navigation respects a scoped visible tier and never wraps at boundaries.
  * - Editing and action controls retain native arrow-key behavior.
+ * - A selected thread restricts horizontal navigation to its authored path.
  */
 
 const nodes = [
@@ -82,5 +83,23 @@ describe("two-axis graph keyboard navigation", () => {
     expect(isGraphNavigationKey({ key: "ArrowLeft", target: separator })).toBe(false);
     expect(isGraphNavigationKey({ key: "ArrowDown", target: transcript })).toBe(false);
     expect(isGraphNavigationKey({ key: "ArrowLeft", target: card, metaKey: true })).toBe(false);
+  });
+
+  it("steps only through the selected authored path without wrapping", () => {
+    expect(nextReadingPathNode(["a", "b", "c"], "a", "right")).toBe("b");
+    expect(nextReadingPathNode(["a", "b", "c"], "c", "right")).toBeNull();
+    expect(nextReadingPathNode(["a", "b", "c"], "b", "left")).toBe("a");
+    expect(nextReadingPathNode(["a", "b", "c"], null, "right")).toBe("a");
+  });
+
+  it("allows horizontal reading from ordinary buttons but respects editors and menus", () => {
+    const button = document.createElement("button");
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    const item = document.createElement("button");
+    menu.append(item);
+    expect(isReadingNavigationKey({ key: "ArrowRight", target: button })).toBe(true);
+    expect(isReadingNavigationKey({ key: "ArrowRight", target: item })).toBe(false);
+    expect(isReadingNavigationKey({ key: "ArrowLeft", target: document.createElement("input") })).toBe(false);
   });
 });

@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-12",
+  "purpose": "Verify shared authored relationships through actual local file viewing and reload",
+  "authorization": "User: Proceed with the manual walkthrough",
+  "checkout_branch": "codex/semantic-authoring-consolidation-20261012",
+  "runtime_head": "abfd04533917fb44f2064944e5c02511ce350adc",
+  "unchanged_reviewed_runtime_source": "8ef8161",
+  "test_blob": "645167e64365816336c2fbfb4572a9567ac49f1a",
+  "runtime": "Task-owned Vite dev server, localhost:51893; Chromium; isolated browser storage",
+  "fixture": "Shared Python authoring and real JS compiler output with synthetic provider response; three exact synthetic turns and two canonical edges",
+  "manual_interactions": [
+    "Upload the shared-authored .threads artifact",
+    "Choose moments; focus Passage3; open its Source/details control",
+    "Inspect outgoing clarifies to Passage1, explanation, and exact citation IDs u1/u3",
+    "Follow transcript evidence Source into original speech",
+    "Reload; reopen saved browser-local entry from Library",
+    "Reload saved conversation route and inspect the same relation",
+    "Repeat at390px; scroll details sheet and open Source"
+  ],
+  "automated_acceptance": {
+    "file": "lct_app/tests/e2e/shared-semantic-authoring.spec.ts",
+    "result": "2 passed, 0 skipped",
+    "duration_seconds": 32.0,
+    "viewport_widths": [1440, 390],
+    "checks": ["Both directed graph edges", "Explanation and outgoing direction", "Exact u1 newline u3 citation title", "Original cited speech", "Saved-route reload without reupload", "Relation/source in viewport", "No document overflow", "No pageerrors, console errors/warnings or network5xx"],
+    "network_mocking": "None",
+    "screenshots": "lct_app/test-results/shared-authoring-{width}-{uploaded|reloaded}-{relations|source}.png"
+  },
+  "adjacent_limitation": "Library's unrelated history/recording requests return500 on this isolated Vite-only server. Explicit unavailable/retry UI observed; saved local file still opens. Recorded in ISSUES.md; excluded from the bounded automated viewer journey.",
+  "claims_excluded": ["Live model inference", "Semantic recall", "Exhaustive transcript coverage", "Full application UX acceptance", "Published or production runtime", "Public artifact regeneration"]
+}

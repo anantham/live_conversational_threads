@@ -160,6 +160,7 @@ async def repair_persisted_argument_topology(
     else:
         semantic_edges, enrichment_telemetry = await run_edge_enrichment(
             nodes=graph_nodes,
+            utterances=[{"id": str(utt.id), "text": utt.text} for utt in utterances],
             query_summary="",
             llm_config=llm_config,
             providers=local_providers,

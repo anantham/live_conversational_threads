@@ -146,6 +146,7 @@ export function layoutByThread(nodes, edges, {
   // Minimum visible width per node when timeBased=true. Without a
   // minimum, very short utterances become invisible slivers.
   minNodeWidth = 160,
+  avoidOverlap = false,
 } = {}) {
   if (!nodes || nodes.length === 0) return [];
 
@@ -155,12 +156,14 @@ export function layoutByThread(nodes, edges, {
   const getTsStart = (n) => {
     const fd = fullData(n);
     const v = fd.timestamp_start ?? n?.data?.timestamp_start;
+    if (v == null || v === "") return null;
     const num = Number(v);
     return Number.isFinite(num) ? num : null;
   };
   const getTsEnd = (n) => {
     const fd = fullData(n);
     const v = fd.timestamp_end ?? n?.data?.timestamp_end;
+    if (v == null || v === "") return null;
     const num = Number(v);
     return Number.isFinite(num) ? num : null;
   };
@@ -195,6 +198,8 @@ export function layoutByThread(nodes, edges, {
           getThread,
           getTsStart,
           getTsEnd,
+          nodesep,
+          avoidOverlap,
         });
       }
     }
@@ -535,14 +540,16 @@ export function layoutDialectic(nodes, edges, {
 // at synthetic positions (we don't drop them — the canvas still shows
 // every node).
 //
-// Node width is set on the node's data.estimatedWidth so the renderer
-// can size the card to its actual duration_seconds, with a minimum so
-// short chunks stay readable.
+// estimatedWidth records the time-span hint for consumers. The card renderer
+// has its own bounded width; avoidOverlap reserves that visible width when
+// readers choose compact cards.
 function layoutByThreadTimeAxis(nodes, {
   nodeHeight,
   ranksep,
   pixelsPerSecond,
   minNodeWidth,
+  nodesep,
+  avoidOverlap,
   threads,
   getThread,
   getTsStart,
@@ -556,6 +563,26 @@ function layoutByThreadTimeAxis(nodes, {
     if (ts != null && ts < minStart) minStart = ts;
   });
   if (!Number.isFinite(minStart)) minStart = 0;
+
+  // The elapsed-time axis is a preferred position, not permission for cards
+  // seconds apart to cover each other. Resolve collisions inside each authored
+  // thread in chronological order; genuine larger gaps retain their scale.
+  const packedXById = new Map();
+  if (avoidOverlap) {
+    for (const [, entry] of threads) {
+      let previousRight = -Infinity;
+      const dated = entry.nodes
+        .map((node, index) => ({ node, index, timestamp: getTsStart(node) }))
+        .filter((item) => item.timestamp != null)
+        .sort((a, b) => a.timestamp - b.timestamp || a.index - b.index);
+      for (const { node, timestamp } of dated) {
+        const rawX = (timestamp - minStart) * pixelsPerSecond;
+        const x = Math.max(rawX, previousRight + nodesep);
+        packedXById.set(node.id, x);
+        previousRight = x + minNodeWidth;
+      }
+    }
+  }
 
   // Sort threads by total activity (count of nodes), most-active at top.
   // Ties broken by first appearance order to keep stable.
@@ -587,6 +614,9 @@ function layoutByThreadTimeAxis(nodes, {
       if (candidate > maxX) maxX = candidate;
     }
   });
+  if (avoidOverlap) {
+    for (const x of packedXById.values()) maxX = Math.max(maxX, x + minNodeWidth);
+  }
 
   return nodes.map((n) => {
     const tid = getThread(n);
@@ -597,7 +627,7 @@ function layoutByThreadTimeAxis(nodes, {
     let x;
     let width;
     if (tsStart != null) {
-      x = (tsStart - minStart) * pixelsPerSecond;
+      x = packedXById.get(n.id) ?? (tsStart - minStart) * pixelsPerSecond;
       if (tsEnd != null && tsEnd > tsStart) {
         width = Math.max(minNodeWidth, (tsEnd - tsStart) * pixelsPerSecond);
       } else {

@@ -141,3 +141,21 @@ export function isGraphNavigationKey(event) {
   const target = event.target;
   return !target?.closest?.("input, textarea, select, button, a, [role='separator'], [aria-label='Source passages'], [contenteditable='true']");
 }
+
+/** Step only through an explicitly selected authored reading path. */
+export function nextReadingPathNode(nodeIds, currentId, direction) {
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0 || !["left", "right"].includes(direction)) return null;
+  const ids = [...new Set(nodeIds.map(idOf).filter(Boolean))];
+  const current = ids.indexOf(idOf(currentId));
+  const target = current < 0
+    ? direction === "right" ? ids[0] : ids.at(-1)
+    : ids[current + (direction === "right" ? 1 : -1)];
+  return target || null;
+}
+
+/** Horizontal reading shortcuts retain form, menu, and transcript navigation. */
+export function isReadingNavigationKey(event) {
+  if (!event || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
+  if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return false;
+  return !event.target?.closest?.("input, textarea, select, [role='menu'], [role='menuitem'], [role='listbox'], [role='option'], [role='separator'], [role='slider'], [aria-label='Source passages'], [contenteditable='true']");
+}

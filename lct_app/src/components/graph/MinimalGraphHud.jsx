@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { LockKeyhole } from "lucide-react";
+import { CornerLeftUp, LockKeyhole } from "lucide-react";
 
 import { AUTHORED_LEVELS } from "../graphConstants";
 import { mglog } from "./minimalGraphDebug";
@@ -127,9 +127,9 @@ export default function MinimalGraphHud({
               clearNeighborhoodFocus?.(false);
               setDrilldownPath((prev) => prev.slice(0, -1));
             }}
-            title="Back up one level (Esc)"
+            title="Up one level (Esc)"
           >
-            <span aria-hidden="true">←</span> Back
+            <CornerLeftUp aria-hidden="true" className="h-3 w-3" /> Up one level
           </button>
           <button
             type="button"
