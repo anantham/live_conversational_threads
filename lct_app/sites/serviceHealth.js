@@ -77,7 +77,9 @@ async function modelRoutes(policy, parentSignal) {
 
 function routeDetail(routes, provider) {
   if (!routes.available && !routes.unknown) return `No approved model currently has a route on ${provider}. Map generation would fail; transcription is unaffected.`;
-  if (routes.available === routes.approved) return `API key accepted. All ${routes.approved} approved model${routes.approved === 1 ? ' has' : 's have'} a route. This check does not run model generation.`;
+  if (routes.available === routes.approved) return routes.approved === 1
+    ? 'API key accepted. The approved model has a route. This check does not run model generation.'
+    : `API key accepted. All ${routes.approved} approved models have a route. This check does not run model generation.`;
   return `API key accepted. ${routes.available} of ${routes.approved} approved models currently have a route${routes.unknown ? ` (${routes.unknown} could not be checked)` : ''}. This check does not run model generation.`;
 }
 

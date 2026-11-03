@@ -149,6 +149,14 @@ describe('model route preflight in the health check', () => {
     expect(body.detail).toContain('2 of 3 approved models');
   });
 
+  it('words a single routed model naturally', async () => {
+    delete env.LCT_OPENROUTER_FALLBACK_MODELS;
+    endpointsFor[PRIMARY] = tags(['approved-provider/global']);
+    const body = await health();
+    expect(body).toMatchObject({ reachable: true, model_routes: { approved: 1, available: 1, unknown: 0 } });
+    expect(body.detail).toBe('API key accepted. The approved model has a route. This check does not run model generation.');
+  });
+
   it('needs attention when no approved model has a route on the provider', async () => {
     endpointsFor[PRIMARY] = () => json({ error: { code: 404, message: 'model not found' } }, 404); // delisted entirely
     endpointsFor[SECOND] = tags([]);
