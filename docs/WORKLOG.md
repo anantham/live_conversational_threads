@@ -8787,3 +8787,8 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Coverage of the changed files showed two of my new branches untested: replay's invalid-source 400 (`sites/replayProvider.js:42`) and the admission rethrow for non-CHECK errors (`sites/openRouter.js:113`).
 - Added `replayTrial.test.js` "refuses a source the transcript validator rejects…" and `sitesOpenRouterOutputBudget.test.js` "admission storage failures other than the 0019 constraint". Both red-proven by removing the guard; code restored.
 - Branch `test/long-input-error-paths` from `fix/openrouter-approved-model-fallback` @ b9358e3a.
+
+## 2026-11-04 01:40 IST — Read the 20-minute maps against the transcript (owner asked)
+- Before this, map quality had been judged only mechanically (validity, coverage, node counts, summary whitespace). Read the 16k map against its 32-utterance transcript, then counted each pattern across all 28 valid 20-minute maps. Findings are in `docs/reviews/2026-11-03-long-input-envelope.md` under "Reading the maps against the transcript".
+- The main risks are a turn-level granularity floor (a 607-word turn is one card), chunk counts from 3 to 32 for the same input, pass-through tiers, and 2/28 maps misfiling the intro (one with 14 chunks under ideas whose evidence excludes them).
+- Corrected the doc: the 293 count is transcript segments, not turns (the map sees 32 speaker turns). "Map quality held" now reads as mechanical checks only.
