@@ -117,6 +117,17 @@ it('latches a committed-but-unacknowledged dispatch without a provider call',asy
  expect((await map(1)).status).toBe(503);expect(trial().state).toBe('failed');expect(attempts().at(-1).state).toBe('uncertain');
  expect(calls.filter(c=>c.url.includes('/chat/completions'))).toHaveLength(before);expect((await map(2)).status).toBe(409);
 });
+it('logs a replay map that files a chunk outside its parent\'s evidence, and still returns it',async()=>{
+ // Intent: tests/intent/map-structure-quality.md. Warn, never suppress.
+ const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+ const two={...source(),finalTokens:[...source().finalTokens,{text:' A reply.',speaker:'2',startMs:1500,endMs:2500}]};
+ const n=(level,id,utt,parent=null)=>({id,semantic_level:level,semantic_type:['chunk','idea'][level-1],node_name:id,summary:'Synthetic',source_excerpt:'',source_ref:{utterance_ids:utt},parent_id:parent,secondary_parent_ids:[],thread_id:null});
+ mapGraph=()=>({hierarchy_format:'tiered-parent-links-v2',metadata:{conversation_title:'Garden',executive_summary:'Synthetic'},edges:[],conversation_threads:[],
+  nodes:[n(1,'plan',['utterance-0001'],{semantic_level:2,id:'reply'}),n(1,'answer',['utterance-0002'],{semantic_level:2,id:'reply'}),n(2,'reply',['utterance-0002'])]});
+ await mint();
+ expect((await run('/generate','POST',{source:two,phase:'periodic'},{'x-lct-replay-sequence':'1'})).status).toBe(200);
+ expect(warn.mock.calls.filter(([,d])=>d?.code==='evidence_mismatch').map(([,d])=>[d.mismatches,d.byChildLevel])).toEqual([[1,[1,0,0,0]]]);
+});
 it('refuses a source the transcript validator rejects as a client error, reserving nothing',async()=>{
  // Intent: tests/intent/long-input-output-budget.md. The output cap is sized from the validated span,
  // so an invalid source must stop at sizing with 400, not reach reservation or surface as a 503.
