@@ -8829,3 +8829,57 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - A parent that cites nothing hiding a transitive mismatch: skipped by design and documented.
   - Splits after abbreviations ("Dr.") once past 60 s or 150 words: an accepted limit; the text is preserved and the cut is at a word boundary.
   - The "waits for a sentence end" test "can't fail": it fails when the sentence-end requirement is removed (an early split gives four utterances).
+
+## 2026-11-04 03:15 IST — Reference repair accepts a one-tier declaration drift (ISSUES 2026-11-04)
+- Branch `fix/reference-repair-single-tier` from `fix/openrouter-approved-model-fallback` @ debd7275.
+- Red first: `generationReferenceRepair.test.js` "repairs a drift confined to one tier's declarations…" reproduces the real shape (ideas `node-idea-*`, two chunk parents `idea-*`, every other tier resolving) through `recordingThreadsFromOpenRouterResponse`. It failed at `hierarchy/parent_missing`.
+- Tried the suggested change first (scope the resolved-reference check to touched levels). It reopened two earlier attacks: `non-water` at one tier, and a resolved unprefixed parent beside drifted parents. Since every declared id at a touched level carries an added affix, that scoped check is vacuous for add operations, so scoping alone just deletes the guard.
+- Change (`generationReferenceRepair.js` ~23-27, ~107-115; `generationSchema.js` exports `GENERATION_SEMANTIC_TYPES`): beside resolved references, an added affix is also accepted when every dangling id names its own tier as a whole delimited token (`idea-x`, `x-idea`). Strip operations stay refused. Every other rule is unchanged.
+- Real reply (`split-prompt-0to20-4.content.txt`, sibling scratchpad, read locally only): every tier is tier-named (`chunk-01`, `topic-intro`, `theme-background`, `arc-life-journey`). Now 2 references are repaired and `expandGenerationHierarchy` passes; unrepaired it fails `parent_missing`. The other 29 A/B replies get the same repair outcome as before.
+- Attacks added (all refused with `hierarchy/parent_missing`): untyped ids, only one id typed, another tier's word, `ideas-`/`…idea` without a delimiter, the affix being the tier word, a strip at that tier, the target declared at another level. Every earlier case is unchanged.
+- Mutation sweep, 8 mutants (always/never accept, every→some, drop the no-strip clause, drop the leading or trailing branch, off-by-one level, no delimiter on either side): all killed. Two survived the first pass and needed the `ideas-`/`…idea` cases.
+- Full suite 144 files / 1,379 tests (Node 26, `--no-experimental-webstorage`). Docs: `lct_app/sites/README.md`, `tests/intent/generation-reference-repair.md`, ISSUES.md resolution entry.
+
+## 2026-11-04 03:40 IST — Gemini review of the one-tier repair (agy, gemini-4-argon-high): NO-GO, adjudicated
+- Packet: scratchpad `review1/` (BRIEF.md, change.diff, 4 source files; SHA256SUMS there; change.diff `b8fb022f…`). Reviewed commit 1fb53c5b. Code only.
+- Adopted (all reproduced first against 1fb53c5b, then red tests):
+  - P0: `namesTier` ignored which side the affix landed on, so `idea-water` → `idea-water-shortage` (add_suffix) was accepted. The confined path now requires `add_prefix` before a *leading* tier word, so trailing tier words (`x-idea`) no longer count.
+  - P1: the new path skipped the resolved check across tiers, so a four-tier drift beside a bare resolved `other` was accepted. It now requires one touched tier, and every resolved id at another tier must name its tier.
+  - P1: a tier-word affix (`topic-` + `idea-water`) and a bare `idea-` were accepted. The affix may not be a tier word (case-insensitive), and the name after the tier word must be non-empty.
+  - P2: the "affix is the tier word" test failed for an unrelated reason. Rewritten so its dangling ids are tier-named.
+- Declined:
+  - Restricting the affix to literal `node-`. It would drop generality on the strength of two sightings; the residual (`non-idea-x`) is documented in the README.
+  - Requiring ≥2 dangling references. Per-family uniformity already applies, and the 3 November path has no such floor.
+  - Forbidding resolved references at the touched tier. They necessarily carry the affix (evidence *for* the drift), and the "edge already uses the declared id" shape is pinned as accepted.
+- Mutation sweep v2, 15 mutants: 14 killed. M15 is equivalent (the `everywhere` guard is only consulted when resolved is non-empty). The no-strip clause survived until a "one tier declared bare, every resolved reference prefixed" case was added.
+- Real reply still repairs 2 references and passes the hierarchy validator. The other 29 replies get the same outcome; the reviewer's three probes return null. Full suite 144 files / 1,385 tests; lint clean.
+
+## 2026-11-04 04:05 IST — Gemini review round 2 (agy, gemini-4-argon-high): NO-GO, all four adopted
+- Packet: scratchpad `review2/` (BRIEF.md, round1-fix.diff `829d401b…`, 3 source files, SHA256SUMS). Reviewed f14bb25b. Round-1 findings confirmed closed except where noted below.
+- All four reproduced as accepted on f14bb25b, then fixed with red tests:
+  - P1: declared ids at the touched tier only had to carry the affix. `water-shortage` beside `water-idea-supply` let `water-` pass. Each declared id must now be the affix plus a tier-named id.
+  - P1: a lone node (`counter-arc-garden`) gave no repetition. The tier must now declare at least two ids. This reverses my round-1 decline of a "≥2" floor: the reviewer's concrete input showed the 1-node case is exactly where the confined path has no evidence.
+  - P2: `idea--` passed the length check. The name must now contain a letter or digit.
+  - P2: `topic1-` and `ideas-` affixes passed. The affix may not begin with a tier word.
+- The redundant `dangling.every(namesTier)` was removed, since it is implied by the declared check.
+- Mutation sweep v3, 16 mutants: 14 killed. Two equivalent survivors: the `add_prefix` check and `startsWith(affix)` inside the touched check. A suffix drift can't yield a tier-named id once a prefix-length slice is cut off, and the carried loop below re-checks the affix. Both are kept as stated intent.
+- Real reply still repairs 2 references and validates; the other 29 are unchanged. Full suite 144 files / 1,391 tests; lint clean.
+
+## 2026-11-04 04:30 IST — Gemini review round 3 (agy, gemini-4-argon-high): NO-GO, adjudicated; loop stopped
+- Packet: scratchpad `review3/` (BRIEF.md, round2-fix.diff `a5650f6e…`, 3 source files, SHA256SUMS). Reviewed 5087d91c.
+- Adopted (each reproduced as accepted on 5087d91c, then red tests):
+  - P1: two declared nodes but one drifted target. The drift must now repeat across ≥2 distinct targets.
+  - P1: unreferenced declarations at other tiers were never checked. Every declared id at every other tier must now be tier-named.
+  - P2: `idea--water`. The name must start right after the tier delimiter.
+  - P2: `1topic-`/`subidea-`. The affix may contain no tier word.
+  - Two more red cases for mutation coverage: two references to one target, and `ideaswater`.
+- Declined:
+  - P1 "suffix shared by every resolved id". This is the original 3 November path, and the old code gives the identical repair on the reviewer's input, so it is out of scope. Logged in ISSUES.md as pre-existing.
+  - P3 "malformed node declarations are skipped". The full validator still runs after a repair, and `qualifiedReference` rejects a padded, empty or overlong node id regardless, so it cannot cause an acceptance.
+- Mutation sweep v4, 19 mutants: 16 killed. Three equivalent survivors: `levels.size === 1` (implied by the all-tier declaration check, because an affix + tier-named id never names its own tier), the `add_prefix` check, and `startsWith(affix)` in the touched check.
+- Why I stopped the loop: every round-3 edit only narrows what's accepted, compared with 5087d91c. Resolved ids ⊆ declared ids; ≥2 distinct targets implies ≥2 declared ids; `includes` ⊇ `startsWith`; the anchored regex ⊆ the unanchored one. So no round-3 edit can admit an input round 2 refused. Round 3's own findings were refinements of residue rather than structural holes.
+- Real reply still repairs 2 references and validates; the other 29 are unchanged. Full suite 144 files / 1,398 tests; lint clean.
+
+## 2026-11-04 04:55 IST — Retargeted to codex/lct-inference-choice; final Gemini round
+- #227 merged into `fix/openrouter-approved-model-fallback` (995911b0), but that branch had already landed in `codex/lct-inference-choice` via #219/#226, so the commits were off the Site's deploy branch. The parent session pointed this out. Opened #228, same branch → `codex/lct-inference-choice` (base 66508a0f; clean merge, exactly the 4 commits).
+- Final round on the full diff (scratchpad `review4/`, full.diff `9da988fc…`): NO-GO with one P2 test-quality finding and no acceptance, weakening or crash findings. Two round-2 tests had been refused by the round-3 distinct-targets rule before the sibling check ran. Rewritten so two distinct tier-named targets drift beside a bare sibling. Both now fail under the reviewer's mutant (touched check reduced to `startsWith(affix)`). Test-only change.
