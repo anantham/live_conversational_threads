@@ -117,6 +117,22 @@ it('latches a committed-but-unacknowledged dispatch without a provider call',asy
  expect((await map(1)).status).toBe(503);expect(trial().state).toBe('failed');expect(attempts().at(-1).state).toBe('uncertain');
  expect(calls.filter(c=>c.url.includes('/chat/completions'))).toHaveLength(before);expect((await map(2)).status).toBe(409);
 });
+it('refuses a source the transcript validator rejects as a client error, reserving nothing',async()=>{
+ // Intent: tests/intent/long-input-output-budget.md. The output cap is sized from the validated span,
+ // so an invalid source must stop at sizing with 400, not reach reservation or surface as a 503.
+ // The span exceeds 5 minutes, so the long-cap branch is the one that must refuse.
+ await mint();const before=db.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts').get().n;
+ const invalid={...source(),finalTokens:[{text:'A synthetic garden plan.',speaker:'1',startMs:2000,endMs:1000},{text:' Later.',speaker:'1',startMs:0,endMs:600000}]};
+ const refused=await run('/generate','POST',{source:invalid,phase:'periodic'},{'x-lct-replay-sequence':'1'});
+ expect(refused.status).toBe(400);
+ // The message is the sizing refusal's, not the earlier recording/phase check's.
+ expect(await refused.json()).toEqual({code:'source',error:'Use the assigned replay source. No request was reserved.'});
+ expect(attempts().filter(a=>a.kind==='map')).toEqual([]);
+ expect(db.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts').get().n).toBe(before);
+ expect(calls.filter(c=>c.url.includes('/chat/completions'))).toHaveLength(0);
+ // Nothing was consumed: the same sequence still maps a valid source.
+ expect((await map(1)).status).toBe(200);
+});
 it('refuses a substituted recording and oversized model input without a model call',async()=>{
  await mint();const swapped={...source(),recordingId:OTHER};
  expect((await run('/generate','POST',{source:swapped,phase:'periodic'},{'x-lct-replay-sequence':'1'})).status).toBe(400);

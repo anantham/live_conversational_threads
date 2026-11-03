@@ -10,7 +10,7 @@ This meets the goal for this transcript. It does not prove 20-minute conversatio
 
 - Built Sites Worker (`npm run build:sites-worker`, branch `fix/long-input-reference-repair`) driven by a local harness with in-memory SQLite. Real OpenRouter calls only for generation. Metadata recorded per run; replies and maps kept locally, not committed.
 - Model and route as in production: `google/gemini-3.5-flash-lite`, `provider.only: ["google-vertex"]`, `data_collection: "deny"`, `max_tokens: 8192`, 90 s provider window.
-- Input: the first 5/10/15/20 minutes of ONE public podcast transcript (`lct_app/public/experiments/overlapping.threads`, YouTube `6HmR9IaqM88`; 62/143/218/293 turns, about 14.7 turns per minute, two speakers).
+- Input: the first 5/10/15/20 minutes of ONE public podcast transcript (`lct_app/public/experiments/overlapping.threads`, YouTube `6HmR9IaqM88`; 62/143/218/293 transcript segments, about 14.7 per minute, two speakers). The map sees these as speaker turns: 32 utterances at 20 minutes, the longest 607 words.
 - "Valid" means the Worker returned 200 with a map that passed the full validator.
 - Runs were sequential, each in a fresh process, in batches: baseline 3 per length; compact A at 20 min in three batches of 5, 5 and 10 (the later batches tighten the estimate), plus 3 at 15 min; compact B 10 at 20 min.
 - **Cost columns.** Vertex applied an implicit prompt-cache discount to repeated identical input, so "billed" understates a fresh transcript. "Uncached" recomputes input at the list price ($0.30/M input, $2.50/M output), which is what a new conversation costs.
@@ -36,7 +36,7 @@ Total billed: **$0.600** across 46 runs (the earlier confirmation run included).
 
 **The instruction is followed most of the time, not always.** At 20 minutes, 19 of 20 compact A replies were unindented. The one that ignored it (`compactb-20m-2`, 29% whitespace) is the 7,594-token tail run, and it still fit. Two more contain a handful of newlines, likely inside strings. With wording B, 2 of 9 completed replies were indented.
 
-**Map quality held:**
+**Map size and form held (mechanical checks only; see the reading below for quality):**
 - All compact A maps link 100% of utterances. Their size is comparable to or larger than the pretty successes: 20-minute compact A maps have 9–45 nodes, the one valid 20-minute pretty map had 18.
 - Prose is not squeezed. Spaces make up about 13.8% of node-summary text in every group, and summaries average 110–123 characters.
 - Edges are mostly empty before and after. That predates this change, and populated edges would add output tokens.
@@ -48,6 +48,20 @@ Total billed: **$0.600** across 46 runs (the earlier confirmation run included).
 ## Long output cap check (2026-11-04)
 
 After the owner approved a 16,384-token cap for transcripts longer than 5 minutes, one more 20-minute run used the built Worker with `LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS=16384`. The provider request carried `max_tokens: 16384` and the map was valid (43 nodes, 5,480 completion tokens, 14.9 s, $0.0163 billed). This confirms the long-cap path end to end. It is one run, and it did not exercise the reference repair. Total billed for this study is now **$0.616** across 47 runs.
+
+## Reading the maps against the transcript (2026-11-04)
+
+The checks above count things. They do not say whether the grouping is right. On review, the 20-minute maps were read against the 32-utterance transcript, and each pattern was counted across all 28 valid 20-minute maps.
+
+- **The moment tier cannot go below a speaker turn.** A chunk links whole utterances. Utterance 24 is a 607-word monologue, about 3.5 minutes, covering the NIT Trichy, physics and lab story, and every map gives it at most one card. A 3-chunk map put 1,512 words in one card.
+- **Chunk granularity is unstable for the same input.** Chunk counts ranged from 3 to 32. Six maps made one card per turn (32), and that style gives 1–5-word backchannels their own cards: "Right." became "Agreement on lab challenges", and "a voracious reader." became "Voracious reader label". The other 22 grouped turns into 3–23 chunks.
+- **Pass-through tiers.** Many parents have one child. In the 16k map every topic has exactly one idea over the same span, so two of the five tiers add a label but no grouping.
+- **The intro is usually filed correctly, but not always.** 26 of 28 maps put the podcast opening (utterances 1–2) under an "opening/introductions" idea or a background idea. Two misfiled it, under "Boarding School and Logo Programming" (the 16k run) and "Misaligned Software Incentives". In the second map, 14 chunks sit under ideas whose own evidence does not include them. The validator checks that parent links exist, not that they make sense.
+- **A host tangent is folded into the guest's story.** In the 16k map, utterances 9–15 (the host's schoolmate who went to Google) sit inside the guest's "Boarding School and Logo Programming" idea.
+- **Plausibly misfiled:** in the 16k map, the Stanford semester (utterance 32, biography) sits under "Misaligned Software Incentives and Free Will".
+- **Transcript name errors carry through** ("Victor Arnold", "Andrish Karpatia"). These come from speech-to-text, not from map generation.
+
+What this changes: the 19/20 result shows the reply fits and validates. It does not show the maps are good at 20 minutes. Map quality varies widely between runs of the same input, and the two clear misfiles and the turn-level granularity floor are the main quality risks. Splitting long turns before generation would address the floor. A semantic check (a chunk's parent should share its evidence span) would catch misfiles like the 14-chunk case.
 
 ## Limits
 

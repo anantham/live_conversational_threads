@@ -55,6 +55,25 @@ describe('output budget before migration 0019', () => {
   });
 });
 
+describe('admission storage failures other than the 0019 constraint', () => {
+  it('reports a generic storage failure, not the migration message, and makes no provider call', async () => {
+    // Real D1/SQLite errors reject when the statement runs, so the stub fails in first(), and only for the admission INSERT.
+    const real = env.DB; let reached = 0;
+    env.DB = { prepare(sql) {
+      const statement = real.prepare(sql);
+      if (!sql.includes('INSERT INTO lct_openrouter_attempts')) return statement;
+      return { bind(...args) { statement.bind(...args); return this; },
+        async first() { reached += 1; throw new Error('SYNTHETIC database is locked'); } };
+    } };
+    const response = await generate(1_200_000), body = await response.json();
+    expect(reached).toBe(1);
+    expect(response.status).toBe(503);
+    expect(body.code).toBe('generation_failed');
+    expect(body.error).not.toMatch(/0019|SYNTHETIC|locked/);
+    expect(generations).toEqual([]); expect(attempts()).toEqual([]);
+  });
+});
+
 describe('output budget by transcript length', () => {
   it('keeps the live cap for a transcript inside the 5-minute envelope, including exactly 5 minutes', async () => {
     expect((await generate(300_000)).status).toBe(200);
