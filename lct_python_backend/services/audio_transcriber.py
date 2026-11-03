@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import mimetypes
 import re
 import tempfile
@@ -31,6 +32,7 @@ from lct_python_backend.services.transcript.transcription_utils import (
     DEFAULT_MIN_SEGMENT_MS,
     DEFAULT_MIN_SILENCE_MS,
     DEFAULT_SILENCE_THRESH_DB,
+    STT_SATURATED_WAIT_BUDGET_S,
     AudioTranscriptionDetail,
     ProgressCallback,
     SegmentResult,
@@ -41,6 +43,47 @@ from lct_python_backend.services.transcript.transcription_utils import (
 from lct_python_backend.services.speaker_alignment import _format_speaker_transcript
 
 logger = logging.getLogger("lct_backend")
+
+# Test seam for the busy-server wait.
+_sleep = asyncio.sleep
+
+
+# The code the local STT server (local_stt/server.py) puts in its 503 body when
+# every slot is busy.
+LOCAL_STT_SATURATED_CODE = "local_stt_saturated"
+
+
+class SttSaturatedError(RuntimeError):
+    """The local STT server stayed at capacity for the whole wait budget.
+
+    The chunk retry loop does not retry it (the waiting already happened), so the
+    caller moves on to its next STT authority or provider. It is still retryable
+    for job-level purposes: a busy server is worth trying again later.
+    """
+
+
+def _saturation_retry_after(response: httpx.Response) -> Optional[float]:
+    """Seconds to wait if this is the local STT's busy signal, else None.
+
+    Only an explicit "at capacity" answer (503 + Retry-After + code
+    local_stt_saturated) is waited for. Any other 503, from a proxy, orchestrator
+    or cold-starting service, fails fast so callers can fall back without delay.
+    """
+    if response.status_code != 503:
+        return None
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict) or body.get("code") != LOCAL_STT_SATURATED_CODE:
+        return None
+    try:
+        seconds = float(coerce_str(response.headers.get("retry-after")))
+    except ValueError:
+        return None
+    if not math.isfinite(seconds) or seconds < 0:
+        return None
+    return seconds
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +153,29 @@ async def transcribe_audio_file_detailed(
     files = {"file": (file_path.name, payload_bytes, guessed_content_type)}
     t = max(5.0, float(timeout_seconds or 120.0))
     timeout = httpx.Timeout(connect=10.0, read=t, write=t, pool=10.0)
+    waited_s = 0.0
     async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
-        response = await client.post(target_url, data=form_data, files=files)
+        while True:
+            response = await client.post(target_url, data=form_data, files=files)
+            retry_after = _saturation_retry_after(response)
+            if retry_after is None:
+                break
+            remaining_s = STT_SATURATED_WAIT_BUDGET_S - waited_s
+            if remaining_s < 1.0:
+                if waited_s > 0:
+                    raise SttSaturatedError(
+                        f"STT provider request failed (503): still at capacity after "
+                        f"waiting {waited_s:.0f}s: {response.text[:300]}"
+                    )
+                break  # waiting disabled: fail as any other 503 does
+            # At least 1 s so a "Retry-After: 0" server is not hammered.
+            delay_s = min(max(retry_after, 1.0), remaining_s)
+            logger.info(
+                "[STT BUSY] %s is at capacity (503); retrying in %.0fs (waited %.0f of %.0fs)",
+                target_url, delay_s, waited_s, STT_SATURATED_WAIT_BUDGET_S,
+            )
+            await _sleep(delay_s)
+            waited_s += delay_s
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -354,6 +418,12 @@ def _is_empty_transcript_error(exc: Exception) -> bool:
     return isinstance(exc, RuntimeError) and "empty transcript" in str(exc).lower()
 
 
+def _is_retryable_chunk_error(exc: Exception) -> bool:
+    # A saturated server was already waited for inside the request; retrying the
+    # chunk would repeat the whole wait per attempt.
+    return not isinstance(exc, SttSaturatedError) and _is_retryable_stt_error(exc)
+
+
 def _is_retryable_stt_error(exc: Exception) -> bool:
     if isinstance(exc, httpx.RequestError):
         return True
@@ -455,7 +525,7 @@ async def transcribe_audio_chunked(
                     max_attempts=attempts_allowed,
                     base_delay_s=backoff_base_s,
                     backoff_factor=2.0,
-                    is_retryable=_is_retryable_stt_error,
+                    is_retryable=_is_retryable_chunk_error,
                     on_retry=_log_retry,
                 )
             except Exception as exc:
