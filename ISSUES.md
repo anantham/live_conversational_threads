@@ -2154,3 +2154,9 @@ Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps w
 - **What happens:** chunks attach straight to topics, and each idea sits beside them as a childless copy of its topic with the same span. Seen in 5 of 28 valid A/B maps, across all versions including base. The prompt neither causes nor fixes it.
 - **Detection:** `mapStructure().childlessHigherNodes`.
 - **Next step:** two-stage generation (chunks first, then hierarchy with enum-constrained parent ids) is the structural fix; a validator rule would only reject.
+
+## 2026-11-04 — Resolution: single-tier declaration drift is now repaired (follows the entry above)
+
+- **Fix:** branch `fix/reference-repair-single-tier`. Beside resolved references, an added affix is now accepted either when every resolved reference carries it (unchanged) or when every dangling id names its own tier as a delimited token (`idea-programming`) with the affix outside that name. Simply scoping the guard to touched levels would have reopened two earlier attacks (`non-water`, and a resolved unprefixed parent), so the change doesn't do that.
+- **Evidence:** the real reply (`split-prompt-0to20-4`, kept in a sibling session's scratchpad, not committed) now repairs 2 references and passes the hierarchy validator. The other 29 A/B replies get the same repair outcome as before.
+- **Residual risk:** a shared word placed before tier-named ids (`non-idea-x`) at one tier is indistinguishable from `node-`. Recorded in `lct_app/sites/README.md`.

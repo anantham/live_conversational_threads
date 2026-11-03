@@ -1,4 +1,4 @@
-import { GENERATION_HIERARCHY_FORMAT } from './generationSchema.js';
+import { GENERATION_HIERARCHY_FORMAT, GENERATION_SEMANTIC_TYPES } from './generationSchema.js';
 
 // One delimiter-bounded token, so `node-` qualifies and the `ic` in `top` -> `topic` does not.
 // A purely numeric token (`-2`, `1_`) is a node index, never a naming convention.
@@ -20,6 +20,11 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 // take part, so a repair can never turn an empty, padded or overlong id into a valid one.
 const identity = id => typeof id === 'string' && id.length > 0 && id.length <= 158 && id === id.trim();
 const reference = value => object(value) && Number.isInteger(value.semantic_level) && identity(value.id);
+// Whether a reference's id names its own tier as a whole delimited token (`idea-intro`, `garden-idea`).
+const namesTier = ({ semantic_level, id }) => {
+  const type = GENERATION_SEMANTIC_TYPES[semantic_level - 1];
+  return type !== undefined && [...'-_.:'].some(mark => id.startsWith(type + mark) || id.endsWith(mark + type));
+};
 
 // Every way `id` differs from `declared` by exactly one delimiter-bounded affix.
 function affixesBetween(id, declared) {
@@ -41,8 +46,9 @@ function affixesBetween(id, declared) {
  * touches, every declared id carries the added affix (or none carries the
  * stripped one); within each reference family, references to one level are
  * wholly resolved or wholly dangling;
- * any reference that already resolves carries the added affix (and nothing is
- * stripped beside resolved references); no numeric affix; and neither the
+ * beside references that already resolve, nothing is stripped, and either every
+ * resolved reference carries the added affix or every dangling id names its own
+ * tier (`idea-intro`); no numeric affix; and neither the
  * dangling id nor its repaired target is declared at another level. Resolved references never
  * change. Anything else is returned untouched so the unchanged validator
  * rejects it. Never mutates its input.
@@ -98,11 +104,15 @@ export function repairGeneratedReferences(graph) {
     levels.add(value.semantic_level);
   }
   const adds = shared.operation.startsWith('add');
-  // Beside references that already resolve, the convention must be visible in them too: each
-  // carries the added affix, and an affix that would be stripped (seen in neither declarations
-  // nor resolved references) is never the reply's convention.
+  // Beside references that already resolve, the drift must still read as a naming convention.
+  // An affix that would be stripped (seen in neither declarations nor resolved references) never
+  // does. An added affix does when every resolved reference carries it (the whole reply uses it,
+  // 3 November), or when every dangling id names its own tier and the affix sits outside that
+  // name (`node-` + `idea-programming`, declared at the idea tier only, 4 November). A shared
+  // word on bare names (`non-water`) shows neither.
   const resolved = families.flat().filter(resolves);
-  if (resolved.length && (!adds || resolved.some(value => !CARRIES[shared.operation](value.id, shared.affix)))) return none;
+  if (resolved.length && (!adds || (!dangling.every(namesTier)
+    && resolved.some(value => !CARRIES[shared.operation](value.id, shared.affix))))) return none;
   for (const level of levels) {
     const carried = [...declared.get(level)].map(id => CARRIES[shared.operation](id, shared.affix));
     if (adds ? carried.includes(false) : carried.includes(true)) return none;

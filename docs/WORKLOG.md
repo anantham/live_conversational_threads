@@ -8829,3 +8829,13 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - A parent that cites nothing hiding a transitive mismatch: skipped by design and documented.
   - Splits after abbreviations ("Dr.") once past 60 s or 150 words: an accepted limit; the text is preserved and the cut is at a word boundary.
   - The "waits for a sentence end" test "can't fail": it fails when the sentence-end requirement is removed (an early split gives four utterances).
+
+## 2026-11-04 03:15 IST — Reference repair accepts a one-tier declaration drift (ISSUES 2026-11-04)
+- Branch `fix/reference-repair-single-tier` from `fix/openrouter-approved-model-fallback` @ debd7275.
+- Red first: `generationReferenceRepair.test.js` "repairs a drift confined to one tier's declarations…" reproduces the real shape (ideas `node-idea-*`, two chunk parents `idea-*`, every other tier resolving) through `recordingThreadsFromOpenRouterResponse`. It failed at `hierarchy/parent_missing`.
+- Tried the suggested change first (scope the resolved-reference check to touched levels). It reopened two earlier attacks: `non-water` at one tier, and a resolved unprefixed parent beside drifted parents. Since every declared id at a touched level carries an added affix, that scoped check is vacuous for add operations, so scoping alone just deletes the guard.
+- Change (`generationReferenceRepair.js` ~23-27, ~107-115; `generationSchema.js` exports `GENERATION_SEMANTIC_TYPES`): beside resolved references, an added affix is also accepted when every dangling id names its own tier as a whole delimited token (`idea-x`, `x-idea`). Strip operations stay refused. Every other rule is unchanged.
+- Real reply (`split-prompt-0to20-4.content.txt`, sibling scratchpad, read locally only): every tier is tier-named (`chunk-01`, `topic-intro`, `theme-background`, `arc-life-journey`). Now 2 references are repaired and `expandGenerationHierarchy` passes; unrepaired it fails `parent_missing`. The other 29 A/B replies get the same repair outcome as before.
+- Attacks added (all refused with `hierarchy/parent_missing`): untyped ids, only one id typed, another tier's word, `ideas-`/`…idea` without a delimiter, the affix being the tier word, a strip at that tier, the target declared at another level. Every earlier case is unchanged.
+- Mutation sweep, 8 mutants (always/never accept, every→some, drop the no-strip clause, drop the leading or trailing branch, off-by-one level, no delimiter on either side): all killed. Two survived the first pass and needed the `ideas-`/`…idea` cases.
+- Full suite 144 files / 1,379 tests (Node 26, `--no-experimental-webstorage`). Docs: `lct_app/sites/README.md`, `tests/intent/generation-reference-repair.md`, ISSUES.md resolution entry.
