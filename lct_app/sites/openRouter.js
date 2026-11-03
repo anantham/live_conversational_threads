@@ -3,6 +3,7 @@ import { resolveIdentity } from './auth.js';
 import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission, outputCapFor } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
+import { mapStructure } from '../src/services/cloud/mapStructure.js';
 
 const PREFIXES = { '/api/cloud/openrouter': openRouterPolicy, '/api/cloud/gemini': geminiPolicy };
 const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_finish', 'choice_message',
@@ -33,6 +34,19 @@ export function logReferenceRepair(repair, backend = 'openrouter') {
   try {
     console.warn(backend === 'gemini' ? '[gemini] repaired generated references' : '[openrouter] repaired generated references',
       { code: 'reference_repair', operation: repair.operation, affix: repair.affix, references: repair.references });
+  } catch { /* Diagnostics must not change the generation result. */ }
+}
+
+// Always logged, never enforced: a child filed under a parent whose evidence does not include it.
+// Warn, don't suppress; whether to reject such maps is decided later from these counts.
+// Counts only: node ids are model-written summaries of the conversation, so they stay out of logs.
+export function logEvidenceMismatch(artifact, backend = 'openrouter') {
+  try {
+    const { evidenceMismatches, mismatchesByChildLevel } = mapStructure(artifact);
+    if (!evidenceMismatches) return;
+    console.warn(backend === 'gemini' ? '[gemini] generated map files children outside their parent\'s evidence'
+      : '[openrouter] generated map files children outside their parent\'s evidence',
+    { code: 'evidence_mismatch', mismatches: evidenceMismatches, byChildLevel: mismatchesByChildLevel });
   } catch { /* Diagnostics must not change the generation result. */ }
 }
 
@@ -145,6 +159,7 @@ async function generate(request, env, policy) {
   const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
   if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
   logReferenceRepair(repair, policy.backend);
+  logEvidenceMismatch(artifact, policy.backend);
   return openRouterJSON(200, { request_id: id, artifact, model, ...(repair ? { reference_repair: repair } : {}) });
 }
 

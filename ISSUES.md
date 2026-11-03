@@ -2141,3 +2141,16 @@ Measured envelope (`docs/reviews/2026-11-03-long-input-envelope.md`): with prett
 
 Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps were valid 19/20 on the benchmark transcript (one wrong-tier reference error) and 15-minute maps 3/3. None of 30 compact runs hit the 8,192 cap. One of 20 replies ignored the compact instruction and used 93% of the cap. New observed failure classes, all correctly rejected: paraphrased or wrong-tier parent ids and a dangling thread moment (not affix drift), plus one 90 s provider timeout. Open owner decisions: raise `LCT_OPENROUTER_MAX_OUTPUT_TOKENS` with the replay budget, and chunked generation for long or dense inputs.
 
+
+## 2026-11-04 — Reference repair refuses a real single-tier declaration drift (non-blocking)
+
+- **What happened:** in a paid A/B run (`split-prompt-0to20-4`, `google/gemini-3.5-flash-lite`), the model declared only its idea nodes with `node-` (`node-idea-programming`) and referenced them without it. Its chunk, topic, theme and arc ids had no prefix and resolved. The repair returned null and the map was rejected at `hierarchy/parent_missing`.
+- **Cause:** the resolved-reference guard requires every resolved reference, at every tier, to carry the added affix. Here the drift is confined to one tier's declarations. This is the second real drift seen (the first, on 3 November, prefixed every tier).
+- **Impact:** about 1 in 10 runs of that version failed this way; overall frequency is unknown (2 sightings in about 77 runs).
+- **Next step:** consider scoping the resolved guard to touched levels, re-checking it against the round 3 and 4 attack inputs in `generationReferenceRepair.test.js` before changing it.
+
+## 2026-11-04 — Hollow tiers in generated maps (non-blocking)
+
+- **What happens:** chunks attach straight to topics, and each idea sits beside them as a childless copy of its topic with the same span. Seen in 5 of 28 valid A/B maps, across all versions including base. The prompt neither causes nor fixes it.
+- **Detection:** `mapStructure().childlessHigherNodes`.
+- **Next step:** two-stage generation (chunks first, then hierarchy with enum-constrained parent ids) is the structural fix; a validator rule would only reject.

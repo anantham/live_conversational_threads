@@ -65,6 +65,11 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(request.messages[0].content).toContain('Keep source_excerpt empty');
     // A 20-minute reply spent ~27% of its characters on indentation and hit the output cap.
     expect(request.messages[0].content).toContain('Return compact JSON on one line');
+    // Intent: tests/intent/map-structure-quality.md. Their effect is measured by the paid A/B, not here.
+    for (const rule of ['A chunk is one coherent moment', 'Give a parent a single child only when',
+      "A parent's source_ref must include the utterance IDs of every child", 'Give a digression']) {
+      expect(request.messages[0].content).toContain(rule);
+    }
     expect(JSON.parse(request.messages[1].content).utterances.map(row => row.text))
       .toEqual(['A careful idea.', ' A response.']);
     request.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt.enum.push('caller mutation');

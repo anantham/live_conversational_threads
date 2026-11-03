@@ -8803,3 +8803,29 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - Narrowing the 0019 regex to the constraint name. The INSERT touches one table whose only CHECK is `lct_openrouter_attempts_tokens_check` (node:sqlite message verified), and narrowing would rely on D1's message format, which can't be verified locally.
   - The bare catch in `replayWire` hiding policy bugs: the policy is validated on the line above, and only the transcript validator throws there.
   - "The stub skips real SQL": SQL correctness is covered by the ledger tests that use the real migrations.
+
+## 2026-11-04 02:22 IST — Map structure quality: scorer, long-turn split, mismatch log, prompt; paid A/B (owner: "Yes, go ahead")
+- Branch `fix/map-structure-quality` from `fix/openrouter-approved-model-fallback` @ 9471a41b.
+- `src/services/cloud/mapStructure.js` + `scripts/score-map-structure.mjs`: structural counts (tiers, chunk words, backchannel chunks, single-child parents, childless higher-tier nodes, parent-evidence mismatches by tier).
+- `recordingTranscript.js`: split long same-speaker turns at sentence ends (60 s or 150 words), hard split at twice either bound; prefix-stable.
+- `sites/openRouter.js`, `sites/replayTrial.js`: always log `evidence_mismatch`; never enforced.
+- `openRouterGeneration.js`: four prompt lines on structure.
+- Every guard was red-proven by mutation (5 scorer, 4 split, 3 log/skip, 1 childless).
+- Paid A/B: 30 runs, $0.361 (per-task budget $1; this task's only spend). Results and reading are in the envelope review. The prompt makes chunk counts consistent (7–10 vs 4–38). Splitting enables finer cards but the model needs the prompt to use them. There were no evidence mismatches in any version. One failure was single-tier `node-` drift that the repair refused (ISSUES.md).
+- Found: all 47 earlier runs used test input with transcript segments glued together. The A/B rebuilt both inputs with spacing.
+
+## 2026-11-04 02:31 IST — Gemini review of the map-structure slice (agy, gemini-4-argon-high): NO-GO, adjudicated
+- Adopted:
+  - **Live word counting.** Live speech-to-text emits sub-word tokens (" re", "cord", "ing") and detached punctuation, and per-token counting overcounted (one word as three). Now a token that continues the last word adds none.
+  - **Splits open only on a token that starts a new word.** Never mid-number ("3." | "14"), before a detached closing quote, or on a whitespace-only token.
+  - **The sentence end is judged on the text's tail,** so a detached quote keeps it, and it is reset at every new utterance.
+  - **Scorer:** skips malformed entries and nodes without a string id; doesn't report a node with only secondary children as hollow; doesn't call chunks with unresolved utterances backchannels.
+  - **`evidence_mismatch` logs counts by tier only.** Node ids are model-written summaries of the conversation, so they stay out of production logs (same rule as `reference_repair`).
+  - The prefix-stability test now asserts that the long turn really split.
+- All seven fixes red-proven by mutation. Both A/B inputs split identically under the fixed rules (41 and 38 utterances, same text), so the A/B results stand.
+- Declined, with reasons:
+  - Out-of-order token timestamps: speech-to-text final tokens are time-ordered.
+  - Null or whitespace speakers: existing behaviour, unchanged here.
+  - A parent that cites nothing hiding a transitive mismatch: skipped by design and documented.
+  - Splits after abbreviations ("Dr.") once past 60 s or 150 words: an accepted limit; the text is preserved and the cut is at a word boundary.
+  - The "waits for a sentence end" test "can't fail": it fails when the sentence-end requirement is removed (an early split gives four utterances).
