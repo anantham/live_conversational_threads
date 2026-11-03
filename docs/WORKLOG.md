@@ -8667,3 +8667,16 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Real transcript dry run: the first 20 minutes of the episode in `lct_app/public/experiments/overlapping.threads` (YouTube `6HmR9IaqM88`, 293 turns, 2 speakers, 3,486 words, 40 KB) as Site `finalTokens`. Every generation was answered locally with 404. Source validation passes; both requests carry `only:["google-vertex"]` + `data_collection:"deny"`, differing only in model. `model_fallback` was logged once (404, 1→2); one attempt row; result `no_model_route`.
 - Found and fixed: "All 1 approved model has a route" wording (single-model detail).
 - Not yet run: the paid live generation (needs a non-empty OpenRouter key; ~$0.04 per map for this input). The harness command is `node run.mjs generate google/gemini-2.5-flash-lite google/gemini-3.5-flash-lite <source.json> <out.json>` with `LCT_HARNESS_OPENROUTER_KEY` set.
+
+## 2026-11-03 21:30 IST — Paid live run of the model fallback (owner-approved, ≤$0.25)
+
+- Key: owner added `OPENROUTER_API_KEY` to the local backend `.env`. Real health check through the built Worker: key accepted, credit available, `model_routes {approved:2, available:1}` for retired `gemini-2.5-flash-lite` + `gemini-3.5-flash-lite`.
+- Four generations, all with the retired model as primary (a real OpenRouter 404 every time, then `model_fallback` logged, then the fallback with identical `only:["google-vertex"]`, `data_collection:"deny"`):
+  1. 20 min → 3.5-flash-lite: `invalid_completion` (stage not captured; debug off).
+  2. 20 min → 3.5-flash-lite: `invalid_completion` at `hierarchy/parent_missing` (inconsistent `node-` id prefix); $0.0202.
+  3. 20 min → 3.6-flash: 408 `timeout` at the 60 s window; may have been billed.
+  4. **5 min → 3.5-flash-lite: 200, valid 11-node 5-tier map, attempt completed, response `model: google/gemini-3.5-flash-lite`, 7.0 s, $0.0080.**
+- Total spend ≈ $0.05 measured, plus at most ~$0.06 for the timed-out run 3.
+- End to end: the run-4 map, with the episode's YouTube ref attached, opened in the merged viewer (PR #218 branch, local dev). All five tiers present; Discussion speaker shares 79%/21%; YouTube player renders; clicking 2:26 seeks to the guest's turn; no console errors.
+- Findings logged in ISSUES.md (generation beyond the 5-minute envelope). README now warns that fallbacks share the 60 s window.
+- Records (no secrets, metadata only) kept locally under the session scratchpad `e2e/live-run-*-record.json`; not committed.
