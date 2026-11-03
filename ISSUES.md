@@ -1,6 +1,29 @@
 # ISSUES
 
-Last updated: 2026-11-03
+Last updated: 2026-11-04
+
+## 2026-11-04 - M5 local STT now admits one request at a time; backend retries may give up first (OPEN, NON-BLOCKING)
+
+- Owner ruling 2026-11-04: `MLX_STT_MAX_CONCURRENCY` on the M5
+  `com.aditya.mlx-stt` LaunchAgent was lowered from 4 to 1. This removes the
+  shared-Silero-VAD interleaving risk from the 2026-11-03 entry at its source
+  (no two requests run at once); the VAD lock suggested there is now optional.
+  Verified live: an overlapping request got `503` + `Retry-After: 30` +
+  `code: local_stt_saturated` in 17 ms while the first completed normally.
+  The value lives only in `~/Library/LaunchAgents/com.aditya.mlx-stt.plist`;
+  the code default is still 2.
+- Knock-on (from reading the code, not observed live): the backend's chunked
+  path (`services/audio_transcriber.py` `transcribe_audio_chunked`) retries a
+  503 with exponential backoff, 5 attempts from 1.5 s (about 22 s of waiting
+  in all, settable via `STT_CHUNK_MAX_RETRIES` / `STT_CHUNK_RETRY_BACKOFF_S`),
+  and does not read `Retry-After`. A chunk usually takes longer than that, so
+  when two jobs use the M5 STT at once the second job can exhaust its retries
+  and fail. The single-shot and `transcribe_audio_file_detailed` callers
+  (`file_transcriber.py`, `attendee_audio_downloader.py`) were not checked for
+  503 handling. One job at a time is unaffected, because chunks run
+  sequentially. Next step: make the client honour `Retry-After` for
+  `local_stt_saturated`, with a total wait budget instead of a fixed attempt
+  count.
 
 ## 2026-11-03 - Local STT enrichment follow-ups found while porting M5 fixes (OPEN, NON-BLOCKING)
 

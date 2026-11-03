@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-11-04 01:55 IST — M5 local STT concurrency 4 → 1
+
+- Owner approved in chat. Changed `MLX_STT_MAX_CONCURRENCY` from `"4"` to `"1"`
+  in `~/Library/LaunchAgents/com.aditya.mlx-stt.plist` (the only place it is
+  set; no repo change). Backup of the old plist in the session scratchpad.
+  `launchctl bootout` + `bootstrap` (an environment change is not picked up by
+  `kickstart -k`), done while `/health` showed `inflight: 0`.
+- Verified: `/health` reports `max_concurrency: 1`. A two-speaker request
+  completed (200, both speakers; 53 s because of cold model loads), and a
+  request sent 1.5 s later got `503`, `Retry-After: 30`,
+  `code: local_stt_saturated` in 17 ms; `saturated_rejections: 1`.
+- Knock-on logged in ISSUES 2026-11-04: the backend's chunk retry budget
+  (about 22 s, ignores `Retry-After`) can fail a second concurrent job.
+- Rollback: set the value back to `"4"`, then `bootout` + `bootstrap`.
+
 ## 2026-11-04 01:42 IST — Deploy #221 to the M5 local STT service
 
 - Owner approved the merge and deploy in chat. #221 was squash-merged as
