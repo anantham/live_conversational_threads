@@ -41,9 +41,9 @@ export async function handleReplayTrial(request, env) {
     const wire = replayWire(env, input.source); requestedId = requestId;
     attempted = await reserveReplay(env, config, owner, { requestId, kind: 'map', sequence, phase: input.phase,
       inputBytes: new TextEncoder().encode(wire.body).byteLength, sourceEnd: Math.max(0, ...input.source.finalTokens.map(t => t.endMs || 0)) });
-    const artifact = await replayGenerate(request, env, input.source, wire);
+    const { artifact, repair } = await replayGenerate(request, env, input.source, wire);
     await completeReplay(env, attempted);
-    return openRouterJSON(200, { request_id: attempted, artifact });
+    return openRouterJSON(200, { request_id: attempted, artifact, ...(repair ? { reference_repair: repair } : {}) });
   } catch (error) {
     if (!attempted && requestedId) { try { const pending = await env.DB.prepare("SELECT request_id FROM lct_audio_replay_attempts WHERE request_id = ? AND state IN ('reserved','dispatching','uncertain')").bind(requestedId).first(); if (pending) attempted = pending.request_id; } catch { /* The retained active slot still refuses another dispatch. */ } }
     if (attempted || claimedStart) { try { await failReplay(env, attempted); } catch { /* Durable reserved slot still blocks another dispatch. */ } }

@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import worker from '../../../sites/worker.js';
 import { readThreadsFile } from '../threadsArtifact.js';
 import { buildDiscussionModel } from '../../components/discussion/discussionModel.js';
+import { MAP_CLIENT_DEADLINE_MS, MAP_PROVIDER_WINDOW_MS } from '../cloud/generationDeadlines.js';
 
 const SITE = 'https://fixture-inference.example.chatgpt.site', PREFIX = '/api/cloud/openrouter';
 const KEY = 'synthetic-owner-key';
@@ -161,7 +162,12 @@ describe('OpenRouter Worker API with actual generated SQLite schema', () => {
     vi.useFakeTimers(); let began, cancelled = false;
     const entered = new Promise(resolve => { began = resolve; });
     fetch.mockImplementationOnce(async () => { began(); return new Response(new ReadableStream({ pull() {}, cancel() { cancelled = true; } }), { status: 200 }); });
-    const pending = worker.fetch(req(), env); await entered; await vi.advanceTimersByTimeAsync(60_000);
+    const pending = worker.fetch(req(), env); let settled = false; void pending.then(() => { settled = true; });
+    await entered; await vi.advanceTimersByTimeAsync(MAP_PROVIDER_WINDOW_MS - 1);
+    // The old 60 s window cut off slower models on 20-minute transcripts; the window now ends just before the browser's.
+    expect(settled).toBe(false); expect(MAP_PROVIDER_WINDOW_MS).toBe(90_000);
+    expect(MAP_PROVIDER_WINDOW_MS).toBeLessThan(MAP_CLIENT_DEADLINE_MS);
+    await vi.advanceTimersByTimeAsync(1);
     expect((await pending).status).toBe(408); expect(cancelled).toBe(true); expect(count()).toBe(1); expect(row().completed_at).toBe(null);
     await vi.advanceTimersByTimeAsync(10_000); expect((await worker.fetch(req(), env)).status).toBe(200); expect(count()).toBe(2);
   });

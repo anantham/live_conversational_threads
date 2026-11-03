@@ -1,6 +1,7 @@
 import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { expandGenerationHierarchy } from './generationHierarchy.js';
+import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
 
 const MAX_REQUEST_BYTES = 512 * 1024;
@@ -72,7 +73,10 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens } = 
   return request;
 }
 
-/** Accept a completed OpenRouter chat response and package source-owned v2 evidence. */
+/**
+ * Accept a completed OpenRouter chat response and package source-owned v2 evidence.
+ * `referenceRepair` is null, or the one recorded affix repair the caller must report.
+ */
 export function recordingThreadsFromOpenRouterResponse({ source, response } = {}) {
   // Validate source first, even when the provider rejected the request.
   createRecordingTranscript(source);
@@ -101,5 +105,6 @@ export function recordingThreadsFromOpenRouterResponse({ source, response } = {}
     || !object(graph.metadata) || !Array.isArray(graph.conversation_threads)) {
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
-  return createRecordingThreads({ ...source, graph: expandGenerationHierarchy(graph) });
+  const { graph: repaired, repair } = repairGeneratedReferences(graph);
+  return { ...createRecordingThreads({ ...source, graph: expandGenerationHierarchy(repaired) }), referenceRepair: repair };
 }

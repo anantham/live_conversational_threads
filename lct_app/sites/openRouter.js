@@ -2,6 +2,7 @@ import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterRespons
 import { resolveIdentity } from './auth.js';
 import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
+import { MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 
 const PREFIXES = { '/api/cloud/openrouter': openRouterPolicy, '/api/cloud/gemini': geminiPolicy };
 const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_finish', 'choice_message',
@@ -23,6 +24,15 @@ function logModelFallback(upstreamStatus, index) {
   try {
     console.warn('[openrouter] model route unavailable; trying next approved model',
       { code: 'model_fallback', upstreamStatus, from: index + 1, to: index + 2 });
+  } catch { /* Diagnostics must not change the generation result. */ }
+}
+
+// Always logged: a map accepted only after an id repair is owner-visible, never silent.
+export function logReferenceRepair(repair, backend = 'openrouter') {
+  if (!repair) return;
+  try {
+    console.warn(backend === 'gemini' ? '[gemini] repaired generated references' : '[openrouter] repaired generated references',
+      { code: 'reference_repair', operation: repair.operation, affix: repair.affix, references: repair.references });
   } catch { /* Diagnostics must not change the generation result. */ }
 }
 
@@ -90,7 +100,7 @@ async function generate(request, env, policy) {
     RETURNING id`).bind(id, now, policy.maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
 
-  const { artifact, model } = await openRouterWait(request.signal, 60_000, async signal => {
+  const { artifact, model, repair } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
     for (const [index, body] of wires.entries()) {
       const response = await fetch(policy.endpoint, { method: 'POST',
         headers: { Authorization: `Bearer ${policy.key}`, 'Content-Type': 'application/json' },
@@ -108,7 +118,10 @@ async function generate(request, env, policy) {
         throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation. The attempt remains counted. Check provider availability and allowance before retrying.`);
       }
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
-      try { return { artifact: recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion }).bundle, model: body.model }; }
+      try {
+        const { bundle, referenceRepair } = recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion });
+        return { artifact: bundle, model: body.model, repair: referenceRepair };
+      }
       catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
         throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`);
@@ -118,7 +131,8 @@ async function generate(request, env, policy) {
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
   const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
   if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
-  return openRouterJSON(200, { request_id: id, artifact, model });
+  logReferenceRepair(repair, policy.backend);
+  return openRouterJSON(200, { request_id: id, artifact, model, ...(repair ? { reference_repair: repair } : {}) });
 }
 
 export async function handleOpenRouter(request, env) {

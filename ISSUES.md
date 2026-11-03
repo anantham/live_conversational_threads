@@ -2124,3 +2124,8 @@ Found during the live verification of the approved model fallback (`fix/openrout
 - 5-minute transcript (the live-session cap, `LCT_SONIOX_MAX_SESSION_SECONDS=300`), `google/gemini-3.5-flash-lite`: valid 11-node, 5-tier map in 7 s ($0.008).
 
 Impact: live sessions are capped at 5 minutes, so the normal path stays inside the working envelope. Longer inputs (audio import, the 20-minute replay) depend on the model keeping ids consistent and finishing in time. Recommended next step: an owner decision between a deterministic id-repair pass before validation (e.g. resolving a reference that matches a node id up to a consistent prefix) and chunked generation for long transcripts. The validator itself is correct and should not be loosened silently.
+
+## 2026-11-03 — Update: long-input map generation, A + D implemented (non-blocking)
+
+Follow-up to "Map generation is unreliable beyond the 5-minute session envelope". On branch `fix/long-input-reference-repair`: (A) a recorded, deterministic reference repair before validation, and (D) a 90 s map provider window (was 60 s). These address the observed `parent_missing` and 408 cases only. Still open: (1) output-token headroom, since a 20-minute reply used 7,067 of 8,192 tokens and a slightly longer or richer input will end in `choice_finish`; only chunked generation (option B) fixes this, so do it before any duration cap goes past ~20 minutes; (2) a repaired map does not yet carry the repair in its saved `.threads` file or show it in the UI; (3) no paid confirmation run of A + D yet.
+
