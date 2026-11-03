@@ -2129,3 +2129,7 @@ Impact: live sessions are capped at 5 minutes, so the normal path stays inside t
 
 Follow-up to "Map generation is unreliable beyond the 5-minute session envelope". On branch `fix/long-input-reference-repair`: (A) a recorded, deterministic reference repair before validation, and (D) a 90 s map provider window (was 60 s). These address the observed `parent_missing` and 408 cases only. Still open: (1) output-token headroom, since a 20-minute reply used 7,067 of 8,192 tokens and a slightly longer or richer input will end in `choice_finish`; only chunked generation (option B) fixes this, so do it before any duration cap goes past ~20 minutes; (2) a repaired map does not yet carry the repair in its saved `.threads` file or show it in the UI; (3) no paid confirmation run of A + D yet.
 
+## 2026-11-03 — Update: paid run confirms the output-token ceiling at 20 minutes (non-blocking)
+
+Owner-approved paid run of PR #220 on the same 20-minute input: `gemini-3.5-flash-lite` stopped at `finish_reason: length` (8,175 completion tokens, cap 8,192, $0.023). Earlier the same input finished in 7,067 tokens, so output length varies run to run on identical input. About 27% of the reply's characters were pretty-print whitespace. No `node-` drift occurred this time, so the repair was not exercised live. Recommended next step: an owner choice between compact-JSON output, raising `max_tokens` (and the replay budget formula), or chunked generation (B).
+
