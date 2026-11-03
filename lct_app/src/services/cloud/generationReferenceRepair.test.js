@@ -128,15 +128,29 @@ describe('deterministic reference repair through the public adapter', () => {
     ['a suffix on the name after the tier word', g => ideas(g, n => `idea-${n}-shortage`, n => `idea-${n}`)],
     ['an affix that is the tier word itself', g => ideas(g, n => `idea-idea-${n}`, n => `idea-${n}`)],
     ['an affix that is another tier word', g => ideas(g, n => `Topic-idea-${n}`, n => `idea-${n}`)],
-    ['a tier word with no name after it', g => { g.nodes.splice(3, 1); g.nodes[2].id = 'node-idea-';
-      g.nodes[0].parent_id = ref(2, 'idea-'); g.nodes[1].parent_id = ref(2, 'idea-'); }],
+    ['a tier word with no name after it', g => ideas(g, n => `node-idea${n === 'water' ? '-' : '_'}`,
+      n => `idea${n === 'water' ? '-' : '_'}`)],
     ['the same prefix drifting at two tiers', g => { g.nodes[4].id = 'node-topic-care';
       g.nodes[2].parent_id = ref(3, 'topic-care'); g.nodes[3].parent_id = ref(3, 'topic-care'); }],
     ['a resolved id elsewhere that does not name its tier', g => { g.nodes[5].id = 'garden';
       g.nodes[4].parent_id = ref(5, 'garden'); }],
+    // Gemini review round 2: every declared id at the tier must name it once the prefix is off;
+    // a lone node gives no repetition; a name needs a letter or digit; no plural or numbered tier word.
+    ['a declared id at the tier that does not name it', g => { g.nodes[3].id = 'node-shade';
+      g.nodes[1].parent_id = ref(2, 'idea-water'); }],
+    ['a word prefix on a bare sibling beside one tier-named id', g => {
+      g.nodes[2].id = 'water-idea-supply'; g.nodes[3].id = 'water-shortage';
+      g.nodes[0].parent_id = ref(2, 'idea-supply'); g.nodes[1].parent_id = ref(2, 'idea-supply');
+      g.edges.push({ ...g.edges[0], id: 'e2', from_node_id: ref(2, 'water-shortage'), to_node_id: ref(3, 'topic-care') }); }],
+    ['a delimiter with no name after the tier word', g => ideas(g, n => `node-idea-${n === 'water' ? '-' : '.'}`,
+      n => `idea-${n === 'water' ? '-' : '.'}`)],
+    ['a numbered tier word as the affix', g => ideas(g, n => `topic1-idea-${n}`, n => `idea-${n}`)],
+    ['a plural tier word as the affix', g => ideas(g, n => `ideas-idea-${n}`, n => `idea-${n}`)],
     ['a strip at that tier', g => ideas(g, n => `idea-${n}`, n => `idea-${n}-x`)],
     ['a repaired target also declared at another level', g => {
       g.nodes.push(node(3, 'node-idea-water', ref(5, 'arc-garden'))); }],
+    ['a single declared node at the tier', g => { g.nodes[2].id = 'idea-water'; g.nodes[3].id = 'idea-shade';
+      g.nodes[5].id = 'counter-arc-garden'; }],
   ])('still rejects a one-tier drift with %s', (_label, mutate) => {
     const value = singleTier(); mutate(value); const before = JSON.stringify(value);
     expect(repairGeneratedReferences(value).repair).toBe(null);

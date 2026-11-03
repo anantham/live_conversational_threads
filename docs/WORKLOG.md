@@ -8853,3 +8853,14 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - Forbidding resolved references at the touched tier. They necessarily carry the affix (evidence *for* the drift), and the "edge already uses the declared id" shape is pinned as accepted.
 - Mutation sweep v2, 15 mutants: 14 killed. M15 is equivalent (the `everywhere` guard is only consulted when resolved is non-empty). The no-strip clause survived until a "one tier declared bare, every resolved reference prefixed" case was added.
 - Real reply still repairs 2 references and passes the hierarchy validator. The other 29 replies get the same outcome; the reviewer's three probes return null. Full suite 144 files / 1,385 tests; lint clean.
+
+## 2026-11-04 04:05 IST — Gemini review round 2 (agy, gemini-4-argon-high): NO-GO, all four adopted
+- Packet: scratchpad `review2/` (BRIEF.md, round1-fix.diff `829d401b…`, 3 source files, SHA256SUMS). Reviewed f14bb25b. Round-1 findings confirmed closed except where noted below.
+- All four reproduced as accepted on f14bb25b, then fixed with red tests:
+  - P1: declared ids at the touched tier only had to carry the affix. `water-shortage` beside `water-idea-supply` let `water-` pass. Each declared id must now be the affix plus a tier-named id.
+  - P1: a lone node (`counter-arc-garden`) gave no repetition. The tier must now declare at least two ids. This reverses my round-1 decline of a "≥2" floor: the reviewer's concrete input showed the 1-node case is exactly where the confined path has no evidence.
+  - P2: `idea--` passed the length check. The name must now contain a letter or digit.
+  - P2: `topic1-` and `ideas-` affixes passed. The affix may not begin with a tier word.
+- The redundant `dangling.every(namesTier)` was removed, since it is implied by the declared check.
+- Mutation sweep v3, 16 mutants: 14 killed. Two equivalent survivors: the `add_prefix` check and `startsWith(affix)` inside the touched check. A suffix drift can't yield a tier-named id once a prefix-length slice is cut off, and the carried loop below re-checks the affix. Both are kept as stated intent.
+- Real reply still repairs 2 references and validates; the other 29 are unchanged. Full suite 144 files / 1,391 tests; lint clean.

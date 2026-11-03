@@ -20,10 +20,11 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 // take part, so a repair can never turn an empty, padded or overlong id into a valid one.
 const identity = id => typeof id === 'string' && id.length > 0 && id.length <= 158 && id === id.trim();
 const reference = value => object(value) && Number.isInteger(value.semantic_level) && identity(value.id);
-// Whether an id leads with its own tier as a whole token before a non-empty name (`idea-intro`).
+// Whether an id leads with its own tier as a whole token before a name (`idea-intro`, not `idea--`).
 const namesTier = ({ semantic_level, id }) => {
   const type = GENERATION_SEMANTIC_TYPES[semantic_level - 1];
-  return type !== undefined && id.length > type.length + 1 && [...'-_.:'].some(mark => id.startsWith(type + mark));
+  return type !== undefined && [...'-_.:'].some(mark => id.startsWith(type + mark)
+    && /[A-Za-z0-9]/.test(id.slice(type.length + 1)));
 };
 
 // Every way `id` differs from `declared` by exactly one delimiter-bounded affix.
@@ -108,15 +109,20 @@ export function repairGeneratedReferences(graph) {
   // An affix that would be stripped (seen in neither declarations nor resolved references) never
   // does. An added affix does when every resolved reference carries it (the whole reply uses it,
   // 3 November), or when it is a prefix confined to one tier of a reply whose ids lead with their
-  // tier: every dangling id and every resolved id elsewhere does, and the affix is not itself a
-  // tier word, so it lands before the tier word, never on the name (`node-` + `idea-programming`,
-  // 4 November). A shared word on bare names (`non-water`) or a suffix on a name
-  // (`idea-water` -> `idea-water-shortage`) is neither.
+  // tier (`node-` + `idea-programming`, 4 November). There, the touched tier declares at least two
+  // ids, each the affix plus a tier-named id (so every dangling id names its tier too); every
+  // resolved id elsewhere names its tier; and the affix does not begin with a tier word (`topic1-`,
+  // `ideas-`). The prefix therefore lands before the tier word, never on the name. A shared word
+  // on bare names (`non-water`) or a suffix on a name (`idea-water` -> `idea-water-shortage`) is
+  // neither, and a lone node gives no repetition to read a convention from.
   const resolved = families.flat().filter(resolves);
   const everywhere = resolved.every(value => CARRIES[shared.operation](value.id, shared.affix));
+  const [level] = levels, word = shared.affix.slice(0, -1).toLowerCase(), touched = [...declared.get(level)];
   const confined = shared.operation === 'add_prefix' && levels.size === 1
-    && !GENERATION_SEMANTIC_TYPES.includes(shared.affix.slice(0, -1).toLowerCase())
-    && dangling.every(namesTier) && resolved.every(value => levels.has(value.semantic_level) || namesTier(value));
+    && !GENERATION_SEMANTIC_TYPES.some(type => word.startsWith(type)) && touched.length >= 2
+    && touched.every(id => id.startsWith(shared.affix)
+      && namesTier({ semantic_level: level, id: id.slice(shared.affix.length) }))
+    && resolved.every(value => value.semantic_level === level || namesTier(value));
   if (resolved.length && (!adds || !(everywhere || confined))) return none;
   for (const level of levels) {
     const carried = [...declared.get(level)].map(id => CARRIES[shared.operation](id, shared.affix));
