@@ -19,6 +19,8 @@ with 503 + Retry-After: 30. The chunk loop's old budget (~22.5 s of backoff)
 gave up long before a busy slot freed up.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import httpx
