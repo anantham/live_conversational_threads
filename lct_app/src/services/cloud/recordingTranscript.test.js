@@ -113,9 +113,36 @@ describe('long-turn splitting', () => {
     expect(transcript(run).map(u => u.speaker_id)).toEqual(['S1', 'S2', 'S1']);
   });
 
+  it('counts sub-word tokens and attached punctuation as the words they form, as live speech-to-text emits them', () => {
+    // 200 real words, each as three tokens plus a comma: per-token counting would see 800 and split.
+    const pieces = Array.from({ length: 200 }, (_, i) => [{ text: ' re', speaker: 'S1', startMs: i * 100, endMs: i * 100 + 30 },
+      { text: 'cord', speaker: 'S1', startMs: i * 100 + 30, endMs: i * 100 + 60 }, { text: 'ing', speaker: 'S1', startMs: i * 100 + 60, endMs: i * 100 + 90 },
+      { text: ',', speaker: 'S1', startMs: i * 100 + 90, endMs: i * 100 + 95 }]).flat();
+    expect(transcript([...pieces, { text: ' continues', speaker: 'S1', startMs: 20000, endMs: 20100 }])).toHaveLength(1);
+  });
+
+  it('opens a split only on a token that starts a new word: never mid-number, before a closing quote, or on whitespace', () => {
+    const long = { text: 'word '.repeat(150) + 'pi is 3.', speaker: 'S1', startMs: 0, endMs: 60000 };
+    const rest = [{ text: '14', speaker: 'S1', startMs: 60000, endMs: 60100 }, { text: ' and he said "stop.', speaker: 'S1', startMs: 60100, endMs: 61000 },
+      { text: '"', speaker: 'S1', startMs: 61000, endMs: 61100 }, { text: ' ', speaker: 'S1', startMs: 61100, endMs: 61200 },
+      { text: ' Next point.', speaker: 'S1', startMs: 61200, endMs: 62000 }];
+    const utterances = transcript([long, ...rest]);
+    expect(utterances).toHaveLength(2);
+    expect(utterances[0].text.endsWith('pi is 3.14 and he said "stop." ')).toBe(true);
+    expect(utterances[1].text).toBe(' Next point.');
+  });
+
+  it('does not carry a sentence end across a speaker change into the next turn', () => {
+    const run = [{ text: 'Hi.', speaker: 'S1', startMs: 0, endMs: 1000 }, { text: ' ', speaker: 'S2', startMs: 1000, endMs: 61000 },
+      { text: ' starting a clause', speaker: 'S2', startMs: 61000, endMs: 62000 }, { text: ' and finishing it.', speaker: 'S2', startMs: 62000, endMs: 63000 }];
+    expect(transcript(run).map(u => u.speaker_id)).toEqual(['S1', 'S2']);
+  });
+
   it('is prefix-stable, so periodic maps of a live session keep earlier utterance ids', () => {
     const tokens = Array.from({ length: 30 }, (_, i) => ({ ...sentence(i, i * 5000), speaker: i >= 22 ? 'S2' : 'S1' }));
     const whole = transcript(tokens);
+    // The long S1 turn really did split, so this checks splitting and not only speaker changes.
+    expect(whole.map(u => u.speaker_id)).toEqual(['S1', 'S1', 'S2']);
     for (let n = 1; n <= tokens.length; n += 1) {
       const prefix = transcript(tokens.slice(0, n));
       expect(prefix.slice(0, -1)).toEqual(whole.slice(0, prefix.length - 1));

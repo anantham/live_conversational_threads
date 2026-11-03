@@ -39,13 +39,14 @@ export function logReferenceRepair(repair, backend = 'openrouter') {
 
 // Always logged, never enforced: a child filed under a parent whose evidence does not include it.
 // Warn, don't suppress; whether to reject such maps is decided later from these counts.
+// Counts only: node ids are model-written summaries of the conversation, so they stay out of logs.
 export function logEvidenceMismatch(artifact, backend = 'openrouter') {
   try {
-    const { evidenceMismatches, mismatchesByChildLevel, mismatchExamples } = mapStructure(artifact);
+    const { evidenceMismatches, mismatchesByChildLevel } = mapStructure(artifact);
     if (!evidenceMismatches) return;
     console.warn(backend === 'gemini' ? '[gemini] generated map files children outside their parent\'s evidence'
       : '[openrouter] generated map files children outside their parent\'s evidence',
-    { code: 'evidence_mismatch', mismatches: evidenceMismatches, byChildLevel: mismatchesByChildLevel, examples: mismatchExamples });
+    { code: 'evidence_mismatch', mismatches: evidenceMismatches, byChildLevel: mismatchesByChildLevel });
   } catch { /* Diagnostics must not change the generation result. */ }
 }
 

@@ -63,7 +63,7 @@ Choose fallbacks whose price, output format, provider and speed you have checked
 
 - **Long turns split before generation.** A map chunk links whole utterances, so `createRecordingTranscript` now starts a new same-speaker utterance after the first sentence end once a turn reaches 60 s or 150 words, or at any token boundary at twice either bound. The decision uses only tokens already seen, so periodic maps of a live session keep earlier ids. Saved `.threads` files keep their embedded utterances.
 - **The prompt asks for structure:** one coherent moment per chunk (backchannels folded in), single children only where a tier adds meaning, a parent's evidence covering its children, and digressions as their own node.
-- **`evidence_mismatch` is always logged, never enforced.** It fires when a child cites utterances its parent's evidence lacks, with counts by tier and examples. It is logged whatever `LCT_OPENROUTER_DEBUG` says, and the map is still saved.
+- **`evidence_mismatch` is always logged, never enforced.** It fires when a child cites utterances its parent's evidence lacks, with counts by tier only. Node ids summarise the conversation, so they stay out of logs. It is logged whatever `LCT_OPENROUTER_DEBUG` says, and the map is still saved.
 - **`node scripts/score-map-structure.mjs <map.threads>...`** prints the same structural counts for saved maps. They are counts, not a quality score.
 - Measured effect and limits: `docs/reviews/2026-11-03-long-input-envelope.md`, section "Map structure A/B".
 

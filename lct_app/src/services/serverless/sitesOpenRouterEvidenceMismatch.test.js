@@ -44,14 +44,15 @@ beforeEach(() => {
 afterEach(() => { sqlite.close(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('evidence-mismatch warning at the map route', () => {
-  it('still saves a map with a misfiled chunk, and always logs the mismatch by tier with an example', async () => {
+  it('still saves a map with a misfiled chunk, and always logs the mismatch by tier, counts only', async () => {
     next = () => reply(map('childhood'));
     const response = await generate();
     expect(response.status).toBe(200);
     expect((await response.json()).artifact.graph_data.find(n => n.id === '1:intro').parent_id).toBe('2:childhood');
     expect(mismatchLogs()).toEqual([['[openrouter] generated map files children outside their parent\'s evidence',
-      { code: 'evidence_mismatch', mismatches: 1, byChildLevel: [1, 0, 0, 0],
-        examples: [{ child: '1:intro', level: 1, parent: '2:childhood', missing: ['utterance-0001'] }] }]]);
+      { code: 'evidence_mismatch', mismatches: 1, byChildLevel: [1, 0, 0, 0] }]]);
+    // Node ids summarise the conversation, so the log carries counts only.
+    expect(JSON.stringify(mismatchLogs())).not.toMatch(/intro|childhood|utterance-/);
   });
 
   it('logs nothing for a map whose children sit inside their parents\' evidence', async () => {

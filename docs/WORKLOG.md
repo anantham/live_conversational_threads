@@ -8813,3 +8813,19 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Every guard was red-proven by mutation (5 scorer, 4 split, 3 log/skip, 1 childless).
 - Paid A/B: 30 runs, $0.361 (per-task budget $1; this task's only spend). Results and reading are in the envelope review. The prompt makes chunk counts consistent (7–10 vs 4–38). Splitting enables finer cards but the model needs the prompt to use them. There were no evidence mismatches in any version. One failure was single-tier `node-` drift that the repair refused (ISSUES.md).
 - Found: all 47 earlier runs used test input with transcript segments glued together. The A/B rebuilt both inputs with spacing.
+
+## 2026-11-04 02:31 IST — Gemini review of the map-structure slice (agy, gemini-4-argon-high): NO-GO, adjudicated
+- Adopted:
+  - **Live word counting.** Live speech-to-text emits sub-word tokens (" re", "cord", "ing") and detached punctuation, and per-token counting overcounted (one word as three). Now a token that continues the last word adds none.
+  - **Splits open only on a token that starts a new word.** Never mid-number ("3." | "14"), before a detached closing quote, or on a whitespace-only token.
+  - **The sentence end is judged on the text's tail,** so a detached quote keeps it, and it is reset at every new utterance.
+  - **Scorer:** skips malformed entries and nodes without a string id; doesn't report a node with only secondary children as hollow; doesn't call chunks with unresolved utterances backchannels.
+  - **`evidence_mismatch` logs counts by tier only.** Node ids are model-written summaries of the conversation, so they stay out of production logs (same rule as `reference_repair`).
+  - The prefix-stability test now asserts that the long turn really split.
+- All seven fixes red-proven by mutation. Both A/B inputs split identically under the fixed rules (41 and 38 utterances, same text), so the A/B results stand.
+- Declined, with reasons:
+  - Out-of-order token timestamps: speech-to-text final tokens are time-ordered.
+  - Null or whitespace speakers: existing behaviour, unchanged here.
+  - A parent that cites nothing hiding a transitive mismatch: skipped by design and documented.
+  - Splits after abbreviations ("Dr.") once past 60 s or 150 words: an accepted limit; the text is preserved and the cut is at a word boundary.
+  - The "waits for a sentence end" test "can't fail": it fails when the sentence-end requirement is removed (an early split gives four utterances).

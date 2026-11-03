@@ -9,6 +9,9 @@ export const SPLIT_TURN_MS = 60_000;
 export const SPLIT_TURN_WORDS = 150;
 const HARD_SPLIT_FACTOR = 2;
 const SENTENCE_END = /[.?!]["')\]]*\s*$/;
+const pieces = text => text.match(/\S+/g)?.length || 0;
+// Speech-to-text emits sub-word tokens (" re", "cord", "ing") and detached punctuation (",", "\"").
+const continuesWord = (text, token) => /\S$/.test(text) && /^\S/.test(token);
 
 function invalid() {
   return new Error('Invalid recording transcript.');
@@ -63,9 +66,12 @@ export function createRecordingTranscript({ recordingId, startedAt, finalTokens,
     const turnMs = current?.timestamp_start != null && current.timestamp_end != null
       ? (current.timestamp_end - current.timestamp_start) * 1000 : 0;
     const reached = factor => turnWords >= SPLIT_TURN_WORDS * factor || turnMs >= SPLIT_TURN_MS * factor;
-    const longTurn = current && (sentenceEnded ? reached(1) : reached(HARD_SPLIT_FACTOR));
+    // Only a token that starts a new word may open a split: never mid-word ("3." | "14"), never before a
+    // detached closing quote, and never on a whitespace-only token.
+    const startsWord = current && /\S/.test(token.text) && !continuesWord(current.text, token.text);
+    const longTurn = startsWord && (sentenceEnded ? reached(1) : reached(HARD_SPLIT_FACTOR));
     if (!current || current.speaker_id !== speaker || longTurn) {
-      turnWords = 0;
+      turnWords = 0; sentenceEnded = false;
       current = {
         id: `utterance-${String(utterances.length + 1).padStart(4, '0')}`,
         sequence_number: utterances.length + 1,
@@ -77,9 +83,11 @@ export function createRecordingTranscript({ recordingId, startedAt, finalTokens,
       };
       utterances.push(current);
     }
+    // A token that continues the last word adds none.
+    turnWords += Math.max(0, pieces(token.text) - (continuesWord(current.text, token.text) ? 1 : 0));
     current.text += token.text;
-    turnWords += token.text.split(/\s+/).filter(Boolean).length;
-    if (token.text.trim()) sentenceEnded = SENTENCE_END.test(token.text);
+    // Judged on the text's tail, so a detached closing quote keeps the sentence end before it.
+    if (token.text.trim()) sentenceEnded = SENTENCE_END.test(current.text.slice(-16));
     if (token.start_ms != null) {
       const seconds = token.start_ms / 1000;
       current.timestamp_start = current.timestamp_start == null ? seconds : Math.min(current.timestamp_start, seconds);

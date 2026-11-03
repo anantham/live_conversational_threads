@@ -54,8 +54,23 @@ describe('map structure counts', () => {
     expect(result).toMatchObject({ evidenceMismatches: 0, mismatchesByChildLevel: [0, 0, 0, 0] });
   });
 
+  it('does not report a node whose only children are secondary as hollow', () => {
+    const result = mapStructure(bundle([node(1, 'plan', [1, 2], ref(2, 'timing')), node(2, 'timing', [1, 2], ref(3, 'garden')),
+      node(2, 'layout', [1, 2], ref(3, 'garden')), node(3, 'garden', [1, 2])].map(n => n.id === 'plan'
+      ? { ...n, secondary_parent_ids: [ref(2, 'layout')] } : n)));
+    expect(result.childlessHigherNodes).toBe(0);
+  });
+
+  it('skips malformed entries, never links rootless nodes to a missing id, and does not call unresolved chunks backchannels', () => {
+    const result = mapStructure({ utterances: [null, { text: 'no id' }],
+      graph_data: [null, 7, { semantic_level: 2, source_ref: { utterance_ids: ['u1'] } },
+        { id: '1:monologue', semantic_level: 1, source_ref: { utterance_ids: ['utterance-0001'] } },
+        { id: '5:arc', semantic_level: 5, source_ref: { utterance_ids: ['u2'] } }] });
+    expect(result).toMatchObject({ chunks: 1, parents: 0, backchannelChunks: 0, childlessHigherNodes: 1, evidenceMismatches: 0 });
+  });
+
   it('returns zero counts for an empty or malformed bundle instead of throwing', () => {
-    for (const value of [undefined, null, {}, { graph_data: 'x', utterances: 7 }]) {
+    for (const value of [undefined, null, {}, { graph_data: 'x', utterances: 7 }, { graph_data: [null], utterances: [null] }]) {
       expect(mapStructure(value)).toMatchObject({ utterances: 0, chunks: 0, largestChunkWords: 0, evidenceMismatches: 0 });
     }
   });
