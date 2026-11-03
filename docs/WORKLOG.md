@@ -1,5 +1,36 @@
 # WORKLOG
 
+## 2026-11-04 04:40 IST — Deploy main @ 1cca862b (#224) to the Asus backend
+
+- Owner approved in chat. The Asus checkout was 4 behind (`2acf515`, #215) and
+  dirty: a 41-line `docs/WORKLOG.md` edit (2026-10-14, collided with incoming
+  commits), three `ops/observability/` script edits (2026-09-26/28) and an
+  empty stray `=ro` (2026-11-02). All parked, nothing discarded, on pushed
+  branch `wip/asus-deploy-checkout-dirty-2026-11-04` (`d3aed8e`; the push
+  passed the pre-push `[ci]` vitest gate).
+- The Tailscale link to the Asus was degraded (DERP relay, ~4 s, dropped SSH
+  sessions), so the deploy ran as a detached script on the Asus
+  (`logs\deploy_224.ps1`, logs `logs\deploy_224_2026-11-04*.log`): import
+  guard → park → `pull --ff-only` (must contain `1cca862b`) → restart → wait
+  for `/api/version` to report the new SHA, with rollback to the previous
+  commit if it never comes up.
+- Run 1 aborted safely after parking: `git pull` hit
+  "Could not resolve hostname github.com" (transient DNS); backend untouched.
+  Run 2: no import activity, fast-forward `2acf515..1cca862` (also deploys #216,
+  #217 and #221; no migrations), old pid 10300 stopped, new backend pid 3672.
+  Verified from the Mac over the tailnet: `/api/version` = `1cca862b`,
+  `git_dirty: false`.
+- Found while deploying (see ISSUES 2026-11-04): the backend is supervised by
+  `scripts/start_all.py --autostart` (run by Task Scheduler), which restarted
+  it on its own; `start_lct_backend.ps1` refuses elevated SSH shells. The
+  live log is `logs/backend.log`, not `lct_backend.manual.*.log`. The AGENTS.md
+  restart section is stale on both points. Production Python is 3.9.21:
+  `test_stt_saturation_wait.py` from #224 failed to import there; fixed in
+  PR #229.
+- My mistake, ledgered: run 1's import guard read the stale
+  `lct_backend.manual.out.log` (2026-09-25) and reported "no import activity";
+  corrected for run 2 to read `logs/backend.log` and ignore health pings.
+
 ## 2026-11-04 02:40 IST — STT client waits for a busy local STT (PR #224)
 
 - Follows the concurrency change below. Branch `fix/stt-honour-retry-after`,

@@ -2,6 +2,28 @@
 
 Last updated: 2026-11-04
 
+## 2026-11-04 - Asus backend restart docs are stale; CI does not run production Python (OPEN, NON-BLOCKING)
+
+- AGENTS.md "Backend (Asus) — restart + deploy" says the backend is launched by
+  `logs/start_lct_backend.ps1`, "NOT a Scheduled Task", logging to
+  `logs/lct_backend.manual.*.log`. Observed live 2026-11-04: the :43181
+  process is a child of `scripts/start_all.py --autostart`, started by Task
+  Scheduler, which restarts the backend by itself after it is stopped; the
+  live log is `logs/backend.log` (the manual logs were last written
+  2026-09-25); and `start_lct_backend.ps1` refuses to run from an elevated
+  shell, which an SSH session to the Asus is. Impact: an agent following the
+  doc checks the wrong log (this caused a false "no import activity" reading
+  during the #224 deploy) and may race the supervisor. Next step: update the
+  section to "stop the listener; start_all.py restarts it; verify with
+  /api/version", and name `logs/backend.log`.
+- Production runs Python 3.9.21 (Asus `.venv`), but CI and the M5 run newer
+  versions, so 3.10-only syntax passes CI and breaks on production. Seen with
+  `test_stt_saturation_wait.py` (fixed in PR #229). Next step: run the backend
+  unit suite on Python 3.9 in CI, or add a `python_requires`/lint check.
+- The Asus Tailscale link was degraded on 2026-11-04 (DERP relay, ~4 s, dropped
+  SSH sessions, a transient DNS failure for github.com) and the machine was
+  unreachable entirely from ~02:03 to ~03:50. Not investigated further.
+
 ## 2026-11-04 - Waiting STT jobs can starve behind a long import (OPEN, NON-BLOCKING)
 
 - PR #224 makes the backend wait (up to 900 s) for the local STT's busy
