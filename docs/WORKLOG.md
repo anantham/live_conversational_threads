@@ -8736,3 +8736,12 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Total spend: $0.369 across 26 runs (including the earlier confirmation run). No id drift seen, so the reference repair was not exercised live.
 - Write-up with the table: `docs/reviews/2026-11-03-long-input-envelope.md`. Full suite 140 files / 1,328 tests pass.
 
+## 2026-11-04 00:20 IST — Review round 5 on the compact-JSON slice; final envelope numbers
+
+- Round 5 (agy → gemini-4-argon-high, packet `d1c87f14…`, 13,744 bytes): NO-GO.
+  - Adopted: report uncached cost (Vertex implicitly cached the repeated input, so billed cost understates a fresh transcript); include the derived quality metrics in the doc; qualify everything as one transcript and one route (19/20 has a 95% CP lower bound of ~75%); soften the "chunking not needed" claim.
+  - Tested, then rejected on data: the reviewer's alternative wording B ("Minify the JSON…"). B got 7/10 at 20 min (one 90 s timeout, one dangling thread moment, one paraphrased idea id) and was reverted. Its concern that A's rationale clause compresses content is not visible in node counts or summary text.
+- Final compact-A numbers on the benchmark transcript: **20 min 19/20, 15 min 3/3, 0 of 30 compact runs at the cap**. The one A failure was a wrong-tier parent reference, correctly not repaired. Correction to the 23:40 entry: not every compact reply was unindented. One of 20 A replies ignored the instruction, and it is the 7,594-token tail run.
+- Spend: $0.600 billed across 46 runs, plus the unreported cost of one timed-out run (≤ ~$0.02). Within the ~$1 goal budget.
+- Doc rebuilt from the ledger: `docs/reviews/2026-11-03-long-input-envelope.md` (summary table, per-run table, wordings, limits). Prompt unchanged from 18d59569 (wording A).
+

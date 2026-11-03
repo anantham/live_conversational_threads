@@ -2137,3 +2137,7 @@ Owner-approved paid run of PR #220 on the same 20-minute input: `gemini-3.5-flas
 
 Measured envelope (`docs/reviews/2026-11-03-long-input-envelope.md`): with pretty-printed output, 20-minute maps succeeded 1 of 4 (all failures at the 8,192-token cap). With a compact-JSON instruction (branch `fix/long-input-reference-repair`), 10 of 10 succeeded. Remaining: the largest compact 20-minute map used 93% of the cap. Raising `LCT_OPENROUTER_MAX_OUTPUT_TOKENS`, together with the replay budget, is an owner cost decision. Chunked generation is still needed well beyond 20 minutes.
 
+## 2026-11-04 — Update: long-input envelope final numbers (non-blocking)
+
+Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps were valid 19/20 on the benchmark transcript (one wrong-tier reference error) and 15-minute maps 3/3. None of 30 compact runs hit the 8,192 cap. One of 20 replies ignored the compact instruction and used 93% of the cap. New observed failure classes, all correctly rejected: paraphrased or wrong-tier parent ids and a dangling thread moment (not affix drift), plus one 90 s provider timeout. Open owner decisions: raise `LCT_OPENROUTER_MAX_OUTPUT_TOKENS` with the replay budget, and chunked generation for long or dense inputs.
+
