@@ -9482,3 +9482,16 @@ Fresh separate live guest browser confirms `/assets/index-CxdC-Qt3.js`, Profile 
 - Not verified: served walkthrough of the merged viewer; independent review;
   `codex/lct-inference-choice` (105 further commits) not yet reconciled with
   this merge.
+
+## 2026-11-03 20:45 IST — Live browser walkthrough of the merged viewer (PR #218)
+
+- Data: the real map of the podcast episode in `lct_app/public/experiments/overlapping.threads` (YouTube `6HmR9IaqM88`, 100 nodes, 1,263 utterances, 2 speakers). Merged branch run locally (`npm run dev`, port 4318, and `VITE_SITES_MODE=true` on 4319) and driven in the built-in browser. The Vercel preview is behind Vercel SSO.
+- Passed:
+  - `/view?src=` loads the map; Graph ↔ Discussion via main's toolbar; Discussion shows measured speaker shares per arc (83%/17%, 80%/20%).
+  - Source panel opens beside Discussion with the real transcript and the YouTube embed (`youtube-nocookie.com/embed/6HmR9IaqM88`). Clicking 30:22 moves "Open on YouTube" to `t=1822s`.
+  - Renaming SPEAKER_00 through `SourceSpeakerEditor` updates the legend and arc badges. A local file shows "Edits stay in this browser" (correct for this mode).
+  - Back/Forward undo and redo a Graph↔Discussion switch; history entries carry the `lctExploration` marker outside private mode.
+  - 375×812: page width 375, no horizontal overflow.
+  - Public route (Sites mode, `/api/cloud/public-threads/<id>/content` served by a local stand-in after 1.5 s): "Loading public conversation · 0s elapsed" → full render with "Public copy · visible to everyone · edits stay in this view". **No hook-order error**, which is the exact path the merge commit fixed. Source editor caption: "Names change in this view only. The stored copy stays the same." The rename shows; localStorage holds only timing keys.
+  - Console: no React/hook errors. The only errors were `/api/import/health` with no backend running (expected).
+- Notes: in the normal (non-Sites) build `/public/:id` has no route and no catch-all, so it renders a blank page (pre-existing; out of scope). Not exercised live: private cloud copy (needs a signed-in Sites session) and generated-map handoff (covered by vitest).
