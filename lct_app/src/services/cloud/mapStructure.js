@@ -45,6 +45,8 @@ export function mapStructure(bundle) {
     largestChunkWords: chunkWords.length ? Math.max(...chunkWords) : 0,
     parents: parents.length,
     singleChildParents: parents.filter(parent => children.get(parent.id) === 1).length,
+    // Above chunks, a node with no children is usually a hollow copy of its parent (an idea mirroring its topic).
+    childlessHigherNodes: nodes.filter(node => node.semantic_level > 1 && !children.has(node.id)).length,
     evidenceMismatches: mismatches.length,
     mismatchesByChildLevel: [1, 2, 3, 4].map(level => mismatches.filter(m => m.level === level).length),
     mismatchExamples: mismatches.slice(0, MAX_EXAMPLES),

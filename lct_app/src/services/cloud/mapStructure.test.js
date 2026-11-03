@@ -26,7 +26,7 @@ describe('map structure counts', () => {
       node(2, 'timing', [1, 2], ref(3, 'garden')), node(2, 'layout', [3, 4], ref(3, 'garden')),
       node(3, 'garden', [1, 2, 3, 4], ref(5, 'season')), node(5, 'season', [1, 2, 3, 4])]));
     expect(result).toMatchObject({ utterances: 4, nodesByLevel: [3, 2, 1, 0, 1], chunks: 3, multiUtteranceChunks: 1,
-      backchannelChunks: 1, largestChunkWords: 17, parents: 4, singleChildParents: 2,
+      backchannelChunks: 1, largestChunkWords: 17, parents: 4, singleChildParents: 2, childlessHigherNodes: 0,
       evidenceMismatches: 0, mismatchesByChildLevel: [0, 0, 0, 0], mismatchExamples: [] });
   });
 
@@ -41,6 +41,12 @@ describe('map structure counts', () => {
       { child: '1:plan', level: 1, parent: '2:layout', missing: ['utterance-0001'] },
       { child: '1:ack', level: 1, parent: '2:layout', missing: ['utterance-0002'] },
       { child: '2:layout', level: 2, parent: '5:season', missing: ['utterance-0004'] }]);
+  });
+
+  it('counts a higher-tier node with no children, the hollow copy seen when chunks skip a tier', () => {
+    const result = mapStructure(bundle([node(1, 'plan', [1, 2], ref(3, 'garden')), node(1, 'beds', [3, 4], ref(3, 'garden')),
+      node(2, 'mirror', [1, 2, 3, 4], ref(3, 'garden')), node(3, 'garden', [1, 2, 3, 4])]));
+    expect(result).toMatchObject({ childlessHigherNodes: 1, parents: 1, singleChildParents: 0 });
   });
 
   it('does not count a parent that cites no evidence, which the schema allows above chunks', () => {

@@ -21,8 +21,8 @@ const rows = files.map(file => {
 if (json) console.log(JSON.stringify(rows, null, 2));
 else {
   console.log(['map', 'turns', 'nodes L1-L5', 'chunks', 'multi-turn', 'backchannel', 'largest words',
-    'single-child/parents', 'mismatches L1-L4'].join(' | '));
+    'single-child/parents', 'childless above chunks', 'mismatches L1-L4'].join(' | '));
   for (const r of rows) console.log([path.basename(r.file), r.utterances, r.nodesByLevel.join('/'), r.chunks,
     r.multiUtteranceChunks, r.backchannelChunks, r.largestChunkWords, `${r.singleChildParents}/${r.parents}`,
-    r.mismatchesByChildLevel.join('/')].join(' | '));
+    r.childlessHigherNodes, r.mismatchesByChildLevel.join('/')].join(' | '));
 }
