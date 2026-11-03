@@ -45,11 +45,15 @@ Total billed: **$0.600** across 46 runs (the earlier confirmation run included).
 
 **Reference errors seen:** paraphrased idea ids (about 84% similar, no shared prefix or suffix), a thread step pointing to a chunk number declared under a different word pattern, and a wrong-tier parent. None is the 3 November `node-` affix drift. The reference repair correctly declined all of them, and it was never exercised live.
 
+## Long output cap check (2026-11-04)
+
+After the owner approved a 16,384-token cap for transcripts longer than 5 minutes, one more 20-minute run used the built Worker with `LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS=16384`. The provider request carried `max_tokens: 16384` and the map was valid (43 nodes, 5,480 completion tokens, 14.9 s, $0.0163 billed). This confirms the long-cap path end to end. It is one run, and it did not exercise the reference repair. Total billed for this study is now **$0.616** across 47 runs.
+
 ## Limits
 
 - **One transcript, one model/route.** 19/20 has a 95% Clopper-Pearson lower bound of about 75%. That is evidence the 4-of-5 bar is met on this input, not a guarantee for 20-minute conversations in general.
 - **Tail risk.** The largest compact-A 20-minute reply used 7,594 tokens (93% of 8,192). It was the one run that ignored the compact instruction. Among replies that followed it, the largest used 6,961. A run that both ignores the instruction and produces a richer map, a denser meeting, or populated edges can still reach the cap.
-- **Cost of the next step.** Raising `LCT_OPENROUTER_MAX_OUTPUT_TOKENS` (the model allows 65,536) would remove the tail at 20 minutes but raises every attempt's worst-case cost. The replay budget formula (`sites/replayProvider.js`) and `replayWire`'s fixed 8,192 also need changing. That is an owner cost decision and was not made here.
+- **Cost of the next step.** When this was measured, raising the cap was an open owner cost decision. The owner has since approved 16,384 for transcripts longer than 5 minutes only (`LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS`, see `lct_app/sites/README.md`). Live 5-minute sessions keep 8,192.
 - **Beyond about 20 minutes, or for dense inputs,** chunked generation (option B in the options note) remains the path that does not depend on one call's output budget.
 
 ## Per-run detail
