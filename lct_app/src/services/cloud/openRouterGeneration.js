@@ -45,6 +45,7 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens } = 
         'Create an evidence-linked conversation map from the supplied exact utterances.',
         'Use all semantic tiers that the conversation supports: chunk (1), idea (2), topic (3), theme (4), arc (5).',
         'Return authored nodes, explicit edges, metadata, and optional conversation thread paths as JSON only.',
+        'Return compact JSON on one line: no indentation, line breaks or spaces between tokens, so the whole map fits the output limit.',
         'Every chunk must link to original utterance IDs; link higher tiers where evidence supports them.',
         'Set hierarchy_format to tiered-parent-links-v2. Author each parent relationship only on the child node.',
         'Node ids are local to a semantic level. Every node reference is an object with semantic_level and id copied exactly from that node, never a bare string.',

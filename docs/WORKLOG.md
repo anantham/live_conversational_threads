@@ -8728,3 +8728,11 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - The truncated reply (counts only, kept in the scratchpad, not committed): 41 nodes declared before the cut (32/4/3/1/1). Of 40 typed refs, 1 dangling, a level-3 topic not yet declared at the cut. **No `node-` drift this time.** The reply was pretty-printed: 6,850 of 25,035 chars were indentation/newlines.
 - Conclusion: on the same input the earlier run finished in 7,067 completion tokens and this one exceeded 8,192. The output budget is now the observed blocker at 20 minutes. A + D cannot help it. Next options for the owner: compact-JSON output (no indentation), a higher `max_tokens` (the replay budget formula assumes 8,192), or chunked generation (B).
 
+## 2026-11-03 23:40 IST — Owner goal: measure, then make 20-minute maps pass (≥4/5), budget ~$1
+
+- Harness: as in the previous entry, plus a sequential, cost-capped sweep runner (scratchpad `live/sweep.sh`, ledger in `live/ledger.jsonl`). Production route `gemini-3.5-flash-lite` / `google-vertex` / deny.
+- Baseline (pretty JSON as the model chose it): 5 min 3/3, 10 min 3/3, 15 min 1/3, 20 min 1/4. Every failure was `finish_reason: length` at 8,192. Replies were 27–31% whitespace.
+- Fix 1, `openRouterGeneration.js`: one system-prompt line asking for compact single-line JSON. Test in `openRouterGeneration.test.js` (red, then green). Result: **20 min 10/10, 15 min 3/3**, completion 2.4k–7.6k tokens, ~$0.012/map, coverage 100% on all. Fix 2 (raise `max_tokens`) was not needed for the pass test and is left to the owner, because it raises the per-attempt cost ceiling and the replay budget.
+- Total spend: $0.369 across 26 runs (including the earlier confirmation run). No id drift seen, so the reference repair was not exercised live.
+- Write-up with the table: `docs/reviews/2026-11-03-long-input-envelope.md`. Full suite 140 files / 1,328 tests pass.
+

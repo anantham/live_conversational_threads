@@ -63,6 +63,8 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(request.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt)
       .toEqual({ type: 'string', enum: [''] });
     expect(request.messages[0].content).toContain('Keep source_excerpt empty');
+    // A 20-minute reply spent ~27% of its characters on indentation and hit the output cap.
+    expect(request.messages[0].content).toContain('Return compact JSON on one line');
     expect(JSON.parse(request.messages[1].content).utterances.map(row => row.text))
       .toEqual(['A careful idea.', ' A response.']);
     request.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt.enum.push('caller mutation');

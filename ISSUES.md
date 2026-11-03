@@ -2133,3 +2133,7 @@ Follow-up to "Map generation is unreliable beyond the 5-minute session envelope"
 
 Owner-approved paid run of PR #220 on the same 20-minute input: `gemini-3.5-flash-lite` stopped at `finish_reason: length` (8,175 completion tokens, cap 8,192, $0.023). Earlier the same input finished in 7,067 tokens, so output length varies run to run on identical input. About 27% of the reply's characters were pretty-print whitespace. No `node-` drift occurred this time, so the repair was not exercised live. Recommended next step: an owner choice between compact-JSON output, raising `max_tokens` (and the replay budget formula), or chunked generation (B).
 
+## 2026-11-03 — Update: 20-minute maps pass with compact JSON output (non-blocking)
+
+Measured envelope (`docs/reviews/2026-11-03-long-input-envelope.md`): with pretty-printed output, 20-minute maps succeeded 1 of 4 (all failures at the 8,192-token cap). With a compact-JSON instruction (branch `fix/long-input-reference-repair`), 10 of 10 succeeded. Remaining: the largest compact 20-minute map used 93% of the cap. Raising `LCT_OPENROUTER_MAX_OUTPUT_TOKENS`, together with the replay budget, is an owner cost decision. Chunked generation is still needed well beyond 20 minutes.
+
