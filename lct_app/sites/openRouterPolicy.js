@@ -17,17 +17,32 @@ function text(value, maximum) {
     && ![...value].some(character => character.codePointAt(0) < 32 || character.codePointAt(0) === 127) ? value : null;
 }
 
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const MAX_FALLBACK_MODELS = 3;
+
+// Owner-approved models tried in order when the primary has no route. Absent means none;
+// any malformed entry makes the whole list (and so generation) unconfigured, never shorter.
+function fallbackModels(value, primary) {
+  if (value === undefined || value === '') return [];
+  const list = text(value, 4 * 160 + 3)?.split(',');
+  if (!list || list.length > MAX_FALLBACK_MODELS) return null;
+  const valid = list.every(model => MODEL_ID.test(model) && model !== primary);
+  return valid && new Set(list).size === list.length ? list : null;
+}
+
 export function openRouterPolicy(env) {
   const modelValue = text(env.LCT_OPENROUTER_MODEL, 160);
-  const model = modelValue && /^[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(modelValue) ? modelValue : null;
+  const model = modelValue && MODEL_ID.test(modelValue) ? modelValue : null;
+  const fallbacks = fallbackModels(env.LCT_OPENROUTER_FALLBACK_MODELS, model);
   const provider = text(env.LCT_OPENROUTER_PROVIDER, 160);
   const dataCollection = ['allow', 'deny'].includes(env.LCT_OPENROUTER_DATA_COLLECTION) ? env.LCT_OPENROUTER_DATA_COLLECTION : null;
   const audience = ['public', 'authenticated'].includes(env.LCT_OPENROUTER_AUDIENCE) ? env.LCT_OPENROUTER_AUDIENCE : null;
   const maxRequests = integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200);
   const maxTokens = integer(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS, 8192);
   const key = text(env.OPENROUTER_API_KEY_2 ?? env.OPENROUTER_API_KEY, 4096);
-  const configured = Boolean(model && provider && dataCollection && audience && maxRequests && maxTokens && key && env.DB?.prepare);
-  return { configured, model, provider, dataCollection, audience, maxRequests, maxTokens, key,
+  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && maxTokens && key && env.DB?.prepare);
+  return { configured, model, fallbackModels: fallbacks || [], models: model && fallbacks ? [model, ...fallbacks] : [],
+    provider, dataCollection, audience, maxRequests, maxTokens, key,
     backend: 'openrouter', label: 'OpenRouter', consentHeader: 'x-lct-openrouter-consent',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     enabled: configured && env.LCT_OPENROUTER_ENABLED === 'true' && env.LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED === 'true',
@@ -53,7 +68,8 @@ export function geminiPolicy(env) {
   const model = modelValue && /^gemini-[A-Za-z0-9._-]+$/.test(modelValue) ? modelValue : null;
   const key = text(env.GEMINI_API_KEY, 4096);
   const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.maxTokens && env.DB?.prepare);
-  return { ...shared, configured, model, key, backend: 'gemini', label: 'Gemini', provider: 'Google AI Studio', dataCollection: null,
+  return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
+    backend: 'gemini', label: 'Gemini', provider: 'Google AI Studio', dataCollection: null,
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     consentHeader: 'x-lct-gemini-consent',
     enabled: configured && env.LCT_GEMINI_ENABLED === 'true' && env.LCT_GEMINI_PROJECT_BUDGET_CONFIRMED === 'true' };

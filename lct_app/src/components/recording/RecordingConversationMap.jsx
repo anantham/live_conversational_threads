@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
-import { getRecordingMapStatus, generateRecordingMap } from '../../services/cloud/openRouterClient.js';
+import { describeModelRoute, getRecordingMapStatus, generateRecordingMap } from '../../services/cloud/openRouterClient.js';
 import { useCloudTask } from '../../hooks/useCloudTask.js';
 import PublicTaskStatus from '../PublicTaskStatus.jsx';
 import PrivateRetentionNotice from '../PrivateRetentionNotice.jsx';
@@ -103,7 +103,7 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
       <option value="gemini">Gemini · Google AI Studio</option>
       <option value="openrouter">OpenRouter</option>
     </select>
-    {status?.model && <p className="mt-3 break-words text-sm text-slate-600">Model: {status.model} · Provider: {status.provider}</p>}
+    {status?.model && <p className="mt-3 break-words text-sm text-slate-600">{describeModelRoute(status)}</p>}
     {!activity && !status?.enabled && <p className="mt-3 text-sm leading-6 text-slate-600">Generation is waiting for provider setup and confirmed spending limits. Transcript download remains available.</p>}
     {status?.enabled && !status.available && <p className="mt-3 text-sm leading-6 text-slate-600">Shared generation capacity is unavailable. Check setup again before retrying; unresolved attempts may need owner review.</p>}
     {status?.audience === 'authenticated' && <p className="mt-3 text-sm text-slate-600">This generation test requires sign-in. <Link className="underline underline-offset-4" to="/private-files">Sign in from Private files</Link></p>}

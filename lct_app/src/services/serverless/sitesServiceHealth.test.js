@@ -23,7 +23,7 @@ afterEach(() => { db.close(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 it('checks fixed authenticated GETs once per cache window, exposes only coarse status and never consumes a reservation', async () => {
   const [a,b] = await Promise.all([get('openrouter'), get('openrouter')]);
   const body = await a.json(); expect(body).toMatchObject({ service: 'openrouter', reachable: true, allowance: 'key_available', account_balance: 'available', available: true });
-  expect(await b.json()).toEqual(body); expect(fetch).toHaveBeenCalledTimes(2);
+  expect(await b.json()).toEqual(body); expect(fetch).toHaveBeenCalledTimes(3); // key, credits, one model-route listing
   expect(JSON.stringify(body)).not.toContain(env.OPENROUTER_API_KEY); expect(JSON.stringify(body)).not.toContain('DO NOT DISCLOSE'); expect(JSON.stringify(body)).not.toContain('0.5'); expect(JSON.stringify(body)).not.toContain('5.75'); expect(JSON.stringify(body)).not.toContain('1.25');
   const voice = await (await get('soniox')).json(); expect(voice).toMatchObject({ reachable: true, allowance: 'unknown' });
   expect(fetch.mock.calls.every(([, init]) => init.method === 'GET' && !init.body && init.redirect === 'manual')).toBe(true);
@@ -50,7 +50,7 @@ it('bounds a provider that ignores abort, caches failure, and permits a later re
   vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
   const pending = get('openrouter'); await vi.advanceTimersByTimeAsync(6001);
   expect(await (await pending).json()).toMatchObject({ reachable: false });
-  await get('openrouter'); expect(fetch).toHaveBeenCalledTimes(2);
+  await get('openrouter'); expect(fetch).toHaveBeenCalledTimes(3);
   await vi.advanceTimersByTimeAsync(60_000); fetch.mockResolvedValue(new Response(JSON.stringify({ data: { limit_remaining: 1 } })));
   expect(await (await get('openrouter')).json()).toMatchObject({ reachable: true });
 });
@@ -74,7 +74,7 @@ it.each([401, 403])('preserves key reachability when account lookup refuses acce
     : new Response(JSON.stringify({ data: { limit_remaining: 4 } })));
   const body = await (await get('openrouter')).json();
   expect(body).toMatchObject({ reachable: true, allowance: 'key_available', account_balance: 'permission_required' });
-  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(['https://openrouter.ai/api/v1/credits', 'https://openrouter.ai/api/v1/key']);
+  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(['https://openrouter.ai/api/v1/credits', 'https://openrouter.ai/api/v1/key', 'https://openrouter.ai/api/v1/models/google/fixture/endpoints']);
 });
 it.each([{ total_credits: '10', total_usage: 1 }, { total_credits: 10 }, { total_credits: -1, total_usage: 0 }])('refuses malformed balance totals independently of valid key state: %j', async data => {
   fetch.mockImplementation(async url => new Response(JSON.stringify(url.endsWith('/credits') ? { data } : { data: { limit_remaining: 4 } })));
@@ -86,7 +86,7 @@ it('bounds an account-only stall without losing the completed key check', async 
     : Promise.resolve(new Response(JSON.stringify({ data: { limit_remaining: 4 } }))));
   const pending = get('openrouter'); await vi.advanceTimersByTimeAsync(2501);
   expect(await (await pending).json()).toMatchObject({ reachable: true, allowance: 'key_available', account_balance: 'unavailable' });
-  await get('openrouter'); expect(fetch).toHaveBeenCalledTimes(2);
+  await get('openrouter'); expect(fetch).toHaveBeenCalledTimes(3);
 });
 
 it.each([

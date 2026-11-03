@@ -2109,3 +2109,9 @@ The20minute trial is reviewed/deployeddefault-off with empty metadata tables. Go
 
 
 27October replay sign-in dependency follow-up: read-only Worker timeline establishes153984ms between challenge200and exchange401, exceeding120second challenge cookie. User-authorized renewed attempt fails; automatic review refuses another auth attempt. Exact five-minute challenge proposal and three-attempt bound prepared in docs/plans/2026-10-27-replay-signin-window.md; new human ruling pending. No actual auth-source/runtime change and no private replay dispatch.
+
+## 2026-11-03 — Resolved: Vertex retirement blocking maps (entry of 2026-10-22)
+
+The 2026-10-22 entry "Vertex retirement blocks maps after successful transcription" was fixed the same day. The owner approved the replacement; `31fedc5` released the stuck attempt; the Site model setting was switched to `google/gemini-3.5-flash-lite`; the first real map was accepted at 17:42 IST and all three file formats passed at 18:00 (`a7db796`). The entry was never marked resolved here.
+
+The deferred root cause was that readiness checked key and credit but not the model route. It is now addressed on `fix/openrouter-approved-model-fallback`: an owner-approved `LCT_OPENROUTER_FALLBACK_MODELS` list that keeps the provider pin, plus a model-route check in the OpenRouter health result. See `lct_app/sites/README.md` "Approved model fallback" and `tests/intent/openrouter-model-fallback.md`. Not yet deployed. Choosing and setting the fallback models is an owner decision.

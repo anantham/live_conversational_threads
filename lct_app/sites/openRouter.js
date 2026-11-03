@@ -13,6 +13,18 @@ const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backl
   'child_missing', 'child_level', 'child_backlink', 'cycle', 'typed_reference']);
 const PROVIDER_STATUSES = new Set(['INVALID_ARGUMENT', 'UNAUTHENTICATED', 'PERMISSION_DENIED',
   'NOT_FOUND', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION', 'UNAVAILABLE', 'INTERNAL']);
+// No provider accepted the request: model/route not found (the 20 Oct retirement) or no
+// provider meets the routing pin. Every other refusal either applies to all models
+// (400-403), is transient (429), or may follow provider work (502), so it never falls back.
+const ROUTE_UNAVAILABLE = new Set([404, 503]);
+
+// Always logged: a dead primary is an owner-visible degradation, not a debug detail.
+function logModelFallback(upstreamStatus, index) {
+  try {
+    console.warn('[openrouter] model route unavailable; trying next approved model',
+      { code: 'model_fallback', upstreamStatus, from: index + 1, to: index + 2 });
+  } catch { /* Diagnostics must not change the generation result. */ }
+}
 
 async function logProviderRefusal(env, response, signal, backend) {
   if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
@@ -61,7 +73,10 @@ async function generate(request, env, policy) {
       messages: wire.messages, response_format: wire.response_format };
   }
   else wire.provider = { ...wire.provider, only: [policy.provider], data_collection: policy.dataCollection };
-  if (new TextEncoder().encode(JSON.stringify(wire)).byteLength > 512 * 1024) {
+  // One complete request per approved model. Only `model` differs, so every fallback carries the
+  // same provider pin and data policy; OpenRouter's `models` array is not relied on for that.
+  const wires = policy.backend === 'gemini' ? [wire] : policy.models.map(model => ({ ...wire, model }));
+  if (wires.some(body => new TextEncoder().encode(JSON.stringify(body)).byteLength > 512 * 1024)) {
     throw new OpenRouterError(400, 'source', 'The generation request is too large. No attempt was requested.');
   }
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was cancelled before an attempt was requested.');
@@ -75,28 +90,35 @@ async function generate(request, env, policy) {
     RETURNING id`).bind(id, now, policy.maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
 
-  const artifact = await openRouterWait(request.signal, 60_000, async signal => {
-    const response = await fetch(policy.endpoint, { method: 'POST',
-      headers: { Authorization: `Bearer ${policy.key}`, 'Content-Type': 'application/json' },
-      // Edge fetch supports manual; the exact-200 gate below refuses redirects.
-      body: JSON.stringify(wire), signal, redirect: 'manual' });
-    if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
-    if (response.status !== 200) {
-      await logProviderRefusal(env, response, signal, policy.backend);
-      void response.body?.cancel().catch(() => {});
-      throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation. The attempt remains counted. Check provider availability and allowance before retrying.`);
-    }
-    const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
-    try { return recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion }).bundle; }
-    catch (error) {
-      logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
-      throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`);
+  const { artifact, model } = await openRouterWait(request.signal, 60_000, async signal => {
+    for (const [index, body] of wires.entries()) {
+      const response = await fetch(policy.endpoint, { method: 'POST',
+        headers: { Authorization: `Bearer ${policy.key}`, 'Content-Type': 'application/json' },
+        // Edge fetch supports manual; the exact-200 gate below refuses redirects.
+        body: JSON.stringify(body), signal, redirect: 'manual' });
+      if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
+      if (response.status !== 200) {
+        const next = index + 1 < wires.length && ROUTE_UNAVAILABLE.has(response.status);
+        await logProviderRefusal(env, response, signal, policy.backend);
+        void response.body?.cancel().catch(() => {});
+        if (next) { logModelFallback(response.status, index); continue; }
+        if (ROUTE_UNAVAILABLE.has(response.status) && wires.length > 1) {
+          throw new OpenRouterError(502, 'no_model_route', 'No approved model currently has a route through the selected provider. The attempt remains counted; no map was saved.');
+        }
+        throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation. The attempt remains counted. Check provider availability and allowance before retrying.`);
+      }
+      const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
+      try { return { artifact: recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion }).bundle, model: body.model }; }
+      catch (error) {
+        logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
+        throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`);
+      }
     }
   });
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
   const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
   if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
-  return openRouterJSON(200, { request_id: id, artifact });
+  return openRouterJSON(200, { request_id: id, artifact, model });
 }
 
 export async function handleOpenRouter(request, env) {
@@ -112,7 +134,8 @@ export async function handleOpenRouter(request, env) {
       const available = enabled && admission.attempts < policy.maxRequests && admission.unresolved < policy.maxConcurrent
         && (admission.latest == null || admission.latest <= Date.now() - policy.admissionIntervalMs);
       return openRouterJSON(200, { enabled, available, configured: policy.configured, schema_ready: Boolean(admission),
-        backend: policy.backend, audience: policy.audience, model: policy.model, provider: policy.provider, max_output_tokens: policy.maxTokens,
+        backend: policy.backend, audience: policy.audience, model: policy.model, fallback_models: policy.fallbackModels,
+        provider: policy.provider, max_output_tokens: policy.maxTokens,
         message: !enabled ? 'Generation is waiting for provider, admission storage and spending-limit setup.'
           : available ? 'Generation is available within shared attempt and token limits.'
             : 'The shared generation limit is reached or another attempt is starting. Unresolved attempts and lifetime limits need owner review.' });

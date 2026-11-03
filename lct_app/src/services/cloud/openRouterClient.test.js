@@ -1,7 +1,7 @@
 // @vitest-environment node
 // Intent: tests/intent/sites-recording-map.md; actual source/graph adapters and synthetic intercepted network only.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { generateRecordingMap, getRecordingMapStatus } from './openRouterClient.js';
+import { describeModelRoute, generateRecordingMap, getRecordingMapStatus } from './openRouterClient.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { readThreadsFile } from '../threadsArtifact.js';
 
@@ -82,4 +82,26 @@ it.each([
   expect(error.message).toContain(text); expect(error.message).toContain('remains counted');
   expect(error.message).not.toContain('sensitive'); expect(error.code).toBe(code);
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+// Intent: tests/intent/openrouter-model-fallback.md. Consent names every model that may receive the transcript.
+const ready = extra => ({ backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true,
+  audience: 'public', model: 'vendor/primary', provider: 'approved-provider', ...extra });
+it('accepts an approved fallback list, treats its absence as none, and refuses malformed lists', async () => {
+  fetch.mockResolvedValueOnce(response(ready({ fallback_models: ['vendor/second', 'vendor/third'] })));
+  expect(await getRecordingMapStatus()).toMatchObject({ fallback_models: ['vendor/second', 'vendor/third'] });
+  fetch.mockResolvedValueOnce(response(ready()));
+  expect((await getRecordingMapStatus()).fallback_models).toEqual([]);
+  for (const fallback_models of ['vendor/second', [1], ['a/b', 'c/d', 'e/f', 'g/h'], ['x'.repeat(161)]]) {
+    fetch.mockResolvedValueOnce(response(ready({ fallback_models })));
+    await expect(getRecordingMapStatus()).rejects.toThrow('unreadable');
+  }
+});
+it('describes the model route with every approved fallback before consent', () => {
+  expect(describeModelRoute(ready({ fallback_models: [] }))).toBe('Model: vendor/primary · Provider: approved-provider');
+  expect(describeModelRoute(ready({ fallback_models: ['vendor/second'] })))
+    .toBe('Model: vendor/primary, or vendor/second if it is unavailable · Provider: approved-provider');
+  expect(describeModelRoute(ready({ fallback_models: ['vendor/second', 'vendor/third'] })))
+    .toBe('Model: vendor/primary, or vendor/second, then vendor/third if it is unavailable · Provider: approved-provider');
+  expect(describeModelRoute({ model: null })).toBeNull();
 });
