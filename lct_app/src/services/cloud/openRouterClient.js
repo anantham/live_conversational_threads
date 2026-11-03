@@ -7,6 +7,7 @@ const uncertain = 'No new map is available. The attempt may remain counted; chec
 const generationFailures = {
   provider_refused: 'The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.',
   invalid_completion: 'The AI provider returned an incomplete or invalid map. Your audio and transcript are preserved; the attempt remains counted.',
+  no_model_route: 'No approved AI model currently has a route through the selected provider. Your audio and transcript are preserved; the attempt remains counted.',
 };
 const messages = {
   401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',
@@ -69,7 +70,19 @@ export async function getRecordingMapStatus(signal, backend = 'openrouter') {
   if (status.backend !== backend || ['enabled', 'available', 'configured', 'schema_ready'].some(key => typeof status[key] !== 'boolean')
     || ![null, 'public', 'authenticated'].includes(status.audience)
     || ['model', 'provider'].some(key => status[key] != null && (typeof status[key] !== 'string' || status[key].length > 160))) throw unreadable();
-  return status;
+  // Older Site deployments omit the list; that means no fallback, not an unknown one.
+  const fallbacks = status.fallback_models ?? [];
+  if (!Array.isArray(fallbacks) || fallbacks.length > 3
+    || fallbacks.some(model => typeof model !== 'string' || !model || model.length > 160)) throw unreadable();
+  return { ...status, fallback_models: fallbacks };
+}
+
+/** The consent-time description of every model that may receive the transcript. */
+export function describeModelRoute(status) {
+  if (!status?.model) return null;
+  const fallbacks = status.fallback_models || [];
+  const models = fallbacks.length ? `${status.model}, or ${fallbacks.join(', then ')} if it is unavailable` : status.model;
+  return `Model: ${models} · Provider: ${status.provider}`;
 }
 
 export async function generateRecordingMap(source, signal, backend = 'openrouter') {

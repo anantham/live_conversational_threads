@@ -65,7 +65,8 @@ export const openRouterAttempts = sqliteTable('lct_openrouter_attempts', {
   recoveryReleasedAt: integer('recovery_released_at'),
 }, (table) => [
   index('lct_openrouter_attempts_created_idx').on(table.createdAt),
-  check('lct_openrouter_attempts_tokens_check', sql`${table.maxOutputTokens} >= 1 and ${table.maxOutputTokens} <= 8192`),
+  // Unqualified column names: a table rebuild must not leave the temporary table's name in the CHECK.
+  check('lct_openrouter_attempts_tokens_check', sql`"max_output_tokens" >= 1 and "max_output_tokens" <= 16384`),
 ]);
 
 // Explicit guest publications only; never populated from private or local files.

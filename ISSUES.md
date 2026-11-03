@@ -2109,3 +2109,35 @@ The20minute trial is reviewed/deployeddefault-off with empty metadata tables. Go
 
 
 27October replay sign-in dependency follow-up: read-only Worker timeline establishes153984ms between challenge200and exchange401, exceeding120second challenge cookie. User-authorized renewed attempt fails; automatic review refuses another auth attempt. Exact five-minute challenge proposal and three-attempt bound prepared in docs/plans/2026-10-27-replay-signin-window.md; new human ruling pending. No actual auth-source/runtime change and no private replay dispatch.
+
+## 2026-11-03 — Resolved: Vertex retirement blocking maps (entry of 2026-10-22)
+
+The 2026-10-22 entry "Vertex retirement blocks maps after successful transcription" was fixed the same day. The owner approved the replacement; `31fedc5` released the stuck attempt; the Site model setting was switched to `google/gemini-3.5-flash-lite`; the first real map was accepted at 17:42 IST and all three file formats passed at 18:00 (`a7db796`). The entry was never marked resolved here.
+
+The deferred root cause was that readiness checked key and credit but not the model route. It is now addressed on `fix/openrouter-approved-model-fallback`: an owner-approved `LCT_OPENROUTER_FALLBACK_MODELS` list that keeps the provider pin, plus a model-route check in the OpenRouter health result. See `lct_app/sites/README.md` "Approved model fallback" and `tests/intent/openrouter-model-fallback.md`. Not yet deployed. Choosing and setting the fallback models is an owner decision.
+
+## 2026-11-03 — Map generation is unreliable beyond the 5-minute session envelope (non-blocking)
+
+Found during the live verification of the approved model fallback (`fix/openrouter-approved-model-fallback`), using the podcast episode in `lct_app/public/experiments/overlapping.threads`:
+- 20-minute transcript, `google/gemini-3.5-flash-lite`: complete reply (`finish_reason: stop`, 7,067 tokens), rejected by the validator at `hierarchy/parent_missing`. All 20 chunks referenced `idea-intro`-style parent ids while the model named the idea nodes `node-idea-intro`. The prompt is correct (it says to copy ids exactly; its example has no prefix). Strict JSON-schema output cannot enforce referential integrity. Two runs, both `invalid_completion`; only the second was diagnosed.
+- 20-minute transcript, `google/gemini-3.6-flash`: 200 from the provider, but generation did not finish inside the Worker's 60-second window (408 `timeout`).
+- 5-minute transcript (the live-session cap, `LCT_SONIOX_MAX_SESSION_SECONDS=300`), `google/gemini-3.5-flash-lite`: valid 11-node, 5-tier map in 7 s ($0.008).
+
+Impact: live sessions are capped at 5 minutes, so the normal path stays inside the working envelope. Longer inputs (audio import, the 20-minute replay) depend on the model keeping ids consistent and finishing in time. Recommended next step: an owner decision between a deterministic id-repair pass before validation (e.g. resolving a reference that matches a node id up to a consistent prefix) and chunked generation for long transcripts. The validator itself is correct and should not be loosened silently.
+
+## 2026-11-03 — Update: long-input map generation, A + D implemented (non-blocking)
+
+Follow-up to "Map generation is unreliable beyond the 5-minute session envelope". On branch `fix/long-input-reference-repair`: (A) a recorded, deterministic reference repair before validation, and (D) a 90 s map provider window (was 60 s). These address the observed `parent_missing` and 408 cases only. Still open: (1) output-token headroom, since a 20-minute reply used 7,067 of 8,192 tokens and a slightly longer or richer input will end in `choice_finish`; only chunked generation (option B) fixes this, so do it before any duration cap goes past ~20 minutes; (2) a repaired map does not yet carry the repair in its saved `.threads` file or show it in the UI; (3) no paid confirmation run of A + D yet.
+
+## 2026-11-03 — Update: paid run confirms the output-token ceiling at 20 minutes (non-blocking)
+
+Owner-approved paid run of PR #220 on the same 20-minute input: `gemini-3.5-flash-lite` stopped at `finish_reason: length` (8,175 completion tokens, cap 8,192, $0.023). Earlier the same input finished in 7,067 tokens, so output length varies run to run on identical input. About 27% of the reply's characters were pretty-print whitespace. No `node-` drift occurred this time, so the repair was not exercised live. Recommended next step: an owner choice between compact-JSON output, raising `max_tokens` (and the replay budget formula), or chunked generation (B).
+
+## 2026-11-03 — Update: 20-minute maps pass with compact JSON output (non-blocking)
+
+Measured envelope (`docs/reviews/2026-11-03-long-input-envelope.md`): with pretty-printed output, 20-minute maps succeeded 1 of 4 (all failures at the 8,192-token cap). With a compact-JSON instruction (branch `fix/long-input-reference-repair`), 10 of 10 succeeded. Remaining: the largest compact 20-minute map used 93% of the cap. Raising `LCT_OPENROUTER_MAX_OUTPUT_TOKENS`, together with the replay budget, is an owner cost decision. Chunked generation is still needed well beyond 20 minutes.
+
+## 2026-11-04 — Update: long-input envelope final numbers (non-blocking)
+
+Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps were valid 19/20 on the benchmark transcript (one wrong-tier reference error) and 15-minute maps 3/3. None of 30 compact runs hit the 8,192 cap. One of 20 replies ignored the compact instruction and used 93% of the cap. New observed failure classes, all correctly rejected: paraphrased or wrong-tier parent ids and a dangling thread moment (not affix drift), plus one 90 s provider timeout. Open owner decisions: raise `LCT_OPENROUTER_MAX_OUTPUT_TOKENS` with the replay budget, and chunked generation for long or dense inputs.
+

@@ -7,7 +7,7 @@ import worker from '../../../sites/worker.js';
 const SITE='https://replay-fixture.example', BASE='/api/cloud/replay-trial';
 const ID='12345678-1234-4123-8123-123456789abc', OTHER='22345678-1234-4123-8123-123456789abc';
 const response=(x,status=200)=>new Response(JSON.stringify(x),{status,headers:{'content-type':'application/json'}});
-let db,env,calls,credit,failMint,failMap,holdMap,releaseMap;
+let db,env,calls,credit,failMint,failMap,holdMap,releaseMap,mapGraph;
 const attempts=()=>db.prepare('SELECT * FROM lct_audio_replay_attempts ORDER BY sequence').all();
 const trial=()=>db.prepare('SELECT * FROM lct_audio_replay_trial').get();
 const source=(complete=false)=>({recordingId:ID,startedAt:1000,complete,finalTokens:[{text:'A synthetic garden plan.',speaker:'1',startMs:0,endMs:1000}]});
@@ -17,7 +17,7 @@ const run=(...args)=>worker.fetch(req(...args),env);
 const mint=()=>run('/session','POST',{});
 const map=(n,complete=false,headers={})=>run('/generate','POST',{source:source(complete),phase:complete?'final':'periodic'},{'x-lct-replay-sequence':String(n),...headers});
 beforeEach(()=>{
- vi.useFakeTimers();vi.setSystemTime(Date.UTC(2026,9,27)); db=new DatabaseSync(':memory:');calls=[];credit=100;failMint=false;failMap=false;holdMap=false;
+ vi.useFakeTimers();vi.setSystemTime(Date.UTC(2026,9,27)); db=new DatabaseSync(':memory:');calls=[];credit=100;mapGraph=graph;failMint=false;failMap=false;holdMap=false;
  const journal=JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json',import.meta.url),'utf8'));
  for(const e of journal.entries)db.exec(readFileSync(new URL('../../../drizzle/'+e.tag+'.sql',import.meta.url),'utf8'));
  db.prepare('INSERT INTO lct_openrouter_attempts (id,created_at,max_output_tokens) VALUES (?,1,8192)').run('old-holder');
@@ -33,7 +33,7 @@ beforeEach(()=>{
  if(url.includes('temporary-api-key')){if(failMint)throw new Error('SYNTHETIC-STT-KEY');return response({api_key:'snx_temp_SYNTHETIC_ONLY',expires_at:new Date(Date.now()+60000).toISOString()},201);}
  if(failMap)return response({error:'private refusal'},502);
  if(holdMap)await new Promise(resolve=>{releaseMap=resolve;});
- return response({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(graph())}}]});
+ return response({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(mapGraph())}}]});
  }));
 });
 afterEach(()=>{db.close();vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
@@ -73,6 +73,33 @@ describe('private one-time long replay',()=>{
   await mint();for(let i=1;i<=27;i++){expect((await map(i)).status).toBe(200);await vi.advanceTimersByTimeAsync(45001);}
   expect((await map(28)).status).toBe(409);expect((await map(28,true)).status).toBe(200);expect(attempts().filter(x=>x.kind==='map')).toHaveLength(28);
  });
+ it('accepts a map with one consistent id prefix drift, reporting and logging the repair',async()=>{
+  // Intent: tests/intent/generation-reference-repair.md. Declared `node-moment`, referenced as `moment`.
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+  const n=(level,id,parent_id)=>({id,semantic_level:level,semantic_type:['chunk','idea'][level-1],node_name:id,summary:'',source_excerpt:'',source_ref:{utterance_ids:level===1?['utterance-0001']:[]},parent_id,secondary_parent_ids:[],thread_id:null});
+  mapGraph=()=>({hierarchy_format:'tiered-parent-links-v2',metadata:{conversation_title:'Garden',executive_summary:'Synthetic'},nodes:[n(1,'node-plan',{semantic_level:2,id:'garden'}),n(2,'node-garden',null)],edges:[],conversation_threads:[]});
+  await mint();const r=await map(1);expect(r.status).toBe(200);const body=await r.json();
+  expect(body.reference_repair).toEqual({operation:'add_prefix',affix:'node-',references:1});
+  expect(body.artifact.graph_data.find(x=>x.id==='1:node-plan').parent_id).toBe('2:node-garden');
+  expect(warn).toHaveBeenCalledWith('[openrouter] repaired generated references',{code:'reference_repair',operation:'add_prefix',affix:'node-',references:1});
+ });
+ it('prices and sends the long output cap for replay maps, and accepts a bare provider tag',async()=>{
+  // Intent: tests/intent/long-input-output-budget.md.
+  expect((await (await run('/preflight')).json()).required_usd).toBe(1.76);
+  env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS='16384';
+  expect((await (await run('/preflight')).json()).required_usd).toBe(2.37);
+  // Same length rule as the map route: an early periodic map inside 5 minutes keeps the live cap.
+  await mint();expect((await map(1)).status).toBe(200);
+  const sent=()=>calls.filter(c=>c.url.includes('/chat/completions')).map(c=>JSON.parse(c.options.body).max_tokens);
+  expect(sent()).toEqual([8192]);
+  await vi.advanceTimersByTimeAsync(45001);
+  const long={...source(),finalTokens:[...source().finalTokens,{text:' Later.',speaker:'1',startMs:1199000,endMs:1200000}]};
+  expect((await run('/generate','POST',{source:long,phase:'periodic'},{'x-lct-replay-sequence':'2'})).status).toBe(200);
+  expect(sent()).toEqual([8192,16384]);
+  const original=globalThis.fetch;
+  vi.stubGlobal('fetch',vi.fn(async(url,options)=>url.endsWith('/endpoints')?response({data:{endpoints:[{tag:'google-vertex',pricing:{prompt:'0.0000003',completion:'0.0000025'}}]}}):original(url,options)));
+  expect(await (await run('/preflight')).json()).toMatchObject({sufficient:true,required_usd:2.37});
+ });
  it('stops after provider refusal, retaining the spent operation',async()=>{
   await mint();failMap=true;expect((await map(1)).status).toBe(502);expect(trial().state).toBe('failed');expect(attempts().at(-1).state).toBe('uncertain');await vi.advanceTimersByTimeAsync(45001);expect((await map(2)).status).toBe(409);
  });
@@ -89,6 +116,22 @@ it('latches a committed-but-unacknowledged dispatch without a provider call',asy
  const before=calls.filter(c=>c.url.includes('/chat/completions')).length;
  expect((await map(1)).status).toBe(503);expect(trial().state).toBe('failed');expect(attempts().at(-1).state).toBe('uncertain');
  expect(calls.filter(c=>c.url.includes('/chat/completions'))).toHaveLength(before);expect((await map(2)).status).toBe(409);
+});
+it('refuses a source the transcript validator rejects as a client error, reserving nothing',async()=>{
+ // Intent: tests/intent/long-input-output-budget.md. The output cap is sized from the validated span,
+ // so an invalid source must stop at sizing with 400, not reach reservation or surface as a 503.
+ // The span exceeds 5 minutes, so the long-cap branch is the one that must refuse.
+ await mint();const before=db.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts').get().n;
+ const invalid={...source(),finalTokens:[{text:'A synthetic garden plan.',speaker:'1',startMs:2000,endMs:1000},{text:' Later.',speaker:'1',startMs:0,endMs:600000}]};
+ const refused=await run('/generate','POST',{source:invalid,phase:'periodic'},{'x-lct-replay-sequence':'1'});
+ expect(refused.status).toBe(400);
+ // The message is the sizing refusal's, not the earlier recording/phase check's.
+ expect(await refused.json()).toEqual({code:'source',error:'Use the assigned replay source. No request was reserved.'});
+ expect(attempts().filter(a=>a.kind==='map')).toEqual([]);
+ expect(db.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts').get().n).toBe(before);
+ expect(calls.filter(c=>c.url.includes('/chat/completions'))).toHaveLength(0);
+ // Nothing was consumed: the same sequence still maps a valid source.
+ expect((await map(1)).status).toBe(200);
 });
 it('refuses a substituted recording and oversized model input without a model call',async()=>{
  await mint();const swapped={...source(),recordingId:OTHER};

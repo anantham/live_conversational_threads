@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MAP_CLIENT_DEADLINE_MS } from "../services/cloud/generationDeadlines.js";
 
 const HISTORY_KEYS = { public: "lct.public_tasks_timing.v1", "private-conversation": "lct.private_conversation_timing.v1", "recording-map": "lct.recording_map_timing.v1" };
 const STAGES = ["list", "prepare", "publish", "remove", "load", "generate"];
@@ -31,7 +32,7 @@ export function useCloudTask(scope = "public") {
     current.current = task;
     setActivity(stage); setElapsed(0);
     const interval = window.setInterval(() => { if (alive.current && current.current === task) setElapsed(Math.floor((Date.now() - started) / 1000)); }, 1000);
-    const deadline = window.setTimeout(() => { timeout = true; controller.abort(); }, stage === "generate" ? 95_000 : 30_000);
+    const deadline = window.setTimeout(() => { timeout = true; controller.abort(); }, stage === "generate" ? MAP_CLIENT_DEADLINE_MS : 30_000);
     const interrupted = new Promise((_, reject) => {
       onAbort = () => reject(new DOMException("Aborted", "AbortError"));
       controller.signal.addEventListener("abort", onAbort, { once: true });

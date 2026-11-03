@@ -1,4 +1,4 @@
-import { openRouterPolicy } from './openRouterPolicy.js';
+import { openRouterPolicy, outputCapFor } from './openRouterPolicy.js';
 import { sonioxPolicy, readSonioxJSON } from './sonioxPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
@@ -23,11 +23,12 @@ export async function replayBudget(env, parentSignal) {
       key.data.limit_remaining, key.data.effective_budget?.remaining_usd,
       ...(Array.isArray(key.data.budgets) ? key.data.budgets.map(b => b.remaining_usd) : [])].filter(n => typeof n === 'number' && Number.isFinite(n));
     if (key.data.limit_remaining === null && key.data.limit !== null) throw replayError(503, 'readiness', 'The key limit could not be identified safely.');
-    const endpoints = catalogue.data?.endpoints?.filter(e => typeof e.tag === 'string' && e.tag.startsWith(policy.provider + '/'));
+    // Same match as the health check: the bare provider slug or any of its regional tags.
+    const endpoints = catalogue.data?.endpoints?.filter(e => typeof e.tag === 'string' && (e.tag === policy.provider || e.tag.startsWith(policy.provider + '/')));
     if (!endpoints?.length || endpoints.some(e => !valid(Number(e.pricing?.prompt)) || !valid(Number(e.pricing?.completion)))) throw replayError(503, 'readiness', 'The approved provider price bound is unavailable.');
     const inputPrice = Math.max(...endpoints.map(e => Number(e.pricing.prompt))), outputPrice = Math.max(...endpoints.map(e => Number(e.pricing.completion)));
     // UTF-8 request bytes overestimate ordinary text input tokens; include a margin.
-    const required = (131072 * inputPrice + 8192 * outputPrice) * 28 * 1.05;
+    const required = (131072 * inputPrice + policy.longMaxTokens * outputPrice) * 28 * 1.05;
     const available = Math.min(...limits);
     return { sufficient: available >= required, required_usd: Math.ceil(required * 100) / 100,
       available_usd: Math.max(0, Math.floor(available * 100) / 100), checked_at: Date.now() };
@@ -36,7 +37,10 @@ export async function replayBudget(env, parentSignal) {
 export function replayWire(env, source) {
   const p = openRouterPolicy(env);
   if (!p.enabled || p.maxTokens !== 8192) throw replayError(503, 'inactive', 'The existing approved model configuration is not ready.');
-  const wire = buildOpenRouterGenerationRequest({ source, model: p.model, maxTokens: 8192 });
+  // Same length rule as the map route; the preflight prices every replay map at the long cap.
+  let maxTokens;
+  try { maxTokens = outputCapFor(p, source); } catch { throw replayError(400, 'source', 'Use the assigned replay source. No request was reserved.'); }
+  const wire = buildOpenRouterGenerationRequest({ source, model: p.model, maxTokens });
   wire.provider = { ...wire.provider, only: [p.provider], data_collection: p.dataCollection };
   const body = JSON.stringify(wire);
   if (new TextEncoder().encode(body).byteLength > 131072) throw replayError(413, 'input_limit', 'Replay model input exceeds 128 KiB. No request was reserved; keep the full local transcript.');
@@ -47,7 +51,8 @@ export async function replayGenerate(request, env, source, wire) {
     const response = await fetch(wire.policy.endpoint, { method: 'POST', headers: { Authorization: `Bearer ${wire.policy.key}`, 'Content-Type': 'application/json' }, body: wire.body, signal, redirect: 'manual' });
     if (response.status !== 200) { void response.body?.cancel().catch(() => {}); throw replayError(502, 'provider_refused', 'The model refused the replay request. This trial stops; the attempt remains counted.'); }
     const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
-    return recordingThreadsFromOpenRouterResponse({ source, response: completion }).bundle;
+    const { bundle, referenceRepair } = recordingThreadsFromOpenRouterResponse({ source, response: completion });
+    return { artifact: bundle, repair: referenceRepair };
   });
 }
 export async function replayMint(request, env, id) {

@@ -51,16 +51,51 @@ async function accountBalance(key, parentSignal) {
   } catch { return 'unavailable'; }
 }
 
+// Counts approved models that still list at least one endpoint on the pinned provider, so a
+// retired route shows before transcription spends anything. Tags are `provider` or
+// `provider/region`. A delisted model (404) is missing; any other unreadable answer is unknown.
+async function modelRoutes(policy, parentSignal) {
+  const routed = tag => typeof tag === 'string' && (tag === policy.provider || tag.startsWith(policy.provider + '/'));
+  const states = await Promise.all(policy.models.map(async model => {
+    try {
+      return await openRouterWait(parentSignal, 3000, async signal => {
+        const response = await fetch(`https://openrouter.ai/api/v1/models/${model}/endpoints`, {
+          method: 'GET', redirect: 'manual', signal, headers: { Authorization: `Bearer ${policy.key}` } });
+        if (response.status !== 200) {
+          void response.body?.cancel().catch(() => {});
+          return response.status === 404 ? 'missing' : 'unknown';
+        }
+        const { data } = await readOpenRouterJSON(response, signal, 256 * 1024, true);
+        if (!Array.isArray(data?.endpoints)) return 'unknown';
+        return data.endpoints.some(endpoint => routed(endpoint?.tag)) ? 'available' : 'missing';
+      });
+    } catch { return 'unknown'; }
+  }));
+  const count = state => states.filter(value => value === state).length;
+  return { approved: states.length, available: count('available'), unknown: count('unknown') };
+}
+
+function routeDetail(routes, provider) {
+  if (!routes.available && !routes.unknown) return `No approved model currently has a route on ${provider}. Map generation would fail; transcription is unaffected.`;
+  if (routes.available === routes.approved) return routes.approved === 1
+    ? 'API key accepted. The approved model has a route. This check does not run model generation.'
+    : `API key accepted. All ${routes.approved} approved models have a route. This check does not run model generation.`;
+  return `API key accepted. ${routes.available} of ${routes.approved} approved models currently have a route${routes.unknown ? ` (${routes.unknown} could not be checked)` : ''}. This check does not run model generation.`;
+}
+
 async function providerCheck(service, policy, env) {
   const key = service === 'soniox' ? env.SONIOX_API_KEY.trim() : policy.key;
+  // Route counts depend on the provider as well as the model list.
+  const models = `${policy.provider ?? ''}|${policy.models?.join(',') ?? policy.model}`;
   const previous = checks.get(service);
-  if (previous?.key === key && previous.model === policy.model && Date.now() - previous.at < TTL) return previous.promise;
-  const entry = { key, model: policy.model, at: Date.now() };
+  if (previous?.key === key && previous.models === models && Date.now() - previous.at < TTL) return previous.promise;
+  const entry = { key, models, at: Date.now() };
   entry.promise = (async () => {
     const start = Date.now();
     try {
       return await openRouterWait(new AbortController().signal, 6000, async signal => {
         const balance = service === 'openrouter' ? accountBalance(key, signal) : null;
+        const routing = service === 'openrouter' ? modelRoutes(policy, signal) : null;
         const url = service === 'soniox' ? 'https://api.soniox.com/v1/models'
           : service === 'openrouter' ? 'https://openrouter.ai/api/v1/key'
             : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(policy.model)}`;
@@ -81,11 +116,14 @@ async function providerCheck(service, policy, env) {
         const limits = service === 'openrouter' ? [data.limit_remaining, data.effective_budget?.remaining_usd,
           ...(Array.isArray(data.budgets) ? data.budgets.map(b => b.remaining_usd) : [])].filter(finite) : [];
         const account = balance ? await balance : null;
+        const routes = routing ? await routing : null;
         const allowance = account === 'exhausted' || limits.some(n => n <= 0) ? 'exhausted' : limits.length ? 'key_available' : 'unknown';
-        return { reachable: true, allowance, ...(account ? { account_balance: account } : {}), latency_ms: Date.now() - start,
+        const unrouted = routes && !routes.available && !routes.unknown;
+        return { reachable: !unrouted, allowance, ...(account ? { account_balance: account } : {}), latency_ms: Date.now() - start,
+          ...(routes ? { model_routes: routes } : {}),
           ...(service === 'soniox' ? { probe: 'model_listing', access: 'accepted' } : {}),
           detail: allowance === 'exhausted' ? 'The provider reports an exhausted allowance.'
-            : service === 'openrouter' ? 'API key accepted. This check does not run model generation.'
+            : service === 'openrouter' ? routeDetail(routes, policy.provider)
               : service === 'soniox' ? 'Model listing responded. Transcription and credit balance have not been tested.'
               : 'Provider API responded. Billing balance and live processing are not tested by this check.' };
       });
