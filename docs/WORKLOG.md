@@ -1,5 +1,52 @@
 # WORKLOG
 
+## 2026-11-03 23:40 IST — Port the M5's local STT fixes onto main
+
+- Owner ruling 2026-11-03: port only the STT fixes now. The M5
+  `com.aditya.mlx-stt` LaunchAgent runs `lct_python_backend/local_stt/server.py`
+  from the main clone on `feat/cost-tracking-wire-up` at `92da5920` (that
+  commit is local, not pushed). The deployed file's SHA256 (`b8c67456…`)
+  matches `92da5920`. The running service, its checkout, and its venv were
+  not touched. The venv was used read-only to run tests.
+- Reconciliation, `lct_python_backend/local_stt/server.py`: main's #184 turned
+  out to be a stricter rewrite of the same concurrency/VAD commits. It rejects
+  overflow before `UploadFile.read()`, uses `BoundedSemaphore` with clamped env
+  values, and moves the mlx import, temp write, diarizer load, ECAPA embeddings
+  and cleanup off the event loop, which the deployed file left on it. It also
+  counts `saturated_rejections`, returns a stable `local_stt_saturated` 503
+  code, and exposes `_vad_analysis`. So main's file is the base, and the three
+  deployed-only fixes were folded in: rotating log plus quiet `/health`
+  (`92da5920`); FFmpeg-CLI decoding for VAD and diarization instead of
+  TorchCodec (`32079a10`); and the transcript kept when diarization fails
+  (`32079a10`). The deployed liveness-contract history comment, VAD docstring
+  and 11 GB cache-creep note are kept.
+- TorchCodec, corrected mid-task: from a plain shell, main's VAD fails open
+  ("Could not load libtorchcodec"). Under the LaunchAgent's
+  `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/opt/ffmpeg@8/lib` it works. The
+  bypass removes that environment dependency for VAD and diarization, but not
+  for ECAPA (see ISSUES).
+- Tests, `lct_python_backend/local_stt/test_server_stt.py`: main's tests plus
+  the deployed diarization and logging tests. Async tests now use the `anyio`
+  plugin (pytest-asyncio was never a declared dependency). The review found
+  that the overflow test patched FastAPI's `UploadFile` subclass, so its
+  upload-read guard could not fail. It now patches Starlette's class, and a
+  mutant that reads before the slot check fails it. Added endpoint tests for
+  the VAD gate skipping the model and for anti-hallucination options reaching
+  `transcribe`; each fails against a mutant. Service venv: 11 passed, 1 skipped
+  (optional speech fixture). Main's server.py fails 5 of these in a plain shell
+  and 4 under the service's DYLD environment.
+- `lct_python_backend/local_stt/README.md`: `LOCAL_STT_LOG_PATH` and the
+  `/health` logging note, from the deployed branch.
+- Independent review: Gemini 4 Argon High via Antigravity (pinned
+  `--model gemini-4-argon-high`), clean 7-file packet, SHA256 manifest verified
+  unchanged afterwards. Of 10 findings, one test defect was fixed and two test
+  gaps were filled. The rest are against code identical on main and in
+  production and are logged in `ISSUES.md`. The most significant: production
+  runs `MLX_STT_MAX_CONCURRENCY=4` with one shared, stateful Silero VAD model.
+- Deploy note (not done): once merged, moving the M5 to main changes the 503
+  body (`code` added, new `error` text) and adds `_vad_analysis`/`_vad_gated`
+  to responses. No in-repo consumer reads the old 503 text.
+
 ## 2026-09-29 14:14 IST — Post-deploy opener smoke after PR 202
 
 - PR 202 merged to main as `8e056e5`; Vercel production served the new viewer,

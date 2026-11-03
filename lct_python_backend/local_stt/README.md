@@ -26,7 +26,10 @@ LOCAL_STT_PORT=5095 .venv/bin/python server.py
 ```
 
 Config via env: `LOCAL_STT_MODEL` (default `mlx-community/whisper-large-v3-turbo`),
-`LOCAL_STT_PORT` (default `5095`).
+`LOCAL_STT_PORT` (default `5095`), `LOCAL_STT_LOG_PATH` (default
+`~/Library/Logs/mlx-stt.log`; rotates at 10 MiB, five backups). Healthy `/health`
+probes under 1 s are not logged, so a watchdog polling it doesn't flood the log;
+failed or slow probes still are.
 
 ## Point LCT at it
 
