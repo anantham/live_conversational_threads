@@ -19,7 +19,6 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 // take part, so a repair can never turn an empty, padded or overlong id into a valid one.
 const identity = id => typeof id === 'string' && id.length > 0 && id.length <= 158 && id === id.trim();
 const reference = value => object(value) && Number.isInteger(value.semantic_level) && identity(value.id);
-const key = value => `${value.semantic_level}:${value.id}`;
 
 // Every way `id` differs from `declared` by exactly one delimiter-bounded affix.
 function affixesBetween(id, declared) {
@@ -39,8 +38,8 @@ function affixesBetween(id, declared) {
  * naming drift: a single delimiter-bounded affix operation maps every dangling
  * reference to exactly one declared node at its own level; at each level it
  * touches, every declared id carries the added affix (or none carries the
- * stripped one); no repaired target is also referenced directly; and no
- * dangling id is declared verbatim at another level. Resolved references never
+ * stripped one); each reference family is wholly resolved or wholly dangling;
+ * and no dangling id is declared verbatim at another level. Resolved references never
  * change. Anything else is returned untouched so the unchanged validator
  * rejects it. Never mutates its input.
  */
@@ -56,19 +55,25 @@ export function repairGeneratedReferences(graph) {
     ids.add(node.id);
   }
   const resolves = value => declared.get(value.semantic_level)?.has(value.id) === true;
-  const all = [
-    ...graph.nodes.filter(object).flatMap(node => [node.parent_id,
+  const slots = {
+    parents: graph.nodes.filter(object).flatMap(node => [...(node.parent_id === null ? [] : [node.parent_id]),
       ...(Array.isArray(node.secondary_parent_ids) ? node.secondary_parent_ids : [])]),
-    ...(Array.isArray(graph.edges) ? graph.edges.filter(object).flatMap(edge => [edge.from_node_id, edge.to_node_id]) : []),
-    ...(Array.isArray(graph.conversation_threads) ? graph.conversation_threads.filter(object)
-      .flatMap(path => Array.isArray(path.steps) ? path.steps.filter(object).map(step => step.moment_id) : []) : []),
-  ].filter(reference);
-  const dangling = all.filter(value => !resolves(value));
+    edges: Array.isArray(graph.edges) ? graph.edges.filter(object).flatMap(edge => [edge.from_node_id, edge.to_node_id]) : [],
+    threads: Array.isArray(graph.conversation_threads) ? graph.conversation_threads.filter(object)
+      .flatMap(path => Array.isArray(path.steps) ? path.steps.filter(object).map(step => step.moment_id) : []) : [],
+  };
+  const families = Object.values(slots);
+  // A malformed slot is the validator's to reject; never repair around it.
+  if (families.some(family => family.some(value => !reference(value)))) return none;
+  // Drift is systematic per reference family: parents, edges and thread steps are each either
+  // wholly resolved or wholly dangling. Mixed use (`x` here, `node-x` there) in one family
+  // means the model distinguished the names, so a lone dangling reference is never re-pointed.
+  if (families.some(family => family.some(resolves) && family.some(value => !resolves(value)))) return none;
+  const dangling = families.flat().filter(value => !resolves(value));
   if (!dangling.length) return none;
-  const directlyReferenced = new Set(all.filter(resolves).map(key));
 
   let shared = null;
-  const targets = new Set(), levels = new Set();
+  const levels = new Set();
   for (const value of dangling) {
     // A wrong-tier reference to a verbatim node is not a naming drift.
     if ([...declared].some(([level, ids]) => level !== value.semantic_level && ids.has(value.id))) return none;
@@ -76,13 +81,11 @@ export function repairGeneratedReferences(graph) {
     // A reference with two possible targets (or two readings) is ambiguous on its own.
     if (matches.length !== 1) return none;
     const [operation, affix] = matches[0];
+    // Also implied by the affix check below, which tests every touched level against the final operation.
     if (shared && (shared.operation !== operation || shared.affix !== affix)) return none;
     shared = { operation, affix };
-    targets.add(key({ semantic_level: value.semantic_level, id: OPERATIONS[operation](value.id, affix) }));
     levels.add(value.semantic_level);
   }
-  // Mixed use (`x` here, `node-x` there) means the model distinguished the names.
-  if ([...targets].some(target => directlyReferenced.has(target))) return none;
   const adds = shared.operation.startsWith('add');
   for (const level of levels) {
     const carried = [...declared.get(level)].map(id => CARRIES[shared.operation](id, shared.affix));

@@ -8698,3 +8698,9 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Not adopted: reduplicated `node-node` ambiguity (it is rejected, which is the safe direction).
 - Checks: full suite 140 files / 1,315 tests pass (Node 26, `--no-experimental-webstorage`); lint clean on touched files; Worker build OK.
 
+## 2026-11-03 21:45 IST — Second review round, per-family drift rule
+
+- Round 2: same reviewer/model, packet 46,277 bytes (sha256 `e9f62de1…`), NO-GO with 5 findings. Real: (1) the global "target referenced directly" guard wrongly refused the motivating case when edges/threads used `node-`; (2) a lone dangling reference among resolved ones (e.g. a `-2` suffix strip) was still accepted. Both are resolved by one rule: each reference family (parents, edges, thread steps) must be wholly resolved or wholly dangling. That rule replaces the global guard. (4) Three tests could not fail; rebuilt. (5) Malformed slots now disable the repair. Not adopted: (3) checking the affix on every declared level, because it would refuse replies whose chunk ids lack `node-` and is otherwise covered by the family rule.
+- Guard mutation sweep (remove each guard, run the unit tests): 11/12 killed. The survivor is the shared-operation check, which the per-level affix check also enforces (commented in code).
+- Checks: full suite 140 files / 1,321 tests pass; lint clean; Worker build OK; built-bundle harness still 200 with 28 references repaired.
+

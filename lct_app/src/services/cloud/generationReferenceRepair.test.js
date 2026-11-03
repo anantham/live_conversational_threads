@@ -2,6 +2,7 @@
 // Test intent: tests/intent/generation-reference-repair.md. Synthetic only; no provider.
 import { describe, expect, it } from 'vitest';
 import { recordingThreadsFromOpenRouterResponse } from './openRouterGeneration.js';
+import { repairGeneratedReferences } from './generationReferenceRepair.js';
 
 const source = { recordingId: 'synthetic-repair', startedAt: Date.UTC(2026, 10, 3), complete: true,
   finalTokens: [{ text: 'Plants need water.', speaker: 'S1', startMs: 0, endMs: 1200 },
@@ -59,6 +60,19 @@ describe('deterministic reference repair through the public adapter', () => {
     expect(convert(value).referenceRepair).toEqual({ operation, affix, references: 10 });
   });
 
+  it('repairs drifted parents when edges and paths already use the declared ids', () => {
+    const value = drifted();
+    for (const r of [...value.edges.flatMap(e => [e.from_node_id, e.to_node_id]),
+      ...value.conversation_threads[0].steps.map(step => step.moment_id)]) r.id = `node-${r.id}`;
+    value.edges.push({ ...value.edges[0], id: 'idea-topic', from_node_id: ref(2, 'node-needs'), to_node_id: ref(3, 'node-care') });
+    expect(convert(value).referenceRepair).toEqual({ operation: 'add_prefix', affix: 'node-', references: 6 });
+  });
+
+  it('declines to repair around a malformed reference slot', () => {
+    const value = drifted(); value.nodes[0].parent_id = ref(2, '');
+    expect(repairGeneratedReferences(value)).toEqual({ graph: value, repair: null });
+  });
+
   it('never touches a reply whose references already resolve', () => {
     const value = drifted();
     for (const r of references(value)) r.id = `node-${r.id}`;
@@ -77,31 +91,39 @@ describe('deterministic reference repair through the public adapter', () => {
     ['two different affixes in one reply', 'parent_missing', g => { g.nodes[5].id = 'arc-garden'; }],
     ['a match only at another level', 'parent_missing', g => { g.nodes[2].parent_id = ref(3, 'needs'); }],
     ['an affix without a delimiter', 'parent_missing', g => { for (const n of g.nodes) n.id = n.id.replace('node-', 'x'); }],
-    ['a partial-word match', 'parent_missing',
-      g => { for (const n of g.nodes) n.id = n.id.replace('node-', ''); g.nodes[3].id = 'careful'; }],
-    ['one reference with two targets', 'parent_missing', g => { resolved(g);
-      g.nodes[3].parent_id = ref(5, 'garden'); g.nodes[4].parent_id = ref(5, 'garden');
-      g.nodes.push(node(5, 'garden-node')); }],
+    ['a suffix without a delimiter', 'parent_missing',
+      g => { for (const n of g.nodes) n.id = `${n.id.slice(5)}ful`; }],
+    // `node` against `node-node` reads as both add_prefix `node-` and add_suffix `-node`.
+    ['one reference with two readings', 'parent_missing', g => { g.nodes[5].id = 'node-node';
+      g.nodes[3].parent_id = ref(5, 'node'); g.nodes[4].parent_id = ref(5, 'node'); }],
     // An empty id is malformed on its own; a node named exactly like the affix must not adopt it.
     ['an empty id against a node named like the affix', 'parent_level', g => {
-      for (const n of g.nodes) n.id = n.id.slice(5);
-      g.nodes[1].parent_id = ref(2, ''); g.nodes.push({ ...node(2, 'node-'), parent_id: null }); }],
-    // A word-like prefix must not merge a distinct, undeclared node into one the model referenced directly.
-    ['a repaired target the reply also references directly', 'parent_missing', g => { resolved(g);
+      g.nodes.push(node(2, 'node-', ref(3, 'care'))); g.nodes[1].parent_id = ref(2, ''); }],
+    // A lone dangling reference among resolved ones in the same family is a distinct, undeclared node.
+    ['a lone dangling parent among resolved parents', 'parent_missing', g => { resolved(g);
       g.nodes[1].parent_id = ref(2, 'needs'); }],
-    ['declarations that do not all carry the affix', 'parent_missing', g => {
-      g.nodes.push({ ...node(2, 'other'), parent_id: ref(3, 'node-care') }); }],
+    ['a lone dangling secondary parent that would gain the prefix', 'membership_missing', g => { resolved(g);
+      g.nodes[1].secondary_parent_ids = [ref(3, 'light')]; }],
+    ['a lone dangling secondary parent that would lose a suffix', 'membership_missing', g => { resolved(g);
+      g.nodes[1].secondary_parent_ids = [ref(3, 'node-light-2')]; }],
+    ['a resolved parent to an unprefixed node beside drifted parents', 'parent_missing', g => {
+      g.nodes.push(node(4, 'other', ref(5, 'garden'))); g.nodes[3].parent_id = ref(4, 'other'); }],
+    ['declarations that do not all carry the affix', 'parent_missing', g => { g.nodes.push(node(2, 'other')); }],
+    // A padded reference is invalid; it must not become valid by gaining a prefix.
+    ['a padded reference', 'parent_level', g => {
+      g.nodes[2].id = 'node- needs'; g.nodes[0].parent_id = ref(2, ' needs'); g.nodes[1].parent_id = ref(2, ' needs'); }],
     // Stripping must not shrink an id the validator rejects as overlong into an accepted one.
     ['a reference only valid after stripping its length', 'parent_level', g => {
-      for (const n of g.nodes) n.id = n.id.slice(5); resolved(g);
-      for (const r of references(g)) r.id = r.id.slice(5);
+      for (const n of g.nodes) n.id = n.id.slice(5); for (const r of references(g)) r.id = `node-${r.id}`;
       const long = 'a'.repeat(155); g.nodes[2].id = long;
-      for (const n of g.nodes) if (n.parent_id?.id === 'needs') n.parent_id = ref(2, `node-${long}`); }],
+      for (const r of references(g)) if (r.id === 'node-needs') r.id = `node-${long}`; }],
     ['a dangling id declared verbatim at another level', 'parent_missing', g => {
       g.nodes.push({ ...node(4, 'needs'), parent_id: null }); }],
     ['duplicate declarations', undefined, g => { g.nodes.push({ ...node(2, 'node-needs'), parent_id: null }); }],
   ])('still rejects %s with the original rule', (_label, rule, mutate) => {
     const value = drifted(); mutate(value); const before = JSON.stringify(value);
+    // The repair itself declines, so these cases cannot pass through a later validator rule.
+    expect(repairGeneratedReferences(value).repair).toBe(null);
     const error = rejection(value);
     expect(error.message).toBe('Invalid generated conversation graph.');
     expect(error.validationRule).toBe(rule);
