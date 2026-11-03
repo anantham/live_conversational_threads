@@ -9448,3 +9448,37 @@ Fresh separate live guest browser confirms `/assets/index-CxdC-Qt3.js`, Profile 
   single row click after observing expanded UI works. This could be tool/layout
   settling; no app defect or acceptance claim for that fast sequence is inferred.
   Independent exact-diff review, full push gate and served walkthrough remain.
+
+## 2026-11-03 16:55 IST — Merged main into the Sites migration line
+
+- Objective: let `main` later fast-forward to the Sites migration without losing
+  main's 13 viewer commits (`0e9fdc3`, `11dda97`, #207-#217), which were on
+  neither `codex/lct-sites-serverless` nor `codex/lct-inference-choice`.
+- Worked on new branch `merge/main-into-lct-sites-serverless` (from
+  `origin/codex/lct-sites-serverless` `e339fca`) in a scratch worktree outside
+  Syncthing. The Codex branches, the running checkout and other worktrees were
+  not touched. Not pushed.
+- Commits:
+  - `ecfd2fb` merge: 9 conflicted files. Docs are a union of both sides; the
+    lockfile is the branch lock plus main's `@huggingface/transformers` 4.3.0,
+    with six transitive entries pinned to main's exact versions. The viewer
+    keeps main's structure and re-applies the branch's `speakerIdsOf`,
+    `diagnosticsEnabled` gating, `sourceNotice` banner and `!privateMode` hash
+    guard. Also moved the branch's private/public early returns below main's
+    new hooks (hook-order crash otherwise).
+  - `91844fc` test mock for `useNodesInitialized`.
+  - `ca7289e` private mode disables browser-backed exploration history.
+    Tradeoff: no in-viewer Back/Forward for private cloud copies.
+  - `e9accea` "Names change in this view only" caption moved into
+    `SourceSpeakerEditor`; private/public/generated tests drive main's toolbar
+    and Source panel.
+- Verified on `e9accea` (Node 26, `NODE_OPTIONS=--no-experimental-webstorage`):
+  vitest 135 files / 1116 tests pass; `npm run build` and `npm run build:sites`
+  pass; eslint 129 problems vs 145 on the branch baseline; node script tests
+  7/7. Backend unit: 2087 passed, 4 failed. Those 4 fail identically on pure
+  `main` and the failure set is a subset of the parents' (env-only on this Mac:
+  `pwsh` absent; one Node 26 ESM-loader compile test). No failure exists in the
+  merge that is absent from both parents.
+- Not verified: served walkthrough of the merged viewer; independent review;
+  `codex/lct-inference-choice` (105 further commits) not yet reconciled with
+  this merge.
