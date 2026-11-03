@@ -24,6 +24,16 @@ const drifted = () => ({ hierarchy_format: 'tiered-parent-links-v2',
   conversation_threads: [{ id: 'care', title: 'Plant care', steps: [
     { moment_id: ref(1, 'water'), evidence_utterance_ids: ['utterance-0001'] },
     { moment_id: ref(1, 'shade'), evidence_utterance_ids: ['utterance-0002'] }] }] });
+// The 4 November failure shape: ids name their tier, only the idea tier declares `node-`, and
+// only the two chunk->idea parents omit it. Every other reference resolves.
+const singleTier = () => ({ ...drifted(),
+  nodes: [node(1, 'chunk-water', ref(2, 'idea-water')), node(1, 'chunk-shade', ref(2, 'idea-shade')),
+    node(2, 'node-idea-water', ref(3, 'topic-care')), node(2, 'node-idea-shade', ref(3, 'topic-care')),
+    node(3, 'topic-care', ref(5, 'arc-garden')), node(5, 'arc-garden')],
+  edges: [{ ...drifted().edges[0], from_node_id: ref(1, 'chunk-water'), to_node_id: ref(1, 'chunk-shade') }],
+  conversation_threads: [{ id: 'care', title: 'Plant care', steps: [
+    { moment_id: ref(1, 'chunk-water'), evidence_utterance_ids: ['utterance-0001'] },
+    { moment_id: ref(1, 'chunk-shade'), evidence_utterance_ids: ['utterance-0002'] }] }] });
 const convert = value => recordingThreadsFromOpenRouterResponse({ source, response: {
   choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(value) } }],
 } });
@@ -85,6 +95,82 @@ describe('deterministic reference repair through the public adapter', () => {
       expect(result.bundle.graph_data.find(n => n.id === '1:node-water').parent_id).toBe('2:node-needs');
     });
 
+  // The 4 November reply: only the idea tier declared `node-` (`node-idea-programming`), two
+  // chunks referenced `idea-programming`, and every other tier was unprefixed and resolved.
+  it('repairs a drift confined to one tier\'s declarations when ids name their tier', () => {
+    const authored = singleTier(), before = JSON.stringify(authored);
+    const result = convert(authored);
+    expect(JSON.stringify(authored)).toBe(before);
+    expect(result.referenceRepair).toEqual({ operation: 'add_prefix', affix: 'node-', references: 2 });
+    const byId = new Map(result.bundle.graph_data.map(n => [n.id, n]));
+    expect(byId.get('1:chunk-water').parent_id).toBe('2:node-idea-water');
+    expect(byId.get('1:chunk-shade').parent_id).toBe('2:node-idea-shade');
+    expect(byId.get('2:node-idea-water').parent_id).toBe('3:topic-care');
+  });
+
+  it('repairs the confined drift when an edge already uses a declared idea id', () => {
+    const value = singleTier();
+    value.edges.push({ ...value.edges[0], id: 'idea-topic', from_node_id: ref(2, 'node-idea-water'),
+      to_node_id: ref(3, 'topic-care') });
+    expect(convert(value).referenceRepair).toEqual({ operation: 'add_prefix', affix: 'node-', references: 2 });
+  });
+
+  // Beside references that already resolve, a drift confined to one tier is repaired only as a
+  // prefix before tier-named ids; each case is rejected exactly as without any repair.
+  const ideas = (g, declared, referenced) => { for (const [index, name] of [[2, 'water'], [3, 'shade']]) {
+    g.nodes[index].id = declared(name); g.nodes[index - 2].parent_id = ref(2, referenced(name)); } };
+  it.each([
+    ['ids that do not name their tier', g => ideas(g, n => `node-${n}`, n => n)],
+    ['only one dangling id naming its tier', g => { g.nodes[3].id = 'node-shade'; g.nodes[1].parent_id = ref(2, 'shade'); }],
+    ['ids that name another tier', g => ideas(g, n => `node-topic-${n}`, n => `topic-${n}`)],
+    ['a tier word that only begins a word', g => ideas(g, n => `node-ideas-${n}`, n => `ideas-${n}`)],
+    ['a prefix before a trailing tier word', g => ideas(g, n => `non-${n}-idea`, n => `${n}-idea`)],
+    ['a suffix on the name after the tier word', g => ideas(g, n => `idea-${n}-shortage`, n => `idea-${n}`)],
+    ['an affix that is the tier word itself', g => ideas(g, n => `idea-idea-${n}`, n => `idea-${n}`)],
+    ['an affix that is another tier word', g => ideas(g, n => `Topic-idea-${n}`, n => `idea-${n}`)],
+    ['a tier word with no name after it', g => ideas(g, n => `node-idea${n === 'water' ? '-' : '_'}`,
+      n => `idea${n === 'water' ? '-' : '_'}`)],
+    ['the same prefix drifting at two tiers', g => { g.nodes[4].id = 'node-topic-care';
+      g.nodes[2].parent_id = ref(3, 'topic-care'); g.nodes[3].parent_id = ref(3, 'topic-care'); }],
+    ['a resolved id elsewhere that does not name its tier', g => { g.nodes[5].id = 'garden';
+      g.nodes[4].parent_id = ref(5, 'garden'); }],
+    // Gemini review round 2: every declared id at the tier must name it once the prefix is off;
+    // a lone node gives no repetition; a name needs a letter or digit; no plural or numbered tier word.
+    ['a declared id at the tier that does not name it', g => { g.nodes[3].id = 'node-shade';
+      g.nodes[1].parent_id = ref(2, 'idea-water'); }],
+    ['a word prefix on a bare sibling beside one tier-named id', g => {
+      g.nodes[2].id = 'water-idea-supply'; g.nodes[3].id = 'water-shortage';
+      g.nodes[0].parent_id = ref(2, 'idea-supply'); g.nodes[1].parent_id = ref(2, 'idea-supply');
+      g.edges.push({ ...g.edges[0], id: 'e2', from_node_id: ref(2, 'water-shortage'), to_node_id: ref(3, 'topic-care') }); }],
+    ['a delimiter with no name after the tier word', g => ideas(g, n => `node-idea-${n === 'water' ? '-' : '.'}`,
+      n => `idea-${n === 'water' ? '-' : '.'}`)],
+    ['a numbered tier word as the affix', g => ideas(g, n => `topic1-idea-${n}`, n => `idea-${n}`)],
+    ['a plural tier word as the affix', g => ideas(g, n => `ideas-idea-${n}`, n => `idea-${n}`)],
+    ['a strip at that tier', g => ideas(g, n => `idea-${n}`, n => `idea-${n}-x`)],
+    ['a repaired target also declared at another level', g => {
+      g.nodes.push(node(3, 'node-idea-water', ref(5, 'arc-garden'))); }],
+    // Gemini review round 3: the drift must repeat across two targets; unreferenced declarations at
+    // other tiers count; the name starts right after the tier delimiter; no tier word inside the affix.
+    ['a single drifted target beside a resolved sibling', g => {
+      g.nodes[2].id = 'water-idea-supply'; g.nodes[3].id = 'water-idea-shortage';
+      g.nodes[0].parent_id = ref(2, 'idea-supply'); g.nodes[1].parent_id = ref(3, 'topic-care');
+      g.edges.push({ ...g.edges[0], id: 'e2', from_node_id: ref(2, 'water-idea-shortage'), to_node_id: ref(3, 'topic-care') }); }],
+    ['two drifted references to one target', g => { g.nodes[1].parent_id = ref(2, 'idea-water'); }],
+    ['a tier word run into the name', g => ideas(g, n => `node-ideas${n}`, n => `ideas${n}`)],
+    ['an unreferenced bare declaration at another tier', g => { g.nodes.push(node(4, 'nature', ref(5, 'arc-garden'))); }],
+    ['an unreferenced declaration at another tier carrying the prefix', g => {
+      g.nodes.push(node(3, 'node-topic-light', ref(5, 'arc-garden'))); }],
+    ['a doubled delimiter after the tier word', g => ideas(g, n => `node-idea--${n}`, n => `idea--${n}`)],
+    ['a tier word inside the affix', g => ideas(g, n => `1topic-idea-${n}`, n => `idea-${n}`)],
+    ['a single declared node at the tier', g => { g.nodes[2].id = 'idea-water'; g.nodes[3].id = 'idea-shade';
+      g.nodes[5].id = 'counter-arc-garden'; }],
+  ])('still rejects a one-tier drift with %s', (_label, mutate) => {
+    const value = singleTier(); mutate(value); const before = JSON.stringify(value);
+    expect(repairGeneratedReferences(value).repair).toBe(null);
+    expect(rejection(value)).toMatchObject({ validationStage: 'hierarchy', validationRule: 'parent_missing' });
+    expect(JSON.stringify(value)).toBe(before);
+  });
+
   it('declines to repair around a malformed reference slot', () => {
     const value = drifted(); value.nodes[0].parent_id = ref(2, '');
     expect(repairGeneratedReferences(value)).toEqual({ graph: value, repair: null });
@@ -141,6 +227,10 @@ describe('deterministic reference repair through the public adapter', () => {
     ['edge and path moments whose declarations share a word prefix the resolved hierarchy lacks', undefined, g => {
       for (const n of g.nodes) n.id = n.semantic_level > 1 ? n.id.slice(5) : n.id.replace('node-', 'non-');
       for (const r of references(g)) if (r.semantic_level > 1) r.id = r.id.replace(/^node-/, ''); }],
+    // The reverse of the 4 November shape: one tier declared bare while every resolved reference
+    // carries the prefix. Nothing is stripped beside resolved references.
+    ['edge endpoints that would lose a prefix every resolved reference carries', undefined, g => { resolved(g);
+      for (const n of g.nodes) if (n.semantic_level === 1) n.id = n.id.slice(5); }],
     ['edge endpoints that would lose a suffix the resolved hierarchy keeps', undefined, g => {
       for (const n of g.nodes) n.id = n.semantic_level > 1 ? `${n.id.slice(5)}-2` : n.id.slice(5);
       for (const r of references(g)) r.id = `${r.id}-2`; }],

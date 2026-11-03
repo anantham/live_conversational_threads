@@ -3,7 +3,9 @@ export const GENERATION_HIERARCHY_FORMAT = 'tiered-parent-links-v2';
 const string = { type: 'string' };
 const stringArray = { type: 'array', items: string };
 const levels = [1, 2, 3, 4, 5];
-const types = ['chunk', 'idea', 'topic', 'theme', 'arc'];
+// Semantic type of each level, index = level - 1.
+export const GENERATION_SEMANTIC_TYPES = Object.freeze(['chunk', 'idea', 'topic', 'theme', 'arc']);
+const types = GENERATION_SEMANTIC_TYPES;
 
 function reference(allowedLevels) {
   return { type: 'object', additionalProperties: false, required: ['semantic_level', 'id'],
