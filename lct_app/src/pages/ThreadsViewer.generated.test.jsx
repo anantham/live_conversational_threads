@@ -40,7 +40,10 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.__MG_DEBUG__ = false; });
-const click = label => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label).click());
+// Exact text or aria-label first (icon-only Source); substring for the cycling view button.
+const click = label => act(async () => { const buttons = [...host.querySelectorAll('button')];
+  (buttons.find(button => button.textContent === label || button.getAttribute('aria-label') === label)
+    || buttons.find(button => button.textContent.includes(label))).click(); });
 
 it.each([false, true])('opens the actual generated source in Graph/Discussion without remembering or saving speaker edits (compact=%s)', async compact => {
   context.compact = compact;
@@ -56,10 +59,11 @@ it.each([false, true])('opens the actual generated source in Graph/Discussion wi
   expect(host.querySelector('[data-utterance-id="utterance-0001"]').textContent).toContain('Exact synthetic recorded words.');
   expect(host.querySelector('[data-utterance-id="utterance-0001"] > span[aria-hidden="true"]').style.backgroundColor).toBe(graphColor);
   expect(host.querySelector('button[aria-label^="Copy link"]')).toBeNull();
+  await click('Source');
   expect(host.textContent).toContain('Names change in this view only');
-  const input = host.querySelector('form input');
+  const input = host.querySelector('input[aria-label="Speaker name"]');
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Reviewed fixture speaker'); input.dispatchEvent(new Event('input', { bubbles: true })); });
-  await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await act(async () => input.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(host.textContent).toContain('Reviewed fixture speaker');
   expect(context.local).toEqual({ id: 'fixture-existing', title: 'Existing fixture' });
   expect(context.bundle.utterances[0].speaker_display).toBeUndefined();

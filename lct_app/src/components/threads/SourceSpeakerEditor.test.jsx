@@ -72,3 +72,11 @@ it("saves a trimmed name by stable speaker ID and exports the unchanged input bu
   expect(createObjectURL.mock.calls[0][0]).toBeInstanceOf(Blob);
   expect(anchorClick).toHaveBeenCalledOnce();
 });
+
+it("says names stay in this view when the source copy is never written back", () => {
+  act(() => root.render(<SourceSpeakerEditor bundle={bundle} onRenameSpeaker={vi.fn()} namesStayInView />));
+  expect(container.textContent).toContain("Names change in this view only. The stored copy stays the same.");
+  expect(container.textContent).not.toContain("Edits stay in this browser");
+  act(() => root.render(<SourceSpeakerEditor bundle={bundle} onRenameSpeaker={vi.fn()} />));
+  expect(container.textContent).toContain("Edits stay in this browser");
+});

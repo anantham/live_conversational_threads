@@ -666,9 +666,11 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     : ephemeral ? <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-slate-100 px-4 text-sm text-slate-700"><span>Generated map · kept in this view · not saved</span><button type="button" className="min-h-11 font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={downloadMap}>Download map</button></div>
       : publicId && <div className="shrink-0 border-b border-slate-200 bg-amber-50 px-4 py-2 text-xs text-slate-700">Public copy · visible to everyone · edits stay in this view</div>;
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
+  // Private, generated and public copies never write renames back to their source.
+  const namesStayInView = privateMode || ephemeral || Boolean(publicId);
   const renderSourcePanel = (node) => sourceTextSelection || !selectYouTubeRef(bundle)
-    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
-    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} onClose={() => setSourceOpen(false)} />;
+    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
+    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
@@ -712,6 +714,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
         onOpenAnother={openAnother}
         onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);setViewMode("graph");}}
         onRenameSpeaker={renameSpeaker}
+        namesStayInView={namesStayInView}
       /></div></div>
     );
   }

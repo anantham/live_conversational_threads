@@ -56,6 +56,7 @@ export default function MobileConversationDeck({
   onRefreshFromDrive,
   onShowMap,
   onRenameSpeaker,
+  namesStayInView = false,
   readingPath,
   onReadingPathChange,
 }) {
@@ -276,7 +277,7 @@ export default function MobileConversationDeck({
         )}
 
         <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <YouTubeSourcePanel bundle={bundle} node={snapshot.item} nodes={graphNodes} compact onRenameSpeaker={onRenameSpeaker} />
+        <YouTubeSourcePanel bundle={bundle} node={snapshot.item} nodes={graphNodes} compact onRenameSpeaker={onRenameSpeaker} namesStayInView={namesStayInView} />
         {parentTitle && <div className="h-5 shrink-0 px-2 text-center">
             <p className="truncate text-xs text-slate-400" title={parentTitle}>
               within {parentTitle}
@@ -381,6 +382,7 @@ MobileConversationDeck.propTypes = {
   onRefreshFromDrive: PropTypes.func,
   onShowMap: PropTypes.func.isRequired,
   onRenameSpeaker: PropTypes.func,
+  namesStayInView: PropTypes.bool,
   readingPath: PropTypes.string,
   onReadingPathChange: PropTypes.func,
 };

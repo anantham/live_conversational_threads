@@ -4,7 +4,7 @@ import SourceSpeakerEditor from "./SourceSpeakerEditor";
 import { validYouTubeRef } from "../../services/youtubeMedia";
 import { buildSpeakerDisplayNames, speakerDisplayName, transcriptSpeakerLabels } from "../../services/speakerDisplay";
 
-export default function TextSourcePanel({ bundle, selection = null, compact = false, onClose, onRenameSpeaker, sectionMode, onSectionChange }) {
+export default function TextSourcePanel({ bundle, selection = null, compact = false, onClose, onRenameSpeaker, namesStayInView = false, sectionMode, onSectionChange }) {
   const transcript = typeof bundle.full_transcript === "string" ? bundle.full_transcript : "";
   const utterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
   const speakerNames = useMemo(() => buildSpeakerDisplayNames(bundle), [bundle]);
@@ -59,7 +59,7 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
       <button type="button" aria-pressed={mode === "transcript"} onClick={() => setMode("transcript")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Full transcript</button>
       <button type="button" aria-pressed={mode === "utterances"} onClick={() => setMode("utterances")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Passages</button>
     </div>}
-    {onRenameSpeaker && <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} /></div>}
+    {onRenameSpeaker && <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} namesStayInView={namesStayInView} /></div>}
     <div data-viewer-scroll="text-source" aria-label="Original source passages" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-100 bg-stone-50 p-2 leading-5">
       {mode === "transcript" && transcript && <pre className="whitespace-pre-wrap break-words font-sans">{renderedTranscript}</pre>}
       {mode === "utterances" && utterances.map((row) => {
@@ -74,4 +74,4 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
   </aside>;
 }
 
-TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, sectionMode: PropTypes.oneOf(["transcript", "utterances"]), onSectionChange: PropTypes.func };
+TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances"]), onSectionChange: PropTypes.func };
