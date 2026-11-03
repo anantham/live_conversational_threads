@@ -8745,3 +8745,16 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - Spend: $0.600 billed across 46 runs, plus the unreported cost of one timed-out run (≤ ~$0.02). Within the ~$1 goal budget.
 - Doc rebuilt from the ledger: `docs/reviews/2026-11-03-long-input-envelope.md` (summary table, per-run table, wordings, limits). Prompt unchanged from 18d59569 (wording A).
 
+## 2026-11-04 01:00 IST — Long-input output cap (owner ruling relayed by the parent session)
+
+- Ruling (via `local_c040abbd`, not yet confirmed directly in this session): live 5-minute sessions keep 8,192; imports and replay get 16,384 with the 90 s window.
+- Merged base `58910f4` (#219 Gemini-review fixes) into this branch first; clean, all tests passed.
+- Implementation:
+  - `sites/openRouterPolicy.js`: optional `LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS` (validated, ≥ live cap, ≤ 16,384; unset or empty = unchanged) and `LONG_INPUT_MS = 300_000`.
+  - `sites/openRouter.js`: the cap comes from the transcript's last token end, recorded in the ledger and reported in status.
+  - `sites/replayProvider.js`: replay uses and prices the long cap; the bare provider tag is matched (the #219 review note).
+  - `openRouterGeneration.js`: builder bound 16,384.
+  - `db/schema.ts` plus drizzle-generated `0019_openrouter_long_output_cap.sql` and snapshot: the ledger CHECK widened from 8,192 (found when the red test returned 503 on the constraint).
+- Tests: `sitesOpenRouterOutputBudget.test.js` (red, then green), `openRouterLongCapMigration.test.js`, replay case, builder bound. Full suite 142 files / 1,345 tests.
+- Deploy implications (owner): apply D1 migration 0019 before setting the long cap. Replay preflight now requires ~$2.37 of allowance with 16,384 (it was ~$1.76).
+

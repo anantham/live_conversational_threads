@@ -83,6 +83,17 @@ describe('private one-time long replay',()=>{
   expect(body.artifact.graph_data.find(x=>x.id==='1:node-plan').parent_id).toBe('2:node-garden');
   expect(warn).toHaveBeenCalledWith('[openrouter] repaired generated references',{code:'reference_repair',operation:'add_prefix',affix:'node-',references:1});
  });
+ it('prices and sends the long output cap for replay maps, and accepts a bare provider tag',async()=>{
+  // Intent: tests/intent/long-input-output-budget.md.
+  expect((await (await run('/preflight')).json()).required_usd).toBe(1.76);
+  env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS='16384';
+  expect((await (await run('/preflight')).json()).required_usd).toBe(2.37);
+  await mint();expect((await map(1)).status).toBe(200);
+  expect(JSON.parse(calls.find(c=>c.url.includes('/chat/completions')).options.body).max_tokens).toBe(16384);
+  const original=globalThis.fetch;
+  vi.stubGlobal('fetch',vi.fn(async(url,options)=>url.endsWith('/endpoints')?response({data:{endpoints:[{tag:'google-vertex',pricing:{prompt:'0.0000003',completion:'0.0000025'}}]}}):original(url,options)));
+  expect((await run('/preflight')).status).toBe(200);
+ });
  it('stops after provider refusal, retaining the spent operation',async()=>{
   await mint();failMap=true;expect((await map(1)).status).toBe(502);expect(trial().state).toBe('failed');expect(attempts().at(-1).state).toBe('uncertain');await vi.advanceTimersByTimeAsync(45001);expect((await map(2)).status).toBe(409);
  });

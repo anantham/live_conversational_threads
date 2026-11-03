@@ -6,7 +6,7 @@ import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
 
 const MAX_REQUEST_BYTES = 512 * 1024;
 const MAX_CONTENT_BYTES = 2 * 1024 * 1024;
-const MAX_OUTPUT_TOKENS = 8192;
+const MAX_OUTPUT_TOKENS = 16384;
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const encoder = new TextEncoder();
 

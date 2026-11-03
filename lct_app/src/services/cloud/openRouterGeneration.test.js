@@ -161,8 +161,10 @@ describe('pure OpenRouter recording generation contract', () => {
       { source, maxTokens: 2048 },
       { source, model: 'selected-model', maxTokens: 2048 },
       { source, model: 'provider/selected-model' },
-      { source, model: 'provider/selected-model', maxTokens: 8193 },
+      { source, model: 'provider/selected-model', maxTokens: 16385 },
     ]) expect(() => buildOpenRouterGenerationRequest(options)).toThrow('OpenRouter generation rejected');
+    // Long transcripts may use the owner-approved long cap (policy decides which cap applies).
+    expect(buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 16384 }).max_tokens).toBe(16384);
     const large = { ...source, finalTokens: [{ text: 'x'.repeat(600 * 1024), speaker: null }] };
     expect(() => buildOpenRouterGenerationRequest({ source: large,
       model: 'provider/selected-model', maxTokens: 2048 })).toThrow('bounded input size');

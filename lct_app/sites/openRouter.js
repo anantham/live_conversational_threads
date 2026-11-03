@@ -1,6 +1,6 @@
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
 import { resolveIdentity } from './auth.js';
-import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission } from './openRouterPolicy.js';
+import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission, LONG_INPUT_MS } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 
@@ -74,8 +74,12 @@ async function generate(request, env, policy) {
     throw new OpenRouterError(415, 'content_type', 'Send recording source as JSON. No attempt was requested.');
   }
   const input = await openRouterWait(request.signal, MAP_INPUT_WINDOW_MS, signal => readOpenRouterJSON(request, signal, 512 * 1024));
+  // The server, not the client, decides the output budget from the transcript's own length.
+  const endMs = Array.isArray(input?.source?.finalTokens)
+    ? Math.max(0, ...input.source.finalTokens.map(token => Number.isFinite(token?.endMs) ? token.endMs : 0)) : 0;
+  const maxTokens = endMs > LONG_INPUT_MS ? policy.longMaxTokens : policy.maxTokens;
   let wire;
-  try { wire = buildOpenRouterGenerationRequest({ source: input?.source, model: policy.backend === 'gemini' ? `google/${policy.model}` : policy.model, maxTokens: policy.maxTokens }); }
+  try { wire = buildOpenRouterGenerationRequest({ source: input?.source, model: policy.backend === 'gemini' ? `google/${policy.model}` : policy.model, maxTokens }); }
   catch { throw new OpenRouterError(400, 'source', 'The recording source is invalid or too large. No attempt was requested.'); }
   if (policy.backend === 'gemini') {
     // Explicit compatibility contract; future OpenRouter fields cannot leak into this route.
@@ -97,7 +101,7 @@ async function generate(request, env, policy) {
       AND NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
       AND (SELECT COUNT(*) FROM lct_openrouter_attempts
            WHERE completed_at IS NULL AND recovery_released_at IS NULL) ${env.LCT_REPLAY_TEST_RECORDING_ID ? "+ (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'map' AND state IN ('reserved','dispatching','uncertain'))" : ''} < ?
-    RETURNING id`).bind(id, now, policy.maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
+    RETURNING id`).bind(id, now, maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
 
   const { artifact, model, repair } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
@@ -149,7 +153,7 @@ export async function handleOpenRouter(request, env) {
         && (admission.latest == null || admission.latest <= Date.now() - policy.admissionIntervalMs);
       return openRouterJSON(200, { enabled, available, configured: policy.configured, schema_ready: Boolean(admission),
         backend: policy.backend, audience: policy.audience, model: policy.model, fallback_models: policy.fallbackModels,
-        provider: policy.provider, max_output_tokens: policy.maxTokens,
+        provider: policy.provider, max_output_tokens: policy.maxTokens, long_max_output_tokens: policy.longMaxTokens,
         message: !enabled ? 'Generation is waiting for provider, admission storage and spending-limit setup.'
           : available ? 'Generation is available within shared attempt and token limits.'
             : 'The shared generation limit is reached or another attempt is starting. Unresolved attempts and lifetime limits need owner review.' });
