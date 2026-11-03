@@ -17,9 +17,11 @@ NETWORK NOTE: binds IPv4 (0.0.0.0). Callers MUST use `http://127.0.0.1:<port>`
 NOT `http://localhost:<port>` — on macOS `localhost` can resolve to IPv6 `::1`,
 which this server does not listen on (this exact gotcha cost a debugging cycle).
 
-Logging (AGENTS.md §9 — no silent failures): every request is logged on receipt
-and on completion/error; set LOCAL_STT_DEBUG=1 for transcript previews + uvicorn
-debug. Run:
+Logging (AGENTS.md §9 — no silent failures): non-health requests are logged on
+receipt and completion/error; healthy, fast `/health` probes are suppressed while
+failures and slow probes remain visible. When launched as `python server.py`,
+logs go to LOCAL_STT_LOG_PATH (default ~/Library/Logs/mlx-stt.log), rotating at
+10 MiB with five backups. Set LOCAL_STT_DEBUG=1 for transcript previews + uvicorn debug. Run:
     cd lct_python_backend/local_stt
     uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -r requirements.txt
     LOCAL_STT_PORT=5095 .venv/bin/python server.py
@@ -27,6 +29,7 @@ debug. Run:
 from __future__ import annotations
 
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import tempfile
 import time
@@ -92,6 +95,42 @@ logging.basicConfig(
 )
 log = logging.getLogger("lct_local_stt")
 
+LOG_MAX_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 5
+HEALTH_SLOW_LOG_MS = 1000.0
+
+
+def _configure_runtime_logging() -> None:
+    """Route application and Uvicorn errors through a size-capped log file."""
+    log_path = Path(os.getenv(
+        "LOCAL_STT_LOG_PATH",
+        str(Path.home() / "Library" / "Logs" / "mlx-stt.log"),
+    )).expanduser()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(
+        log_path,
+        maxBytes=LOG_MAX_BYTES,
+        backupCount=LOG_BACKUP_COUNT,
+        encoding="utf-8",
+    )
+    logging.basicConfig(
+        level=logging.DEBUG if DEBUG else logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        handlers=[handler],
+        force=True,
+    )
+
+    # Uvicorn's access logger would otherwise bypass the middleware's
+    # health-check filter. Keep its errors flowing to the rotating root handler.
+    access_logger = logging.getLogger("uvicorn.access")
+    access_logger.handlers.clear()
+    access_logger.propagate = False
+    access_logger.disabled = True
+    error_logger = logging.getLogger("uvicorn.error")
+    error_logger.handlers.clear()
+    error_logger.propagate = True
+    error_logger.disabled = False
+
 app = FastAPI(title="LCT Local STT (mlx-whisper)")
 app.add_middleware(
     CORSMiddleware,
@@ -104,18 +143,23 @@ _state = {"ready": False, "requests": 0, "failures": 0}
 
 @app.middleware("http")
 async def _access_log(request: Request, call_next):
-    # One line per request so connection/routing problems are never silent.
+    # Keep normal request traces, but suppress successful fast watchdog noise.
     rid = uuid.uuid4().hex[:8]
     t0 = time.perf_counter()
     client = request.client.host if request.client else "?"
-    log.info("[%s] --> %s %s from %s", rid, request.method, request.url.path, client)
+    health_probe = request.method == "GET" and request.url.path == "/health"
+    if not health_probe:
+        log.info("[%s] --> %s %s from %s", rid, request.method, request.url.path, client)
     try:
         response = await call_next(request)
     except Exception:
         log.exception("[%s] !! unhandled error on %s %s", rid, request.method, request.url.path)
         raise
-    log.info("[%s] <-- %s %s %d (%.0fms)", rid, request.method, request.url.path,
-             response.status_code, (time.perf_counter() - t0) * 1000)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    if not health_probe or response.status_code >= 400 or elapsed_ms >= HEALTH_SLOW_LOG_MS:
+        level = logging.WARNING if health_probe and response.status_code >= 400 else logging.INFO
+        log.log(level, "[%s] <-- %s %s %d (%.0fms)", rid, request.method, request.url.path,
+                response.status_code, elapsed_ms)
     return response
 
 
@@ -584,6 +628,7 @@ async def transcribe(
 
 
 if __name__ == "__main__":
+    _configure_runtime_logging()
     # Loopback by default — the endpoint is unauthenticated, so don't expose it
     # on the LAN unless the operator explicitly opts in via LOCAL_STT_HOST.
     host = os.getenv("LOCAL_STT_HOST", "127.0.0.1").strip() or "127.0.0.1"
@@ -594,4 +639,11 @@ if __name__ == "__main__":
         "engine=mlx-whisper model=%s debug=%s",
         host, PORT, PORT, DEFAULT_MODEL, DEBUG,
     )
-    uvicorn.run(app, host=host, port=PORT, log_level="debug" if DEBUG else "info", access_log=True)
+    uvicorn.run(
+        app,
+        host=host,
+        port=PORT,
+        log_level="debug" if DEBUG else "info",
+        access_log=False,
+        log_config=None,
+    )

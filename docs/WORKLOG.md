@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-11-03T16:30:00+05:30 - Committed the local STT log-rotation / health-noise fix that was already live
+
+- Context: `lct_python_backend/local_stt/server.py` carried an uncommitted change
+  that the M5 `com.aditya.mlx-stt` LaunchAgent has been running from this checkout
+  since 2026-09-28 (it launches `server.py` from the working tree). The old setup
+  logged every request, including the watchdog's `/health` polls, to an
+  unrotated launchd stderr file (`mlx-stt.err.log` reached ~13.7 MB gzipped).
+- Live evidence before committing: `~/Library/Logs/mlx-stt.log` (449 KB, started
+  2026-09-28 20:24) holds 506 non-health requests and only 18 `/health` lines,
+  all slow probes (1.4-2.1 s), which is the intended filter behavior.
+- Files modified:
+  - `lct_python_backend/local_stt/server.py`: `_configure_runtime_logging()`
+    (RotatingFileHandler, 10 MiB x 5, `LOCAL_STT_LOG_PATH`); the access-log
+    middleware skips fast, successful `GET /health` and still logs failed (WARNING)
+    or slow (>=1 s) probes; uvicorn's access log is disabled because it would
+    bypass that filter. Docstring now says rotation applies only when launched as
+    `python server.py`.
+  - `lct_python_backend/local_stt/test_server_stt.py`: 4 tests (fast health is
+    silent, slow health is logged, non-health is logged both ways, the rotating
+    file is written). 3 were confirmed failing against the pre-change `HEAD`
+    server; the non-health test passes on both, which is expected.
+  - `lct_python_backend/local_stt/README.md`: documented `LOCAL_STT_LOG_PATH`
+    and the health-log filter.
+- Validation: `.venv/bin/python -m pytest test_server_stt.py -q` gives 7 passed,
+  1 skipped (the skipped test needs a private speech fixture).
+- Not addressed: launchd's `mlx-stt.err.log` still captures unrotated library
+  stderr (numpy/tqdm warnings). It is small (~2 KB since 2026-10-26).
+
 ## 2026-07-06T22:28:55+05:30 - Fetched origin/main and reviewed recent commits
 
 - Context: user asked to pull and review recent commits. The local branch

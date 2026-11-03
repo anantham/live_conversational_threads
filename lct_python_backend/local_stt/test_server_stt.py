@@ -95,3 +95,77 @@ def test_diarization_failure_preserves_the_transcript(monkeypatch):
     assert response.status_code == 200
     assert b'Radhika\'s message' in response.body
     assert b'RuntimeError: decoder unavailable' in response.body
+
+
+# --- Request logging (watchdog-noise suppression + rotating log file) ---------
+# Test intent:
+#   - a healthy, fast GET /health leaves no trace in the log (watchdog polls it);
+#   - a slow /health is still logged, so a degrading server stays visible;
+#   - every non-health request is logged on receipt and on completion;
+#   - runtime logging writes to a size-capped rotating file and silences
+#     uvicorn's own access log (which would bypass the health filter).
+import logging  # noqa: E402
+from logging.handlers import RotatingFileHandler  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+
+def _request_lines(caplog):
+    return [r.getMessage() for r in caplog.records
+            if r.name == "lct_local_stt" and ("-->" in r.getMessage() or "<--" in r.getMessage())]
+
+
+def test_fast_healthy_health_probe_is_not_logged(caplog):
+    caplog.set_level(logging.INFO, logger="lct_local_stt")
+    response = TestClient(server.app).get("/health")
+    assert response.status_code == 200
+    assert _request_lines(caplog) == []
+
+
+def test_slow_health_probe_is_still_logged(caplog, monkeypatch):
+    monkeypatch.setattr(server, "HEALTH_SLOW_LOG_MS", 0.0)
+    caplog.set_level(logging.INFO, logger="lct_local_stt")
+    TestClient(server.app).get("/health")
+    lines = _request_lines(caplog)
+    assert len(lines) == 1 and "<-- GET /health 200" in lines[0]
+
+
+def test_non_health_requests_are_logged_both_ways(caplog):
+    caplog.set_level(logging.INFO, logger="lct_local_stt")
+    response = TestClient(server.app).get("/no-such-route")
+    assert response.status_code == 404
+    lines = _request_lines(caplog)
+    assert any("--> GET /no-such-route" in line for line in lines)
+    assert any("<-- GET /no-such-route 404" in line for line in lines)
+
+
+@pytest.fixture
+def restore_logging():
+    root = logging.getLogger()
+    saved_root = (root.handlers[:], root.level)
+    loggers = [logging.getLogger(n) for n in ("uvicorn.access", "uvicorn.error")]
+    saved = [(lg.handlers[:], lg.propagate, lg.disabled) for lg in loggers]
+    yield
+    for h in root.handlers:
+        if h not in saved_root[0]:
+            h.close()
+    root.handlers[:] = saved_root[0]
+    root.setLevel(saved_root[1])
+    for lg, (handlers, propagate, disabled) in zip(loggers, saved):
+        lg.handlers[:], lg.propagate, lg.disabled = handlers, propagate, disabled
+
+
+def test_runtime_logging_writes_a_rotating_file(tmp_path, monkeypatch, restore_logging):
+    log_path = tmp_path / "nested" / "stt.log"
+    monkeypatch.setenv("LOCAL_STT_LOG_PATH", str(log_path))
+    server._configure_runtime_logging()
+
+    handlers = logging.getLogger().handlers
+    assert len(handlers) == 1 and isinstance(handlers[0], RotatingFileHandler)
+    assert handlers[0].maxBytes == server.LOG_MAX_BYTES
+    assert handlers[0].backupCount == server.LOG_BACKUP_COUNT
+    assert logging.getLogger("uvicorn.access").disabled is True
+
+    logging.getLogger("uvicorn.error").error("probe-marker")
+    handlers[0].flush()
+    assert "probe-marker" in log_path.read_text(encoding="utf-8")
