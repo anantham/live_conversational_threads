@@ -8864,3 +8864,18 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - The redundant `dangling.every(namesTier)` was removed, since it is implied by the declared check.
 - Mutation sweep v3, 16 mutants: 14 killed. Two equivalent survivors: the `add_prefix` check and `startsWith(affix)` inside the touched check. A suffix drift can't yield a tier-named id once a prefix-length slice is cut off, and the carried loop below re-checks the affix. Both are kept as stated intent.
 - Real reply still repairs 2 references and validates; the other 29 are unchanged. Full suite 144 files / 1,391 tests; lint clean.
+
+## 2026-11-04 04:30 IST — Gemini review round 3 (agy, gemini-4-argon-high): NO-GO, adjudicated; loop stopped
+- Packet: scratchpad `review3/` (BRIEF.md, round2-fix.diff `a5650f6e…`, 3 source files, SHA256SUMS). Reviewed 5087d91c.
+- Adopted (each reproduced as accepted on 5087d91c, then red tests):
+  - P1: two declared nodes but one drifted target. The drift must now repeat across ≥2 distinct targets.
+  - P1: unreferenced declarations at other tiers were never checked. Every declared id at every other tier must now be tier-named.
+  - P2: `idea--water`. The name must start right after the tier delimiter.
+  - P2: `1topic-`/`subidea-`. The affix may contain no tier word.
+  - Two more red cases for mutation coverage: two references to one target, and `ideaswater`.
+- Declined:
+  - P1 "suffix shared by every resolved id". This is the original 3 November path, and the old code gives the identical repair on the reviewer's input, so it is out of scope. Logged in ISSUES.md as pre-existing.
+  - P3 "malformed node declarations are skipped". The full validator still runs after a repair, and `qualifiedReference` rejects a padded, empty or overlong node id regardless, so it cannot cause an acceptance.
+- Mutation sweep v4, 19 mutants: 16 killed. Three equivalent survivors: `levels.size === 1` (implied by the all-tier declaration check, because an affix + tier-named id never names its own tier), the `add_prefix` check, and `startsWith(affix)` in the touched check.
+- Why I stopped the loop: every round-3 edit only narrows what's accepted, compared with 5087d91c. Resolved ids ⊆ declared ids; ≥2 distinct targets implies ≥2 declared ids; `includes` ⊇ `startsWith`; the anchored regex ⊆ the unanchored one. So no round-3 edit can admit an input round 2 refused. Round 3's own findings were refinements of residue rather than structural holes.
+- Real reply still repairs 2 references and validates; the other 29 are unchanged. Full suite 144 files / 1,398 tests; lint clean.

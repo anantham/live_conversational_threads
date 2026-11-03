@@ -149,6 +149,19 @@ describe('deterministic reference repair through the public adapter', () => {
     ['a strip at that tier', g => ideas(g, n => `idea-${n}`, n => `idea-${n}-x`)],
     ['a repaired target also declared at another level', g => {
       g.nodes.push(node(3, 'node-idea-water', ref(5, 'arc-garden'))); }],
+    // Gemini review round 3: the drift must repeat across two targets; unreferenced declarations at
+    // other tiers count; the name starts right after the tier delimiter; no tier word inside the affix.
+    ['a single drifted target beside a resolved sibling', g => {
+      g.nodes[2].id = 'water-idea-supply'; g.nodes[3].id = 'water-idea-shortage';
+      g.nodes[0].parent_id = ref(2, 'idea-supply'); g.nodes[1].parent_id = ref(3, 'topic-care');
+      g.edges.push({ ...g.edges[0], id: 'e2', from_node_id: ref(2, 'water-idea-shortage'), to_node_id: ref(3, 'topic-care') }); }],
+    ['two drifted references to one target', g => { g.nodes[1].parent_id = ref(2, 'idea-water'); }],
+    ['a tier word run into the name', g => ideas(g, n => `node-ideas${n}`, n => `ideas${n}`)],
+    ['an unreferenced bare declaration at another tier', g => { g.nodes.push(node(4, 'nature', ref(5, 'arc-garden'))); }],
+    ['an unreferenced declaration at another tier carrying the prefix', g => {
+      g.nodes.push(node(3, 'node-topic-light', ref(5, 'arc-garden'))); }],
+    ['a doubled delimiter after the tier word', g => ideas(g, n => `node-idea--${n}`, n => `idea--${n}`)],
+    ['a tier word inside the affix', g => ideas(g, n => `1topic-idea-${n}`, n => `idea-${n}`)],
     ['a single declared node at the tier', g => { g.nodes[2].id = 'idea-water'; g.nodes[3].id = 'idea-shade';
       g.nodes[5].id = 'counter-arc-garden'; }],
   ])('still rejects a one-tier drift with %s', (_label, mutate) => {
