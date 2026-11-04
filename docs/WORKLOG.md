@@ -1,5 +1,100 @@
 # WORKLOG
 
+## 2026-11-04 04:40 IST — Deploy main @ 1cca862b (#224) to the Asus backend
+
+- Owner approved in chat. The Asus checkout was 4 behind (`2acf515`, #215) and
+  dirty: a 41-line `docs/WORKLOG.md` edit (2026-10-14, collided with incoming
+  commits), three `ops/observability/` script edits (2026-09-26/28) and an
+  empty stray `=ro` (2026-11-02). All parked, nothing discarded, on pushed
+  branch `wip/asus-deploy-checkout-dirty-2026-11-04` (`d3aed8e`; the push
+  passed the pre-push `[ci]` vitest gate).
+- The Tailscale link to the Asus was degraded (DERP relay, ~4 s, dropped SSH
+  sessions), so the deploy ran as a detached script on the Asus
+  (`logs\deploy_224.ps1`, logs `logs\deploy_224_2026-11-04*.log`): import
+  guard → park → `pull --ff-only` (must contain `1cca862b`) → restart → wait
+  for `/api/version` to report the new SHA, with rollback to the previous
+  commit if it never comes up.
+- Run 1 aborted safely after parking: `git pull` hit
+  "Could not resolve hostname github.com" (transient DNS); backend untouched.
+  Run 2: no import activity, fast-forward `2acf515..1cca862` (also deploys #216,
+  #217 and #221; no migrations), old pid 10300 stopped, new backend pid 3672.
+  Verified from the Mac over the tailnet: `/api/version` = `1cca862b`,
+  `git_dirty: false`.
+- Found while deploying (see ISSUES 2026-11-04): the backend is supervised by
+  `scripts/start_all.py --autostart` (run by Task Scheduler), which restarted
+  it on its own; `start_lct_backend.ps1` refuses elevated SSH shells. The
+  live log is `logs/backend.log`, not `lct_backend.manual.*.log`. The AGENTS.md
+  restart section is stale on both points. Production Python is 3.9.21:
+  `test_stt_saturation_wait.py` from #224 failed to import there; fixed in
+  PR #229.
+- My mistake, ledgered: run 1's import guard read the stale
+  `lct_backend.manual.out.log` (2026-09-25) and reported "no import activity";
+  corrected for run 2 to read `logs/backend.log` and ignore health pings.
+
+## 2026-11-04 02:40 IST — STT client waits for a busy local STT (PR #224)
+
+- Follows the concurrency change below. Branch `fix/stt-honour-retry-after`,
+  commit `30a86a59`, PR #224 (not merged; main is the owner's click).
+- `lct_python_backend/services/audio_transcriber.py`:
+  `transcribe_audio_file_detailed` now waits on the local STT's busy signal
+  only (503 + finite Retry-After + `local_stt_saturated` body code), sleeping
+  Retry-After (min 1 s) within `STT_SATURATED_WAIT_BUDGET_S` (new, in
+  `services/transcript/transcription_utils.py`, default 900 s). On exhaustion
+  it raises `SttSaturatedError`; the chunk loop skips it via the new
+  `_is_retryable_chunk_error`, while the global `_is_retryable_stt_error`
+  still treats it as retryable so imports show as retryable to the user.
+- Tests: `tests/unit/test_stt_saturation_wait.py` (13, red-first, every guard
+  mutation-tested). Unit suite 2100 passed; 4 failures are pre-existing on
+  main in the M5 venv.
+- Gemini 4 Argon High review, two rounds. Round 1's suggestion to exclude the
+  error globally would have made busy-server imports non-retryable; caught by
+  reading the classifier's consumers, fixed by moving the exclusion into the
+  chunk loop. Round 2: nothing significant. Record in the shared notes folder
+  (`stt-retry-after-review-2026-11-04.md`).
+- Not deployed: the backend runs on the Asus; it picks this up after merge +
+  `git pull` + restart there.
+
+## 2026-11-04 01:55 IST — M5 local STT concurrency 4 → 1
+
+- Owner approved in chat. Changed `MLX_STT_MAX_CONCURRENCY` from `"4"` to `"1"`
+  in `~/Library/LaunchAgents/com.aditya.mlx-stt.plist` (the only place it is
+  set; no repo change). Backup of the old plist in the session scratchpad.
+  `launchctl bootout` + `bootstrap` (an environment change is not picked up by
+  `kickstart -k`), done while `/health` showed `inflight: 0`.
+- Verified: `/health` reports `max_concurrency: 1`. A two-speaker request
+  completed (200, both speakers; 53 s because of cold model loads), and a
+  request sent 1.5 s later got `503`, `Retry-After: 30`,
+  `code: local_stt_saturated` in 17 ms; `saturated_rejections: 1`.
+- Knock-on logged in ISSUES 2026-11-04: the backend's chunk retry budget
+  (about 22 s, ignores `Retry-After`) can fail a second concurrent job.
+- Rollback: set the value back to `"4"`, then `bootout` + `bootstrap`.
+
+## 2026-11-04 01:42 IST — Deploy #221 to the M5 local STT service
+
+- Owner approved the merge and deploy in chat. #221 was squash-merged as
+  `dda93db3`, pinned to the reviewed head `df660e61`.
+- The M5 main clone was on `feat/cost-tracking-wire-up`, one commit ahead of
+  origin. That branch was pushed first (`dc83d3f4..92da5920`), so none of its
+  14 commits not on main are local-only any more.
+- Checkout trap: the clone's local `main` is an UNRELATED history (no merge
+  base with `origin/main`; last commit 2026-06-29; ahead 879 / behind 1097),
+  left over from before origin was rewritten, as are most old local branches.
+  `git pull` on it fails with "refusing to merge unrelated histories". It was
+  left untouched. The clone now runs from `deploy/origin-main`, which tracks
+  `origin/main`. Future deploys: `git pull --ff-only` on that branch.
+- `local_stt/server.py` on disk = SHA256 `2db12747…` (the reviewed packet).
+  Only `com.aditya.mlx-stt` was restarted (`launchctl kickstart -k`, pid
+  1289 → 59464, idle at the time). `com.aditya.fluidaudio-stt` also runs from
+  this clone, but its sources are unchanged and it was not restarted.
+- Live checks, synthetic `say` audio only: speech transcribed verbatim with
+  `_vad_analysis` regions; a 4 s silent clip VAD-gated in 0.17 s (empty text,
+  model skipped); a two-voice clip gave 2 speakers + 192-dim ECAPA embeddings.
+  `/health` reports `saturated_rejections`; healthy probes are absent from the
+  new `~/Library/Logs/mlx-stt.log`; no errors since the restart.
+- Still open: `MLX_STT_MAX_CONCURRENCY=4` with one shared Silero VAD model (see
+  ISSUES 2026-11-03). Silent clips print a harmless numpy "Mean of empty
+  slice" warning to stderr.
+
 ## 2026-11-03 23:40 IST — Port the M5's local STT fixes onto main
 
 - Owner ruling 2026-11-03: port only the STT fixes now. The M5

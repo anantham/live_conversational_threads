@@ -1,6 +1,66 @@
 # ISSUES
 
-Last updated: 2026-11-03
+Last updated: 2026-11-04
+
+## 2026-11-04 - Asus backend restart docs are stale; CI does not run production Python (OPEN, NON-BLOCKING)
+
+- AGENTS.md "Backend (Asus) — restart + deploy" says the backend is launched by
+  `logs/start_lct_backend.ps1`, "NOT a Scheduled Task", logging to
+  `logs/lct_backend.manual.*.log`. Observed live 2026-11-04: the :43181
+  process is a child of `scripts/start_all.py --autostart`, started by Task
+  Scheduler, which restarts the backend by itself after it is stopped; the
+  live log is `logs/backend.log` (the manual logs were last written
+  2026-09-25); and `start_lct_backend.ps1` refuses to run from an elevated
+  shell, which an SSH session to the Asus is. Impact: an agent following the
+  doc checks the wrong log (this caused a false "no import activity" reading
+  during the #224 deploy) and may race the supervisor. Next step: update the
+  section to "stop the listener; start_all.py restarts it; verify with
+  /api/version", and name `logs/backend.log`.
+- Production runs Python 3.9.21 (Asus `.venv`), but CI and the M5 run newer
+  versions, so 3.10-only syntax passes CI and breaks on production. Seen with
+  `test_stt_saturation_wait.py` (fixed in PR #229). Next step: run the backend
+  unit suite on Python 3.9 in CI, or add a `python_requires`/lint check.
+- The Asus Tailscale link was degraded on 2026-11-04 (DERP relay, ~4 s, dropped
+  SSH sessions, a transient DNS failure for github.com) and the machine was
+  unreachable entirely from ~02:03 to ~03:50. Not investigated further.
+
+## 2026-11-04 - Waiting STT jobs can starve behind a long import (OPEN, NON-BLOCKING)
+
+- PR #224 makes the backend wait (up to 900 s) for the local STT's busy
+  signal instead of failing after ~22 s. Remaining limit: a long import sends
+  its next chunk the instant the previous one returns, while a waiting job
+  polls every 30 s, so the waiter rarely wins the gap and can wait until the
+  whole other import finishes. Past the budget it raises `SttSaturatedError`
+  and falls back or fails (still retryable). Impact: only when two jobs use
+  the M5 Whisper STT at once. Next step: a short FIFO wait queue on the
+  server (a change to its admission/liveness contract, so a deliberate
+  decision), or jitter plus a brief yield between chunks.
+- Review side note (pre-existing, not changed): `attendee_audio_downloader`
+  holds its DB session open across a slow-pass STT call of up to 600 s. It
+  targets IndrasNet `:7777`, so PR #224's wait never triggers there.
+
+## 2026-11-04 - M5 local STT now admits one request at a time; backend retries may give up first (OPEN, NON-BLOCKING)
+
+- Owner ruling 2026-11-04: `MLX_STT_MAX_CONCURRENCY` on the M5
+  `com.aditya.mlx-stt` LaunchAgent was lowered from 4 to 1. This removes the
+  shared-Silero-VAD interleaving risk from the 2026-11-03 entry at its source
+  (no two requests run at once); the VAD lock suggested there is now optional.
+  Verified live: an overlapping request got `503` + `Retry-After: 30` +
+  `code: local_stt_saturated` in 17 ms while the first completed normally.
+  The value lives only in `~/Library/LaunchAgents/com.aditya.mlx-stt.plist`;
+  the code default is still 2.
+- Knock-on (from reading the code, not observed live): the backend's chunked
+  path (`services/audio_transcriber.py` `transcribe_audio_chunked`) retries a
+  503 with exponential backoff, 5 attempts from 1.5 s (about 22 s of waiting
+  in all, settable via `STT_CHUNK_MAX_RETRIES` / `STT_CHUNK_RETRY_BACKOFF_S`),
+  and does not read `Retry-After`. A chunk usually takes longer than that, so
+  when two jobs use the M5 STT at once the second job can exhaust its retries
+  and fail. The single-shot and `transcribe_audio_file_detailed` callers
+  (`file_transcriber.py`, `attendee_audio_downloader.py`) were not checked for
+  503 handling. One job at a time is unaffected, because chunks run
+  sequentially. Next step: make the client honour `Retry-After` for
+  `local_stt_saturated`, with a total wait budget instead of a fixed attempt
+  count.
 
 ## 2026-11-03 - Local STT enrichment follow-ups found while porting M5 fixes (OPEN, NON-BLOCKING)
 
