@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-11-04 18:40 IST — Rewrite the Asus backend restart runbook in AGENTS.md
+
+- Addresses ISSUES 2026-11-04 "Asus backend restart docs are stale". The
+  "Backend (Asus) — restart + deploy" section now names the real supervisor
+  (IndrasNet `scripts/start_all.py --autostart`, Task Scheduler, `lct_backend`
+  agent), the live log `logs/backend.log`, and `/api/version` as the check.
+- Supervisor limits documented from the Mac-synced copy of `start_all.py`:
+  every exit counts as a crash (count resets after 5 quiet minutes, gives up at
+  5); a failed startup within the 180 s probe is not retried. Added a
+  pre-flight `import lct_python_backend.backend` (verified DB-free: succeeds
+  with an unreachable DATABASE_URL in 1.3 s) and moved the import-activity
+  check to just before the stop. No SSH-safe recovery after the supervisor
+  gives up is verified; the runbook says so.
+- Not verified on the Asus itself: it went offline (Tailscale "last seen 2h
+  ago") before the scheduled task's name and the Asus copy of `start_all.py`
+  could be read.
+- Gemini 4 Argon High review, two rounds: round 1 raised 6 findings (all
+  adopted after checking the supervisor code; one partly); round 2 two low
+  wording/order fixes, adopted.
+
 ## 2026-11-04 04:40 IST — Deploy main @ 1cca862b (#224) to the Asus backend
 
 - Owner approved in chat. The Asus checkout was 4 behind (`2acf515`, #215) and
