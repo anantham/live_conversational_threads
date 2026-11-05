@@ -1,0 +1,46 @@
+{
+  "project_id": "appgprj_6abe98e1b1b08191b2b763a78e1da819",
+  "version": 68,
+  "version_id": "appgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_043a2bd2c63c8191885f80ee9743f8d8",
+  "deployment_id": "appgdep_6aecc2b9c8dc8191bc13f079e70381e0",
+  "status": "succeeded",
+  "native_source_sha": "beccbded8279233b5a01ab9c5ca4c6c2246970e5",
+  "github_integration_sha": "0d69e634fd76e2a25d03a5a6cca695ee562b16cc",
+  "url": "https://threads.adityaarpitha.com",
+  "native_url": "https://threads-adityaarpitha-cloud.avalokai.chatgpt.site",
+  "environment_revision": 75,
+  "generation_enabled": {
+    "openrouter": false,
+    "gemini": false
+  },
+  "attempt_rows": 20,
+  "attempt_columns": 5,
+  "all_attempt_fields_unchanged": true,
+  "storage_metadata_files_unchanged": 42,
+  "largest_client_asset_bytes": 14264838,
+  "client_entry": "index-DWkcW7E4.js",
+  "cpu_factory": "ort-wasm-simd-threaded-BQJNh0bu.mjs",
+  "cpu_wasm": "ort-wasm-simd-threaded-4byDm7i3.wasm",
+  "https_navigation_200": [
+    "/",
+    "/meeting"
+  ],
+  "exact_served_non_html_assets": 4,
+  "wasm_http_status": 200,
+  "wasm_content_type": "application/wasm",
+  "wasm_received_prefix_bytes_matching": 69666,
+  "wasm_served_full_hash_verified": false,
+  "wasm_verification_limit": "Full GET interrupted by curl56 connection reset; full-download method stopped; publication not retried.",
+  "openrouter_status": {
+    "enabled": false,
+    "schema_ready": true,
+    "max_output_tokens": 8192,
+    "long_max_output_tokens": 8192,
+    "attempt_window_hours": null,
+    "fallback_models": []
+  },
+  "real_model_packaged_worker_check": "pass:3/66synthetic passages, two semantic queries, one WASM initialization per worker, missing-asset refusal",
+  "physical_browser_mobile_verified": false,
+  "paid_inference_calls": 0,
+  "review": "Google/Gemini APPROVED/no findings, conversation92e7162d-9126-4e18-a1c4-060c1dd848bd; reviewed code1c334"
+}
