@@ -84,6 +84,25 @@ it.each([
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
+// Intent: a provider refusal says why from its status code alone, in fixed client copy.
+it.each([
+  [402, 'out of credits'],
+  [401, 'refused the API key'],
+  [429, 'rate-limiting'],
+  [500, 'internal error (HTTP 500)'],
+])('names the reason for a provider refusal with status %i', async (status, text) => {
+  fetch.mockResolvedValueOnce(response({ code: 'provider_refused', upstream_status: status, error: 'fixture sensitive provider detail' }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toContain('provider refused'); expect(error.message).toContain(text);
+  expect(error.message).not.toContain('sensitive'); expect(error.code).toBe('provider_refused');
+});
+
+it.each([undefined, 'HTTP 402', 99, 402.5])('keeps the base refusal message for an unusable status %s', async upstream => {
+  fetch.mockResolvedValueOnce(response({ code: 'provider_refused', upstream_status: upstream }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toBe('The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.');
+});
+
 // Intent: tests/intent/openrouter-model-fallback.md. Consent names every model that may receive the transcript.
 const ready = extra => ({ backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true,
   audience: 'public', model: 'vendor/primary', provider: 'approved-provider', ...extra });

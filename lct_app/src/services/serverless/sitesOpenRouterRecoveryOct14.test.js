@@ -88,7 +88,9 @@ describe('OFF-prepared 2026-10-14 OpenRouter recovery on predecessor SQLite sche
     expect(before).toHaveLength(4);
     expect(unrelated).toHaveLength(5);
     expect(unrelated.every(([, entries]) => entries.length > 0)).toBe(true);
-    expect((await status(env())).available).toBe(false);
+    // Since 2026-11-05 unfinished attempts older than STALE_ATTEMPT_MS no longer hold a slot, so these
+    // old holders no longer block admission even before the recovery runs (it still applies as before).
+    expect((await status(env())).available).toBe(true);
     sqlite.exec(recovery);
     const after = rows();
     expect(after.map((row, i) => ({ ...row, recovery_released_at: before[i].recovery_released_at }))).toEqual(before);

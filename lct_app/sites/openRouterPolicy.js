@@ -1,7 +1,20 @@
 import { createRecordingTranscript } from '../src/services/cloud/recordingTranscript.js';
+import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 
 export class OpenRouterError extends Error {
-  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+  // details: extra public fields for the JSON body (status codes only, never provider text).
+  constructor(status, code, message, details = undefined) { super(message); this.status = status; this.code = code; this.details = details; }
+}
+
+// An attempt older than this cannot still be running in a Worker: its input and provider windows
+// have both closed, plus a margin. It keeps counting toward the attempt cap, but it no longer holds
+// one of the concurrent slots, so a failed attempt cannot lock generation until a manual recovery.
+export const STALE_ATTEMPT_MS = MAP_INPUT_WINDOW_MS + MAP_PROVIDER_WINDOW_MS + 180_000;
+
+// countSince: attempts created after it count toward maxRequests (0 = lifetime).
+// liveSince: unfinished attempts created after it still hold a concurrent slot.
+export function admissionCutoffs(policy, now) {
+  return { countSince: policy.windowMs ? now - policy.windowMs : 0, liveSince: now - STALE_ATTEMPT_MS };
 }
 
 export function openRouterJSON(status, body) {
@@ -41,6 +54,14 @@ function longMaxTokens(value, maxTokens) {
   return tokens && maxTokens && tokens >= maxTokens ? tokens : null;
 }
 
+// Absent or empty: the cap is lifetime (null). 1-720 hours: the cap counts only attempts in that
+// rolling window. Anything else leaves generation unconfigured (false), never silently lifetime.
+function attemptWindowMs(value) {
+  if (value === undefined || value === '') return null;
+  const hours = integer(value, 720);
+  return hours ? hours * 3_600_000 : false;
+}
+
 function text(value, maximum) {
   return typeof value === 'string' && value.length > 0 && value.length <= maximum && value === value.trim()
     && ![...value].some(character => character.codePointAt(0) < 32 || character.codePointAt(0) === 127) ? value : null;
@@ -70,22 +91,26 @@ export function openRouterPolicy(env) {
   const dataCollection = ['allow', 'deny'].includes(env.LCT_OPENROUTER_DATA_COLLECTION) ? env.LCT_OPENROUTER_DATA_COLLECTION : null;
   const audience = ['public', 'authenticated'].includes(env.LCT_OPENROUTER_AUDIENCE) ? env.LCT_OPENROUTER_AUDIENCE : null;
   const maxRequests = integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200);
+  const windowMs = attemptWindowMs(env.LCT_OPENROUTER_WINDOW_HOURS);
   const maxTokens = integer(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS, 8192);
   const longTokens = longMaxTokens(env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS, maxTokens);
   const key = text(env.OPENROUTER_API_KEY_2 ?? env.OPENROUTER_API_KEY, 4096);
-  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && maxTokens && longTokens && key && env.DB?.prepare);
+  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && windowMs !== false
+    && maxTokens && longTokens && key && env.DB?.prepare);
   return { configured, model, fallbackModels: fallbacks || [], models: model && fallbacks ? [model, ...fallbacks] : [],
-    provider, dataCollection, audience, maxRequests, maxTokens, longMaxTokens: longTokens, key,
+    provider, dataCollection, audience, maxRequests, windowMs: windowMs || null, windowValid: windowMs !== false,
+    maxTokens, longMaxTokens: longTokens, key,
     backend: 'openrouter', label: 'OpenRouter', consentHeader: 'x-lct-openrouter-consent',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     enabled: configured && env.LCT_OPENROUTER_ENABLED === 'true' && env.LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED === 'true',
     maxConcurrent: 2, admissionIntervalMs: 10_000 };
 }
 
-export async function readOpenRouterAdmission(env) {
-  const row = await env.DB.prepare(`SELECT COUNT(*) AS attempts,
-    COALESCE(SUM(CASE WHEN completed_at IS NULL AND recovery_released_at IS NULL THEN 1 ELSE 0 END), 0) AS unresolved,
-    MAX(max_output_tokens) AS token_cap, MAX(created_at) AS latest FROM lct_openrouter_attempts`).first();
+export async function readOpenRouterAdmission(env, policy, now = Date.now()) {
+  const { countSince, liveSince } = admissionCutoffs(policy, now);
+  const row = await env.DB.prepare(`SELECT COALESCE(SUM(CASE WHEN created_at > ? THEN 1 ELSE 0 END), 0) AS attempts,
+    COALESCE(SUM(CASE WHEN completed_at IS NULL AND recovery_released_at IS NULL AND created_at > ? THEN 1 ELSE 0 END), 0) AS unresolved,
+    MAX(max_output_tokens) AS token_cap, MAX(created_at) AS latest FROM lct_openrouter_attempts`).bind(countSince, liveSince).first();
   if (!row || !Number.isSafeInteger(row.attempts) || row.attempts < 0
     || !Number.isSafeInteger(row.unresolved) || row.unresolved < 0 || row.unresolved > row.attempts) {
     throw new OpenRouterError(503, 'schema_unavailable', 'Generation admission storage is not ready. No provider request was made.');
@@ -100,7 +125,8 @@ export function geminiPolicy(env) {
   const modelValue = text(env.LCT_GEMINI_MODEL, 160);
   const model = modelValue && /^gemini-[A-Za-z0-9._-]+$/.test(modelValue) ? modelValue : null;
   const key = text(env.GEMINI_API_KEY, 4096);
-  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
+  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.windowValid
+    && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
   return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
     backend: 'gemini', label: 'Gemini', provider: 'Google AI Studio', dataCollection: null,
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',

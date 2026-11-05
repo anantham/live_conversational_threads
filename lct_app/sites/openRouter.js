@@ -1,6 +1,6 @@
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
 import { resolveIdentity } from './auth.js';
-import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission, outputCapFor } from './openRouterPolicy.js';
+import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission, admissionCutoffs, outputCapFor } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 import { mapStructure } from '../src/services/cloud/mapStructure.js';
@@ -19,6 +19,21 @@ const PROVIDER_STATUSES = new Set(['INVALID_ARGUMENT', 'UNAUTHENTICATED', 'PERMI
 // provider meets the routing pin. Every other refusal either applies to all models
 // (400-403), is transient (429), or may follow provider work (502), so it never falls back.
 const ROUTE_UNAVAILABLE = new Set([404, 503]);
+
+// Public reason for a refusal, from the status code alone: provider bodies never reach the browser.
+export function refusalReason(status) {
+  if (status === 402) return 'the provider account is out of credits';
+  if (status === 401 || status === 403) return 'the provider refused the API key';
+  if (status === 429) return 'the provider is rate-limiting requests';
+  if (status >= 500) return 'the provider had an internal error';
+  if (status >= 400) return 'the provider rejected the request';
+  return 'the provider sent an unexpected response';
+}
+
+function limitText(policy) {
+  return policy.windowMs ? `the limit of ${policy.maxRequests} attempts per ${policy.windowMs / 3_600_000} hours`
+    : `the lifetime limit of ${policy.maxRequests} attempts`;
+}
 
 // Always logged: a dead primary is an owner-visible degradation, not a debug detail.
 function logModelFallback(upstreamStatus, index) {
@@ -83,7 +98,7 @@ async function generate(request, env, policy) {
   if (policy.audience === 'authenticated' && !await resolveIdentity(request, env)) {
     throw new OpenRouterError(401, 'sign_in', 'Sign in for the current generation test. Public browsing is still available.');
   }
-  await readOpenRouterAdmission(env);
+  await readOpenRouterAdmission(env, policy);
   if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     throw new OpenRouterError(415, 'content_type', 'Send recording source as JSON. No attempt was requested.');
   }
@@ -110,14 +125,15 @@ async function generate(request, env, policy) {
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was cancelled before an attempt was requested.');
 
   const id = crypto.randomUUID(), now = Date.now();
+  const { countSince, liveSince } = admissionCutoffs(policy, now);
   let admitted;
   try {
     admitted = await env.DB.prepare(`INSERT INTO lct_openrouter_attempts (id, created_at, max_output_tokens)
-    SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_openrouter_attempts) < ?
+    SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_openrouter_attempts WHERE created_at > ?) < ?
       AND NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
       AND (SELECT COUNT(*) FROM lct_openrouter_attempts
-           WHERE completed_at IS NULL AND recovery_released_at IS NULL) ${env.LCT_REPLAY_TEST_RECORDING_ID ? "+ (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'map' AND state IN ('reserved','dispatching','uncertain'))" : ''} < ?
-    RETURNING id`).bind(id, now, maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
+           WHERE completed_at IS NULL AND recovery_released_at IS NULL AND created_at > ?) ${env.LCT_REPLAY_TEST_RECORDING_ID ? "+ (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'map' AND state IN ('reserved','dispatching','uncertain'))" : ''} < ?
+    RETURNING id`).bind(id, now, maxTokens, countSince, policy.maxRequests, now - policy.admissionIntervalMs, liveSince, policy.maxConcurrent).first();
   } catch (error) {
     // A long cap set before migration 0019 widened the ledger: fail clearly, before any provider call.
     if (/CHECK constraint failed/i.test(String(error?.message))) {
@@ -125,7 +141,7 @@ async function generate(request, env, policy) {
     }
     throw error;
   }
-  if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
+  if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
   const { artifact, model, repair } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
     for (const [index, body] of wires.entries()) {
@@ -142,7 +158,8 @@ async function generate(request, env, policy) {
         if (ROUTE_UNAVAILABLE.has(response.status) && wires.length > 1) {
           throw new OpenRouterError(502, 'no_model_route', 'No approved model currently has a route through the selected provider. The attempt remains counted; no map was saved.');
         }
-        throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation. The attempt remains counted. Check provider availability and allowance before retrying.`);
+        throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation (HTTP ${response.status}: ${refusalReason(response.status)}). The attempt remains counted. Check provider availability and allowance before retrying.`,
+          { upstream_status: response.status });
       }
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
       try {
@@ -171,22 +188,23 @@ export async function handleOpenRouter(request, env) {
     const policy = PREFIXES[prefix](env);
     if (path === prefix + '/status' && request.method === 'GET') {
       let admission = null;
-      if (policy.configured) { try { admission = await readOpenRouterAdmission(env); } catch { /* Disabled readiness, no provider access. */ } }
+      if (policy.configured) { try { admission = await readOpenRouterAdmission(env, policy); } catch { /* Disabled readiness, no provider access. */ } }
       const enabled = policy.enabled && Boolean(admission);
       const available = enabled && admission.attempts < policy.maxRequests && admission.unresolved < policy.maxConcurrent
         && (admission.latest == null || admission.latest <= Date.now() - policy.admissionIntervalMs);
       return openRouterJSON(200, { enabled, available, configured: policy.configured, schema_ready: Boolean(admission),
         backend: policy.backend, audience: policy.audience, model: policy.model, fallback_models: policy.fallbackModels,
         provider: policy.provider, max_output_tokens: policy.maxTokens, long_max_output_tokens: policy.longMaxTokens,
+        attempt_window_hours: policy.windowMs ? policy.windowMs / 3_600_000 : null,
         message: !enabled ? 'Generation is waiting for provider, admission storage and spending-limit setup.'
           : available ? 'Generation is available within shared attempt and token limits.'
-            : 'The shared generation limit is reached or another attempt is starting. Unresolved attempts and lifetime limits need owner review.' });
+            : `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting.` });
     }
     if (path !== prefix + '/generate') throw new OpenRouterError(404, 'route', 'This generation endpoint does not exist.');
     if (request.method !== 'POST') throw new OpenRouterError(405, 'method', 'Use POST to generate a conversation map.');
     return await generate(request, env, policy);
   } catch (error) {
-    if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code });
+    if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code, ...error.details });
     logOpenRouterFailure(env, 'generation_failed', undefined, undefined, prefix.endsWith('/gemini') ? 'gemini' : 'openrouter');
     return openRouterJSON(503, { error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved. Check admission storage and provider setup before retrying.', code: 'generation_failed' });
   }

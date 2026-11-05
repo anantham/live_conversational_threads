@@ -15,6 +15,14 @@ const messages = {
   429: 'The shared generation limit is reached or another attempt is starting. Wait and check setup before retrying; unresolved attempts may need owner review.',
   503: 'Generation is unavailable. Check provider setup and spending limits before retrying.',
 };
+// Fixed copy chosen by the provider's status code; the Worker never forwards provider text.
+function refusalDetail(status) {
+  if (!Number.isInteger(status) || status < 400 || status > 599) return '';
+  if (status === 402) return ' The provider account is out of credits.';
+  if (status === 401 || status === 403) return ' The provider refused the API key.';
+  if (status === 429) return ' The provider is rate-limiting requests.';
+  return status >= 500 ? ` The provider had an internal error (HTTP ${status}).` : ` The provider rejected the request (HTTP ${status}).`;
+}
 function unreadable() { return new Error(`Generation returned an unreadable or oversized response. ${uncertain}`); }
 
 async function readJSON(response, signal, limit) {
@@ -57,7 +65,8 @@ async function request(path, signal, body, backend) {
   const payload = await readJSON(response, signal, body ? 2 * 1024 * 1024 + 1024 : 8192);
   if (!response.ok) {
     const code = response.status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
-    const error = new Error(code ? generationFailures[code] : messages[response.status] || uncertain);
+    const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status) : '';
+    const error = new Error(code ? generationFailures[code] + detail : messages[response.status] || uncertain);
     error.status = response.status;
     if (code) error.code = code;
     throw error;
