@@ -10938,3 +10938,9 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   `review-map-attention/` (change.diff `0914200d…`, plus the full ConversationNavigation.jsx and
   RecordingConversationMap.jsx). Verdict: NO MATERIAL FINDINGS. It confirmed `RecordingConversationMap` clears its
   error when a retry or status check starts, so the badge cannot stick after a successful retry.
+
+## 2026-11-05 17:00 IST — Sites CI lints the Sites pages
+
+- `.github/workflows/sites-ci.yml`: the lint step now also covers `src/pages/Sites*.jsx`, `src/components/Sites*.jsx`, `src/components/recording`, `src/services/privateFiles.js` and `src/App.sites.test.jsx` (103 files in all, 13 Sites pages). PR #237 removed the one error that kept the pages out.
+- Checked locally: exit 0 with 5 existing warnings (exhaustive-deps); a planted unused variable in `SitesAudioImport.jsx` makes it exit 1.
+- Still left out: `src/services/serverless` (Worker tests), 32 errors, mostly Node globals (`global`, `process`) unknown to the browser lint config, plus unused args.
