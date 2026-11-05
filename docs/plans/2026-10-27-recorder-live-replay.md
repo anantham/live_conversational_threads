@@ -1,0 +1,11 @@
+# Recorder audio replay: live thread acceptance — 27 October 2026
+
+Owner/integrator: root. Authoritative checkout: codex/lct-inference-choice in the existing lct-inference-choice worktree. User requests use of their selected Recorder audio for a real-time thread-construction test. Hosted Meet work is parked at its existing key gate, with no bot dispatched.
+
+H1 (0.95): import transcription is paced but maps are blocked by the busy prop and a post-transcription-only orchestration. Falsification: inspect hook/control boundaries and demonstrate a map before the import session completes. H2 (0.04): a live graph renderer is missing; falsified by the existing shared recording canvas. H3 (0.01): provider capability is the only gap; fresh read-only status/ledgers precede dispatch.
+
+Routine repair: expose the existing consented 45-second/six-attempt live-map controls while imports transcribe. A synchronous map-attempt claim prevents the default completion map from competing or silently retrying a failed live request. Stopping the import aborts its map wait and automatic scheduling. Preserve default one final map when no live map is requested, all provider/model/lifetime caps, original bytes, browser-local default and opt-in cloud/publication. No new dependency, permission, key or backend.
+
+Finite test: preserve the original download; use a local 150-second excerpt. One Soniox stream, at most two OpenRouter/approved Vertex map calls within existing caps; no bot or recovery. Require multiple real transcript snapshots, two source-linked graph snapshots on the visible canvas before audio transmission ends, later snapshot with more arrived source words, no future transcript, original audio retained, and local reload without provider POST. Stop further dispatch on failure. All personal audio/transcript/map/media evidence remains local and is excluded from repository/review packets. Reviewer receives code/synthetic tests only.
+
+Next evidence: focused behavior tests and independent review, then existing-Site publication and one real replay. Forecast 30–60 active minutes for code/checks/review/publication plus 3–5 minutes live replay; provider/browser/review waits and newly exposed defects unknown. Completion requires actual browser/provider evidence, not fixtures or exports alone.

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, HardDrive, Trash2 } from "lucide-react";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import RecordedConversations from "../components/browse/RecordedConversations.jsx";
 import IndrasNetAudioLibrary from "../components/browse/IndrasNetAudioLibrary";
 import { apiFetch, API_BASE_URL } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
@@ -57,6 +58,7 @@ function chipClass(active) {
 }
 
 export default function Browse() {
+  const sitesMode = import.meta.env.VITE_SITES_MODE === "true";
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -242,6 +244,7 @@ export default function Browse() {
   };
 
   useEffect(() => {
+    if (sitesMode) return;
     const fetchConversations = async () => {
       // 6s timeout so an off-network visitor (backend on a private Tailscale
       // host they can't reach) gets a clear section-level result instead of a
@@ -289,7 +292,7 @@ export default function Browse() {
       }
     };
     fetchConversations();
-  }, [dataProvider]);
+  }, [dataProvider, sitesMode]);
 
   // Distinct contacts across all conversations (MVP contact picker), sorted by
   // name. Derived from the participants now carried on the list response.
@@ -342,6 +345,7 @@ export default function Browse() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+        {sitesMode && <RecordedConversations />}
         <section className="mx-auto max-w-2xl">
           <div className="mb-3 flex items-end justify-between gap-4">
             <div>
@@ -369,7 +373,7 @@ export default function Browse() {
           ) : localRecords.length === 0 && !draftSummary ? (
             <div className="rounded-xl border border-dashed border-slate-250 bg-white px-5 py-6 text-center">
               <FileText aria-hidden="true" className="mx-auto text-slate-300" size={24} />
-              <p className="mt-2 text-sm font-medium text-slate-600">No saved conversations on this device</p>
+              <p className="mt-2 text-sm font-medium text-slate-600">No imported conversation files on this device</p>
               <p className="mt-1 text-xs text-slate-400">
                 Open a .threads file above; valid files will appear here next time.
               </p>
@@ -430,7 +434,11 @@ export default function Browse() {
           )}
         </section>
 
-        <IndrasNetAudioLibrary />
+        {sitesMode ? (
+          <div className="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-slate-600"><button type="button" className="min-h-11 rounded-lg bg-slate-800 px-4 py-2 font-medium text-white" onClick={() => navigate("/public")}>Explore public conversations</button><p className="mt-3 text-xs">Files opened here stay in this browser. Publishing a public copy is a separate choice in the public library.</p></div>
+        ) : (
+          <>
+            <IndrasNetAudioLibrary />
 
         <section className="mx-auto mt-10 max-w-2xl border-t border-slate-200 pt-7">
           <div className="mb-3">
@@ -601,10 +609,12 @@ export default function Browse() {
           </>
         )}
         </section>
+          </>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
+      {!sitesMode && deleteConfirm && (
         <div
           className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
           onClick={() => setDeleteConfirm(null)}

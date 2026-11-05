@@ -1,0 +1,115 @@
+import { createRecordingTranscript } from './recordingTranscript.js';
+import { createRecordingThreads } from './recordingThreads.js';
+import { validateThreadsArtifact } from '../threadsArtifact.js';
+
+const BACKENDS = new Set(['openrouter', 'gemini']);
+const uncertain = 'No new map is available. The attempt may remain counted; check setup and allowance before retrying.';
+const generationFailures = {
+  provider_refused: 'The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.',
+  invalid_completion: 'The AI provider returned an incomplete or invalid map. Your audio and transcript are preserved; the attempt remains counted.',
+  no_model_route: 'No approved AI model currently has a route through the selected provider. Your audio and transcript are preserved; the attempt remains counted.',
+};
+const messages = {
+  401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',
+  403: 'Confirm permission to send this transcript to the selected inference provider.',
+  429: 'The shared generation limit is reached or another attempt is starting. Wait and check setup before retrying; unresolved attempts may need owner review.',
+  503: 'Generation is unavailable. Check provider setup and spending limits before retrying.',
+};
+// Fixed copy chosen by the provider's status code; the Worker never forwards provider text.
+function refusalDetail(status) {
+  if (!Number.isInteger(status) || status < 400 || status > 599) return '';
+  if (status === 402) return ' The provider account is out of credits.';
+  if (status === 401 || status === 403) return ' The provider refused the API key.';
+  if (status === 429) return ' The provider is rate-limiting requests.';
+  return status >= 500 ? ` The provider had an internal error (HTTP ${status}).` : ` The provider rejected the request (HTTP ${status}).`;
+}
+function unreadable() { return new Error(`Generation returned an unreadable or oversized response. ${uncertain}`); }
+
+async function readJSON(response, signal, limit) {
+  if (signal?.aborted) { void response.body?.cancel().catch(() => {}); throw new DOMException('Aborted', 'AbortError'); }
+  const length = Number(response.headers.get('content-length'));
+  if (Number.isFinite(length) && length > limit) { void response.body?.cancel().catch(() => {}); throw unreadable(); }
+  if (!response.body || !response.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+    void response.body?.cancel().catch(() => {}); throw unreadable();
+  }
+  const reader = response.body.getReader(), chunks = [];
+  let size = 0;
+  const stop = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener('abort', stop, { once: true });
+  try {
+    if (signal?.aborted) stop();
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw unreadable();
+      chunks.push(value);
+    }
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const bytes = new Uint8Array(size); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const payload = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw unreadable();
+    return payload;
+  } catch { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); throw unreadable(); }
+  finally { signal?.removeEventListener('abort', stop); stop(); }
+}
+
+async function request(path, signal, body, backend) {
+  if (!BACKENDS.has(backend)) throw new Error('Select Gemini or OpenRouter before generation.');
+  const response = await fetch(`/api/cloud/${backend}${path}`,  { method: body ? 'POST' : 'GET',
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    ...(body ? { headers: { 'Content-Type': 'application/json', [backend === 'gemini' ? 'X-LCT-Gemini-Consent' : 'X-LCT-OpenRouter-Consent']: 'generate-v1' }, body } : {}),
+  });
+  const payload = await readJSON(response, signal, body ? 2 * 1024 * 1024 + 1024 : 8192);
+  if (!response.ok) {
+    const code = response.status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
+    const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status) : '';
+    const error = new Error(code ? generationFailures[code] + detail : messages[response.status] || uncertain);
+    error.status = response.status;
+    if (code) error.code = code;
+    throw error;
+  }
+  return payload;
+}
+
+export async function getRecordingMapStatus(signal, backend = 'openrouter') {
+  const status = await request('/status', signal, undefined, backend);
+  if (status.backend !== backend || ['enabled', 'available', 'configured', 'schema_ready'].some(key => typeof status[key] !== 'boolean')
+    || ![null, 'public', 'authenticated'].includes(status.audience)
+    || ['model', 'provider'].some(key => status[key] != null && (typeof status[key] !== 'string' || status[key].length > 160))) throw unreadable();
+  // Older Site deployments omit the list; that means no fallback, not an unknown one.
+  const fallbacks = status.fallback_models ?? [];
+  if (!Array.isArray(fallbacks) || fallbacks.length > 3
+    || fallbacks.some(model => typeof model !== 'string' || !model || model.length > 160)) throw unreadable();
+  return { ...status, fallback_models: fallbacks };
+}
+
+/** The consent-time description of every model that may receive the transcript. */
+export function describeModelRoute(status) {
+  if (!status?.model) return null;
+  const fallbacks = status.fallback_models || [];
+  const models = fallbacks.length ? `${status.model}, or ${fallbacks.join(', then ')} if it is unavailable` : status.model;
+  return `Model: ${models} · Provider: ${status.provider}`;
+}
+
+export async function generateRecordingMap(source, signal, backend = 'openrouter') {
+  createRecordingTranscript(source);
+  const body = JSON.stringify({ source });
+  if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
+  const payload = await request('/generate', signal, body, backend);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.request_id)) throw unreadable();
+  const artifact = payload.artifact;
+  let result;
+  try {
+    validateThreadsArtifact(artifact);
+    result = createRecordingThreads({ ...source, graph: { nodes: artifact?.graph_data, edges: artifact?.edges,
+      metadata: { conversation_title: artifact?.conversation_title, executive_summary: artifact?.executive_summary },
+      conversation_threads: artifact?.conversation_threads } });
+    for (const key of ['conversation_id', 'recorded_at', 'transcription_complete', 'source_tokens', 'utterances', 'full_transcript']) {
+      if (JSON.stringify(result.bundle[key]) !== JSON.stringify(artifact[key])) throw unreadable();
+    }
+  } catch { throw unreadable(); }
+  return result;
+}

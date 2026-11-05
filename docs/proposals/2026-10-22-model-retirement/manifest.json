@@ -1,0 +1,21 @@
+{
+  "status": "PROPOSAL ONLY - NOT INSTALLED OR APPLIED",
+  "files": [
+    {
+      "name": "0016_model_retirement_recovery_oct22.sql",
+      "sha256": "76c12f718a2f9d04798dd28c47403a7c9df2c8a906bb1b6810180047058c9397"
+    },
+    {
+      "name": "0016_snapshot.json",
+      "sha256": "ec5acbcf5d2009881a48334edd7216d7effe0184d24f802e6b8c441f87b2b9ed"
+    },
+    {
+      "name": "_journal.json",
+      "sha256": "0601857c6ecd272db9bd16fff21db92e528cd189b2634c3fd1568c97fb4bfebf"
+    },
+    {
+      "name": "configuration.json",
+      "sha256": "56458f2c5984479439cd10ff3e72b6955f9dcb4ec2b00db8571c09cff670e6d2"
+    }
+  ]
+}

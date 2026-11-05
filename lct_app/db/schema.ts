@@ -1,0 +1,144 @@
+import { sql } from 'drizzle-orm';
+import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+
+// Private owner metadata only. R2 holds the bytes; no public listing is derived from this table.
+export const cloudFiles = sqliteTable('lct_cloud_files', {
+  id: text('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull(),
+  ownerProvider: text('owner_provider', { enum: ['chatgpt', 'google'] }).notNull().default('chatgpt'),
+  objectKey: text('object_key').notNull(),
+  kind: text('kind', { enum: ['file', 'threads', 'audio'] }).notNull(),
+  title: text('title').notNull(),
+  filename: text('filename').notNull(),
+  contentType: text('content_type').notNull(),
+  byteSize: integer('byte_size').notNull(),
+  state: text('state', { enum: ['staging', 'ready', 'deleting'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('lct_cloud_files_object_key_unique').on(table.objectKey),
+  index('lct_cloud_files_owner_state_created_id_idx').on(table.ownerUserId, table.state, table.createdAt, table.id),
+  index('lct_cloud_files_provider_owner_idx').on(table.ownerProvider, table.ownerUserId),
+  check('lct_cloud_files_kind_check', sql`${table.kind} in ('file', 'threads', 'audio')`),
+  check('lct_cloud_files_state_check', sql`${table.state} in ('staging', 'ready', 'deleting')`),
+  check('lct_cloud_files_byte_size_check', sql`${table.byteSize} > 0`),
+]);
+
+// Revocable Google sessions; only stable subjects and random-token/nonce hashes.
+// Used challenges remain until expiry, including after sign-out, to refuse replay.
+export const googleSessions = sqliteTable('lct_google_sessions', {
+  jtiHash: text('jti_hash').primaryKey(),
+  googleSub: text('google_sub').notNull(),
+  challengeHash: text('challenge_hash').notNull(),
+  createdAt: integer('created_at').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  revokedAt: integer('revoked_at'),
+}, (table) => [
+  uniqueIndex('lct_google_sessions_challenge_unique').on(table.challengeHash),
+  index('lct_google_sessions_sub_idx').on(table.googleSub),
+  index('lct_google_sessions_expiry_idx').on(table.expiresAt),
+]);
+
+// Anonymous write fences retain only random object keys; never identity or file metadata.
+export const fileFences = sqliteTable('lct_cloud_file_fences', {
+  objectKey: text('object_key').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+});
+
+// Bounded anonymous admission receipts only; no key, identity, transcript or audio.
+export const sonioxSessions = sqliteTable('lct_soniox_sessions', {
+  id: text('id').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+  maxSessionSeconds: integer('max_session_seconds').notNull(),
+  leaseUntil: integer('lease_until'),
+}, (table) => [
+  index('lct_soniox_sessions_created_idx').on(table.createdAt),
+  check('lct_soniox_sessions_duration_check', sql`${table.maxSessionSeconds} >= 15 and ${table.maxSessionSeconds} <= 900`),
+]);
+
+// Provider admission metadata only; unknown completion retains its concurrency slot.
+export const openRouterAttempts = sqliteTable('lct_openrouter_attempts', {
+  id: text('id').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+  maxOutputTokens: integer('max_output_tokens').notNull(),
+  completedAt: integer('completed_at'),
+  recoveryReleasedAt: integer('recovery_released_at'),
+}, (table) => [
+  index('lct_openrouter_attempts_created_idx').on(table.createdAt),
+  // Unqualified column names: a table rebuild must not leave the temporary table's name in the CHECK.
+  check('lct_openrouter_attempts_tokens_check', sql`"max_output_tokens" >= 1 and "max_output_tokens" <= 16384`),
+]);
+
+// Explicit guest publications only; never populated from private or local files.
+export const publicThreads = sqliteTable('lct_public_threads', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  payload: text('payload'),
+  byteSize: integer('byte_size').notNull(),
+  nodeCount: integer('node_count').notNull(),
+  deleteHash: text('delete_hash').notNull(),
+  payloadHash: text('payload_hash'),
+  state: text('state', { enum: ['ready', 'removed'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  index('lct_public_threads_state_created_id_idx').on(table.state, table.createdAt, table.id),
+  index('lct_public_threads_created_idx').on(table.createdAt),
+  check('lct_public_threads_state_check', sql`${table.state} in ('ready', 'removed')`),
+  check('lct_public_threads_payload_check', sql`(${table.state} = 'ready' and ${table.payload} is not null and ${table.payloadHash} is not null and ${table.byteSize} > 0 and ${table.byteSize} <= 524288) or (${table.state} = 'removed' and ${table.payload} is null and ${table.payloadHash} is null and ${table.byteSize} = 0 and ${table.nodeCount} = 0 and ${table.title} = '')`),
+]);
+
+// Owner-scoped meeting control receipts; content/audio remain on the selected recorder.
+// Unknown joins retain a reservation until reconciled, never silently POSTed again.
+export const meetings = sqliteTable('lct_meetings', {
+  id: text('id').primaryKey(),
+  owner: text('owner').notNull(),
+  urlHash: text('url_hash').notNull(),
+  botId: text('bot_id'),
+  state: text('state', { enum: ['starting', 'uncertain', 'active', 'ended'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+  endsAt: integer('ends_at').notNull(),
+}, (table) => [
+  uniqueIndex('lct_meetings_bot_unique').on(table.botId),
+  index('lct_meetings_owner_created_idx').on(table.owner, table.createdAt),
+  check('lct_meetings_state_check', sql`${table.state} in ('starting', 'uncertain', 'active', 'ended')`),
+  check('lct_meetings_duration_check', sql`${table.endsAt} > ${table.createdAt} and ${table.endsAt} <= ${table.createdAt} + 300000`),
+]);
+
+
+// Separate one-time hosted provider pilot. One lifetime row; never reuse old Asus receipts.
+export const hostedAttendeeTrials = sqliteTable('lct_hosted_attendee_trials', {
+  id: integer('id').primaryKey(),
+  requestId: text('request_id').notNull(),
+  owner: text('owner').notNull(),
+  urlHash: text('url_hash').notNull(),
+  botId: text('bot_id'),
+  state: text('state', { enum: ['starting', 'uncertain', 'active', 'ended'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+  endsAt: integer('ends_at').notNull(),
+  leaveAttemptedAt: integer('leave_attempted_at'),
+}, table => [
+  check('lct_hosted_attendee_singleton', sql`${table.id} = 1`),
+  check('lct_hosted_attendee_state', sql`${table.state} in ('starting', 'uncertain', 'active', 'ended')`),
+  check('lct_hosted_attendee_duration', sql`${table.endsAt} = ${table.createdAt} + 180000`),
+]);
+
+// One explicitly approved owner-only audio validation, separate from public budgets.
+export const audioReplayTrial = sqliteTable('lct_audio_replay_trial', {
+  id: integer('id').primaryKey(), owner: text('owner').notNull(), recordingId: text('recording_id').notNull(),
+  startRequestId: text('start_request_id').notNull(), state: text('state').notNull(),
+  createdAt: integer('created_at').notNull(), endsAt: integer('ends_at').notNull(), closedAt: integer('closed_at'),
+}, t => [check('audio_replay_singleton', sql`${t.id} = 1`),
+  check('audio_replay_state', sql`${t.state} in ('active','failed','completed')`),
+  check('audio_replay_lifetime', sql`${t.endsAt} > ${t.createdAt} and ${t.endsAt} <= ${t.createdAt} + 1500000`)]);
+export const audioReplayAttempts = sqliteTable('lct_audio_replay_attempts', {
+  requestId: text('request_id').primaryKey(), trialId: integer('trial_id').notNull(), kind: text('kind').notNull(),
+  sequence: integer('sequence').notNull(), phase: text('phase').notNull(), state: text('state').notNull(),
+  createdAt: integer('created_at').notNull(), completedAt: integer('completed_at'), leaseUntil: integer('lease_until'),
+  inputBytes: integer('input_bytes').notNull(), sourceEndMs: integer('source_end_ms').notNull(),
+}, t => [uniqueIndex('audio_replay_sequence').on(t.trialId, t.kind, t.sequence),
+  uniqueIndex('audio_replay_stt_once').on(t.trialId).where(sql`${t.kind} = 'stt'`),
+  uniqueIndex('audio_replay_one_active').on(t.trialId).where(sql`${t.state} in ('reserved','dispatching','uncertain')`),
+  check('audio_replay_kind', sql`${t.trialId} = 1 and ${t.kind} in ('stt','map')`),
+  check('audio_replay_sequence_bound', sql`(${t.kind} = 'stt' and ${t.sequence} = 0 and ${t.phase} = 'start') or (${t.kind} = 'map' and ${t.sequence} >= 1 and ${t.sequence} <= 28 and ${t.phase} in ('periodic','final'))`),
+  check('audio_replay_attempt_state', sql`${t.state} in ('reserved','dispatching','completed','uncertain')`),
+  check('audio_replay_input', sql`${t.inputBytes} >= 0 and ${t.inputBytes} <= 131072 and ${t.sourceEndMs} >= 0`)]);

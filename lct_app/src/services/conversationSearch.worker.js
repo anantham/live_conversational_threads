@@ -1,9 +1,16 @@
 import { env, pipeline } from '@huggingface/transformers';
 import { rankConversationVectors } from './conversationSearch';
+import wasmAsset from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
+import factoryAsset from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 env.backends.onnx.wasm.numThreads = 1;
+// Pair the factory and binary from the same locked package, on this origin.
+env.backends.onnx.wasm.wasmPaths = {
+  wasm: new URL(wasmAsset, import.meta.url).href,
+  mjs: new URL(factoryAsset, import.meta.url).href,
+};
 const MODEL = 'Xenova/all-MiniLM-L6-v2';
 let extractor;
 let documents;

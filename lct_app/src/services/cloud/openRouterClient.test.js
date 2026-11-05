@@ -1,0 +1,133 @@
+// @vitest-environment node
+// Intent: tests/intent/sites-recording-map.md; actual source/graph adapters and synthetic intercepted network only.
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { describeModelRoute, generateRecordingMap, getRecordingMapStatus } from './openRouterClient.js';
+import { createRecordingThreads } from './recordingThreads.js';
+import { readThreadsFile } from '../threadsArtifact.js';
+
+const source = { recordingId: 'fixture-map', startedAt: 1_790_000_000_000, complete: true,
+  finalTokens: [{ text: 'Synthetic words.', speaker: 'fixture-speaker', startMs: 0, endMs: 1200 }] };
+const graph = { nodes: [{ id: 'fixture-moment', node_name: 'Synthetic moment', semantic_level: 1, semantic_type: 'chunk',
+  source_ref: { utterance_ids: ['utterance-0001'] }, source_excerpt: 'Synthetic words.' }], edges: [] };
+const payload = () => ({ request_id: '00000000-0000-4000-8000-000000000001', artifact: createRecordingThreads({ ...source, graph }).bundle });
+const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+beforeEach(() => vi.stubGlobal('fetch', vi.fn(async () => response(payload()))));
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it('sends fixed same-origin consented source and returns an actual readable portable file with source-owned provenance', async () => {
+  const result = await generateRecordingMap(source, new AbortController().signal);
+  expect(fetch.mock.calls).toHaveLength(1);
+  expect(fetch.mock.lastCall[0]).toBe('/api/cloud/openrouter/generate');
+  expect(JSON.parse(fetch.mock.lastCall[1].body)).toEqual({ source });
+  expect(fetch.mock.lastCall[1]).toMatchObject({ method: 'POST', credentials: 'same-origin', redirect: 'error',
+    headers: { 'Content-Type': 'application/json', 'X-LCT-OpenRouter-Consent': 'generate-v1' } });
+  expect(await readThreadsFile(result.file)).toEqual(payload().artifact);
+});
+it('refuses invalid source before network and checks actual readiness fields', async () => {
+  await expect(generateRecordingMap({ ...source, finalTokens: [] })).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled();
+  fetch.mockResolvedValueOnce(response({ enabled: true })); await expect(getRecordingMapStatus()).rejects.toThrow('unreadable');
+  fetch.mockResolvedValueOnce(response({ backend: 'openrouter', enabled: false, available: false, configured: false, schema_ready: false, audience: null, model: null, provider: null }));
+  expect(await getRecordingMapStatus()).toMatchObject({ enabled: false, available: false });
+});
+it.each(['identity', 'text', 'time', 'evidence', 'version', 'edge-schema', 'request-id'])('rejects response %s contradictions without producing a portable file', async mode => {
+  const value = payload();
+  if (mode === 'identity') value.artifact.conversation_id = 'fixture-other';
+  if (mode === 'text') value.artifact.full_transcript = 'Wrong synthetic words';
+  if (mode === 'time') value.artifact.utterances[0].timestamp_start = 900;
+  if (mode === 'evidence') value.artifact.graph_data[0].source_ref.utterance_ids = ['fixture-other'];
+  if (mode === 'version') value.artifact.format_version = 1;
+  if (mode === 'edge-schema') value.artifact.edge_schema.endpoint_space = 'wrong';
+  if (mode === 'request-id') value.request_id = 'wrong';
+  fetch.mockResolvedValueOnce(response(value)); await expect(generateRecordingMap(source)).rejects.toThrow('unreadable');
+});
+it.each([401, 429, 503, 502])('sanitizes HTTP %s bodies and refuses incomplete results', async status => {
+  fetch.mockResolvedValueOnce(response({ error: 'fixture sensitive provider detail' }, status));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error).toBeInstanceOf(Error); expect(error.status).toBe(status); expect(error.message).not.toContain('sensitive');
+});
+it('bounds declared and actual streamed responses and cancels the oversized reader', async () => {
+  const cancelled = vi.fn();
+  fetch.mockResolvedValueOnce(new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(2 * 1024 * 1024 + 1025)); }, cancel: cancelled }),
+    { headers: { 'content-type': 'application/json' } }));
+  await expect(generateRecordingMap(source)).rejects.toThrow('oversized'); expect(cancelled).toHaveBeenCalledTimes(1);
+  fetch.mockResolvedValueOnce(new Response('{}', { headers: { 'content-type': 'application/json', 'content-length': '10000' } }));
+  await expect(getRecordingMapStatus()).rejects.toThrow('oversized');
+});
+it('releases a stalled response reader on abort and cancels an already-aborted late response', async () => {
+  for (const late of [false, true]) {
+    const controller = new AbortController(), cancelled = vi.fn();
+    fetch.mockResolvedValueOnce(new Response(new ReadableStream({ cancel: cancelled }), { headers: { 'content-type': 'application/json' } }));
+    if (late) controller.abort();
+    const pending = generateRecordingMap(source, controller.signal);
+    await Promise.resolve(); await Promise.resolve(); controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' }); expect(cancelled).toHaveBeenCalledTimes(1);
+  }
+});
+
+it('rejects readiness for a different backend before disclosing or generating source', async () => {
+  fetch.mockResolvedValue(response({ backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'google/model', provider: 'Google' }));
+  await expect(getRecordingMapStatus(undefined, 'gemini')).rejects.toThrow('unreadable');
+  expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  await expect(getRecordingMapStatus(undefined, 'unknown')).rejects.toThrow('Select Gemini');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+// Intent: a failed import keeps a useful bounded failure reason without echoing provider text.
+it.each([
+  ['provider_refused', 'provider refused'],
+  ['invalid_completion', 'incomplete or invalid map'],
+])('explains the bounded %s failure without leaking arbitrary provider details', async (code, text) => {
+  fetch.mockResolvedValueOnce(response({ code, error: 'fixture sensitive provider detail' }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toContain(text); expect(error.message).toContain('remains counted');
+  expect(error.message).not.toContain('sensitive'); expect(error.code).toBe(code);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+// Intent: a provider refusal says why from its status code alone, in fixed client copy.
+it.each([
+  [402, 'out of credits'],
+  [401, 'refused the API key'],
+  [429, 'rate-limiting'],
+  [500, 'internal error (HTTP 500)'],
+])('names the reason for a provider refusal with status %i', async (status, text) => {
+  fetch.mockResolvedValueOnce(response({ code: 'provider_refused', upstream_status: status, error: 'fixture sensitive provider detail' }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toContain('provider refused'); expect(error.message).toContain(text);
+  expect(error.message).not.toContain('sensitive'); expect(error.code).toBe('provider_refused');
+});
+
+it.each([undefined, 'HTTP 402', 99, 402.5])('keeps the base refusal message for an unusable status %s', async upstream => {
+  fetch.mockResolvedValueOnce(response({ code: 'provider_refused', upstream_status: upstream }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toBe('The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.');
+});
+
+// Intent: tests/intent/openrouter-model-fallback.md. Consent names every model that may receive the transcript.
+const ready = extra => ({ backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true,
+  audience: 'public', model: 'vendor/primary', provider: 'approved-provider', ...extra });
+it('accepts an approved fallback list, treats its absence as none, and refuses malformed lists', async () => {
+  fetch.mockResolvedValueOnce(response(ready({ fallback_models: ['vendor/second', 'vendor/third'] })));
+  expect(await getRecordingMapStatus()).toMatchObject({ fallback_models: ['vendor/second', 'vendor/third'] });
+  fetch.mockResolvedValueOnce(response(ready()));
+  expect((await getRecordingMapStatus()).fallback_models).toEqual([]);
+  for (const fallback_models of ['vendor/second', [1], ['a/b', 'c/d', 'e/f', 'g/h'], ['x'.repeat(161)]]) {
+    fetch.mockResolvedValueOnce(response(ready({ fallback_models })));
+    await expect(getRecordingMapStatus()).rejects.toThrow('unreadable');
+  }
+});
+it('describes the model route with every approved fallback before consent', () => {
+  expect(describeModelRoute(ready({ fallback_models: [] }))).toBe('Model: vendor/primary · Provider: approved-provider');
+  expect(describeModelRoute(ready({ fallback_models: ['vendor/second'] })))
+    .toBe('Model: vendor/primary, or vendor/second if it is unavailable · Provider: approved-provider');
+  expect(describeModelRoute(ready({ fallback_models: ['vendor/second', 'vendor/third'] })))
+    .toBe('Model: vendor/primary, or vendor/second, then vendor/third if it is unavailable · Provider: approved-provider');
+  expect(describeModelRoute({ model: null })).toBeNull();
+});
+it('explains when no approved model had a route', async () => {
+  fetch.mockResolvedValueOnce(response({ error: 'server text', code: 'no_model_route' }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.code).toBe('no_model_route');
+  expect(error.message).toMatch(/No approved AI model currently has a route/);
+  expect(error.message).toMatch(/audio and transcript are preserved/);
+});

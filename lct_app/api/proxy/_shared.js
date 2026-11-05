@@ -79,8 +79,8 @@ export function rateLimitIp(forwardedFor, maxPerMin) {
  * Origin is checked BEFORE the preflight reply so a disallowed origin never
  * receives CORS approval headers.
  */
-export function evaluateGuard({ method, origin, forwardedFor, maxPerMin = 30 }) {
-  if (!isAllowedOrigin(origin)) {
+export function evaluateGuard({ method, origin, forwardedFor, maxPerMin = 30, allowedOrigin = null }) {
+  if (!isAllowedOrigin(origin) && origin !== allowedOrigin) {
     return { status: 403, body: 'Forbidden Origin', headers: {} };
   }
   const cors = corsHeaders(origin);
@@ -100,12 +100,17 @@ export function evaluateGuard({ method, origin, forwardedFor, maxPerMin = 30 }) 
  * Edge-runtime gate (Web Request in, Response out). Returns a Response to
  * short-circuit with, or null when the request may proceed.
  */
-export function guardRequest(req, { maxPerMin = 30 } = {}) {
+export function guardRequest(req, {
+  maxPerMin = 30,
+  allowedOrigin = null,
+  forwardedFor = req.headers.get('x-forwarded-for'),
+} = {}) {
   const verdict = evaluateGuard({
     method: req.method,
     origin: req.headers.get('origin'),
-    forwardedFor: req.headers.get('x-forwarded-for'),
+    forwardedFor,
     maxPerMin,
+    allowedOrigin,
   });
   if (!verdict) return null;
   return new Response(verdict.body, { status: verdict.status, headers: verdict.headers });

@@ -35,7 +35,7 @@ function loadPlayerApi(signal) {
   });
 }
 
-export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest, onSeekHandled, onNavigatePassage, onClose }) {
+export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, namesStayInView = false, seekRequest, onSeekHandled, onNavigatePassage, onClose }) {
   const media = selectYouTubeRef(bundle);
   const videoId = media?.video_id;
   const videoLabel = media?.label || "Conversation recording";
@@ -251,11 +251,11 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
         </div>
       )}
       </details>
-      {onRenameSpeaker && <SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} onSeek={seek} />}
+      {onRenameSpeaker && <SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} onSeek={seek} namesStayInView={namesStayInView} />}
       </div>
       {!compact && !collapsed && <PanelResizeHandle label="Source panel width" value={Math.min(panelWidth,maxPanelWidth)} min={240} max={maxPanelWidth} onChange={setPanelWidth} />}
     </aside>
   );
 }
 
-YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onNavigatePassage: PropTypes.func, onClose: PropTypes.func };
+YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onNavigatePassage: PropTypes.func, onClose: PropTypes.func };

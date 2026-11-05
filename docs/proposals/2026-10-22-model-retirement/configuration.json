@@ -1,0 +1,16 @@
+{
+  "set_values": [
+    {
+      "key": "LCT_OPENROUTER_MODEL",
+      "value": "google/gemini-3.5-flash-lite",
+      "is_secret": false
+    }
+  ],
+  "unchanged": {
+    "LCT_OPENROUTER_PROVIDER": "google-vertex",
+    "LCT_OPENROUTER_DATA_COLLECTION": "deny",
+    "LCT_OPENROUTER_MAX_REQUESTS": "20",
+    "LCT_OPENROUTER_MAX_OUTPUT_TOKENS": "8192",
+    "LCT_GEMINI_ENABLED": "false"
+  }
+}

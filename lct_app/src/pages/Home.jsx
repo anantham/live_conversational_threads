@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video } from "lucide-react";
+import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video, Cloud } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
@@ -87,7 +87,7 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => navigate("/browse")}
+          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/public" : "/browse")}
           className="flex flex-col items-center gap-2 group"
         >
           <span className="w-14 h-14 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
@@ -99,22 +99,22 @@ export default function Home() {
 
       {/* Secondary actions */}
       <div className="relative flex items-center gap-5">
-        {/* Import / Upload entry point. Routes to /new without ?autostart
-            so FileUpload remains visible on arrival (the autostart path
-            hides it — see NewConversation.jsx). */}
+        {import.meta.env.VITE_SITES_MODE === "true" && <button type="button" onClick={() => navigate("/private-files")} className="flex flex-col items-center gap-1.5 group"><span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition"><Cloud size={16} /></span><span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Private files</span></button>}
+        {/* Sites imports use their own local-first file journey; legacy uses /new. */}
         <button
           type="button"
-          onClick={() => navigate("/new")}
+          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/import-audio" : "/new")}
           className="flex flex-col items-center gap-1.5 group"
           title="Upload an audio file instead of recording live"
         >
           <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
             <FileAudio size={16} />
           </span>
-          <span className="text-[10px] font-medium text-gray-500 group-hover:text-gray-700 transition">Import audio</span>
+          <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Import audio</span>
         </button>
 
-        <button
+        {/* Bookmarks is not built yet. The Site hides the door rather than show one that does nothing. */}
+        {import.meta.env.VITE_SITES_MODE !== "true" && <button
           type="button"
           onClick={() => showPendingFeatureToast("Bookmarks")}
           aria-disabled="true"
@@ -123,34 +123,36 @@ export default function Home() {
           <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 backdrop-blur-sm border border-gray-150 text-gray-300 group-hover:text-amber-600 group-hover:border-amber-300 transition">
             <Bookmark size={16} />
           </span>
-          <span className="text-[10px] text-gray-400 group-hover:text-amber-700 transition">Bookmarks</span>
-        </button>
+          <span className="text-xs text-gray-500 group-hover:text-amber-700 transition">Bookmarks</span>
+        </button>}
 
         <button
           onClick={() => navigate("/cost-dashboard")}
           className="flex flex-col items-center gap-1.5 group"
         >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
             <BarChart3 size={16} />
           </span>
-          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Costs</span>
+          <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Costs</span>
         </button>
 
         <button
           onClick={() => navigate("/settings")}
           className="flex flex-col items-center gap-1.5 group"
         >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
             <Settings size={16} />
           </span>
-          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Settings</span>
+          <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Settings</span>
         </button>
       </div>
 
       {/* Service Status Indicators */}
-      <div className="absolute bottom-8 left-8">
-        <ServiceStatus />
-      </div>
+      {import.meta.env.VITE_SITES_MODE !== "true" && (
+        <div className="absolute bottom-8 left-8">
+          <ServiceStatus />
+        </div>
+      )}
 
       {pendingFeatureToast && (
         <div className="pointer-events-none absolute bottom-8 right-8 z-20">

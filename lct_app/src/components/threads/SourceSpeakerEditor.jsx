@@ -8,7 +8,7 @@ const friendlySpeakerName = (speakerId) => {
   return match ? `Speaker ${Number(match[1]) + 1}` : speakerId || "Unknown speaker";
 };
 
-export default function SourceSpeakerEditor({ bundle, onRenameSpeaker, onSeek }) {
+export default function SourceSpeakerEditor({ bundle, onRenameSpeaker, onSeek, namesStayInView = false }) {
   const speakers = useMemo(() => {
     const seen = new Set();
     return (bundle.utterances || []).filter((utterance) => {
@@ -42,7 +42,7 @@ export default function SourceSpeakerEditor({ bundle, onRenameSpeaker, onSeek })
   return <details className="mt-1 shrink-0 text-xs text-slate-500">
     <summary className="min-h-11 cursor-pointer py-2">Name the speakers</summary>
     <div className="mt-2 space-y-3">
-      <p>Edits stay in this browser. Download the reviewed file to share them.</p>
+      <p>{namesStayInView ? "Names change in this view only. The stored copy stays the same. Download the reviewed file to keep them." : "Edits stay in this browser. Download the reviewed file to share them."}</p>
       <label className="block space-y-1">
         <span>Speaker</span>
         <select aria-label="Speaker to name" value={selectedId} onChange={(event) => { setSpeakerId(event.target.value); setSpeakerName(""); }} className="min-h-11 w-full rounded border border-slate-300 bg-white p-2">
@@ -80,4 +80,5 @@ SourceSpeakerEditor.propTypes = {
   bundle: PropTypes.object.isRequired,
   onRenameSpeaker: PropTypes.func.isRequired,
   onSeek: PropTypes.func,
+  namesStayInView: PropTypes.bool,
 };

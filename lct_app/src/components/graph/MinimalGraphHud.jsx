@@ -12,6 +12,7 @@ const LEGACY_TIER_SPECS = [
 ];
 
 export default function MinimalGraphHud({
+  diagnosticsEnabled = true,
   zoomLevel,
   hideStats = false,
   inToolbar = false,
@@ -183,7 +184,7 @@ export default function MinimalGraphHud({
                 setAutoFollow(false);
                 clearNeighborhoodFocus?.(false);
                 userOverrodeTierRef.current = true;
-                mglog("tier button click", { clickedLevel: level, label, prevLockedLevel: lockedLevel, displayMode, willUnlock: lockedLevel === level, drillDepth: drilldownPath.length });
+                if (diagnosticsEnabled) mglog("tier button click", { clickedLevel: level, label, prevLockedLevel: lockedLevel, displayMode, willUnlock: lockedLevel === level, drillDepth: drilldownPath.length });
                 const tailLevel = drilldownPath.length
                   ? drilldownPath[drilldownPath.length - 1].level
                   : null;
@@ -197,7 +198,7 @@ export default function MinimalGraphHud({
                 }
               }}
               title={isLocked ? `Locked to ${label} — click to unlock` : `Click to lock at ${label} level`}
-              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 px-3 py-1 text-[10px] font-medium transition-colors cursor-pointer sm:min-h-0 sm:flex-none sm:px-2 sm:text-[9px] ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 px-3 py-1 text-xs font-medium transition-colors cursor-pointer sm:min-h-8 sm:flex-none sm:px-2.5 ${
                 isActive
                   ? `${chip} ${color} border-b-2 ${border}`
                   : isLocked
@@ -240,6 +241,7 @@ export default function MinimalGraphHud({
 }
 
 MinimalGraphHud.propTypes = {
+  diagnosticsEnabled: PropTypes.bool,
   zoomLevel: PropTypes.number.isRequired,
   hideStats: PropTypes.bool,
   inToolbar: PropTypes.bool,
