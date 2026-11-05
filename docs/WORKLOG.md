@@ -10944,3 +10944,23 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - `.github/workflows/sites-ci.yml`: the lint step now also covers `src/pages/Sites*.jsx`, `src/components/Sites*.jsx`, `src/components/recording`, `src/services/privateFiles.js` and `src/App.sites.test.jsx` (103 files in all, 13 Sites pages). PR #237 removed the one error that kept the pages out.
 - Checked locally: exit 0 with 5 existing warnings (exhaustive-deps); a planted unused variable in `SitesAudioImport.jsx` makes it exit 1.
 - Still left out: `src/services/serverless` (Worker tests), 32 errors, mostly Node globals (`global`, `process`) unknown to the browser lint config, plus unused args.
+
+
+## 2026-11-05 22:34 IST — CPU-only search repair approved
+
+Owner selects the CPU-only recommendation, including runtime proof, asset-size guard, independent review and same-Site publication. Root isolates work from the older checkout's three dirty documentation files using the managed sites-cpu-search worktree at156e915a. Intent/finite plan written before product edits. No further approval needed for routine in-scope repairs/review/PR/deployment; generation activation and new-key setup remain separate. Next checkpoint: real pinned-model/WASM ranking and under-limit build.
+
+
+## 2026-11-05 — CPU runtime proof and pre-review checkpoint
+
+Implementation pairs explicit same-package/same-origin CPU factory and WASM URLs; both Vite configs select the existing WASM-only provider. Sites build now rejects any client asset above25MiB, including non-WASM files; export includes the guard and all previously hand-supplemented hosted/replay handlers. ONNX is declared directly at its existing identical locked version; no non-root lock graph drift. Full1529/163files and focused15 pass, lint0errors/5old warnings, normal/Sites builds pass; largest14,264,838bytes. Actual built worker executes real q8 MiniLM through WASM and ranks two distinct queries in both3- and66-passage synthetic cases. Warm query~8ms; cold local context226ms/2510ms, one sample each/excludes download/not physical-browser timing. Missing asset refuses without results or CDN fallback.
+
+Harness attempt1 identified missing Cache API, attempt2 main-metadata URL rejection; corrected realistic fixtures only after static source tracing and authoritative main==pin identity. Third run succeeds; subsequent short/long/refusal run succeeds with XMLHttpRequest404 adapter, avoiding a false pass from an absent harness API. No product guard weakened. Metadata-discovery reproducibility issue logged in ISSUES; independent source/model fixture remains public and bounded. CUA unavailable is not routed around. Next: independent exact code review, scoped PR+CI and same-Site publication; generation remains off.
+
+## 2026-11-05 23:08 IST — CPU search PR green; publication stopped at review
+
+PR240 code head1c334 is committed/pushed; focused/full tests, builds and CI green. Three existing authorized independent routes yielded no verdict (AGY timeout/interrupted; Grok402balance exhausted; Claude403organization subscription restriction). Original Gemini session was read without sending a new prompt: no completed verdict. No bypass, new purchase or fourth dispatch. Review receipt and next finite checkpoint recorded in docs/reviews/2026-11-05-sites-cpu-search-review.md and current plan. Smaller34,518byte code-only packet prepared; proposed one bounded low-effort Gemini continuation needs loop-limit ruling. Site66 still live, generation off; failed67 preserved. CPU repair is not merged, deployed or accepted. Prior remaining-time forecast misses external review availability;10–20active minutes after a successful verdict plus hosting wait, review timing unknown. All code unchanged from validated1c334.
+
+## 2026-11-05 23:18 IST — independent approval; publication preflight
+
+The approved single compact Gemini review completed in14.93seconds, SUCCESS/APPROVED/no findings/tool_attempts0, conversation92e7162d-9126-4e18-a1c4-060c1dd848bd. Exact receipt above; reviewed product code1c334 is unchanged by0d330 and this documentation-only receipt. Latest PR240 CI green, base156e915a/head0d330. Live preflight: existing public Site, owner access, latest saved67 (failed), live66, environment revision75, both generation flagsfalse,20complete attempt rows/fivecolumns/no truncation. Integration and once-only publication are already authorized. Remaining10–20active minutes plus hosting wait; next checkpoint is served matching CPU factory/WASM plus unchanged ledger/settings.

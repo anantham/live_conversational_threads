@@ -25,13 +25,15 @@ function fixture() {
   for (const name of [
     'index.html', 'package-lock.json', 'public/favicon.svg',
     'api/proxy/_shared.js', 'api/proxy/chat.js', 'api/proxy/realtime-token.js',
-    'sites/worker.js', 'sites/vite.config.mjs', 'sites/frontend.config.mjs', 'sites/build.mjs',
+    'sites/worker.js', 'sites/vite.config.mjs', 'sites/frontend.config.mjs', 'sites/build.mjs', 'sites/asset-limits.mjs',
     'sites/storage-packaging.mjs', 'sites/storage.js', 'sites/storagePolicy.js', 'sites/storageRecovery.js',
     'sites/publicThreads.js', 'sites/publicThreadsPolicy.js',
     'sites/soniox.js', 'sites/sonioxPolicy.js', 'sites/serviceHealth.js',
     'sites/openRouter.js', 'sites/openRouterPolicy.js', 'sites/openRouterIO.js',
     'sites/auth.js', 'sites/authPolicy.js',
     'sites/meetings.js', 'sites/meetingPolicy.js', 'sites/meetingGuests.js',
+    'sites/hostedAttendee.js', 'sites/hostedTrial.js',
+    'sites/replayAdmission.js', 'sites/replayProvider.js', 'sites/replayTrial.js',
     'db/schema.ts', 'drizzle.config.ts',
     'src/main.jsx', 'src/index.css', 'src/services/serverless/prompts.json',
   ]) file(name);
@@ -55,6 +57,9 @@ describe('Site source export public API', () => {
     ]) file(name, 'fixture-excluded');
     const result = exportSiteSource(source, output);
     expect(result.directory).toBe(output);
+    for (const dependency of ['asset-limits.mjs', 'hostedTrial.js', 'hostedAttendee.js', 'replayTrial.js', 'replayAdmission.js', 'replayProvider.js']) {
+      expect(readFileSync(join(output, 'sites', dependency), 'utf8')).toBe('fixture-source');
+    }
     expect(readFileSync(join(output, 'src/main.jsx'), 'utf8')).toBe('fixture-source');
     expect(JSON.parse(readFileSync(join(output, '.openai/hosting.json'), 'utf8')).d1).toBe('DB');
     expect(readFileSync(join(output, 'drizzle/0000_test.sql'), 'utf8')).toContain('CREATE TABLE');

@@ -22,6 +22,8 @@ const backendPort = resolveBackendPort();
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Search explicitly uses CPU/WASM; avoid bundling unused GPU runtimes.
+  resolve: { alias: [{ find: /^onnxruntime-web\/webgpu$/, replacement: 'onnxruntime-web/wasm' }] },
   plugins: [
     {
       name: 'reject-browser-credentials',

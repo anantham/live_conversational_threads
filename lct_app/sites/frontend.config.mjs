@@ -8,6 +8,8 @@ export default defineConfig({
   envPrefix: [],
   define: { 'import.meta.env.VITE_SITES_MODE': JSON.stringify('true') },
   publicDir: false,
+  // Search explicitly uses CPU/WASM; avoid bundling unused GPU runtimes.
+  resolve: { alias: [{ find: /^onnxruntime-web\/webgpu$/, replacement: 'onnxruntime-web/wasm' }] },
   plugins: [react(), tailwindcss()],
   esbuild: {
     drop: ['debugger'],

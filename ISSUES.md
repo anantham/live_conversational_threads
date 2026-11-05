@@ -3257,3 +3257,8 @@ Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps w
 - **What:** found by the Gemini review of `fix/sites-quick-ux`. The Site's account panel closes only from its × button; Escape does nothing. The service-status popovers do close on Escape.
 - **Impact:** keyboard users need to tab to ×. Lower now that the panel no longer opens by itself.
 - **Next step:** handle Escape on the panel and return focus the same way as the × button.
+
+
+### 2026-11-05 — Transformers 4 metadata discovery uses main alongside pinned model loading
+
+Found while verifying CPU search: library get_pipeline_files/get_files do not forward revision into metadata discovery, so metadata requests use /resolve/main while actual model loading uses the pinned revision. Impact: reproducibility risk if upstream main changes; not a current CPU compatibility blocker because authoritative public main SHA is exactly the pinned751bff revision. No private input leaves the local test. Recommended separate follow-up: pin/verify discovery metadata as well as loaded model files. Do not silently substitute different main metadata in fixtures.
