@@ -150,6 +150,117 @@ Actual Google sign-in fails400/origin_mismatch for the cloud Site origin. Owner 
 
 # ISSUES
 
+Last updated: 2026-11-04
+
+## 2026-11-04 - Asus backend restart docs are stale; CI does not run production Python (OPEN, NON-BLOCKING)
+
+- AGENTS.md "Backend (Asus) — restart + deploy" says the backend is launched by
+  `logs/start_lct_backend.ps1`, "NOT a Scheduled Task", logging to
+  `logs/lct_backend.manual.*.log`. Observed live 2026-11-04: the :43181
+  process is a child of `scripts/start_all.py --autostart`, started by Task
+  Scheduler, which restarts the backend by itself after it is stopped; the
+  live log is `logs/backend.log` (the manual logs were last written
+  2026-09-25); and `start_lct_backend.ps1` refuses to run from an elevated
+  shell, which an SSH session to the Asus is. Impact: an agent following the
+  doc checks the wrong log (this caused a false "no import activity" reading
+  during the #224 deploy) and may race the supervisor. Next step: update the
+  section to "stop the listener; start_all.py restarts it; verify with
+  /api/version", and name `logs/backend.log`.
+- Production runs Python 3.9.21 (Asus `.venv`), but CI and the M5 run newer
+  versions, so 3.10-only syntax passes CI and breaks on production. Seen with
+  `test_stt_saturation_wait.py` (fixed in PR #229). Next step: run the backend
+  unit suite on Python 3.9 in CI, or add a `python_requires`/lint check.
+- The Asus Tailscale link was degraded on 2026-11-04 (DERP relay, ~4 s, dropped
+  SSH sessions, a transient DNS failure for github.com) and the machine was
+  unreachable entirely from ~02:03 to ~03:50. Not investigated further.
+
+## 2026-11-04 - Waiting STT jobs can starve behind a long import (OPEN, NON-BLOCKING)
+
+- PR #224 makes the backend wait (up to 900 s) for the local STT's busy
+  signal instead of failing after ~22 s. Remaining limit: a long import sends
+  its next chunk the instant the previous one returns, while a waiting job
+  polls every 30 s, so the waiter rarely wins the gap and can wait until the
+  whole other import finishes. Past the budget it raises `SttSaturatedError`
+  and falls back or fails (still retryable). Impact: only when two jobs use
+  the M5 Whisper STT at once. Next step: a short FIFO wait queue on the
+  server (a change to its admission/liveness contract, so a deliberate
+  decision), or jitter plus a brief yield between chunks.
+- Review side note (pre-existing, not changed): `attendee_audio_downloader`
+  holds its DB session open across a slow-pass STT call of up to 600 s. It
+  targets IndrasNet `:7777`, so PR #224's wait never triggers there.
+
+## 2026-11-04 - M5 local STT now admits one request at a time; backend retries may give up first (OPEN, NON-BLOCKING)
+
+- Owner ruling 2026-11-04: `MLX_STT_MAX_CONCURRENCY` on the M5
+  `com.aditya.mlx-stt` LaunchAgent was lowered from 4 to 1. This removes the
+  shared-Silero-VAD interleaving risk from the 2026-11-03 entry at its source
+  (no two requests run at once); the VAD lock suggested there is now optional.
+  Verified live: an overlapping request got `503` + `Retry-After: 30` +
+  `code: local_stt_saturated` in 17 ms while the first completed normally.
+  The value lives only in `~/Library/LaunchAgents/com.aditya.mlx-stt.plist`;
+  the code default is still 2.
+- Knock-on (from reading the code, not observed live): the backend's chunked
+  path (`services/audio_transcriber.py` `transcribe_audio_chunked`) retries a
+  503 with exponential backoff, 5 attempts from 1.5 s (about 22 s of waiting
+  in all, settable via `STT_CHUNK_MAX_RETRIES` / `STT_CHUNK_RETRY_BACKOFF_S`),
+  and does not read `Retry-After`. A chunk usually takes longer than that, so
+  when two jobs use the M5 STT at once the second job can exhaust its retries
+  and fail. The single-shot and `transcribe_audio_file_detailed` callers
+  (`file_transcriber.py`, `attendee_audio_downloader.py`) were not checked for
+  503 handling. One job at a time is unaffected, because chunks run
+  sequentially. Next step: make the client honour `Retry-After` for
+  `local_stt_saturated`, with a total wait budget instead of a fixed attempt
+  count.
+
+## 2026-11-03 - Local STT enrichment follow-ups found while porting M5 fixes (OPEN, NON-BLOCKING)
+
+- ECAPA speaker embeddings still decode through `torchaudio.load`, which uses
+  TorchCodec. It loads on the M5 only because the `com.aditya.mlx-stt`
+  LaunchAgent sets `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/opt/ffmpeg@8/lib`;
+  from a plain shell (Homebrew default FFmpeg 9) the same call fails with
+  "Could not load libtorchcodec". VAD and diarization no longer depend on that
+  variable. Impact: removing the variable or ffmpeg@8 would silently degrade
+  `include_embeddings` to an `embeddings.error` field. Next step: reuse
+  `_decode_audio_for_model` in `_embed_segments`.
+- The live log since 2026-09-28 shows 271 embedding successes and 2
+  failures, both `Padding size should be less than the corresponding input
+  dimension ... input [1, 80, 1]`. Hypothesis (unverified): a Whisper segment
+  end past the decoded audio length, so the tensor slice is shorter than the
+  0.2 s guard computed from timestamps. The transcript is returned; only vectors
+  are lost. Next step: reproduce, then check the actual slice length.
+- 17 `VAD check failed` lines in the same window are FFmpeg CLI decode errors;
+  the log keeps the command but not FFmpeg's stderr, so the cause of each is
+  not recorded. The gate fails open as designed. Next step: include a bounded
+  stderr excerpt in the decode error.
+- The local STT suite's async tests needed `pytest-asyncio`, which is not in
+  `requirements.txt`; they now use the `anyio` plugin that Starlette already
+  installs (fixed in the port PR).
+- Independent review (Gemini 4 Argon High via Antigravity, 2026-11-03) raised
+  these against code that is identical in the deployed file and on main, so the
+  port left them unchanged. Each is a hypothesis until reproduced:
+  - Shared model objects across worker threads. The M5 LaunchAgent sets
+    `MLX_STT_MAX_CONCURRENCY=4`. One Silero VAD model is shared and its
+    recurrent state is reset per call, so two requests' VAD calls could
+    interleave. The risky outcome is wrong regions on a file with speech, which
+    the gate could then drop as silence. Lazy model loaders have no lock, and
+    `mx.clear_cache()` runs while another request is mid-inference. Next step:
+    a lock around VAD inference (cheap), then decide the concurrency default
+    deliberately. That is an owner decision because it changes throughput.
+  - If the handler task is cancelled (server shutdown; whether Uvicorn cancels
+    it on client disconnect here is unverified), the `finally` frees the slot
+    and unlinks the temp file while the worker thread is still running.
+    Next step: reproduce, then shield the worker future and wait for it before
+    releasing the slot.
+  - `ffmpeg` subprocesses have no timeout, so a hung decode holds a slot
+    indefinitely. Decoding a long file holds several full-length float32 copies,
+    and diarization decodes the file a second time.
+  - `/health` is a plain `def`, so it runs in the same AnyIO threadpool as the
+    compute work; `async def` would answer on the loop. A health probe
+    cancelled before it responds is not logged.
+  - A failed model load (`_get_vad`, `_get_diarizer`, `_get_ecapa`) is cached
+    until restart, and `/health` reports no VAD status. `_embed_segments` leaks
+    its `.ecapa16k.wav` if FFmpeg fails mid-write.
+
 ## 2026-10-14 10:08 IST — Sites Windows package-manager launch fails before build
 
 Resolved10:15IST: a materially different version-only official-manager probe with complete existing Node22.18/npm11.12.1 image first in task-local PATH passes; official build/helper/package then succeeds. Diagnostic source is served public33/env29 with exact data/settings preservation. No install, plugin/system/source workaround or new provider call. Keep absolute path/toolchain preflight for future helper launches. Browser attachment and actual live map acceptance remain separate incomplete issues.
@@ -259,8 +370,6 @@ At an observed320px viewport on served Sites v16, the fixed213px account panel c
 
 Strict model output references utterance IDs and omits node speaker fields. An actual adapter/file/normalizer/color regression demonstrates empty palette despite canonical two-speaker transcript (22other contracts pass). Impact:generated moments/legend lost who-said-what color agreement; blocker:no for inactive packaging. Repaired in sourcecec22f3 using existing provenance traversal/shared palette,82focused/adjacent checks and actual synthetic browser proof; independent Google Gemini PASS. The old generated viewer fixture had an explicit node speaker field the strict model cannot return; fixture now exercises the real shape. Native16 is unchanged. Next:project reviewed repair into the inactive candidate before its separately authorized publication; actual provider quality/account/domain acceptance remains later.
 
-Last updated: 2026-09-28
-
 ## 2026-09-28 - Per-utterance idea attribution is not available
 
 - The inspected bundled conversation has 56 moments; 11 belong to two authored
@@ -282,8 +391,6 @@ Last updated: 2026-09-28
   unique owner/group index, but the losing request may return an error rather
   than opening the winner's conversation. Follow up if real concurrent use
   warrants a retry.
-
-
 
 ## 2026-09-11 — Orphaned Grafana datasource-plugin processes exhausted host commit (RESOLVED IN WORKING TREE; PR PENDING)
 
@@ -328,7 +435,6 @@ separate open follow-up.
 - **Relevant boundaries:** transcription/alignment, .threads serialization,
   `lct_app/src/services/youtubeMedia.js`, and `YouTubeSourcePanel.jsx`.
 
-
 ## 2026-09-06 — Public viewer independent review findings (REPAIRED LOCALLY)
 
 Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;
@@ -370,7 +476,6 @@ values, not an import-duration cap. No production deployment is claimed yet.
 - **Frontend bundle: open, non-blocking.** Viewer release build succeeds but
   emits the existing >500kB chunk warning. Investigate route-level splitting
   after profiling; this release adds no dependency.
-
 
 ## 2026-09-02 — Pull exporter stalls and collector log amplification (LOG AMPLIFICATION RESOLVED; BACKPRESSURE OPEN)
 
@@ -1843,6 +1948,287 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Recovery blocker resolved by the subsequent private-storage amendment: owners can reconcile complete staged bytes or discard incomplete staging using create-only writes and retained empty erasure fences. Failed cleanup keeps the reservation for explicit owner retry. Current source and controlled interleavings in sitesStorage.test.js verify recovery/finalization, deletion/late upload and no resurrection; prior native synthetic deletion verified provider conditional-write behavior. Revalidated2026-10-02 against unchanged storage source and the latest665-test gate, including19storage cases. Private retention is now approved and disclosed at version14: keep until the user deletes. Actual second-account isolation, real-data activation and production capacity remain pending; do not build another staging reconciler.
 - Private file UI, live native save/read/delete proof, a second signed-in account ownership check, public guest publication controls and provider spending limits remain required migration work. Public entry alone does not establish any of those capabilities. Storage byte ceilings are not a monetary spending cap; no paid provider or upload activation is configured.
 
+## 2026-10-02 — Viewer validation and release prerequisites
+
+- Baseline dependency installation reports 12 vulnerabilities (1 low, 2 moderate,
+  8 high, 1 critical), both before and after adding the local search runtime.
+  This extends the existing dependency-triage entry; it is not attributed to this
+  feature. Impact: dependency maintenance risk. Nonblocking for local validation;
+  recommended next step is a separately reviewed direct/transitive dependency
+  triage rather than a blanket automatic upgrade.
+- Existing React test act-environment warnings, a CardDisplaySettings fast-refresh
+  warning, and the Vite large-chunk warning remain. All targeted lint has zero
+  errors. Impact: test/developer noise and bundle-size maintenance. Nonblocking;
+  address through the existing component and bundle decomposition work.
+- Initial reviewer probes encountered an Anthropic weekly limit, exhausted xAI
+  balance, and standalone Gemini's ProjectIdRequiredError. The installed
+  Antigravity route had been omitted. **Resolved:** Google Gemini 3.1 Pro (High)
+  through `agy` approved the exact `59dea4c..d3fc09a` bounded diff with no findings
+  on 2026-10-02. The verified deny-all tool guard preserved REVIEW-EGRESS-A1.
+  See docs/reviews/2026-10-02-viewer-exploration-agy.md. Source review is satisfied;
+  the draft changes remain unmerged and production remains on its previous release.
+
+## 2026-10-02 — Source follow-up validation
+
+- The legacy Source browser tests still expected the removed height slider,
+  hidden recovery links, and a retired Show all path. Corrected within the viewer
+  change to test the selected current behavior, retaining seek, rename/export,
+  resizing, and invalid-metadata checks. Those checks also found that the new
+  text fallback omitted the unverified-recording explanation; restored it without
+  creating an untrusted link. Resolved locally and independently approved in the
+  final Antigravity review. Published in PR205/PR206 and verified on the public site.
+- A phone screenshot shows the existing floating graph Legend over the lower
+  Source region, and resizing an already-open Source can leave its current
+  passage outside the transcript viewport. Impact: minor reading obstruction;
+  neither blocks video actions. Nonblocking and outside this correction's scope.
+  Recommended next step: make the legend respect pane reservations and recheck
+  automatic passage following on viewport changes in a bounded responsive pass.
+
+## 2026-10-02 — Phone Source blocked by graph overlays (RESOLVED LIVE)
+
+- Instrument: after live thread/search/view cycling at 390x844 with timeline and
+  selection retained, the Source naming summary click was intercepted by graph
+  reading controls and a selected-node sheet covered Source. Blocks phone naming.
+- Corrected locally: Source temporarily suspends the phone sheet without losing
+  selection, the graph contains its floating controls, and compact video Source
+  reserves graph space using available pane height. A regression failed before
+  the change and passed after it, including name application/detail restoration.
+  Google Gemini through Antigravity approved the exact correction with no findings;
+  published in PR206 as 11dda97 and verified live at 08:44 IST. Ordinary naming,
+  detail restoration and three-view cycling passed at 390x844 with zero page
+  errors, HTTP5xx, horizontal overflow or Source/navigation overlap. Desktop behavior stays
+  covered by the existing browser suite; no recording or transcript data changed.
+
+## 2026-10-02 — Push-range-aware documentation gate (PROPOSED FOLLOW-UP)
+
+- Instrument: the installed pre-push hook always invokes scripts/ci_local.sh,
+  which runs the full frontend Vitest suite, including for documentation-only
+  pushes. Impact: avoidable verification cost; not a viewer delivery blocker.
+- Bounded scope: classify the actual incoming push ranges for every ref, permitting
+  a documentation-only path solely for explicitly allowlisted documentation changes.
+  Source/dependency/config/build/test changes, renames, deletions, multiple mixed
+  refs, new or unknown/unresolvable remote refs must retain the full gate until
+  conservative handling is proven. Do not classify from a clean working tree alone.
+- Before implementation/merge, write behavioral test intent and exercise temporary
+  Git repositories covering pure documentation, source modification, source renamed
+  into docs, source deletion, mixed multi-ref pushes and unknown/new refs; verify
+  gate execution and exit status. Obtain mandatory non-OpenAI independent review.
+  This is a separately scoped proposal; the existing hook was not bypassed or changed.
+
+## 2026-10-02 — Viewer exploration continuity (DELIVERED; SERVED ACCEPTANCE PASSED)
+
+- Outcome: explore a thread, read its source and details, and return to a previous
+  place without losing context. Integration owner: Codex. Authoritative checkout:
+  the viewer-source-and-controls worktree, branch codex/viewer-closure-record,
+  source based on the served 11dda97 release. The active user goal authorizes the
+  bounded repair. Product edits are in this worktree; the public runtime is unchanged.
+- Instrument: public Chromium at 1440x900 reproduces the toolbar painting over
+  the desktop detail panel (toolbar z=50; fixed detail panel top=0, z=40).
+  Two distinct node selections leave browser history length unchanged at 2.
+- Instrument: the timeline has 468px of row content in a 202px viewport. Its
+  horizontal plot scroller is stretched to 202px and hides vertical overflow;
+  scrolling the outer container by 266px moves that clipped plot above the lower
+  labels, leaving their plotted rows blank. This is a clipping defect in addition
+  to the default six-row viewport, not missing source data.
+- The public example has 14 authored threads plus an ungrouped lane; the current
+  header counts these as 15 threads. Each moment is plotted in one home lane,
+  although thread_ids retains additional memberships. The gray cross-lane line
+  represents chronological movement; it does not establish semantic relationships.
+- Code confirms a naming gap: MinimalGraph.jsx:440-443 prints raw speaker IDs
+  in contribution labels; TextSourcePanel.jsx:38 displays original transcript
+  labels. Passage and Discussion rendering already resolve updated names.
+  Preserve original transcript bytes and offsets while applying aliases in UI.
+- Proposed repairs: allocate desktop details beneath the measured header/toolbar;
+  add Back/Forward for meaningful exploration steps with position restoration;
+  make the title toggle Overview; place a quiet cycling view button by Center and
+  Display; use a Source icon and the timeline's own toggle; use native ready-player
+  controls while retaining loading/error/retry/fallback behavior; fix the full-height
+  timeline plot and display counts honestly; resolve all visible speaker labels
+  from a shared identity map. These are presentation/navigation changes.
+- Finite acceptance: (1) desktop and phone panels never obscure their headings or
+  actions; (2) first and last timeline rows have visible, clickable plots aligned
+  with labels after vertical/horizontal scrolling and resize; (3) Back/Forward
+  restores node, thread, level, view and position without reverting name edits;
+  (4) Apply name updates Source, cards, percentages, details and Discussion before
+  persistence finishes, with original source bytes and text offsets preserved;
+  (5) native recording play/pause and transcript seeks work, with blocked-player
+  retry/cancel/fallback retained; (6) selected-thread navigation includes its full
+  authored membership, and chronological links are distinguished from argument links.
+- Implementation assumptions announced after optional questions had no answer:
+  meaningful navigation creates history entries; manual pan/zoom replaces camera
+  position; preserve the existing default tier; use shared scrolling plus expansion.
+  Short, plain topic labels and time replay are separately proposed;
+  no regeneration, hierarchy replacement or physics layout is selected here.
+- Local evidence: 15/15 regular Chromium journeys pass on populated synthetic
+  artifacts, including final-lane geometry, scroll restoration, hierarchy/manual
+  pan restoration, immediate aliases, source seeks and seven-moment reading.
+  Separate actual native YouTube play/pause/seek checks pass at 1440px and 390px.
+  Affected unit tests pass 106/106; scoped lint is clean and the build passes.
+- Source head 7354564 is pushed in PR207. Full frontend gate passes 512/512;
+  Google Gemini 3.1 Pro via AGY approves the exact source/test/spec packet with
+  no findings (135 seconds for this one review). Receipt is in docs/reviews.
+- Next evidence checkpoint: remote browser gate, merge/deployment and public
+  desktop/phone verification. Remaining estimate is 15–25 minutes if the required
+  remote checks pass, revised at the review checkpoint. Provider wait is complete;
+  deployment duration is not yet measured. Public runtime is still unchanged;
+  independent approval does not establish a served or accepted journey.
+
+### 2026-10-02 — Post-release verification checkpoint
+
+- PR207 is merged as a8a793f; Production deployment 6807268191 succeeds for that
+  exact SHA. The public desktop thread/history/scroll, final lane and native video
+  evidence paths pass. Phone checks and the full served acceptance are still open.
+- The production smoke used the retired separate Overview button. Test intent and
+  assertions now follow the accepted title disclosure, retaining summary, timeline,
+  persistence and reopen behavior. All 9 production smoke/opener tests pass locally
+  against the public deployment. Independent review and merge of this test-only
+  correction remain; runtime source is unchanged.
+- Preexisting nonblocking follow-up: Legend's bottom-right button is covered by an
+  open detail drawer. Close details to access it. Impact: color-key access requires
+  one extra step while reading. Recommended future step: expose the key beside the
+  reading controls or reserve space for it after a product/layout decision. This
+  does not block Source, timeline, title, history or the selected-thread controls.
+
+### 2026-10-02 17:17 IST — Phone history acceptance repair in progress
+
+- Main presentation/source/timeline fixes are served from PR207. PR208's stale
+  smoke selector correction is reviewed and merged as355fdf2. Final phone
+  acceptance remains open; exact reading-position restoration is the dependency.
+- Owner Codex, viewer-source-and-controls worktree, codex/viewer-phone-history.
+  Public instrument confirms a content-scroll event overwrites the outgoing
+  position before pushState. Hook regression fails160 expected /183 received;
+  bounded semantic-state guard is implemented locally, with validation/review open.
+- Finite remaining checks: Back restores160 and Forward restores the incoming
+  position; node/view/thread/camera replay and name preservation still pass;
+  native public phone evidence seek/play/pause, Source naming and Discussion/Back
+  pass without app errors or panel overlap. Do not count the local edit as served.
+- Forecast20–40 minutes from the diagnosis checkpoint. Next checkpoint is local
+  regression and actual-example evidence, then eligible independent review and
+  production release. Prior15–25-minute forecast missed because public phone
+  verification found this race after the synthetic scroll test had passed.
+
+### 2026-10-02 17:29 IST — Phone repair review approved
+
+- PR209 exact source b4fe577 passes hook4/4, six explicit owned-server desktop/
+  phone continuity journeys, production build and full push gate513/513. Google
+  Gemini through AGY approves the bounded source/test/intent packet with no
+  findings, zero tool attempts; tracked receipt records identity and scope.
+- The complete local actual-example phone journey now passes exact reading
+  position160 on Back, all seven moments, native evidence cue/play/pause and
+  immediate cross-view naming retained through Back with source bytes preserved.
+- Owner and checkout unchanged. Remaining dependency: CI/release plus exact
+  public phone verification. Estimate15–25 minutes from local acceptance;
+  next evidence checkpoint is served identity and successful public journey.
+
+### 2026-10-02 17:39 IST — Served acceptance complete
+
+- Integration owner Codex; authoritative checkout remains viewer-source-and-controls,
+  branch codex/viewer-phone-history. PR207/208/209 merged. Production source
+ 970f49d637024e3a179ced3f2f47ec7af110bc08, deployment6807963520 success at
+ 17:34:56 IST; latest production identity confirmed after public verification.
+- Public Chromium1440x900 and390x900 journeys pass at the requested URL: title
+  overview, final lane aligned/clickable, all seven selected-thread moments,
+  exact160px Back restoration and Forward, headings/actions below toolbar,
+  native evidence cue4399s/play/clock advance/pause, immediate naming in Source/
+  cards/details/Discussion and retained through Back, original transcript bytes
+  preserved. Zero page errors, HTTP5xx, app backend requests or horizontal overflow.
+- Finite acceptance above is met with combined served evidence and unchanged
+  local adjacent coverage: camera/hierarchy restoration, multiple memberships,
+  text prefix/name mapping, readiness/error/retry/cancellation. Eligible Google
+  Gemini via AGY approved both substantive viewer diffs, no findings or disputes.
+  Final required hook513/513; production smoke workflow37004595816 passes9/9.
+- Remaining delivery dependency: none. Next evidence checkpoint: any reported
+  regression. Optional Legend placement, shorter topic labels and time replay
+  remain separate captured follow-ups, without a selected implementation or ETA.
+- Forecast closure: core presentation/source/timeline shipped16:52, title smoke
+  correction17:15, phone history repair17:35, public acceptance17:37. The earlier
+ 15–25-minute release estimate was revised after the phone race; the refreshed
+ 20–40 and then15–25-minute ranges covered the repair/review/release. Latest
+ 5–10-minute publication checkpoint is satisfied. Detailed receipt in docs/reviews.
+
+## 2026-10-02 — Compact readable Back/Forward controls (DELIVERED)
+
+- Human-approved outcome: the toolbar's space before Find reads as navigation,
+  with visible disabled arrows and compact desktop spacing.
+- Owner Codex; authoritative viewer-source-and-controls worktree, branch
+  codex/viewer-history-controls based on served970f49d. No backend/data changes.
+- Public instrument: text-button padding squeezes desktop arrows16→4px inside
+ 28px targets; disabled opacity0.3 makes both states look like blank space.
+- Finite checks: disabled arrows>=16px and opacity1; desktop group<=52px;
+  phone targets>=44px; enabling navigation does not move Find; Back/Forward and
+  keyboard history still work. Independent eligible AI review before release.
+- Remaining dependency: implementation, focused browser/unit checks, review,
+  release gates and actual public toolbar confirmation. Next evidence checkpoint:
+  regression and paired desktop/phone screenshots. No time forecast requested.
+- 18:13 IST checkpoint: dedicated18px icons restore visibility; desktop group50px,
+  phone44×44px targets. Browser2/2, toolbar4/4, scoped lint/build pass. Paired
+  screenshots accepted locally. Remaining: independent review, mandatory release
+  gates and served public check. Source edited, not yet committed/pushed/served.
+- 18:16 IST: source82d14ec committed/pushed; PR210 attached. Full gate513/513.
+  Eligible Google Gemini/AGY independent review APPROVED, no findings. Remaining:
+  remote checks, deployment, actual public desktop/phone acceptance.
+- 18:25 IST delivery: PR210 merged18:21:41; main3671f86 production deployment
+ 6808810464 succeeded18:22:13. Public1440/390 actual interactions confirm18px
+  arrows, opacity1, desktop50px group, phone44×44px targets; Back/Forward and
+  Alt+Left/Right restore Overview; enabling history preserves Find's horizontal
+  position. Paired live screenshots inspected, zero page errors. CI browser14/14
+  and live production9/9 pass. Reviewed source packet unchanged at final PR head.
+- All finite acceptance checks met. Remaining delivery dependency:none. Next
+  evidence checkpoint:any reported regression. Final closure record is pushed
+  on the task branch; served product source is main3671f86.
+
+## 2026-10-02 — Legend gap and UX-review scope (DIAGNOSED; REPAIR OPEN)
+
+- User asks why there is blank space below Legend and whether UX analysis was
+  complete. A0 explanation/diagnostics only; no new product layout selected.
+  Owner Codex; authoritative viewer-source-and-controls worktree, task branch
+  codex/viewer-history-controls. Public source3671f86.
+- Instrument: MinimalLegend.jsx:141 fixes bottom at56px. Public Chromium1440/390
+  reproduces exactly56px to the graph boundary with Legend closed/open and
+  timeline collapsed/expanded. Timeline occupies its own separate row below
+  graph (ThreadsViewer.jsx:773 onward); the extra56px clearance is redundant.
+- Actual interaction evidence: Legend open/close, timeline open/close; settled
+  popup animation checked before bounds. Zero page errors/console warnings/HTTP
+ 5xx in this focused inspection. Evidence:tmp/legend-gap-report.json and paired
+  screenshots. This is not a full-app UX audit or complete pane matrix.
+- Prior release evidence covered finite source/navigation/timeline journeys,
+  not exhaustive layout/accessibility/performance review. Legend placement and
+  detail-drawer occlusion were already captured above and left unresolved.
+- Recommended repair:12–16px inset above actual available graph boundary;
+  respect Source/detail pane reservations in the same bounded layout slice.
+  Assumptions: current graph/timeline structure remains; no intentional56px
+  reserved control region. Confidence0.99 for cause,0.9 for bounded repair.
+  Predicted checks: gap12–16px, readable popup/trigger without pane collisions
+  at phone/tablet/desktop, normal open/close/keyboard operation. Fallback:
+  if pane constraints still hide the key, prepare an adjacent-control placement
+  decision with measured evidence; don't claim the bottom inset alone fixes it.
+- Finite diagnostic checks complete. Remaining dependency: selected repair or
+  separately authorized full viewer UX audit. Next evidence checkpoint:
+  complete pane-combination walkthrough after a layout change.
+
+## 2026-10-02 — Navigation arrow explanations (SERVED; human acceptance pending)
+
+- Human outcome: distinguish history arrows from moment navigation on hover and keyboard focus, including disabled controls. Owner Codex; authoritative viewer-source-and-controls worktree, branch codex/viewer-navigation-tooltips, origin/main3671f86; dirty AGENTS.md preserved.
+- Finite checks: truthful history/moment/thread copy; hover/focus/Escape/leave behavior; disabled help without activation; tooltip viewport bounds in combined pane states; unchanged arrows/callbacks/control sizing. Test intent stored before product edits.
+- One bounded peer owns existing graph reading controls extraction/tests; root owns shared tooltip, toolbar, browser verification/integration/release. MinimalGraph reading logic remains in parent. Existing frontend release and review authority persist; no backend/data change.
+- Remaining dependencies: implementation, focused local evidence, eligible independent family review, required release gates and served public verification. Next checkpoint: populated browser hover/focus and pane bounds. Legend repair and complete UX audit remain separate open work.
+- Local checkpoint19:20IST: implemented, unit9/9 plus adjacent17/17, browser5/5 desktop/tablet/phone, lint/build clean. Corrected existing thread label after closing details using the same predicate as its actual reading path (red7-versus21 fixture regression then green). Independent review and publication remain pending; next evidence checkpoint exact source diff verdict.
+- Delivered checkpoint19:47IST: final focused unit10/10, browser5/5, required full frontend519/519; Google Gemini via AGY approved exact255da62 (fixed Escape interception/scroll update findings, focus overclaim falsified). PR211 merged011259fcd21620c4ad6982a8519816dbed722539 at14:08:35UTC; Production6810317638 successful14:09:12UTC. Public arrow journeys2/2 desktop/phone and automatic production smoke9/9 passed. Owner Codex, same authoritative worktree; source/hash/reviewer receipt in docs/reviews/viewer-navigation-tooltips-2026-10-02.json. No remaining dependency for these tooltips; next evidence checkpoint human use. Legend repair/full UX audit and the drawer Escape issue below remain separate.
+
+## 2026-10-02 — Details Escape response on the bundled example (OPEN)
+
+- Instrumented extra public check: Source button focused, Escape reached a window listener once but details remained visible. Controlled fresh desktop journeys with history tooltip hidden and hovered produced identical results:1 remaining dialog, unchanged title,0 tooltips,1 Escape bubble event. This rules out active tooltip interception; exact drawer cause unconfirmed. Explicit Close still works.
+- Synthetic fixture's app Escape close/selection-clear check passes at three widths. Bundled example behavior differs; do not generalize that fixture to the real drawer. NodeDetail source was unchanged in PR211. Impact: keyboard users may need explicit Close in this state. Nonblocking for requested history/reading explanations; no source repair opened in this slice.
+- Evidence: tmp/navigation-escape-control.json; failed extra public probe output retained by this chat, normal arrow proof tmp/navigation-tooltips-live-report.json. Recommended next step: dedicated drawer keyboard investigation using the real artifact's relevant shape and synthetic reproduction, including focus/history combinations, without disclosing transcript content. Owner unassigned; next checkpoint reproduce why Escape listener does not close the real drawer.
+
+## 2026-10-02 — Camera restoration test instability during closure push (OPEN)
+
+- Closure-only pre-push gate failed1/519 at MinimalGraph.navigation.test.jsx:91: mocked setViewport not observed after the existing70ms wait. Same reviewed runtime/source bytes previously passed full519/519 and public Back/Forward; isolated unchanged test immediately passed1/1. Timing is a hypothesis, not a confirmed cause; no test timeout/assertion/source changed.
+- Impact: documentation push initially blocked; one combined retry passed519/519
+  and closure ee7f131 was pushed. This is an observed intermittent test concern,
+  not a current release blocker. If it recurs, investigate observable readiness
+  under suite load without weakening the required camera restoration assertion.
+
 ## 2026-10-02 04:20 IST — Recording activation and remaining scope
 
 - Inactive Soniox admission and browser capture/streaming are implemented and pass synthetic checks; real microphone capture and provider transcription have not been exercised on the hosted Site. Unknown key-issuance outcomes retain an admission slot; two such outcomes deliberately close admission for owner investigation. Impact: conservative availability loss instead of possibly unbounded issuance. This blocks real transcription activation, not local recording or publishing the inactive source. Next: approve audience/session/spending policy, verify a separate provider project budget and conduct one authorized bounded live smoke.
@@ -1918,6 +2304,283 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - **2026-10-02 20:00 IST update — disclosure prepared and independently approved:** Canonical17ee208 adds the factual guest-readable policy and link, with a router correction preventing the existing floating access panel from obscuring it. Gemini PASS/no findings covers the exact10-path source and conditional activation plan; focused40tests, build/lint, desktop/mobile/navigation proof and full699/699tests/95files pass. Source is pushed but unserved. Prepared Google homepage/privacy fields initially required an authorized domain; the exact Console-named tenant domain clears form validation but remains unsaved, with no ownership/branding verification claim. A bounded publication/identity activation question is pending. Next: that approval, reviewed source publication/runtime configuration, then actual two-account synthetic isolation. Existing project/client creation does not prove visitor Google cookies or private storage.
 - Anonymous deployed readiness remains google.enabled=false/google.configured=false; native version15/environment2 is unchanged. No provider, personal upload or original-domain activation. Parent-domain/branding verification and real sign-in remain checks, not proven blockers or passes from source research alone.
 
+## 2026-10-03 — Legend spacing and pane isolation (SERVED; finite geometry accepted)
+
+- Outcome: reach the Legend and read its key without blank clearance or Source/
+  details collisions. Owner Codex; authoritative checkout viewer-source-and-controls,
+  branch codex/viewer-legend-spacing. User explicitly approved this repair.
+- Instrumented prior public diagnosis: fixed bottom-14 gives a redundant 56px
+  gap; the timeline is already a separate flex row. Raising z-index cannot reserve
+  room and would cover another pane. Confidence 0.99 in the spacing cause.
+- Spatial thesis: exact evidence/details are primary; Legend and reading controls
+  are supporting utilities. Allocate a compact shared bottom row below the pane
+  area, with 12px padding. The open key uses bounded, scrollable allocated space.
+  Existing floating behavior stays available to other graph consumers.
+- Predicted acceptance: collapsed gap 12px; reachable controls and no pane overlap
+  at 320/390/1024/1440px, short screens and resized combinations; unchanged
+  moment/history/alias behavior. Confidence 0.9; fallback is a measured layout
+  revision if the finite pane matrix disproves the allocation, never a z-index patch.
+- Relevant files: MinimalLegend, ThreadsViewer, MinimalGraph, GraphReadingControls,
+  TextSourcePanel, focused browser tests and tests/intent/viewer-legend-space.md. Existing graph/viewer
+  monolith decomposition candidates remain separate in TECH_DEBT.
+- Remaining dependency: local evidence, independent Google-family review, release
+  gates and served verification under existing frontend publication authority.
+  Next checkpoint: failing spacing boundary, then combined pane walkthrough.
+- Product decision brief is separately informational; no deferred label generation,
+  replay, hierarchy, physics layout or intent lens is selected by this approval.
+- Local checkpoint: populated browser4/4 at320/390/1024/1440, adjacent history/
+  navigation5/5, focused unit23/23, scoped ESLint and production build pass.
+  Open-key Escape restores trigger focus without changing the selected moment;
+  long names wrap and the entire key can be scrolled. Gap is12px. Short-screen
+  text Source had384px height inside117px; its compact cap now follows the
+  existing video rule (60% of the available pane, capped at60dvh), with outer
+  scrolling for controls. Legend's open space is bounded by the workspace.
+  This is finite repair evidence, not a complete viewer UX audit.
+  Next checkpoint: exact committed diff, independent review and release gates.
+- Review checkpoint: Google Gemini3.1 Pro High through authenticated AGY approved
+  d37f507 with findings[],0tool attempts; tracked receipt records exact32373byte
+  packet/hash. Full pre-push520/520 passed; PR212 preview successful. Mechanical
+  main reconciliation2001ba7 retains exactly identical reviewed source/tests.
+  Remaining: required checks and served verification; no new human decision needed.
+- Served checkpoint: PR212 exact head6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea
+  merged as b98435538216e0ec3171f3faf2473747a58bc099 at2026-10-02T20:33:28Z.
+  Production deployment6817714804 succeeded20:34:01Z; public asset
+  index-9PRobkul.js. All eight reviewed source/test files remain byte-identical
+  to d37f507. Required second full push gate520/520, remote CI/preview and
+  production smoke7/7 passed. Focus entry/exit2/2 passed locally at1440/390px.
+- Public bundled-example geometry/reachability3/3 at1440x900,390x844,320x640:
+  gap12px, Source/details/key do not overlap, final edge reachable, scoped Escape
+  preserves selected moment. Short combined panes need scrolling. This proves
+  the finite presentation repair. The stricter walkthrough failed its console
+  assertion with five YouTube warnings; a settled public Back camera probe also
+  failed (separate entries below). No complete integrated UX pass is claimed.
+- Integration owner Codex; authoritative checkout remains
+  C:/Users/adity/.codex/worktrees/viewer-source-and-controls/live_conversational_threads.
+  Closure records branch codex/viewer-legend-closure starts at served main to avoid
+  prior squash ancestry drift. Remaining engineering evidence: separate camera/
+  SDK lifecycle investigations. No product choice blocks the served Legend repair;
+  next presentation checkpoint is human use, with deferred choices below.
+
+## 2026-10-03 — Viewer product decision space (DEFERRED; no proposal selected)
+
+**Attention status:** H1; a product ruling is required before the next product
+slice, not for the approved Legend repair. Reason: these options change what a
+card means, where exploration begins, or how time/intent changes the map.
+Grey area: No. Smallest next ruling: choose card wording/attribution and whether
+the next slice keeps existing node boundaries. Other axes can remain deferred.
+Owner for this brief: Codex; integration owner/check-out unchanged. No new
+architecture, inference provider, hierarchy or artifact format is approved here.
+
+| Decision | Options and real tradeoffs | Recommendation and acceptance evidence |
+| --- | --- | --- |
+| Card wording and voice | Keep authored titles (stable but can be abstract); add short presentation labels plus explicit speaker chips (clearer, requires reviewed labels); regenerate attributed speaker-verb claims (more natural but can misattribute mixed speech and adds model/content review). | Trial short labels with explicit identities, full wording and exact evidence on demand. A dominant color never proves sole authorship. Readers must identify topic and voices correctly; mixed/unknown voices remain honest; original source bytes/IDs stay unchanged. |
+| Smaller reading units | Compact preview of each existing node (small presentation scope); split evidence into navigable passages inside the same node (more steps, preserves semantic identity); repartition authored nodes (potentially clearer boundaries, but changes memberships, search, provenance and history migration). | Passage stepping inside existing nodes before resegmentation. Verify every passage is reachable in order, maps to exact evidence and returns to the same node/thread/history position. |
+| Entry and density | Keep highest-tier entry (orientation but abstract); topic-first entry (recognizable subjects, hides the macro story initially); moments-first entry (concrete, more visual load); resume last place (fast return, needs a persistence/privacy decision). | Compare an opt-in topic entry with current entry before changing the default. Use populated long conversations: first-time readers find a known passage and explain the surrounding topic; phone and keyboard navigation retain access to every tier. |
+| Time exploration | Focus an existing final-map moment at T (small, final interpretation remains visible); cumulatively reveal source/moments up to T (clearer progression, must handle nodes spanning T); regenerate historical summaries from each prefix (true historical knowledge boundary, much larger processing/storage and model/data decision). | Start with focus/scrub using verified timestamps, explicitly a final map. Do not present a final summary as something known at T. Verify deterministic forward/back seeks, untimed evidence and partial-node labels; historical rebuilding stays separate. |
+| Spatial layout | Keep deterministic chronological packing (stable but broad); free physics (organic, may jitter/collide and obscure time); constrained physics with a fixed time axis (compromise, more tuning/performance/persistence). | Keep deterministic layout unless a bounded comparison improves retrieval. Test stable reload positions, no collisions, chronology and provenance, reduced motion and phone behavior. No physics dependency selected. |
+| Intent-aware exploration | Existing local search/filtering (predictable); session-local intent lens that ranks/emphasizes existing nodes (more useful focus, adds state and explanation); regenerate hierarchy/summaries for each intent (tailored but unstable meanings, larger compute/privacy and identity consequences). | A reversible session lens is the first experiment if chosen. IDs, memberships and source bytes must remain unchanged; turning it off restores the map; explain why a result is emphasized. Any new inference/egress needs its own decision. |
+
+Relative scope: presentation labels and entry experiments are small; passage
+stepping and a reversible intent lens are medium; historical regeneration,
+semantic resegmentation and physics are large/unknown until their data contracts
+are chosen. These are scope comparisons, not measured hour/calendar forecasts.
+Keep all defaults is a valid no-action choice. A preview comparison is reversible;
+rewriting artifacts would need a separate migration and recovery plan.
+
+Suggested sequence after the Legend release: (1) card wording/voice and passage
+reading; (2) compare entry/density; (3) choose time behavior; (4) evaluate layout
+and intent only against a concrete retrieval task. Confidence0.85 in this order,
+assuming the primary job is reading/retrieving a conversation. Fallback: retain
+current defaults if a preview reduces comprehension or adds navigation friction.
+Remaining dependency: the smallest selected product slice; no deadline claimed.
+Next checkpoint: a concrete preview plus reader/task evidence for that selection.
+
+## 2026-10-03 — YouTube warnings in rapid Source panel walkthrough (OPEN)
+
+- The actual bundled-example Legend probe completed its geometry/navigation
+  checks at1440/390/320px, then failed its strict console assertion: two web-share
+  notices and two postMessage target/recipient origin mismatch warnings involving
+  youtube-nocookie and localhost. Page errors/5xx were not the failing boundary.
+  YouTubeSourcePanel source is unchanged by the Legend slice. Exact cause and
+  whether the same sequence reproduces on the public origin remain unknown.
+- Impact: no overall clean-console pass for that local probe; do not describe this
+  as verified playback breakage or fix it through the Legend layout. Nonblocking
+  for finite geometry acceptance; public follow-up retains all warnings and fails
+  its strict console assertion rather than filtering them. Evidence: local screenshots
+  tmp/legend-local-source-*.png and captured probe failure in this task.
+  Next checkpoint: public-origin walkthrough; dedicated SDK lifecycle work only
+  if reproduced and selected. Owner unassigned.
+- Public follow-up reproduced five warnings across three widths: three web-share
+  notices and two youtube-nocookie/public-origin postMessage mismatches. Geometry
+  and reading-position checks completed3/3; errors/5xx were zero, but the preserved
+  strict-console assertion failed. Source was closed while loading; playback was
+  not tested by this probe. Evidence tmp/legend-live-report.json and paired local
+  screenshots; these runtime artifacts are excluded from review egress.
+  Cause remains unknown. Next checkpoint: bound the SDK loading/teardown lifecycle
+  with observable readiness, retaining warnings rather than filtering them.
+
+## 2026-10-03 — Public Back restores reading position but loses card visibility (OPEN)
+
+- Instrumented bundled-example desktop sequence: select first thread moment,
+  open/close key, open Source/key and close Source, Next, Back; sample after600ms.
+  Initial camera translate(387.5,-3233.35),scale1.15 shows selected card. After Back,
+  count returns1of4 but camera translate(550,220),scale1 places selected card at
+  y3245.5; zero nodes are visible. Evidence tmp/legend-camera-report.json and
+  tmp/legend-camera-settled.png. This is a settled failure, not an animation sample.
+- Counter-evidence: local Vite with identical served source restores visible card
+  with both key toggles and no key toggles. Key reflow alone is falsified as cause.
+  Read-only local peer traced stored graphNavigation and the measured-node restore
+  gate; stale/missing saved camera, an incomplete gate, or a later writer remain
+  alternatives. No root cause, introduction date or release attribution established.
+- A separate baseline-server launch was rejected by automatic approval review,
+  returning only 'blocked by policy'. That method stopped; no alternate launch
+  bypassed it. This is an enforcement mismatch, not missing human product approval.
+- Impact: public Back may leave the reader offscreen; finite Legend geometry passes
+  do not establish camera acceptance. No unconditional recenter patch is justified
+  because it could discard manual pan. Next decisive evidence: capture the saved
+  viewport before Next, restore target and node measurement gate on Back, viewport
+  application and any subsequent camera writer. Owner Codex for evidence handoff;
+  separate repair remains unimplemented, with no full UX audit claimed.
+
+## 2026-10-03 — Incremental path toward emergent conversation structure (DIRECTION SELECTED; ranked plan)
+
+**Attention status:** A1 for recording the selected direction and this ranked
+plan; no further human ruling requested for the plan. The user selected short,
+plain, conversational labels and rejected explicit speaker names/chips on cards.
+Speaker contribution remains visually encoded by the existing speaking-time
+color view; names and exact shares remain inspectable through Source/Legend or
+an accessible equivalent. Do not infer sole authorship from dominant color.
+Grey area: No. Detailed regrouping/projection and new inference/data contracts
+remain H1 before their later implementation; current feedback is not approval to
+regenerate existing artifacts or replace the hierarchy in production.
+
+Selected outcome: readers can orient around what was said, follow recurring
+threads, and request deeper context without seeing every layer or membership at
+once. A joke, aside, distraction or logistics can stay small. A passage may
+genuinely participate in several themes; never force a count of five. Recurrence,
+coherence and duration provide evidence, not universal minute thresholds.
+Transcript chronology remains the evidence spine; tree-shaped navigation is a
+local disclosure view of overlapping meaning rather than the semantic truth.
+
+Repository evidence, not a claim about currently active runtime prompt overrides:
+- Default prompts.json:103/111/119 requests topic/theme/arc ranges, noun-phrase
+  names and complete child coverage. Upper tiers can be absent globally, while
+  all children must be covered if a tier is active (ADR-062). The named ranges
+  exert grouping pressure; current defaults do not implement per-branch depth.
+- hierarchy_consolidator.py:208-252 assigns an unclaimed child to the nearest
+  claimed sibling's parent; each upper consolidator invokes it. Removing this
+  without changing coverage/rendering could make evidence disappear.
+- Canonical overlapping memberships are already supported by ADR-062; the default
+  zoom projection chooses a primary parent. Thread memberships likewise survive
+  in thread_ids/thread_labels. This is an existing foundation to expose on demand.
+- MinimalGraph.jsx:466/477 passes full node_name and builds the named percentage
+  row; ConversationNode.jsx:266 displays that row. Presentation is separate from
+  label authoring. Prompt edits alone cannot relabel the already hosted artifact.
+
+Owner/integration: Codex; authoritative checkout remains
+C:/Users/adity/.codex/worktrees/viewer-source-and-controls/live_conversational_threads,
+planning branch codex/viewer-legend-closure. Runtime remains served b984355;
+this amendment changes no source, artifact, model call or deployment.
+
+| Rank by active effort | Bounded milestone | Change size / initial planning range | Dependency and finite acceptance |
+| --- | --- | --- | --- |
+| 1 | Color carries speaker identity on public cards; remove visible named percentage/badge rows | Small;2-4 active hours | Preserve speaking-time fractions and dominant-color rounding, other color modes, unknown-time honesty and Source/Legend identity access. Desktop/phone rendering and rename/history remain correct. No model/data change. |
+| 2 | Short conversational label pilot | Small;4-8 active hours for a bounded pilot | Review a small label set before broad authoring changes; concrete language, preserve uncertainty/questions, no invented emotion or claims. Full original wording and source stay reachable. Existing shared artifacts need reviewed display labels or a separate re-export. |
+| 3 | Progressive disclosure of card context | Small-medium;4-8 active hours | Main card offers label/brief context; details, evidence and memberships requested explicitly. Every control keyboard/touch reachable; no nested pane collision or lost history. Prototype existing cards before changing entry default. |
+| 4 | Reveal existing overlap on demand | Medium;6-12 active hours | A related-threads/groups disclosure uses actual memberships, without extra chips in the default view. One source passage in multiple groups remains traceable and deduplicated; entering a related group and returning restores place. Camera reliability first. |
+| 5 | Smaller readable passage steps inside a node | Medium;1-2 active workdays | Keep node IDs/memberships; next/previous covers every ordered passage, exact timestamp and history restored, no skipped evidence or overlapping giant cards. Depends on reliable Back/camera and an agreed passage contract. |
+| 6 | Let weak/brief branches stop at a lower level; broader patterns only when supported | Large relative to above;2-5 active workdays for a prototype, production ETA unknown | Change coverage/orphan/projection rules together, preserve ungrouped reachability and memberships, distinguish empty/partial tiers from failures, round-trip old/new artifacts, verify no evidence disappears. Do not start with a prompt-only orphan removal or full regeneration. |
+
+Ranges are engineering judgment from touched boundaries, not measured comparable
+implementation timings or promised ship dates. They include focused validation
+and review preparation; CI, independent-review availability, deployment and
+human content review waits are separate and unmeasured. Re-estimate at each
+milestone's first working preview, keeping the initial range in this record.
+Sequence may overlap small copy/disclosure pilots, but finish one journey at a
+time. Recommended first delivery is rank1, followed by the label pilot; confidence
+0.85 in this order under the reading/retrieval objective. Fallback: preserve
+current meaning/defaults if the pilot loses specificity or navigation clarity.
+
+Existing engineering lane: the public Back camera and YouTube loading/teardown
+findings above still need decisive diagnosis. No repair ETA is credible until
+saved/restored viewport and SDK lifecycle evidence are obtained; do not block
+the product plan on another human approval or represent those findings fixed.
+Physics layout, historical regeneration and intent-generated maps are deferred.
+Next evidence checkpoint: small public-card presentation preview, then a bounded
+  label comparison; later architecture decisions stay separate.
+
+## 2026-10-03 — Public card color-only identity (APPROVED; IMPLEMENTING)
+
+- User approved the recommended first delivery, followed by a small label pilot.
+  Outcome: public cards focus on speech; speaker names/exact shares are available
+  through Source/Legend and assistive text rather than painted metadata rows.
+  Integration owner Codex; authoritative viewer worktree unchanged; branch
+  codex/viewer-color-only-cards. Source base b984355; earlier closure/plan records
+  retained. Personal dirty AGENTS.md is excluded from staging.
+- Hypothesis: ConversationNode's compact contribution row and fallback legacy
+  badge cause the redundant visual identity. Color resolution is independently
+  computed upstream. Predicted regression: unit/browser visibility red before
+  presentation edits; 80/20, >=90% and unknown fills unchanged afterward. Confidence
+  0.95; fallback narrow the presentation change if legacy consumers regress.
+- Finite checks in tests/intent/viewer-color-only-cards.md. Relevant source:
+  ConversationNode only; existing color calculations/alias services unchanged.
+  Validate Source rename + Legend + assistive text + Back on desktop/phone,
+  fallback, unknown timing, alternate color mode and legacy noncompact badge.
+- Remaining dependency: implementation evidence, eligible independent review,
+  required gates and served public verification. Next checkpoint expected-red
+  visual identity assertion, then complete the small presentation journey before
+  the bounded label pilot. Forecast2-4 active hours; review/CI waits separate.
+- Local checkpoint: expected-red3 unit assertions, final focused30/30; browser
+  desktop/phone2/2 plus adjacent manual camera/hierarchy1/1. Accessible-name tree,
+  computed clipping, proportions, unknown timing, Source/Legend rename and Back
+  verified; screenshots inspected. Scoped ESLint/build pass, layout detector[].
+  Sole runtime change4 lines added/12 removed in ConversationNode; canonical
+  source, names, fractions, memberships and camera code unchanged. Remaining
+  dependency independent review, full gate and exact served appearance.
+- Review/publication checkpoint: source82d8a61 pushed, PR213 open and attached;
+  required gate523/523 passed with existing React act warnings. AGY Google
+  Gemini3.1ProHigh approved exact source diff, no findings, zero tool attempts;
+  bounded receipt docs/reviews/viewer-color-only-2026-10-03.json. Remaining
+  dependency remote CI and served appearance; no further product ruling needed.
+
+### 2026-10-03 — Full-suite navigation timing variability (OPEN)
+
+Mandatory hook first passed523/523, then unchanged source/test failed2/523 on
+saved-camera and forward-branch assertions. Focused same two files passed5/5.
+Impact: gate/release uncertainty; blocker until required hook passes. Suspected
+short fixed waits are a hypothesis, not a confirmed cause. Next: one full-hook
+retry after reviewer process completes; diagnose scheduling/observable completion
+in a separate test-reliability slice if repeated. No weakening or bypass.
+
+### 2026-10-03 — Source-linked artifact speaker key (IN-SCOPE REPAIR)
+
+Actual served1440/390 DOM proves clipped card text and speaker fills, but Legend
+has only edge meanings. Graph uses contribution-aware color builder; viewer key
+uses node-speaker-only builder. Existing synthetic fixture repeated speaker IDs
+on nodes and missed this case. Owner Codex, authoritative viewer worktree,
+branch codex/viewer-source-speaker-legend from served7cbc115. Outcome: actual key
+identifies the colors already painted, including immediate Source alias updates.
+Reuse existing builder; preserve timing/source/palette. Acceptance: source-only
+fixture red then desktop/phone rename/color-key match/history green, required
+gate, independent review and actual served key. Next checkpoint expected-red.
+Remaining dependency engineering validation/review/deploy; no user decision.
+Additional effort estimate30-60 active minutes; review/CI/deploy waits separate.
+- Checkpoint: expected-red reproduced missing key; final synthetic2/2, focused
+ 20/20, actual artifact local2/2 and required gate523/523 pass. AGY Google
+ Gemini3.1ProHigh approved exact sourceb1c7ac3, no findings; receipt recorded.
+ Remaining dependency exact-head CI and served speaker-key proof; original
+ presentation/source is already served7cbc115. Pilot6examples ready locally;
+content feedback precedes a broad label rollout. Other hierarchy work deferred.
+- Required docs hook repeated Forward failure; release stopped rather than
+  retried again. Controlled-frame Harness confirms an actual replay race: C
+  selected during Back's frames is skipped by recorder, and stale A scroll can
+  overwrite C. Minimal in-scope continuity repair adds replay-settled recording
+  and rejects stale scroll; preserves all existing assertions and adds deterministic
+  A/C Back/Forward with scroll proof. Reclassifies earlier "timing variability"
+  for this Forward failure; separate camera timing uncertainty remains open.
+
+- Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
+
 ## 2026-10-03 01:29 IST — Privacy review link replaced by public disclosure
 
 - The temporary127.0.0.1 review URL was reported unreachable in Codex browser. Host listener/HTTP200 establish only host reachability; browser transport cause remains unconfirmed. Human approved privacy publication alone. The durable /privacy disclosure is now Site version16/native source ff75f6a1869c940eb6f115e857c5bfcb50db1860 via successful appgdep_6ac00c438f3881919c2b4aad094fc6f4, public/active/environment2. This resolves the privacy-publication precondition; Google activation, branding save and actual account acceptance remain separate. Prior bundled publication/activation-pending notes are superseded for privacy publication only.
@@ -1930,6 +2593,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 ## 2026-10-03 — Hosted disconnect delivery remains unverified
 
 - Cloudflare incoming client-disconnect Request.signal requires enable_request_signal, with no default date; the current native Sites manifest contract supplies no compatibility-flag evidence. Local tests verify delivered abort handling only. Impact:unknown hosted cancellation behavior is a later acceptance dependency, not a proven defect or blocker for disabled handler/client preparation. Upstream deadline and retained uncertain admission bound app waiting/attempt accounting but do not establish stopped provider billing. Next:prove actual native disconnect delivery before promising remote cancellation; if absent, prepare supported platform configuration or an explicit cancellation protocol within the selected runtime. No flag, provider, live key or personal-data setting was changed.
+
 ## 2026-10-04 — Direct Windows bash CI invocation mismatch
 
 The documented `bash scripts/ci_local.sh` command, invoked from this PowerShell session, exits before tests at `set -euo pipefail` with a carriage-return option-name error. The file is unchanged and the mandatory Git pre-push invocation already passed all765tests on the preceding source commit. Impact: this direct invocation cannot verify tests in the current shell; blocker status: no, because the exact underlying `npm run test -- --run` command is run directly and the unchanged pre-push gate still runs at preservation. Recommended next step: inspect/select the compatible Git bash invocation or address line-ending normalization in a separately scoped tooling change. No CI/test oracle is weakened in the recording-map slice.
@@ -1943,14 +2607,17 @@ The documented `bash scripts/ci_local.sh` command, invoked from this PowerShell 
 ## 2026-10-04 02:27 IST — Authored path and desktop lane projection
 
 - An actual adapter-generated file contains one valid `conversation_threads` path with two canonical moment/evidence links, but both served desktop timelines display its moments as ungrouped because `withThreadLanes` derives membership only from node `thread_id`/`thread_ids`. Exact productionbda16/nativeff75 pure projections reproduce both missing memberships without mutating the artifact. Production reports zero authored threads/two unassigned; older cloud reports one thread by counting its unassigned lane. A count alone is not path-rendering evidence. Impact: data remains portable and exact Graph/Discussion/source export pass. **Correction 2026-10-04 03:04 IST:** production ADR-072 and current `MobileConversationDeck` establish ordered reading paths separately from desktop node membership. Actual hosted320px/391px named-path navigation follows both moments and exact S1/S2 source. Missing desktop lane projection is an optional unresolved semantic question, not a mandatory cutover blocker or reason to alias steps into memberships. Preserve peer production behavior; consider lane behavior only after a separate product decision. Receipt `docs/reviews/2026-10-04-hosted-file-portability.md`.
+
 ## 2026-10-09 20:04 IST — Original recording layout locally restored
 
 20:10IST amendment: committed/pushed sourceef71229 and nativea617a07 are served as30/env27; mandatory853/853 checks and AGY/Anthropic PASS. Served client and inactive boundaries verified; all19settings/all6table rows preserved. Original-style canvas/bottom toolbar is delivered in cloud preview, while rendered desktop/mobile visual acceptance remains blocked by browser control. Domain/backend/full goal remains pending. No additional UI product authorization is missing.
 
 Approved `/new` UI repair now uses a full-height canvas and pure bottom Mic/Stop toolbar, keeping the cloud RecordingSession and permission dialog. Variable status and recovery stay in the scrolling canvas; failed or inactive transcription retry is directly visible. Recording-route account control moves top-right.96focused/adjacent checks and scoped lint pass; final AGY/Anthropic exact diff PASS after supported status/retry findings and falsification of a baseline-behavior overclaim. Required full push hook and native publication/served check remain pending. Browser-controller failures still prevent rendered desktop/mobile acceptance; this is explicitly not complete visual parity proof or full cloud/backend/domain delivery.
+
 # 2026-10-13 — Soniox admission/key/live-text blocker resolved; browser acceptance remains
 
 Approved exact two later unknown leases recovered without deleting history or increasing limits; native32/env29 now serves enabled public Soniox with diagnostics off. A single real temporary-key mint and6.684-second synthetic clip through the existing adapter produced25incremental callbacks/26final tokens/all3keywords. Source501983b, AGY/Anthropic PASS,872full checks and exact database/settings/served-byte preservation establish this bounded provider journey. All5lifetime records remain,15attempts left; no new retry authority or spend expansion. Browser focus/attach still fails after two bounded attempts, so actual microphone/UI recording acceptance remains a verification blocker. Next: observe cloud `/new` Transcribe/Stop/cancel/download with a working browser controller. Domain, Google/private and generated-map journeys remain separate; no duplicate provider/recovery approval is needed.
+
 ## 2026-10-14 — OpenRouter pilot key validity needs a fresh check
 
 The restricted-key receipt records October14,2026 expiry and a $1 total non-resetting allowance. Current validity, exact expiry time and remaining allowance have not been reverified. Impact: the next synthetic inference test may be refused even after the two held slots are recovered. Blocker status: possible live-test dependency; offline recovery/verifier preparation and independent review can continue. Recommended next step: check the existing key/cap/expiry through authorized read-only account access before a paid request; if expired, prepare a bounded credential decision. No replacement, expiry extension, purchase or request is authorized by this note.
@@ -1964,6 +2631,423 @@ The restricted-key receipt records October14,2026 expiry and a $1 total non-rese
 Real guest browser now verifies dismissible notice/reload, public-library loading, private-file refusal, bottom recording controls/consent cancellation, and local synthetic Graph/source/Discussion/reopening. Empty public library is consistent with two removed test rows, not proof of public-map browsing. Microphone/transcription/Stop/download and Google two-account private storage remain unaccepted. Copy Moment reports success but the tool clipboard is empty, so copied deep-link reopening is unverified; this observation alone does not identify a product defect. Impact: retain this acceptance limit rather than treating a toast as proof. Blocker status: no for the delivered local viewer journey; yes for a claim of copied-link end-to-end acceptance. Recommended next step: observe a supported clipboard/deep-link round trip when the browser session is stable. Detailed fixed-fixture evidence: `docs/reviews/2026-10-14-guest-browser-check.md`.
 
 - 2026-10-15: Locked npm install reports16 dependency audit findings (6 moderate,8 high,2 critical). Existing dependency versions preserved; no install scripts executed. Not a provider-selector regression; separate dependency triage is recommended. No claim of exploitability from the aggregate advisory count.
+
+# Semantic authoring consolidation — 2026-10-14 (SOURCE MERGED; real-data acceptance blocked)
+
+Outcome: imports and `.threads` experiments share the existing transcript-grounded
+relationship extractor; compiler preserves validated relationships; automatic
+citation fallback removed. Owner Codex; authoritative checkout is
+`C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`,
+branch `codex/semantic-authoring-consolidation-20261012`, base bda16e5.
+
+Acceptance: exact endpoint passages in provider request; omitted/unshown evidence
+rejected; supported directed edges survive extraction, compilation, export/reload
+and viewing; extraction failure retains previous graph; focused/adjacent checks
+and different-family read-only review pass. Existing transcript/node identities
+and memberships remain stable. Optional retrieval and hierarchy redesign deferred.
+Checkpoint: implementation in the isolated checkout; 49 focused backend tests,
+30 adjacent live STT tests, seven compiler tests and 35 viewer contract tests
+pass. Exact shared extraction/compile/export/reload uses synthetic speech and a
+provider transport stub. Real graph planning covers 100 nodes in 23 windows;
+this is not a semantic-recall or whole-transcript inference claim.
+Independent Google Gemini review of staged tree a934fe9
+approved with no findings and zero tools. Receipt:
+`docs/reviews/semantic-authoring-consolidation-2026-10-12.json`.
+Reviewed source committed locally as 8ef8161; nothing pushed, merged
+or deployed. Browser acceptance subsequently passed below; public artifact
+regeneration remains explicitly deferred.
+Additional checkpoint: five actual CLI/localhost HTTP cases pass with no helper
+replacement; receipt docs/reviews/semantic-cli-transport-verification-2026-10-12.json.
+Resume checkpoint: user explicitly approved the manual walkthrough. No browser
+connector surfaces were available; interactive Playwright observation on the
+isolated frontend established the actual card→Source/details→evidence Source
+path. Both directed relationships, exact u1/u3 citations and original speech
+are inspectable at 1440/390px, including saved conversation-route reload.
+Corrected browser acceptance passed 2/2 with no mocks, no captured page/console
+errors or warnings, no network5xx and no document overflow. This proves this
+synthetic extraction/export/view journey, not model semantic recall or full UX.
+Final review: authenticated AGY/Google Gemini3.1ProHigh approved the substantive
+browser-test diff (staged tree e2fbc3f; blob645167e) with no findings and zero tools.
+Receipt docs/reviews/semantic-viewer-review-2026-10-12.json. Reused unchanged
+source validation/review plus passing new browser cases; finite local acceptance
+is complete. Owner/checkout unchanged. Next evidence checkpoint, if publication
+is separately approved: exact pushed/merged/served source identity.
+Publication/CI, merge/restart and public artifact regeneration are not
+performed or inferred from prior frontend authority; public regeneration is
+explicitly deferred from this slice.
+
+Historical third goal-turn audit, before manual approval: worktree cbfd87c is clean; reviewed runtime
+source is unchanged from 8ef8161, and the independent reviewer and CLI probe are
+terminal successes. All authorized independent verification is finished. The
+remaining required desktop/phone Source/details interaction is unproven; the
+three-attempt stop requires human guidance before switching to the proposed
+manual browser walkthrough. No such answer has arrived. Mark the goal blocked,
+preserve the full objective, and resume this exact checkout after that guidance.
+
+Release envelope,2026-10-14: user said to do the four remaining steps. This
+specifically authorizes task-branch publication/PR/CI/merge, backend deployment,
+regeneration of the already-public overlapping.threads using the existing local
+provider, relationship quality checks and public desktop/phone verification.
+No new spend, external transcript recipient or unrelated redesign is authorized.
+Owner/integration checkout remains Codex in the isolated task worktree above.
+Finite acceptance: exact-head independent review and CI; existing transcript,
+node IDs and memberships preserved; real model yields grounded relationships or
+an honest refusal; generated file validated and inspected before publication;
+merged source matches running backend and served public artifact; actual Source
+details/citations/reload work at1440/390. Preserve old artifact for rollback.
+Next evidence checkpoint: local provider/backend readiness and one real window.
+Remaining dependencies: reachable existing provider, review/CI and deploy waits.
+No further human decision is presently required; report a concrete blocker if
+credentials, provider access, privacy or new cost exceed this envelope.
+
+Release checkpoint,2026-10-14 10:07 IST: PR215 head bcb19f0 is pushed; local
+pre-push524/524 and remote backend/browser/preview gates passed. Exact-head
+AGY/Anthropic review requested changes; supported context-budget/compiler/mode
+repairs are implemented and await final validation/re-review. First real M5
+scan refused missing citations and preserved the public file; diagnostic output
+confirmed the canonical example lacked its required citation field. Example
+corrected; next evidence is a real corrected window, then complete candidate
+quality checks. Owner/checkout unchanged; public artifact still original.
+Backend deployment additionally needs the existing Windows database service
+started by an Administrator; user received the exact one-command action.
+Unrelated dirty deploy files remain preserved. No new product decision needed.
+
+Release checkpoint,2026-10-14: PR215 final head
+`d229f788a059444f62599fafa6edae6835adff47` passed final CI and independent
+AGY/Anthropic Claude Opus5.5Medium review (APPROVED, no findings, zero tools).
+Squash merge/main is `2acf515be7d667d08eddb27ea6bb30c2ed4a91cc`.
+Vercel production deployment `dpl_BMMNQ1SwRbHLGsb65aDqosaRhy3P` is READY at
+that SHA and lists threads.adityaarpitha.com as its alias. This is deployment
+metadata, not a completed public browser walkthrough. Primary backend checkout
+was fast-forwarded to the same SHA after byte-verified preservation of its four
+unrelated dirty files; none were staged or published. Backend is not running:
+postgresql-x64-15 remains stopped and Windows denied service-start permission.
+User received the Administrator PowerShell command, with a plain explanation.
+
+Real-data quality blocks regeneration/publication. The corrected first window
+produced six structurally valid cited edges, but manual inspection found topic
+transitions mislabeled as logical support. Full regeneration was cancelled
+after16/23 windows; no candidate was written. The original2,681,468-byte public
+artifact is unchanged (SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed).
+Do not present valid citation IDs or nonempty edge counts as semantic accuracy.
+
+Bounded quality-repair attempts: (1) actual Qwen window failed manual meaning
+inspection; (2) stronger prompt still made Qwen invent a references_back link
+between two synthetic topic-change passages (6.87s); (3) existing private Muse
+returned invalid_edge_payload for that negative case (9.69s), not a valid empty
+result. Positive-case inference was not reached. Stop further model/prompt
+trials under AGENTS.md's three-attempt rule; preserve private evidence locally.
+The failed prompt-only experiment was saved privately and restored to reviewed
+main, so no unreviewed runtime change is pending. No new provider, model download,
+paid usage, or external transcript disclosure was used.
+
+Public walkthrough also stopped after two inconclusive browser timeouts; no
+public UI verdict or screenshots. Cua inventory exposes no browsers/apps.
+These observations do not prove a site defect. Existing synthetic1440/390px
+acceptance remains valid only for its tested local journey.
+
+Owner remains Codex. Integration/evidence checkout is the same isolated path;
+follow-up branch `codex/semantic-grounding-check-20261014` starts at merged main.
+Finite remaining checks: database Running and exact backend runtime SHA; inspect
+actual selected passages/model claims before any new full generation; preserve
+IDs/transcript/memberships and inspect candidate meaning; then public desktop/
+phone Source/details/citations/reload from a reachable browser. Next evidence
+checkpoint: user service-start result plus guidance for a bounded read-only
+passage-selection trace, rather than another generation retry. Effort for the
+semantic repair and public verification is unknown; prior scan timing is not a
+credible delivery ETA. Review/CI/merge waits for the source slice are finished.
+Receipt: docs/reviews/semantic-release-checkpoint-2026-10-14.json.
+
+Resumed read-only checkpoint,2026-10-14: user explicitly approved the recommended
+investigation, then said go on. Replayed source attachment/window formatting
+without model calls, DB access or product edits. [instrument] All100 nodes are
+included in23 windows, but only656/1,263 unique transcript turns are visible;
+607 turns are omitted,93/100 nodes clipped. Every selected set is the first12
+referenced turns. First broad topic has12/159 turns, second12/132. Citation IDs
+on all six saved edges really exist and were visible: the missing guarantee is
+semantic sufficiency, not fabricated IDs. Prior two-turn synthetic model failure
+falsifies the claim that clipping is the sole cause or that more speech alone
+will ensure good relationships. Removing the cap in a disposable process makes
+the existing planner refuse its first ancestor closure; largest ancestor input
+102,015chars exceeds21,000. Largest complete L1 input7,019chars. No unbounded
+prompt, inference retry or new public artifact was produced.
+
+Read-only HTTP: public root and /view route return200; DNS/TCP/TLS pass. One
+bounded artifact GET completed in2.366s,200,2,621,266bytes, SHA256
+386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19,
+exactly equal to the committed Git blob. Local file differs only by60,202CRLF
+pairs. Deployment-specific host redirects to Vercel SSO; do not bypass it or
+infer that the custom public domain is protected. Cua getBrowser reports no
+browser; createBrowserTab(iab) reports unavailable. Public UI remains unverified;
+needs a connected browser surface, independently of database readiness.
+
+Next proposed bounded repair, awaiting architecture choice: replace prefix-only
+source attachment with complete passages apportioned across existing bounded
+requests, preserving one extractor, strict exact citations and failure retention.
+Primary files: services/edge_evidence.py and services/edge_enrichment_windows.py
+under lct_python_backend; add focused public-entry-point source-coverage tests.
+Acceptance must include a decisive passage beyond turn12, every referenced turn
+visible somewhere, unchanged exact source strings, per-request budget, overlapping
+memberships, valid-empty versus failed-window retention, and actual positive/
+negative meaning checks before publication. Full source coverage will not itself
+be advertised as semantic accuracy. No new pipeline layer/provider or UI redesign.
+User was asked for this source-selection choice and a connected browser tab;
+the existing Administrator database action remains pending.
+
+Approved implementation checkpoint,2026-10-14: user chose complete passage
+coverage. Codex owns this finite slice in the same isolated checkout/branch:
+edge_evidence.py + edge_enrichment_windows.py, focused behavioral tests and
+intent. Acceptance: all referenced node/turn associations visible, whole exact
+turns, bounded requests, adjacent moments and overlapping memberships, late
+citations, failure retention; offline actual-data coverage; independent review.
+Meaning quality remains a separate release gate; public artifact is held.
+Next evidence checkpoint: coverage/budget report and validated review packet.
+Connected browser observed a blank public root twice, then the tab closed;
+diagnostic cause unknown, public manual acceptance not achieved. This is now
+a concrete release blocker, tracked in the same slice without a UI redesign.
+
+Security containment hold,2026-10-14 [instrument]: the publicly served production
+JS contains a nonempty VITE_AUTH_TOKEN that matches the primary backend's
+configured AUTH_TOKEN (compared in memory, never printed; no authenticated probe).
+The backend is currently stopped. Impact: cached bundles disclose a backend
+credential; removing the frontend value alone does not invalidate old copies.
+Blocker: hold backend restart, live generation and release pending credential
+containment authority. Recommended next step: rotate backend token, remove the
+public build variable and redeploy; private API clients then need reauthentication.
+Requested the one-time credential/publication decision required by policy S1/H1.
+No credential changed. Redacted evidence remains under ignored
+tmp/public-viewer-acceptance-20261014. A downloaded JS copy may remain there;
+its exact-path deletion was denied, and no alternative deletion was attempted.
+
+Local implementation/review checkpoint,2026-10-14: source d871841 exposes
+1263/1263 turns and7099/7099 endpoint associations in61bounded requests (max
+20996source-input chars/30nodes); source text/artifact unchanged.58focused and
+adjacent checks pass,2existing POSIX cases skip on Windows. Pure planning is
+offloaded so preparation does not freeze cancellation/status. Anthropic AGY
+attempt was quota-refused before inference; permitted Google Gemini3.8FlashHigh
+via authenticated AGY approved the exact40,254-byte bounded code/test/intent
+packet with no findings or tool use. No independent-review overclaim remains.
+Receipt: docs/reviews/complete-passage-coverage-2026-10-14.json. Source is locally
+committed, not pushed/merged/served. Security hold deliberately prevents pushes
+that could trigger another credential-bearing preview. No publication, backend
+restart or model generation followed the exposure finding. Next checkpoint is
+the pending one-time credential-containment ruling, then guarded integration/CI,
+private meaning acceptance and public interactive verification. No new delivery
+date can be supported while those dependencies remain unresolved.
+
+Active release goal,2026-10-14: user explicitly authorized token rotation,
+frontend credential removal and redeploy, and delegated implementation/review/
+integration/verification. Integration owner Codex; authoritative checkout is
+semantic-authoring-consolidation on codex/semantic-grounding-check-20261014.
+Backend token rotated without displaying its value; other configuration bytes
+unchanged. Frontend token cleared and clean rebuild dpl_73zdC7VYKbj3iPY1277ALad5r2uN
+is READY at existing released SHA2acf515; served asset containment check next.
+Finite acceptance: semantic meaning plus complete source/citation preservation;
+review/CI/merge/served identity; desktop/narrow Source, timestamp, rename, all
+threads, navigation visibility and details dismissal. Existing architecture and
+private provider/resource boundaries persist. Database Administrator start is
+still pending; viewer and model-quality work can continue independently.
+Next checkpoint: served containment receipt and public initial-render evidence.
+
+### 2026-10-12 — Local library server dependency (adjacent; non-blocking)
+
+During the approved walkthrough, Back to library reached /browse and its local
+saved-file entry opened /view/synthetic-consolidation-overlap-v1 successfully.
+The same screen separately requested /conversations/ and
+/api/indrasnet/audio-sources from a Vite-only server with no private backend,
+returning500 and rendering explicit unavailable/retry states. Impact: server
+recordings/history are unavailable in this isolated setup; browser-local files
+still work. No change to library/backend configuration is part of consolidation.
+Recommended next step for a full library audit: use the existing authorized
+backend configuration and verify history/recording success plus refusal/retry.
+
+### 2026-10-14 — Current release acceptance checkpoint
+
+Owner/integration: Codex; authoritative isolated semantic-authoring-consolidation
+checkout, branch codex/semantic-grounding-check-20261014. Source41c648a includes
+complete coverage, browser credential refusal and viewer history/Escape repairs.
+529frontend tests,13focused units,4production-preview browser checks pass; prior
+Python58pass/2POSIX skips reused. Not merged or served. Production remains
+contained2acf515 (new clean asset index-4gUOrqrw.js), artifact unchanged.
+
+Remaining dependencies: existing PostgreSQL Administrator start; independent
+review sign-in (AGY refused before inference; Claude/Grok also signed out); actual
+YouTube playback; semantic meaning repair (real-window prompt-only and no-heading
+diagnostics failed, method stopped). Private positive/negative controls4pass do
+not satisfy actual-data acceptance. Full regeneration/public artifact replacement
+remain held. Larger hierarchy/labels and broad UX audit remain deferred.
+
+Finite next checkpoint: preserve/push source and draft PR, inspect CI/preview;
+obtain independent final-diff approval before merge, then check served identity
+and desktop/narrow navigation. Source coverage is approved structurally, meaning
+is not accepted. See docs/reviews/viewer-release-progress-2026-10-14.json.
+Forecast: implementation slice locally complete; review wait depends on existing
+account authentication, backend wait on Windows privilege; semantic effort and
+actual playback effort unknown. Prior ETA is preserved, no calendar promise.
+
+Structural-context slice,2026-10-14: Root Codex owns implementation in the same
+authoritative isolated checkout. The extractor now receives visible structural
+parent IDs and explicitly distinguishes inherited grouping from spoken argument.
+Provider-boundary red/green passes;64focused/adjacent Python checks pass with2
+existing POSIX skips. Real offline coverage is1263/1263turns and7099/7099node-turn
+associations across62bounded requests (max20982chars/30nodes). Three private
+synthetic meaning controls pass, including a grouping-only negative and a spoken
+cross-level positive. Actual-source meaning preflight is still pending; no public
+artifact replacement or release-acceptance claim. Next checkpoint: adjudicate
+that actual-source output, then review the coherent exact diff before integration.
+Actual-source follow-up,2026-10-14: the private model completed page24in266.09s,
+valid JSON with one plausible causal edge and none of the three earlier ancestor
+echoes. Cited passages do not support every detail of its explanation, so this is
+partial meaning progress, not a precision pass. Full regeneration stays held.
+Next checkpoint: resolve citation sufficiency under the existing evidence
+contract and obtain authenticated independent source review. No new human
+product decision is requested for the routine input-context repair.
+
+Evidence-first diagnostic,2026-10-14:2/2synthetic controls pass; actual page24
+still includes uncited explanation details after195.72s. This method is stopped,
+canonical prompt unchanged, public replacement held. PR216head cbb4ed6 is pushed
+with required529/529local frontend checks and green unit/Postgres/browser CI.
+Remaining semantic effort unknown; separate authentication and Windows privilege
+waits unchanged. Next semantic checkpoint requires a materially different safe
+method or a concrete model/contract decision, not another prompt wording retry.
+
+### 2026-10-14 — On-device search preparation hides the loading boundary
+
+Public model preparation remained pending for192s; cancellation and literal
+search recovery worked. Source shows no model progress callback and the same
+label even before Worker construction, so download vs initialization is unknown.
+A cancelled worker's unguarded late error can also abort the next attempt.
+Root Codex owns the bounded status/retry repair in the current isolated checkout.
+Finite next checkpoint: behavioural stale-error/message-error/progress checks,
+build, then actual model loading in browser. Synthetic worker success alone does
+not establish on-device model readiness. Exact-diff independent review remains.
+Local follow-up: three red UI regressions become green;18focused checks, lint,
+design detector and production build pass. Actual browser advances1.6MB/56s to
+7.6MB/295s with readable desktop/phone status. Continue that same download;
+readiness/search-result acceptance remains pending. Source not yet served.
+
+Follow-up checkpoint2026-10-14: source61912d2is pushed; required534/534frontend
+checks and exact-head unit/Postgres/browser CI plus preview pass. Actual model
+download advances then reports network error. Text recovery returns3matches;
+one offered retry advances3.1MB/197s and remains pending. Actual on-device search
+is not accepted. Owner/integration and authoritative checkout unchanged. Review
+authentication, actual model/result/source journey and merge/served identity
+remain separate dependencies. No calendar ETA supported for network/auth waits.
+
+Semantic smaller-window follow-up2026-10-14:202bounded diagnostic requests retain
+1263/1263turns and7099/7099associations. One actual page returns an enables edge
+whose two citations do not establish the relation or the full explanation;
+equipment detail is also attributed to the wrong endpoint. Diagnostic stopped,
+product budgets/prompt/artifact unchanged. Do not try further wording/window-size
+variants. Meaning acceptance needs a causally different model/contract decision;
+current full regeneration/public replacement remains held. Private evidence is
+tmp/smaller-windows-20261014/real/, no external review disclosure of that data.
+
+### Deferred — reasoning configuration is absent from completion-cache identity
+
+Found2026-10-14 by direct source inspection. The synchronous client passes only
+messages/sampling/prompt/model names to llm_cache.cache_key; provider
+reasoning_effort is applied later to transport. A reasoning-only configuration
+change can therefore replay a previous completion when caching is enabled.
+Impact: misleading comparisons or stale output after changing that setting.
+Non-blocking for this slice: all private probes explicitly disable the cache.
+Recommended next step: a separate cache-contract test and bounded repair covering
+answer-affecting provider settings. No cache deletion or broader repair here.
+
+### Navigation history test assumes browser frames finish within a fixed sleep
+
+Found2026-10-14 in required pre-push gate:1/529frontend tests failed; the same
+5history tests pass in isolation. Impact: branch publication blocked by an
+unsettled Forward assertion. Investigating with delayed RAF callbacks and public
+UI outcomes; no runtime conclusion or gate waiver. Owner Root Codex, same task
+worktree. Next step: decisive timing reproduction and bounded outcome-based wait.
+Follow-up:100ms RAF delay decisively reproduces the original assertion. Final
+test reuses the controlled-frame fixture and settles frames under act before
+checking the same navigation outcomes; runtime unchanged. Eight focused checks
+and ESLint pass without new warnings. Required full pre-push suite remains next.
+
+### 2026-10-15 — Current bounded integration checkpoint
+
+Owner/integration Root Codex; authoritative isolated checkout and task branch
+unchanged. PR216head613de10 has green unit, real-Postgres, browser-smoke and
+preview CI. Authenticated Google Gemini independently approved its21technical
+files with no findings and zero tool attempts; exact receipt is
+docs/reviews/viewer-release-independent-2026-10-14.json. Not merged or served.
+Required merge helper lacks the policy-approved Gemini receipt route; a narrow
+adapter plus exact-head merge pin and refusal tests are being implemented.
+Finite next checkpoint: helper validation, updated exact-diff review, CI and
+served identity. The previous approval does not cover this new helper source.
+
+Actual search acceptance: second browser model download ended in network error;
+no further retry. Text fallback returned3matches and opened Source at986s.
+Separate model transfer received2359296/22972370bytes before95.797s budget ended;
+host HEAD success and partial transfer do not prove browser readiness or identify
+its error cause. Actual on-device meaning search and embedded playback remain
+unverified. Source/citation meaning still fails on the current private model;
+full regeneration/public artifact replacement remain held. PostgreSQL requires
+the pending Administrator service start. No supported ETA for those external or
+unresolved dependencies; the next evidence checkpoint is the reviewed integration.
+Local follow-up: the existing Source iframe subsequently loaded. Native Play,
+active playback, transcript seek to986.847141s, and native Pause all succeeded
+on built61912d2without player changes. Actual embedded playback is proven locally;
+verify the new production deployment after integration. Helper7/7isolated CLI
+checks pass; updated exact-diff independent review remains next.
+
+Release checkpoint2026-10-15: Root Codex integrated reviewed208a8f8 through the
+required exact-head/CI merge helper. Google Gemini approved the final25technical
+files with no findings/tool attempts;7CLI checks,534frontend checks and all actual
+required CI gates pass. PR216merged as0e1fb3b; production
+dpl_EoukQkxiXzrcs4FTz8VUjZDQ5jCE is READY at the existing public domain.
+Served index-07NxGK4m.js has zero nonempty credentials; held data file unchanged.
+Actual public text search/Source986s/Back-to-Graph pass. Public embedded video
+initial load and one retry still timeout, so playback is not accepted despite
+the local success. Two prior on-device model downloads failed; no third attempt.
+Backend runtime remains2acf515/stopped pending the Administrator database start;
+unrelated primary edits preserved. Semantic meaning/model comparison ruling is
+still pending and regeneration remains held. Overall goal is not complete.
+Finite next evidence checkpoint: resolve the pending service/model dependencies,
+run the approved private diagnostic and verify backend identity; model/network
+effort remains unknown. No fresh calendar ETA or claim of full UX acceptance.
+
+Bounded diagnostic checkpoint2026-10-15: Root Codex, same authoritative isolated
+checkout. Public/local headers do not supply a blocking security policy; both
+contextual YouTube entry HTML requests returned200. An isolated fixture reached
+SDK readiness at0.412s but no player readiness by120.014s, then stopped and was
+closed. Raising the20s app timeout is not supported; no player source change or
+further production retry. Media cause and actual public playback remain open.
+
+The existing on-device model's four required files, public license and published
+weight hash are known. Serving those same assets with explicit local runtime
+paths is a candidate bounded delivery repair, not an established root cause.
+The already-built asyncify WASM is26.86MB; the pinned model adds22.97MB plus small
+config/tokenizer files. Preserve the library's older-Safari runtime fallback.
+One short-range public-asset probe timed out after25.469s; no verified full model
+or product assets resulted. Acquisition method stopped, no automatic retries.
+Finite next search check requires complete verified assets before real browser
+inference/result/Source acceptance; existing synthetic checks are not that proof.
+Administrator database start and the separate installed-model diagnostic ruling
+remain pending. No new human authorization or ETA is invented by this checkpoint.
+
+### 2026-10-15 — Selected thread card moves offscreen after navigation
+
+Outcome: the chosen thread moment stays readable after camera animations settle.
+Owner/integration: Root Codex. Authoritative checkout:
+`C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`,
+branch `codex/viewer-selected-card-framing`, based on served main0e1fb3b.
+Actual public pointer-only walkthrough twice shows reading1of7 and the correct
+detail title while demo-m10 ends at x-2123.73/y-920.99 outside the map. Evidence:
+`tmp/thread-camera-20261015/public-before.{json,jpg}`. Hypothesis: delayed compact
+overview framing overwrites the earlier selected-card centering. Confidence0.9;
+the exact stale aggregate-coordinate cause remains unconfirmed and is not part
+of this repair. Predict a public-component regression fails after timers settle,
+then passes when visible selection owns the camera; unselected initial framing
+and restored history must continue to work. Fallback: hold the slice and trace
+other framing effects if the minimal ownership guard does not fix the browser.
+Finite checks: selected-card final visibility, initial unselected framing,
+existing history regression, actual pointer/keyboard stepping with details and
+Source at desktop/narrow sizes. Next checkpoint: red/green behavior test, then
+bounded independent review, required CI, integration and served walkthrough.
+Review/CI waits are separate; model/media/search/backend holds remain unchanged.
 
 ## 2026-10-17 17:00 IST — Asus build diagnostic fixture and browser control blockers
 
@@ -1981,11 +3065,9 @@ Human reported a sign-in panel after successful login. Actual cloud session is a
 
 - 2026-10-19 10:31 IST amendment: custom-domain provisioning completed with domain/provider/SSL active, valid HTTPS and real Google login/reload/private access/refusal. Earlier certificate-pending note is historical. Existing OAuth origin already allowed the custom hostname; no Console change. DNS wildcard-assumption generator correction remains recorded in the domain procedure. No current cutover blocker; separate Meet pilot remains pending.
 
-
 ## 2026-10-19 — Guest meeting release review dependency
 
 Guest/source tests and build pass, but Gemini/Grok review transports returned no verdict and the authenticated Anthropic route reports quota exhausted. Impact: blocks publication/guest Meet runtime acceptance, not a known product-code defect. Three review methods are stopped under AGENTS; source and exact packets are preserved. Next: human review of the concrete slice or restoration of an existing authorized independent reviewer. No model upgrade, new key, relaxed gate or PASS claim. Actual Meet capture remains unverified.
-
 
 ## 2026-10-19 — Guest meeting mobile acceptance gaps
 
@@ -1993,7 +3075,6 @@ Read-only rendered QA of source172c2f1/build index-CJFwh0gt at320x600,390x843 an
 
 
 - 2026-10-19 mobile repair amendment: the two reported overlay/menu defects are fixed in source, with actual populated-map close hits/clicks at320/390px and short-landscape scroll-to-complete-Profile/activation verified against rebuilt index-B8UF_jts. Focused59/59, full1096/1096 and client/Worker build pass. Status: resolved locally, not yet deployed; physical-device and real Meet acceptance remain pending. Required exact-source independent/human review remains the publication blocker. See the guest review receipt for numeric pre/post geometry.
-
 
 ## 2026-10-19 21:42 IST — Intermittent Asus SSH blocks the bounded live Meet pilot
 
@@ -2004,13 +3085,11 @@ Impact/blocker:yes for recorder activation and actual Meet acceptance. Approved 
 
 - 2026-10-19 22:45 IST amendment to the SSH blocker: direct saved RustDesk + exact new-shell get-service sshd proves the Asus awake and service Running. Do not ask the operator to reconfirm wakefulness. Mac SSH client still times out; complex native remote typing/paste corrupts text and is stopped without executing malformed commands. Current blocker is reliable command/file/secret transfer plus approved Meet host control, not a confirmed stopped service or known key rejection. Existing data/runtime/keys retained; no bot. Recovery README now states access-method/alternative/exact-input checks. Software enforcement of attention preflight remains unimplemented process debt; avoid replacing it with repeated notes or broad protocol edits during this Meet slice.
 
-
 ## 2026-10-19 — Real Meet captions/live-chunk acceptance gap (blocking)
 Actual admitted synthetic bot records/finalizes playable MP3 and guest/local isolation passes, but caption utterance and PCM chunk counts are both0. Effective organization chunk feature gate is false; captions reach the bot final-page DOM but not persistence. See docs/plans/2026-10-19-meet-capture-followup.md. No speculative fix or second bot applied. Need guarded effective-feature dry-run and bounded caption/frame/participant diagnostics. Independent code review/tests do not substitute for this actual acceptance.
 
 ## 2026-10-19 — Browse opens guest account panel (non-blocking)
 Navigating from the meeting to On this device shows the optional account panel open without a sign-in action. Local recording opening remains usable after closing it. Defer the guest archive/account presentation cleanup until the active Meet capture journey is complete.
-
 
 ## 2026-10-20 — Follow-up Meet blocked before capture (blocking)
 The first additional bot is admitted but retries join after two ElementNotInteractableException warnings at a Close control; it never reaches joined_recording. Leave ends it as fatal_error before capture; all records/logs retained. Existing UI close selectors accept presence and can choose a hidden first duplicate; six public-method synthetic scenarios reproduce failures on the pinned source and pass on the derived readiness repair. This establishes the selector defect class, not exact live DOM identity. Celery CLI WARNING overrides diagnostic INFO env; proposed overlay corrects the actual command. No caption-mapping fix inferred. Original cloud create is separately unconfirmed despite functioning GET/invalid-payload POST transport; one guarded recorder-side continuation using the same request ID created the diagnostic bot. Gated category-only join diagnostics prepared for the remaining approved pilot. No quota or receipt reset, new route/provider/key/permission.
@@ -2045,7 +3124,6 @@ Finalcloudguestbot joins/records/normalleave/finalMP3/localreload/privateguestis
 
 FinalexactworkerstopSIGTERMsrun_bot_task.shutting_down_handler→kill_child_processes→Celerysignal/loggingrecursion. All10tracebacksoccurafterthebot'snormalPostProcessingComplete; finalMP3/dataarevalidandretained. Itdoesnotexplainlivecaption/audioidentitydrop. Keepstopped; investigatehandlerreentrancy/loggingseparately, noextraactivationforthisissue.
 
-
 ## 2026-10-20 — Repaired Meet pilot: partial real ingestion, live acceptance interrupted (blocking)
 
 Seventhguestbot nowpersists2captionrows+2validliveWAVparts/6.23seconds, mapfromrealcapturedwords and42.42secondfinalMP3/localreload/privacyverified. Host/player tabsdisappear duringclip; causeunknown. No sourcefailure inferred. Singlemapgeneratedafterroomended; sustainedlivecaption/map/reconnectstillpending. Onebot/onemapallowanceconsumed; workerstopped/joinsclosed/sevenrecordsretained. Next: stablehost+player and one explicitlybounded finaltest; no unapprovedbotretry. Priorpresentation/RMSsourcefaults havepositiveactualingestionproof, but entirejourneyisnot delivered.
@@ -2053,7 +3131,6 @@ Seventhguestbot nowpersists2captionrows+2validliveWAVparts/6.23seconds, mapfromr
 ## 2026-10-20 — Cloud Import audio entry opens recording without file import (deferred)
 
 ActualHome Import audio opens /new with nofilepicker. Legacy FileUpload/useFileUploadStream supports audio, but SitesNewConversation doesnotconnectit; /import handles transcripts only. Impact: userscannotimportMP3/WAV/M4A fortranscription/threads onthecloudSite. Separatejourney, not blockerforcurrentMeettest; useraskedstatusonly. Next: scopedfileimport/transcription/defaultlocalstorage/cancel/limits/privacyimplementation andrealacceptance aftercurrentjourney or explicitpivot. No realfile/providercallmade.
-
 
 ## 2026-10-20 — Final Meet setup still times out (blocking Meet acceptance)
 
@@ -2065,7 +3142,6 @@ GET/models health says provider access refused, while actual hosted temporary-ke
 
 2026-10-20 audio-import update: previously deferred missing entry is now explicitly approved and implemented locally with three real browser format decodes, refusal/local reload,1121 passing frontend tests and Sites build. Review, deployment and hosted file-to-map proof remain pending; do not call it delivered yet.
 
-
 ## 2026-10-20 — Audio import: transcription/local files accepted, AI maps fail tier validation (blocking full journey)
 
 Existing Site53 serves reviewed c9d48ce/native0c1a219/env64. Actual guest M4A5seconds returns30finaltokens/oneutterance and MP3 31.087846seconds returns159finaltokens/two speaker utterances. Original downloads match input bytes, full playback ends normally, local reload and cross-browser refusal pass. Allthreeformats decode in actualChrome;1135checks/128files and Sites build pass. No cloud saving/publication occurs automatically. Physical mobile remains unverified;390px responsive form tested.
@@ -2074,11 +3150,9 @@ The two permitted map requests in this turn return no accepted map. The final on
 
 Eighth final Meet check separately fails caption-language close lookup before positive setup; exactworker stopped, joins closed, eight records retained. Additional Meet authority is also consumed. These are separate blockers; neither journey is fully accepted.
 
-
 ## 2026-10-22 — Vertex retirement blocks maps after successful transcription
 
 Blocking fullaudioimport/Meetacceptance. Existinggoogle/gemini-2.5-flash-lite pinnedgoogle-vertex receivesactual404; officialretirement20October andfreshpubliccataloguezeroVertexendpoint. Key/accountfreecheckpasses butdoesnotestablishmodelrouting. Sourcegenerator: readinesscheckskey/credit/localcapacity separatelyfrommodelroute/lifecycle, so audioSTTcanfinishbeforemaproutefails. Preserve1successfulMP3/localexports; noautomaticretry/holderrelease. Recommendednextstep exactreviewed3.5FlashLite/Vertexreplacement+oneguardedholderrecovery+boundedcontinuation, reservedhumanrulingrequired. Follow-up lifecycle/routepreflightbeforeSTT is captured, not silently implemented or addedtoacceptance. See docs/plans/2026-10-22-model-retirement-continuation.md andmatchingreview.
-
 
 ## 2026-10-22 18:16 IST — Meet synthetic sharing is the current acceptance dependency
 
@@ -2091,11 +3165,9 @@ Meet host alone/AVoff is verified. Browser ShareScreen repeatedly yields generic
 
 The alternate keyboard activation also shows Meet's generic sharing error beforepicker; no captureerrorclass is exposed by logs. Native menus respond, but Meet native pagecontrols unavailable and a native-key actuation is stopped when activeChrome window changes. Do not claim all native input is dead from an immediate unchanged sample: dialog later disappeared and causality remainsunknown. No broad permission/restart/settings change is supported. ExactAsus preflight stillpasses/eightterminalrecords/worker stopped; bot/map unused. Currenthandoff remains synthetic-tabsharing only.
 
-
 ## 2026-10-23 20:16 IST — Terminal recorder task can be redelivered after hard stop
 
 Read-only isolatedbrokercheckfindsoneexpiredunacknowledgedrun_bot deliveryforthealreadyfatalprevioussyntheticrecord;0newqueuedjobs. Taskentryconstructscontrollerwithoutterminalguard. Controllerstatehandlingavoidsjoinbutstillrunsagainstfinishedrecord. Blocker: avoidreplayingoldcontrollerbeforethenewboundedMeettest. Preparedterminalentryguard+source/metadata-pinnedstopped-containerinstaller;15isolatedchecksPASS, actualWindowsdryrun/real-stateintegration/review/applicationpending. Preservequeue/data; nomannualpurge/ack/budgetrecovery. Existingfrontend1215/build/MeetUIevidenceunchanged. SharingitselfisresolvedthroughnativeaccessibilityintheWorkspaceprofile; ordinaryinjectedSharefails, macOSnormalChromepermissionON. No paidtestslotconsumed.
-
 
 ## 2026-10-27 — Replay acceptance observations (non-blocking)
 
@@ -2140,7 +3212,6 @@ Measured envelope (`docs/reviews/2026-11-03-long-input-envelope.md`): with prett
 ## 2026-11-04 — Update: long-input envelope final numbers (non-blocking)
 
 Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps were valid 19/20 on the benchmark transcript (one wrong-tier reference error) and 15-minute maps 3/3. None of 30 compact runs hit the 8,192 cap. One of 20 replies ignored the compact instruction and used 93% of the cap. New observed failure classes, all correctly rejected: paraphrased or wrong-tier parent ids and a dangling thread moment (not affix drift), plus one 90 s provider timeout. Open owner decisions: raise `LCT_OPENROUTER_MAX_OUTPUT_TOKENS` with the replay budget, and chunked generation for long or dense inputs.
-
 
 ## 2026-11-04 — Reference repair refuses a real single-tier declaration drift (non-blocking)
 

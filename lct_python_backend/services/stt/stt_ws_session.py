@@ -156,7 +156,9 @@ class WsSessionContext:
         # 2nd-speaker WS nudge fires the first time this reaches 2.
         self.seen_speaker_ids: set = set()
         self._second_speaker_announced: bool = False
-        self.session_final_text_parts: List[str] = []
+        # Keep final text paired with its persisted utterance id for grounded
+        # edge authoring; this also supplies the final-flush transcript join.
+        self.session_final_text_parts: List[Dict[str, Any]] = []
         self.active_draft_graph: Optional[Dict[str, str]] = None
         self.pending_draft_replacements: List[Dict[str, str]] = []
         self.pending_speaker_reconciliations: List[Dict[str, Any]] = []
@@ -824,17 +826,55 @@ class WsSessionContext:
                 merge_semantic_edges_into_nodes,
                 run_edge_enrichment,
             )
+            from lct_python_backend.services.import_pipeline.import_orchestrator import _is_local_provider
+            from lct_python_backend.services.deployment_privacy_policy import (
+                OWNER_PRIVATE,
+                normalize_provider_trust_scope,
+            )
 
             existing = list(self.processor.existing_json or [])
             if not existing:
                 logger.info("[WS][ENRICH] skipped — no nodes to enrich")
                 return
 
+            metadata = self.state.metadata if isinstance(self.state.metadata, dict) else {}
+            source_metadata = metadata.get("source_metadata")
+            privacy = (
+                source_metadata.get("privacy")
+                if isinstance(source_metadata, dict) and "privacy" in source_metadata
+                else metadata.get("privacy")
+            )
+            local_llm_ok = isinstance(privacy, dict) and privacy.get("local_llm_ok") is True
+            local_providers = [
+                provider for provider in (self._runtime_llm_providers or [])
+                if local_llm_ok
+                and _is_local_provider(provider)
+                and normalize_provider_trust_scope(provider.get("trust_scope")) == OWNER_PRIVATE
+            ]
+            if not local_providers:
+                logger.warning(
+                    "[WS][ENRICH] skipped: local_llm_ok=%s; no owner-private local provider",
+                    local_llm_ok,
+                )
+                await _safe_send_json(
+                    self.websocket,
+                    {
+                        "type": "processing_status",
+                        "level": "warning",
+                        "message": "Semantic edge scan skipped: no permitted local model is available.",
+                        "context": {
+                            "stage": "enrichment",
+                            "phase": "skipped",
+                            "reason": "no_privacy_eligible_local_provider",
+                        },
+                    },
+                )
+                return
+
             # Build a compact query for IndrasNet retrieval: title +
             # executive_summary if consolidation produced them, falling back
             # to a sample of top-tier node names.
             query_parts: List[str] = []
-            metadata = self.state.metadata or {}
             title = (metadata.get("conversation_name") or "").strip()
             if title:
                 query_parts.append(title)
@@ -886,9 +926,14 @@ class WsSessionContext:
 
             edges, telemetry = await run_edge_enrichment(
                 nodes=existing,
+                utterances=[
+                    {"id": part["id"], "text": part["text"]}
+                    for part in self.session_final_text_parts
+                    if part.get("id")
+                ],
                 query_summary=query_summary,
                 participant_external_llm_ok_set=allow_set,
-                providers=self._runtime_llm_providers,
+                providers=local_providers,
             )
 
             # edge_relations is an incoming-edge compatibility shape. Use the
@@ -1432,7 +1477,6 @@ class WsSessionContext:
             )
         elif event_type == "final":
             self._queue_active_draft_for_replacement(normalized_text)
-            self.session_final_text_parts.append(normalized_text)
 
         event_metadata = dict(metadata or {})
         raw_stage_metrics = (
@@ -1455,6 +1499,12 @@ class WsSessionContext:
         }
         event = await persist_transcript_event(self.session, self.state, payload, event_type, normalized_text)
         await self.session.commit()
+        if event_type == "final":
+            utterance_id = getattr(event, "utterance_id", None)
+            self.session_final_text_parts.append({
+                "id": str(utterance_id) if utterance_id else None,
+                "text": normalized_text,
+            })
         self._record_observability_event(
             event_type=f"transcript_{event_type}",
             stage="transcript_event",
@@ -2460,7 +2510,9 @@ class WsSessionContext:
                 )
                 finalized_wav_path = str(finalized.get("wav_path") or "").strip()
                 source_text_for_file_refinement = (
-                    final_text_for_post_flush or " ".join(self.session_final_text_parts).strip()
+                    final_text_for_post_flush or " ".join(
+                        part["text"] for part in self.session_final_text_parts
+                    ).strip()
                 )
                 if (
                     finalized_wav_path

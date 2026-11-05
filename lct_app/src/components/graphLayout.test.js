@@ -4,6 +4,8 @@
  * Vitest setup sanity check: if these run, the JS unit-test pipeline
  * is wired correctly and the just-extracted graphLayout module is
  * actually importable in a test environment.
+ * Reading-fix intent: time-axis placement must preserve chronological order
+ * and real large gaps while preventing readable cards in one lane from overlapping.
  */
 
 import { describe, expect, it } from "vitest";
@@ -139,6 +141,24 @@ describe("layoutByThread", () => {
     const out = layoutByThread(nodes, [], { timeBased: true, pixelsPerSecond: 5 });
     const xByName = new Map(out.map((n) => [n.id, n.position.x]));
     expect(xByName.get("early")).toBeLessThan(xByName.get("late"));
+  });
+
+  it("packs close moments in each thread without flattening genuine time gaps", () => {
+    const nodes = [
+      makeNode("a", { fullData: { thread_id: "T1", timestamp_start: 0, timestamp_end: 2 } }),
+      makeNode("b", { fullData: { thread_id: "T1", timestamp_start: 5, timestamp_end: 7 } }),
+      makeNode("c", { fullData: { thread_id: "T1", timestamp_start: 500, timestamp_end: 502 } }),
+      makeNode("d", { fullData: { thread_id: "T2", timestamp_start: 5, timestamp_end: 7 } }),
+    ];
+    const out = layoutByThread(nodes, [], {
+      timeBased: true, pixelsPerSecond: 2, minNodeWidth: 300,
+      nodeHeight: 210, nodesep: 24, ranksep: 32, avoidOverlap: true,
+    });
+    const byId = new Map(out.map((node) => [node.id, node.position]));
+    expect(byId.get("b").x - byId.get("a").x).toBeGreaterThanOrEqual(324);
+    expect(byId.get("c").x).toBe(1000);
+    expect(byId.get("d").y - byId.get("a").y).toBe(242);
+    expect(byId.get("d").x).toBe(10);
   });
 
   it("places largest thread on the top row", () => {

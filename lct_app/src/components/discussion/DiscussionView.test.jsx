@@ -64,37 +64,50 @@ describe("Discussion semantic hierarchy", () => {
     act(() => host.querySelector("summary").click());
     expect(host.querySelector('[data-utterance-id="numeric"]').textContent).toContain("42");
   });
-  it("shows speaker identities on collapsed branches and lets an artifact owner name them", () => {
+  it("shows speaker identities without a naming form and reflects Source edits", () => {
     const rows = [
       { id: "first", speaker_id: "SPEAKER_00", text: "First synthetic line" },
       { id: "second", speaker_id: "SPEAKER_01", text: "Second synthetic line" },
     ];
     const tree = [{ id: "exchange", semantic_level: 1, node_name: "Shared exchange", utterance_ids: ["first", "second"] }];
-    const rename = vi.fn();
-    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} onRenameSpeaker={rename} />));
+    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} />));
     const legend = host.querySelector('[aria-label="Speaker colors"]');
     expect(legend.textContent).toContain("Speaker 1");
     expect(legend.textContent).toContain("Speaker 2");
     expect(legend.textContent).not.toContain("SPEAKER_00");
     expect(legend.querySelectorAll('[aria-hidden="true"]')[0].style.backgroundColor)
       .not.toBe(legend.querySelectorAll('[aria-hidden="true"]')[1].style.backgroundColor);
-    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} speakerColorMap={{ SPEAKER_01: "#7dd3fc" }} onRenameSpeaker={rename} />));
+    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} speakerColorMap={{ SPEAKER_01: "#7dd3fc" }} />));
     expect(legend.querySelectorAll('[aria-hidden="true"]')[0].style.backgroundColor)
       .not.toBe(legend.querySelectorAll('[aria-hidden="true"]')[1].style.backgroundColor);
     expect(button("Shared exchange").querySelector(".sr-only").textContent).toBe("Speakers: Speaker 1, Speaker 2");
     click("Shared exchange");
     expect(host.querySelector('[data-utterance-id="first"]').textContent).toContain("Speaker 1");
-    act(() => host.querySelector("summary").click());
-    const input = host.querySelector("input");
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "Example Person");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    act(() => host.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    expect(rename).toHaveBeenCalledWith("SPEAKER_00", "Example Person");
-    act(() => root.render(<DiscussionView nodes={tree} utterances={[{ ...rows[0], speaker_name: "Example Person" }, rows[1]]} onRenameSpeaker={rename} />));
+    expect(host.querySelector("form")).toBeNull();
+    expect(host.querySelector("input")).toBeNull();
+    act(() => root.render(<DiscussionView nodes={tree} utterances={[{ ...rows[0], speaker_name: "Example Person" }, rows[1]]} />));
     expect(host.querySelector('[aria-label="Speaker colors"]').textContent).toContain("Example Person");
     expect(host.querySelector('[data-utterance-id="first"]').textContent).toContain("Example Person");
+  });
+  it("shows deduplicated speaking-time shares on arcs and themes", () => {
+    const rows = [
+      { id: "long", speaker_id: "SPEAKER_00", text: "Synthetic explanation", timestamp_start: 0, timestamp_end: 90 },
+      { id: "short", speaker_id: "SPEAKER_01", text: "Synthetic reply", timestamp_start: 90, timestamp_end: 100 },
+    ];
+    const tree = [
+      { id: "arc", semantic_level: 5, node_name: "Fixture arc", children_ids: ["theme"] },
+      { id: "theme", semantic_level: 4, node_name: "Fixture theme", children_ids: ["first", "second"] },
+      { id: "first", semantic_level: 1, node_name: "First fixture", utterance_ids: ["long", "short"] },
+      { id: "second", semantic_level: 1, node_name: "Second fixture", utterance_ids: ["long"] },
+    ];
+    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} />));
+    click("Fixture arc");
+    for (const name of ["Fixture arc", "Fixture theme"]) {
+      const share = button(name).querySelector('[aria-label="Share of speaking time"]');
+      expect(share.textContent).toContain("90%");
+      expect(share.textContent).toContain("10%");
+      expect(share.textContent).not.toContain("95%");
+    }
   });
   it("keeps an explicit speaker name when the transcript has no diarization ID", () => {
     act(() => root.render(<DiscussionView nodes={[]} utterances={[{ id: "named", speaker_name: "Example Person", text: "Named line" }]} />));

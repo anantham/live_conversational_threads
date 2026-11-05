@@ -1,0 +1,77 @@
+{
+  "date": "2026-10-14",
+  "owner": "Codex",
+  "branch": "codex/semantic-grounding-check-20261014",
+  "source_commit": "d87184181ab511da91b2da6c221347dc57dc243b",
+  "delivery_state": "committed and locally validated; not pushed, merged or served",
+  "approved_outcome": "Complete exact source passages across the existing bounded relationship extractor",
+  "coverage": {
+    "nodes": 100,
+    "referenced_turns": 1263,
+    "visible_turns": 1263,
+    "expected_node_turn_associations": 7099,
+    "visible_node_turn_associations": 7099,
+    "exact_text": true,
+    "windows": 61,
+    "previous_prefix_windows": 23,
+    "windows_by_kind": {
+      "argument_backbone": 18,
+      "local_evidence": 34,
+      "chronological_boundary": 9
+    },
+    "largest_window_nodes": 30,
+    "node_limit": 30,
+    "largest_source_input_chars": 20996,
+    "source_input_limit_chars": 21000,
+    "final_user_input_limit_chars": 24000,
+    "planning_seconds": 8.165,
+    "planning_offloaded_from_event_loop": true,
+    "semantic_precision_verified": false,
+    "artifact_unchanged": true
+  },
+  "validation": {
+    "passed": 58,
+    "skipped": 2,
+    "skip_reason": "Existing POSIX permission-mode cases on Windows",
+    "seconds": 3.81,
+    "scope": [
+      "complete passages and endpoint citations",
+      "shared artifact authoring",
+      "argument topology pipeline and persisted repair",
+      "live STT source wiring",
+      "CLI status and cancellation"
+    ],
+    "isolation": "Dedicated database, audio, attendee registry, appdata and cache roots before imports; no database/provider calls",
+    "warnings": "Existing Python3.9 deprecation and pytest-asyncio loop warnings"
+  },
+  "independent_review": {
+    "status": "APPROVED",
+    "preferred_attempt": "Anthropic Claude via AGY refused at quota before inference; no verdict or tool use",
+    "active_reviewer": "Google Gemini 3.8 Flash High via authenticated AGY",
+    "packet_bytes": 40254,
+    "packet_sha256": "593167d8f154cc0d789b182d2a1b6a861487826a85e07b9aff38ba9517102842",
+    "boundary": "Exact committed source/test/intent slice plus bounded unchanged technical context; tool-free deny-all hook; no private source data or credentials",
+    "provider_family": "Google Gemini",
+    "scope_sha": "d87184181ab511da91b2da6c221347dc57dc243b",
+    "findings": [],
+    "fixed_or_rejected_findings": [],
+    "unresolved_overclaims": [],
+    "tool_attempts": 0,
+    "conversation_id": "ee3c9c5d-2ac5-4e72-8de7-0425baca30b5",
+    "completed_at": "2026-10-14T09:12:28.436Z",
+    "limitation": "inline bounded slice; tests not rerun"
+  },
+  "remaining_dependencies": [
+    "Human authority for verified public backend-credential containment; no credential values recorded here",
+    "Private model meaning checks; prior synthetic negative precision failure is not fixed by coverage alone",
+    "Windows Administrator service start before backend readiness; service currently stopped",
+    "Diagnose public blank root and complete desktop/narrow viewport interactions"
+  ],
+  "next_evidence_checkpoint": "Credential-containment ruling, then guarded integration/CI and private meaning acceptance; public artifact and backend restart remain held",
+  "forecast": {
+    "implementation": "Local coverage repair and focused/adjacent checks complete",
+    "review_wait": "Complete: Google Gemini approved exact source/test/intent slice; no findings",
+    "integration_wait": "Held by credential-containment authority; no delivery date promised",
+    "semantic_generation_effort": "Unknown until meaning controls pass; 61 requests supersede prior 23-request plan"
+  }
+}

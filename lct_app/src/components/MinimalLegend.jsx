@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 
 import { EDGE_COLORS } from "./graphConstants";
+import { speakerDisplayName } from "../services/speakerDisplay";
 import { rerouteConversationArtifacts } from "../services/artifactSettingsApi";
 import {
   fetchConversationSpeakers,
@@ -38,8 +39,11 @@ function buildDraftMap(rows) {
   return next;
 }
 
-export default function MinimalLegend({ speakerColorMap, conversationId, refreshKey }) {
+export default function MinimalLegend({ speakerColorMap, speakerDisplayNames, conversationId, refreshKey, inline = false, controls }) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const triggerRef = useRef(null);
+  const closeLegend = () => { setOpen(false); triggerRef.current?.focus(); };
   const [loading, setLoading] = useState(false);
   const [savingSpeakerId, setSavingSpeakerId] = useState("");
   const [speakers, setSpeakers] = useState([]);
@@ -137,11 +141,22 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
   }, [conversationId, draftNames]);
 
   return (
-    <div className="absolute bottom-14 right-4 z-40">
+    <div
+      className={inline ? "flex min-h-0 max-h-[70%] shrink-0 flex-col gap-3 px-3 py-3" : "absolute bottom-14 right-4 z-40"}
+      onKeyDown={inline ? event => {
+        if (open && event.key === "Escape") { event.stopPropagation(); closeLegend(); }
+      } : undefined}
+    >
       {open ? (
-        <div className="bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[220px] animate-slideIn">
+        <section
+          id={panelId}
+          aria-label="Speaker colors and edge key"
+          className={`relative bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 ${inline ? "ml-auto min-h-0 w-full max-w-sm max-h-[25dvh] overflow-y-auto break-words" : "min-w-[220px] animate-slideIn"}`}
+        >
           <button
-            onClick={() => setOpen(false)}
+            type="button"
+            onClick={closeLegend}
+            aria-label="Close legend"
             className="absolute top-1 right-1 p-2 text-gray-500 hover:text-gray-600 text-xs"
           >
             close
@@ -171,8 +186,8 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                           style={{ backgroundColor: color }}
                         />
                         <div className="min-w-0 flex-1">
-                          <div className="text-gray-700 font-medium truncate">
-                            {speaker.display_name || speakerId}
+                          <div className={`text-gray-700 font-medium ${inline ? "break-words" : "truncate"}`}>
+                            {speakerDisplayNames ? speakerDisplayName(speakerDisplayNames, speakerId) : speaker.display_name || speakerId}
                           </div>
                           <div className="text-[10px] text-gray-500">
                             {speakerId}
@@ -181,7 +196,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      {conversationId && <div className="flex gap-2">
                         <input
                           type="text"
                           value={draftValue}
@@ -197,7 +212,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                         >
                           {savingSpeakerId === speakerId ? "Saving..." : "Save"}
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -235,13 +250,19 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
               ))}
             </div>
           </div>
-        </div>
-      ) : (
+        </section>
+      ) : null}
+      {(inline || !open) && <div className={inline ? "flex shrink-0 flex-wrap items-end justify-end gap-2" : undefined}>
+        {controls}
         <button
-          onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium"
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen(value => !value)}
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          className={`flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium ${inline ? "min-h-11 sm:min-h-8" : ""}`}
           title="Speaker colors and edge key"
-          aria-label="Show legend: speakers and edge colors"
+          aria-label={open ? "Hide legend: speakers and edge colors" : "Show legend: speakers and edge colors"}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10" />
@@ -249,13 +270,16 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
           </svg>
           Legend
         </button>
-      )}
+      </div>}
     </div>
   );
 }
 
 MinimalLegend.propTypes = {
   speakerColorMap: PropTypes.object,
+  speakerDisplayNames: PropTypes.instanceOf(Map),
   conversationId: PropTypes.string,
   refreshKey: PropTypes.number,
+  inline: PropTypes.bool,
+  controls: PropTypes.node,
 };

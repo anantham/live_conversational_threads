@@ -394,6 +394,93 @@ ThreadsViewer's existing ingestion/persistence/presentation monolith remains the
 
 - 2026-10-15: SitesAccessPanel.jsx remains a large existing session/access UI (~300 lines). This slice only corrects stale activation copy; extracting the session timing hook is optional and deferred to avoid identity regression.
 
+## 2026-10-02 — Static viewer exploration
+
+MinimalGraph.jsx (~2,260 lines), ThreadsViewer.jsx (~730 lines), and
+NodeDetail.jsx (~1,175 lines) combine several concerns. The current changes stay
+within the existing viewer and add small search, contribution, and Source modules.
+Future work should extract authored layout/viewport motion and reading navigation
+from MinimalGraph, separate artifact loading/media state from ThreadsViewer, and
+extract evidence and nearby-navigation sections from NodeDetail. Preserve the
+public interaction regressions during those extractions; no broad refactor was
+included in this feature.
+
+YouTubeSourcePanel.jsx (~247 lines) is still one source interaction boundary.
+Extract its SDK lifecycle/status hook if another provider or loading policy is
+added. Keep player ownership, pending seeks, cancellation, and measured waits
+under one lifecycle rather than separate competing timers.
+
+The blank-player follow-up keeps the Source panel below 300 lines and extracts
+the visible Play/Pause interaction into SourcePlaybackControls.jsx. Readiness
+and playback waits are separate phases; each timer has one owner and is cleaned
+up on completion, failure, retry, or unmount. Extract the SDK lifecycle only when
+the existing provider boundary grows; no broad Source rewrite is warranted here.
+
+The live phone follow-up adds only a detail-sheet visibility condition and pane
+containment to ThreadsViewer. Keep narrow-screen pane reservation and modal
+visibility together when extracting its layout boundary; treating each panel's
+viewport-height cap independently caused the Source interaction obstruction.
+
+### 2026-10-02 — Exploration continuity follow-up
+
+Session history is extracted into useViewerHistory.js and graph snapshot
+validation into graphNavigationSnapshot.js. MinimalGraph still owns multiple
+camera effects; restoration must suppress every automatic fit/center path.
+Extract a single viewport coordinator in a dedicated future refactor, retaining
+the actual-browser manual-pan/Back regression. ThreadsViewer still mixes artifact
+loading and pane navigation; its explicit snapshot boundary should guide a later
+split. NodeDetail's evidence/navigation sections remain prior candidates.
+
+Native video controls supersede the additional SourcePlaybackControls in the
+public viewer. That unused component and its isolated tests are a removal
+candidate for a separate cleanup; the SDK readiness, retry and cancellation
+lifecycle remains active and tested in YouTubeSourcePanel.
+
+### 2026-10-02 — Reading-control extraction boundary
+
+The center reading-control markup now lives in `GraphReadingControls.jsx`, but
+`MinimalGraph.jsx` still owns path filtering, keyboard handling, and stepping
+amid its camera and graph state. If reading navigation gains more behavior,
+extract that state and its event lifecycle together; keep graph tier selection
+and viewport effects in the current owner until their separate coordinator
+refactor. Preserve the existing selected-thread and conversation path tests.
+<!-- viewer-color-only-cards:2026-10-03 -->
+
+## ConversationNode presentation decomposition candidate (2026-10-03)
+
+ConversationNode.jsx is approximately625 lines, mixing card layout, speaker
+presentation, provenance metrics, dimension/rhetoric chips and control styles.
+A future split can extract metric/chip presentation from the card renderer.
+The approved color-only change is a small visibility repair; extracting those
+concerns now would enlarge review and legacy-consumer risk without improving it.
+
+# 2026-10-12 — Relationship authoring boundary
+
+`edge_enrichment.py` (~800 lines) mixes retrieval, prompt/evidence rendering,
+provider calls, parsing, compatibility adaptation and scan aggregation. The current
+consolidation extracts the evidence boundary only where necessary for shared use;
+keep retrieval/provider lifecycle decomposition separate. `stt_ws_session.py` is
+also a large lifecycle owner: reuse its existing utterance identity/text storage
+for edge input instead of creating a parallel transcript store.
+
+### 2026-10-14 — Bounded evidence planner
+
+`edge_enrichment_windows.py` grows from345 to roughly425 lines to page complete
+source evidence without a second extraction path. It remains one coherent pure
+planner. Future performance work can separate passage projection/budgeting from
+hierarchy packing; current actual100-node planning takes8.165s for61requests.
+The caller now offloads this pure preparation so the CLI status loop can run.
+Avoid caching or a parallel planner in this coverage repair; any optimization should preserve
+exact formatted-budget checks, complete associations and boundary visibility.
+
+### 2026-10-14 — Viewer graph navigation boundaries
+
+`MinimalGraph.jsx` exceeds 2,300 lines and owns tier selection, viewport motion,
+history restoration, keyboard navigation and rendering. A later bounded refactor
+could extract viewport restore/visibility decisions and motion coordination into
+a dedicated graph-navigation module. The current reliability repair keeps the
+existing ownership to avoid changing tier behavior during this release slice.
+
 ## 2026-10-16 — Cloud live workspace
 
 Keep the bounded RecordingSession engine intact; conversation continuity is now separated into cloudConversationSession rather than extending its300-line transport state machine. SitesNewConversation and RecordingConversationMap remain under250lines. Existing MinimalGraph is large and reused unmodified; future graph/tool layout decomposition is separate from this migration.
@@ -404,11 +491,9 @@ Keep the bounded RecordingSession engine intact; conversation continuity is now 
 
 - 2026-10-18: Account-state repair extracts only the session-response contract from SitesAccessPanel, retaining its bounded request/cancellation lifecycle. Existing presentation/lifecycle split remains a later candidate; no broad identity-controller rewrite.
 
-
 ## 2026-10-19 — Attendee controller audio buffer configuration
 
 The pinned public upstream bots/bot_controller/bot_controller.py is a large mixed-concern controller. The guest journey derives a two-line buffer override without rewriting or dirtying that checkout. Candidate upstream refactor: expose bounded audio chunk sizing as explicit pipeline configuration, keeping existing defaults for other bot types. Current scope retains exact-source/hash guards and does not split the upstream monolith.
-
 
 ## 2026-10-20 — Pinned Meet UI dialog controls
 Public upstream GoogleMeetUIMethods is1297lines across joining, media/layout, language and login. This slice derives an exact-hash guarded14line readiness condition plus three dialog-close wait replacements, preserving the upstream checkout. Split layout/language interaction concerns upstream later; broad decomposition is deferred. Current derivative1311lines (+1.08%); no frontend bundle growth from this Python overlay, no any types, complexity/coverage/performance metrics for a broad refactor are not applicable. Behavioral regression exercises public UI methods with real recovery dependencies and synthetic WebDriver controls, with hidden/disabled/stale/ambiguous cases.
@@ -419,11 +504,9 @@ Public upstream GoogleMeetUIMethods is1297lines across joining, media/layout, la
 
 Presentation routing touches a 2606-line public upstream payload containing participant directory, media transport, protobuf decoding and DOM controls. Keep the narrow hash-pinned derivative for this repair; future upstream contribution/extraction should separate participant resolution, caption transport and audio/video transport with public wire-contract tests. No broad refactor in this approved journey.
 
-
 ## 2026-10-20 — Capture-source decomposition during audio import
 
 RecordingSession mixed microphone capture with Soniox HTTP authorization. Extracted its unchanged bounded HTTP reader/request to sonioxSessionClient.js for microphone and file sources. SitesNewConversation remains a large mixed lifetime/UI component; reuse the existing small graph/transcript/archive components in SitesAudioImport without a broad recording-page rewrite. Future candidate: share a conversation-review shell after the two journeys stabilize; not required for this feature.
-
 
 ## 2026-10-21 — Account presentation regression suite boundary
 
@@ -432,7 +515,6 @@ SitesAccessPanel.jsx is261lines and the route-only import parity does not warran
 ## 2026-10-21 — Pinned upstream Meet UI remains a large external integration surface
 
 The public GoogleMeetUIMethods source used by the isolated Asus recovery is1317lines with login, admission, layout, captions and diagnostics. This repair changes only the derived select_language boundary through a hash-pinned generator; avoid unrelated upstream rewrites while capture acceptance is incomplete. Future upstream contribution should separate idempotent caption-language configuration from login/layout and test its DOM ownership/postconditions. New generator and authored fixtures should remain cohesive and small. Not a blocker or new architecture decision for the current bounded repair.
-
 
 ## 2026-10-26 — Native source dependency-link and prerequisite-receipt safeguards
 

@@ -1,3 +1,18 @@
+## 2026-11-05 16:40 IST — Merge origin/main (ecad4002) into codex/lct-inference-choice (a354a33b)
+
+Executes docs/plans/2026-11-03-main-consolidation.md (intent: tests/intent/main-consolidation.md). True merge, no squash/rebase/force. 9 textual conflicts, all resolved by keeping both sides' behaviour:
+
+- ISSUES.md, docs/TECH_DEBT.md, docs/WORKLOG.md: append-only union. Every block from both sides kept, ordered by its header date in the direction each region already used; conservation checked (0 non-blank lines from either side missing). The superseded ISSUES "Last updated: 2026-09-28" line was dropped in favour of main's 2026-11-04.
+- lct_app/package-lock.json: regenerated with `npm install --package-lock-only` from main's lock plus the merged package.json. Every resolved version equals one side's; the only drift from main is the branch's react-router(-dom) 7.18.2 pin. set-cookie-parser was pinned back to 2.7.2 (both sides') after npm re-resolved it to 2.7.3.
+- graph/colorModes.js (+ test header): main's measured speaker shares (`speaker_contributions`, `requireMeasuredSpeakerShares`) kept; the legacy fallback now uses the branch's `speakerIdsOf` (direct speaker, source turns, generated `provenance_speaker_ids`), and `speakerIdsOf` also counts measured contributors so palette and ownership agree.
+- MinimalGraph.jsx: main's navigation restore/snapshot (navigationState, restoringRef, speakerDisplayNames) kept; every main-added `mglog` call gated behind the branch's `diagnosticsEnabled` so private/ephemeral graphs stay silent.
+- ThreadsViewer.jsx: main's history, search, text-source and graph-navigation layout kept, plus the branch's private/public/ephemeral notice bar, no `#discussion=` deep link in private mode, and diagnostics off for private/ephemeral. The branch's private/public early returns moved below main's new hooks; left in place they would have changed hook order between renders.
+- DiscussionView.jsx: main moved speaker naming out of Discussion into the Source panel (SourceSpeakerEditor, #0e9fdc31), so the branch's in-Discussion form was dropped. Its honest "Names change in this view only" copy was carried over as a `namesStayInView` prop through TextSourcePanel/YouTubeSourcePanel/MobileConversationDeck into SourceSpeakerEditor.
+
+Test-fixture follow-ups (branch tests written against the pre-#207 viewer): the private/public/generated viewer tests now use main's single cycling view-mode control and the Source panel for naming. MinimalGraph.diagnostics mocks `useNodesInitialized`. The private test now allows main's opaque `lctExploration` {owner,cursor} history marker, while still asserting router state survives, the URL is unchanged and no conversation text enters history.
+
+Verification (Node 26, `NODE_OPTIONS=--no-experimental-webstorage`): vitest 1513/1513 in 162 files (branch tip 1422/1422; main 536/537, its one failure googleDriveThreads passes here). `npm run build` and `npm run build:sites` both pass. Backend `python -m pytest lct_python_backend/tests/unit` (py3.11, CI env): 2104 passed/7 skipped (branch 2050/7; main 2103 + 1 failure in test_semantic_authoring_consolidation that passes here). eslint is clean on the touched files. Not done: Playwright e2e, live Site check of on-device search, independent-family review of the resolution diff (required before merging to main per plan).
+
 ## Served — one microphone — 2026-10-15 23:36 IST
 
 Delivered the approved single-microphone slice. Application3808533 is committed/pushed to task and migration branches. Existing Site saved41/native02ddbf9b00a81e617aa2fef0d320b387b0e1cc29 served by appgdep_6ad115967a0081918bd7d2447170241f, succeeded2026-10-15T18:04:47.298677UTC/env37. Archive39files/1,884,160bytes/SHAaea2ae3119af3c3cbad12f70607e1019e9a99f295b436c475eb98c0473d75f75. Actual cloud browser loads exact built index-BrmeWh-A.js, one footer microphone, checked Live transcription after readiness, and no horizontal overflow at429CSSpx. Screenshot /private/tmp/lct-single-mic-live.jpg. Local preview/server closed; live recording page retained. Provider/auth settings, storage, migrations and audience unchanged. No live recording or inference call was made for this UI validation.
@@ -95,6 +110,168 @@ Implemented direct Gemini (AI Studio) and OpenRouter selection with per-recipien
 934/934 full tests and build pass; final independent Claude Sonnet5.5 review PASS after supported fixes. Review receipt: docs/reviews/2026-10-15-inference-choice.md. Local desktop/mobile browser check used synthetic intercepted services and cannot establish live provider acceptance. Source projection preserves304unrelated files. Publication/live results follow in milestone board. Found16 locked dependency advisories recorded in ISSUES.md; dependency upgrade deferred. Prior implementation25–45min forecast is near its upper bound due review routing/timeouts and fixture diagnosis; final review and builds now complete. Deployment/live outcome and Google human interaction remain separate waits.
 
 # WORKLOG
+
+## 2026-11-04 18:40 IST — Rewrite the Asus backend restart runbook in AGENTS.md
+
+- Addresses ISSUES 2026-11-04 "Asus backend restart docs are stale". The
+  "Backend (Asus) — restart + deploy" section now names the real supervisor
+  (IndrasNet `scripts/start_all.py --autostart`, Task Scheduler, `lct_backend`
+  agent), the live log `logs/backend.log`, and `/api/version` as the check.
+- Supervisor limits documented from the Mac-synced copy of `start_all.py`:
+  every exit counts as a crash (count resets after 5 quiet minutes, gives up at
+  5); a failed startup within the 180 s probe is not retried. Added a
+  pre-flight `import lct_python_backend.backend` (verified DB-free: succeeds
+  with an unreachable DATABASE_URL in 1.3 s) and moved the import-activity
+  check to just before the stop. No SSH-safe recovery after the supervisor
+  gives up is verified; the runbook says so.
+- Not verified on the Asus itself: it went offline (Tailscale "last seen 2h
+  ago") before the scheduled task's name and the Asus copy of `start_all.py`
+  could be read.
+- Gemini 4 Argon High review, two rounds: round 1 raised 6 findings (all
+  adopted after checking the supervisor code; one partly); round 2 two low
+  wording/order fixes, adopted.
+
+## 2026-11-04 04:40 IST — Deploy main @ 1cca862b (#224) to the Asus backend
+
+- Owner approved in chat. The Asus checkout was 4 behind (`2acf515`, #215) and
+  dirty: a 41-line `docs/WORKLOG.md` edit (2026-10-14, collided with incoming
+  commits), three `ops/observability/` script edits (2026-09-26/28) and an
+  empty stray `=ro` (2026-11-02). All parked, nothing discarded, on pushed
+  branch `wip/asus-deploy-checkout-dirty-2026-11-04` (`d3aed8e`; the push
+  passed the pre-push `[ci]` vitest gate).
+- The Tailscale link to the Asus was degraded (DERP relay, ~4 s, dropped SSH
+  sessions), so the deploy ran as a detached script on the Asus
+  (`logs\deploy_224.ps1`, logs `logs\deploy_224_2026-11-04*.log`): import
+  guard → park → `pull --ff-only` (must contain `1cca862b`) → restart → wait
+  for `/api/version` to report the new SHA, with rollback to the previous
+  commit if it never comes up.
+- Run 1 aborted safely after parking: `git pull` hit
+  "Could not resolve hostname github.com" (transient DNS); backend untouched.
+  Run 2: no import activity, fast-forward `2acf515..1cca862` (also deploys #216,
+  #217 and #221; no migrations), old pid 10300 stopped, new backend pid 3672.
+  Verified from the Mac over the tailnet: `/api/version` = `1cca862b`,
+  `git_dirty: false`.
+- Found while deploying (see ISSUES 2026-11-04): the backend is supervised by
+  `scripts/start_all.py --autostart` (run by Task Scheduler), which restarted
+  it on its own; `start_lct_backend.ps1` refuses elevated SSH shells. The
+  live log is `logs/backend.log`, not `lct_backend.manual.*.log`. The AGENTS.md
+  restart section is stale on both points. Production Python is 3.9.21:
+  `test_stt_saturation_wait.py` from #224 failed to import there; fixed in
+  PR #229.
+- My mistake, ledgered: run 1's import guard read the stale
+  `lct_backend.manual.out.log` (2026-09-25) and reported "no import activity";
+  corrected for run 2 to read `logs/backend.log` and ignore health pings.
+
+## 2026-11-04 02:40 IST — STT client waits for a busy local STT (PR #224)
+
+- Follows the concurrency change below. Branch `fix/stt-honour-retry-after`,
+  commit `30a86a59`, PR #224 (not merged; main is the owner's click).
+- `lct_python_backend/services/audio_transcriber.py`:
+  `transcribe_audio_file_detailed` now waits on the local STT's busy signal
+  only (503 + finite Retry-After + `local_stt_saturated` body code), sleeping
+  Retry-After (min 1 s) within `STT_SATURATED_WAIT_BUDGET_S` (new, in
+  `services/transcript/transcription_utils.py`, default 900 s). On exhaustion
+  it raises `SttSaturatedError`; the chunk loop skips it via the new
+  `_is_retryable_chunk_error`, while the global `_is_retryable_stt_error`
+  still treats it as retryable so imports show as retryable to the user.
+- Tests: `tests/unit/test_stt_saturation_wait.py` (13, red-first, every guard
+  mutation-tested). Unit suite 2100 passed; 4 failures are pre-existing on
+  main in the M5 venv.
+- Gemini 4 Argon High review, two rounds. Round 1's suggestion to exclude the
+  error globally would have made busy-server imports non-retryable; caught by
+  reading the classifier's consumers, fixed by moving the exclusion into the
+  chunk loop. Round 2: nothing significant. Record in the shared notes folder
+  (`stt-retry-after-review-2026-11-04.md`).
+- Not deployed: the backend runs on the Asus; it picks this up after merge +
+  `git pull` + restart there.
+
+## 2026-11-04 01:55 IST — M5 local STT concurrency 4 → 1
+
+- Owner approved in chat. Changed `MLX_STT_MAX_CONCURRENCY` from `"4"` to `"1"`
+  in `~/Library/LaunchAgents/com.aditya.mlx-stt.plist` (the only place it is
+  set; no repo change). Backup of the old plist in the session scratchpad.
+  `launchctl bootout` + `bootstrap` (an environment change is not picked up by
+  `kickstart -k`), done while `/health` showed `inflight: 0`.
+- Verified: `/health` reports `max_concurrency: 1`. A two-speaker request
+  completed (200, both speakers; 53 s because of cold model loads), and a
+  request sent 1.5 s later got `503`, `Retry-After: 30`,
+  `code: local_stt_saturated` in 17 ms; `saturated_rejections: 1`.
+- Knock-on logged in ISSUES 2026-11-04: the backend's chunk retry budget
+  (about 22 s, ignores `Retry-After`) can fail a second concurrent job.
+- Rollback: set the value back to `"4"`, then `bootout` + `bootstrap`.
+
+## 2026-11-04 01:42 IST — Deploy #221 to the M5 local STT service
+
+- Owner approved the merge and deploy in chat. #221 was squash-merged as
+  `dda93db3`, pinned to the reviewed head `df660e61`.
+- The M5 main clone was on `feat/cost-tracking-wire-up`, one commit ahead of
+  origin. That branch was pushed first (`dc83d3f4..92da5920`), so none of its
+  14 commits not on main are local-only any more.
+- Checkout trap: the clone's local `main` is an UNRELATED history (no merge
+  base with `origin/main`; last commit 2026-06-29; ahead 879 / behind 1097),
+  left over from before origin was rewritten, as are most old local branches.
+  `git pull` on it fails with "refusing to merge unrelated histories". It was
+  left untouched. The clone now runs from `deploy/origin-main`, which tracks
+  `origin/main`. Future deploys: `git pull --ff-only` on that branch.
+- `local_stt/server.py` on disk = SHA256 `2db12747…` (the reviewed packet).
+  Only `com.aditya.mlx-stt` was restarted (`launchctl kickstart -k`, pid
+  1289 → 59464, idle at the time). `com.aditya.fluidaudio-stt` also runs from
+  this clone, but its sources are unchanged and it was not restarted.
+- Live checks, synthetic `say` audio only: speech transcribed verbatim with
+  `_vad_analysis` regions; a 4 s silent clip VAD-gated in 0.17 s (empty text,
+  model skipped); a two-voice clip gave 2 speakers + 192-dim ECAPA embeddings.
+  `/health` reports `saturated_rejections`; healthy probes are absent from the
+  new `~/Library/Logs/mlx-stt.log`; no errors since the restart.
+- Still open: `MLX_STT_MAX_CONCURRENCY=4` with one shared Silero VAD model (see
+  ISSUES 2026-11-03). Silent clips print a harmless numpy "Mean of empty
+  slice" warning to stderr.
+
+## 2026-11-03 23:40 IST — Port the M5's local STT fixes onto main
+
+- Owner ruling 2026-11-03: port only the STT fixes now. The M5
+  `com.aditya.mlx-stt` LaunchAgent runs `lct_python_backend/local_stt/server.py`
+  from the main clone on `feat/cost-tracking-wire-up` at `92da5920` (that
+  commit is local, not pushed). The deployed file's SHA256 (`b8c67456…`)
+  matches `92da5920`. The running service, its checkout, and its venv were
+  not touched. The venv was used read-only to run tests.
+- Reconciliation, `lct_python_backend/local_stt/server.py`: main's #184 turned
+  out to be a stricter rewrite of the same concurrency/VAD commits. It rejects
+  overflow before `UploadFile.read()`, uses `BoundedSemaphore` with clamped env
+  values, and moves the mlx import, temp write, diarizer load, ECAPA embeddings
+  and cleanup off the event loop, which the deployed file left on it. It also
+  counts `saturated_rejections`, returns a stable `local_stt_saturated` 503
+  code, and exposes `_vad_analysis`. So main's file is the base, and the three
+  deployed-only fixes were folded in: rotating log plus quiet `/health`
+  (`92da5920`); FFmpeg-CLI decoding for VAD and diarization instead of
+  TorchCodec (`32079a10`); and the transcript kept when diarization fails
+  (`32079a10`). The deployed liveness-contract history comment, VAD docstring
+  and 11 GB cache-creep note are kept.
+- TorchCodec, corrected mid-task: from a plain shell, main's VAD fails open
+  ("Could not load libtorchcodec"). Under the LaunchAgent's
+  `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/opt/ffmpeg@8/lib` it works. The
+  bypass removes that environment dependency for VAD and diarization, but not
+  for ECAPA (see ISSUES).
+- Tests, `lct_python_backend/local_stt/test_server_stt.py`: main's tests plus
+  the deployed diarization and logging tests. Async tests now use the `anyio`
+  plugin (pytest-asyncio was never a declared dependency). The review found
+  that the overflow test patched FastAPI's `UploadFile` subclass, so its
+  upload-read guard could not fail. It now patches Starlette's class, and a
+  mutant that reads before the slot check fails it. Added endpoint tests for
+  the VAD gate skipping the model and for anti-hallucination options reaching
+  `transcribe`; each fails against a mutant. Service venv: 11 passed, 1 skipped
+  (optional speech fixture). Main's server.py fails 5 of these in a plain shell
+  and 4 under the service's DYLD environment.
+- `lct_python_backend/local_stt/README.md`: `LOCAL_STT_LOG_PATH` and the
+  `/health` logging note, from the deployed branch.
+- Independent review: Gemini 4 Argon High via Antigravity (pinned
+  `--model gemini-4-argon-high`), clean 7-file packet, SHA256 manifest verified
+  unchanged afterwards. Of 10 findings, one test defect was fixed and two test
+  gaps were filled. The rest are against code identical on main and in
+  production and are logged in `ISSUES.md`. The most significant: production
+  runs `MLX_STT_MAX_CONCURRENCY=4` with one shared, stateful Silero VAD model.
+- Deploy note (not done): once merged, moving the M5 to main changes the 503
+  body (`code` added, new `error` text) and adds `_vad_analysis`/`_vad_gated`
+  to responses. No in-repo consumer reads the old 503 text.
 
 ## 2026-10-15 16:46 IST — Approved two-record DNS verification delivered from Mac
 
@@ -310,6 +487,7 @@ Root/canonical base4dccbd2 owns restored full-height canvas and pure bottom tool
 - Previous turn is progress: independently reviewed source diagnostics changed served behavior and captured the node_excerpt refusal; receipt1407634 is pushed with full816/816tests103files34.12s. Fresh canonical HEAD/upstream match1407634; only peer AGENTS dirty before this slice. Native owner/public/active25/env23 and complete two inference/four Soniox rows exactly match prior receipts; all provider/budget/debug flags remain off. No current human input is needed for source repair, local migration preparation, isolated tests or bounded independent review. Actual production recovery remains H1 and is not executed.
 - Captured rule failure, not raw model output, guides the request repair. Keep the generator's optional excerpt empty, an existing valid representation, and cite original utterance IDs; retain every exact source-owned utterance for transcript evidence. Do not erase a contradictory returned quote or relax the validator; independently authored/imported valid exact quotes remain accepted. Intent/new request regression precedes source edit; baseline23pass/1expectedmissing-enum failure, repaired103/103focused across5files2.90s/start03:33:41IST plus scopedESLint/diffcheck pass before recovery preparation. Only generation schema/prompt, relevant pure/Worker tests and intent change. No payload/media/model/provider/privacy/cap expansion or new live request. Live provider acceptance remains unproved.
 - A bounded Sol agent prepares, without applying/publishing, an append-only inference recovery receipt field, exact-two-old-8192-token guarded operation and migrated public-Worker refusal/success fixtures. The new recovery timestamp preserves completed_at as successful valid-artifact acknowledgment; lifetime rows/counts, interval/concurrency caps and Soniox remain intact. Root owns generation and adjacent exact five-column fixture updates; agent owns recovery schema/queries/new tests and named-boundary repair for the existing Soniox migration fixture. Root preserves peer work and will review the coherent diff through AGY after validation, then prepare the actual owner-only recovery decision. No automatic age-based expiry or standing permission for future recovery is inferred.
+
 ## 2026-10-09 03:10 IST — Continue approved diagnostics without an attention gate
 
 - Delivered native checkpoint21:58:44.064UTC: diagnostic source5cd2c23 committed/pushed/upstream-matched with mandatory full CI push gate passed (complete test output was not retained; no new exact full-suite count is asserted). Focused102/102 and build evidence above remain current. Official helper opens exact43ead source before three-path projection; guarded native commit7eae7f6c851fa72764ba6b5c53c4a974af282344 preserves300other files/eight migrations. Direct build/helper push and29package payload comparisons pass; archive598635bytes/SHA bf9ce5c2e0dea3292ccdd5d5542195887465f90aefcb727aafe5099f7c41fa99, WorkerSHA810c0d0da61f43a733678b6e0f7033f139653a7bdc880bcdf34c47151ef022f5. The first archive identity guard correctly refused slash-style spelling; a resolved-absolute-path diagnostic establishes the same file, fixes only the ignored verifier and preserves the literal helper publication values. No archive/source repackage or guard bypass. Credential cleared from session store.
@@ -702,7 +880,6 @@ Root/canonical base4dccbd2 owns restored full-height canvas and pure bottom tool
   OS206; reviewed escalated shell calls allowed the local validation. Global
   runner configuration was not changed.
 
-
 ## 2026-09-11 — Grafana datasource-plugin processes leaked on health-watchdog restart (RESOLVED)
 
 - **Symptom:** Host commit charge climbed to 98.6% (RAM 98-99%) for days,
@@ -819,7 +996,6 @@ This supersedes the earlier description of word highlighting as unfinished
 demo work: it is now an explicitly deferred production feature. No alignment
 job, dependency installation, artifact replacement, or deployment performed.
 
-
 ## 2026-09-08 — Arc size and two-way YouTube highlighting
 
 - A1: user explicitly requested summed source duration and denominator-aware
@@ -863,7 +1039,6 @@ job, dependency installation, artifact replacement, or deployment performed.
   fidelity/structure rules. The frontier demo used /private/tmp/create-lct-demo.py
   with concrete titles, concise summaries, source attribution and uncertainty.
   No dedicated summary prose style guide was found in scoped documentation.
-
 
 ## 2026-09-07 — Optional-media reading compatibility repair
 
@@ -7048,6 +7223,67 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Marked milestone1 done and revised remaining planning effort to23–64 activehours/~3–8focused8hworkdays, with explicit uncertainty and external waits. Storage allocation8–24provisionally adds2–8 for anonymous publishing controls to prior private-only6–16. This is planning, not empirical timing or a promised date. Next is synthetic explicit-visibility public/private D1/R2 storage; keys, real recordings and paid transcription stay disconnected until spending/retention gates are concrete.
 - Full persistent goal remains active: cloud storage, Soniox, new graph creation, release checks and domain cutover are not complete. No automation, merge, owner-data migration or new paid provider usage was started.
 
+## 2026-10-02 00:45 IST — Public viewer reading and local search
+
+- Worked in isolated codex/viewer-source-and-controls from origin/main 59dea4c;
+  preserved the running checkout and other worktrees. Applied Impeccable to extend
+  the current interface. User selected unique-passage speaking time and device-local
+  semantic search. ADR-071 and tests/intent/viewer-exploration.md record intent.
+- Instrument: reproduced a closed Source retaining a seek without opening;
+  key navigation was suppressed with node details open; measured card boxes
+  collided because timestamp positions did not reserve card width; speaker fills
+  divided unique IDs equally rather than measured duration. Earlier manual video
+  Play evidence did not establish the complete evidence-to-Source interaction.
+- speakerContributions.js:1-116 computes unique linked durations, completeness,
+  and percentages totaling 100. colorModes.js:430-475 uses proportional horizontal
+  bands and a single fill at >=90% dominance. DiscussionView.jsx:25-238 presents
+  shares on the existing branches and removes speaker-edit forms.
+- MinimalGraph.jsx:105-112, 750-820, 1760-1795, 2045-2055 and graphLayout.js add
+  bounded reading cards, collision packing, reserved drawer space, and visible/key
+  navigation. ConversationNode.jsx adds compact previews. TimelineRibbon.jsx and
+  graphNavigation.js carry the chosen reading path and clear it on Escape.
+  NodeDetail.jsx uses that path for Nearby moments with keyboard-accessible jumps.
+  Authored nodes, memberships, timestamps, and original transcript remain intact.
+- ThreadsViewerToolbar.jsx and CardDisplaySettings.jsx restore icons, aligned
+  disclosures, and one shared view-cycle control (also used in the compact deck).
+  ThreadsViewer.jsx:315-345, 553-582, 648-700 integrates local results and opens Source
+  for evidence seeks. SourceSpeakerEditor.jsx presents actual samples and local
+  name/export controls; TextSourcePanel.jsx retains untimed/full-transcript access.
+  YouTubeSourcePanel.jsx:15-205, 229-247 removes transcript-height adjustment and
+  handles observable loading, timeout/retry, cancellation, and safe external fallback.
+  Source sections now keep natural height and scroll without overlapping on phones.
+- conversationSearch.js and conversationSearch.worker.js:1 onward index all nodes,
+  utterances and complete source text, retaining original character ranges. The
+  on-demand worker uses pinned quantized MiniLM through Transformers.js 4.3.0.
+  ViewerFindMenu.jsx and useConversationSearch.js provide immediate lexical results,
+  explicit meaning search, stages/counts/elapsed time, cancellation, and retry.
+  searchTiming.js and sourceLoadTiming.js retain bounded operational timings only.
+- Validation: final frontend suite 488/488 in 79 files; new Playwright reading-flow
+  regressions 2/2 (desktop seven-moment navigation/evidence handoff, phone source
+  geometry); scoped ESLint zero errors (one preexisting fast-refresh warning);
+  production build passes. Focused regressions exist beside each changed component
+  and service. New e2e fixture validation failures were corrected against the actual
+  thread/edge schema before counting the successful run. A fake-timer diagnostic
+  identified a native zero-delay JSDOM toggle event; application timers still clear.
+- Actual Chromium interaction with the public artifact visited 7/7 distinct selected
+  moments; 56 rendered moment boxes had zero overlaps. An earlier player probe
+  showed the matching 37:52 seek advancing at 2273.56 seconds with readyState 4.
+  A later near-end probe observed buffering at 2.5 seconds, so it is not counted as
+  successful playback evidence. Source links and pending cues were verified separately.
+- Actual browser semantic inference returned the advertiser-incentives branches
+  for a paraphrased query. One cold run indexed 1601 chunks in ~82 seconds including
+  downloads; a second exercised failure/cancel/retry and a ~102ms warm query. These
+  are observations on this desktop, not general timing promises. Model/runtime
+  requests were GET-only with no bodies; YouTube's own playback/analytics traffic
+  was classified separately. Desktop and 390px screens had no horizontal overflow.
+  Screenshots/network diagnostics remain ignored local evidence and are excluded
+  from source publication and independent review.
+- Review probes: Anthropic weekly limit; xAI usage exhausted; Google cached OAuth
+  requires an existing project. No source packet was transmitted; review is pending,
+  no findings have been independently approved or rejected, and release remains
+  blocked by this mandatory gate. No reviewer spend, new cloud project, or credential
+  change was introduced. Nonblocking baseline warnings are logged in ISSUES.md.
+
 ## 2026-10-02 01:00 IST — Private storage foundation independently approved
 
 - Rechecked authoritative clean1138e3b worktree and existing public Site version3; live browser still shows Signed in. The user's public-default/optional-private-auth direction remains the overall contract. Hypothesis: generated D1 metadata plus immutable private R2 keys enforce per-user access while leaving the app public. Prediction: guest/service-only/other-user private requests fail before blob reads and concurrent reservations stay within capacity. Confidence0.9 for this bounded source; native bindings remain unverified. Fallback: retain the existing version and inactive uploads if migration wiring fails. Test intent was written first.
@@ -7063,6 +7299,63 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Instrument: native DB overview returns DB/lct_cloud_files; bounded table inspection reports expected11 columns, zero rows and no omitted metadata. Private status200 reports enabled=false/configured=true. Anonymous and caller-forged identity receive401, and Browse remains200 without redirect. After refresh the user's real browser still shows Signed in. Screenshot saved outside source. No native file bytes/private identities were printed or persisted. Applied initial SQL/journal/snapshot are now immutable.
 - Clean npm audit16 affected entries:12 preexisting at unchanged versions/integrities,4 new moderate Drizzle tooling-chain entries. Maintainer advisories confirm new esbuild issue is its serve feature and critical Vitest issue is exposed UI/browser-mode server; neither flow is run/published by this foundation. Runtime/build advisories still require scoped release review, not blanket dismissal. Logged inventory and sources in ISSUES; no automatic audit fix or unrelated dependency changes.
 - Tracker now marks milestone2 in progress with the inactive private backend/schema deployed. Existing23–64 active-hour planning range is retained pending native end-to-end evidence; this wiring check does not justify a calendar promise or removing guest-sharing/retention/recovery work. Next: private file UI and crash reconciliation, native synthetic save/read/delete, second authenticated account isolation, then explicit guest-public controls. Soniox/intelligence/domain/spending gates remain. Full persistent goal stays active.
+
+## 2026-10-02 01:18 IST — Blank player and visible Play correction
+
+- The user's new screenshot has an empty video host and no Play. A successful
+  manual-play run cannot establish visible controls for a failed load. Compared
+  normal and blocked-embed loads on the released public viewer: after 22s the
+  blocked request left one iframe, zero alerts/statuses/fallbacks, reproducing
+  the screenshot. The normal request displayed a thumbnail and native Play.
+  Evidence class: instrument. Specific cause in the user's browser remains
+  unknown; confidence in the reproduced missing-readiness failure class is 0.95.
+- YouTubeSourcePanel.jsx:59-62, 134-203, 227-241 now renders loading/failure in
+  the video area, uses explicit native controls, exposes Play/Pause beside a
+  ready player, reports blocked playback and provider error codes, and destroys
+  timed-out attempts. Late readiness cannot revive a failed attempt. Retry and
+  persistent timestamped YouTube fallback retain the selected source position.
+- SourcePlaybackControls.jsx:1-70 owns visible actions and bounded playback
+  waits, reports stage/elapsed/unknown remaining time, prevents repeated pending
+  Play actions, follows actual player state, and cancels timers on exit. Timing
+  history uses a separate bounded operational key via sourceLoadTiming.js:1-26;
+  no recording identity, URL, source text, or query is stored.
+- TextSourcePanel.jsx:6-31 restores the missing unverified-recording explanation
+  found by the old invalid-metadata browser tests. Updated adjacent component
+  and timing tests, youtube-source.spec.ts, ADR-071, and the test intent. Existing
+  source tests had stale slider/link/navigation expectations; corrected them
+  against the already selected UX. A preexisting unused destructuring variable
+  in a touched test was removed. Tech debt records the small playback extraction.
+- Validation: 28/28 focused frontend tests; eight regular Chromium Source/reading
+  regressions plus one separately enabled real YouTube test passed. Scoped lint
+  has zero errors. Production build passes (2330 modules, existing chunk warning).
+  Real local page: app Play at 37:52 advanced to 2272.478175 seconds, paused=false,
+  readyState=4; app Pause returned the visible Play button. Blocked embed showed
+  an error, removed the iframe, offered Retry, and retained t=2272s. Both runs had
+  zero page errors. Desktop/phone and blocked-state screenshots inspected once.
+- Browser UI connector has no available browser surface; its in-app browser
+  creation reported unavailable. The user's explicitly requested E2E validation
+  used the project's existing Playwright runtime. No browser setting or protection
+  was changed. Raw images/diagnostics remain ignored local evidence.
+- Logged the nonblocking phone legend/passage-following observations in ISSUES.md
+  without extending this correction. The required non-OpenAI review remains
+  unavailable for the previously recorded capacity/project reasons. No source
+  packet was sent; no independent verdict or findings exist. Preserve PR205 as
+  a draft; no merge, production deployment, or review waiver is authorized here.
+
+## 2026-10-02 01:23 IST — Corrected Source preserved for review
+
+- Source commit d3fc09a is pushed on codex/viewer-source-and-controls in draft
+  PR205. Required push gate passed 494/494 frontend tests in 79 files. The final
+  production build includes the pending-Play guard and passes; regular browser
+  regressions are 8/8 plus a separate real YouTube test 1/1. Scoped lint is clear.
+- Prepared the updated, unsent review packet for 59dea4c..d3fc09a: 46 tracked
+  code/test/spec/dependency files, 263283 bytes, SHA-256
+  6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75.
+  Scan found no common credential-pattern matches; recordings/transcripts,
+  screenshots, network diagnostics, credentials and operational logs excluded.
+  Exact inventory and release-blocked status are in the review receipt.
+- Reviewer access has not changed, no review packet was transmitted, and no
+  non-OpenAI verdict exists. Public production remains on the previous release.
 
 ## 2026-10-02 01:40 IST — Optional private library and recovery source
 
@@ -7155,6 +7448,7 @@ User observed an empty desktop transcript until node selection, with only the cu
 ## 2026-10-02 — Recording checkpoint preservation gate complete
 
 - Canonical485daa0 pushed to codex/lct-sites-serverless after mandatory570/570tests in87files (29.73s) and all LCT gates passed. Local native probe now guards consumed/locked response cleanup and verifies all guest/inactive routes; its complete sanitized receipt is in ignored review evidence. Logged the diagnostic lifecycle trap and guard in the global mistake ledger. Exact independently reviewed source remained unchanged after Gemini PASS. Appended final review receipt; the inactive source checkpoint is complete while the full migration goal remains active.
+
 ## 2026-10-02 05:00 IST — Finalized transcript companion source
 
 - Continuing the active cloud goal from clean4e6f7e5, not replacing intelligent conversation creation with a text artifact. User's actual browser still shows Signed in/Public access; cookie-free Home/New/Public200, private-files401 and inactiveSTT503 are rechecked. Original domain/audience/environment and all activation decisions remain unchanged. Separate official hosted ChatGPT-plan approval is still unverified; the pending budget, actual second-account and eligibility questions are not answered by elapsed time.
@@ -7163,11 +7457,13 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Bounded Sol agent changed only SitesNewConversation.test.jsx with6behavioral regressions. Root integration includes shared transcript-only save cancellation, replacement confirmation and object-URL cleanup. Scoped97/97tests in8files pass (3.92s), including realSQLite admission/private behavior; source ESLint0errors/0warnings after adding the project's existing PropTypes convention. Guarded client10.94s/Worker80ms build and artifact/compiled no-process/no-network smoke pass; whitespace passes. Test header now references the additional intent. Synthetic tests are not native microphone/provider/account-isolation evidence. File-size assessment appended to TECH_DEBT; remaining eligibility/source-format gaps appended to ISSUES.
 - Exact bounded independent Gemini review, same-Site inactive publication and native entry/settings checks are next. No key read/configured, paid call, real recording/transcript upload, schema/dependency/environment update or custom-domain change. Full mandatory prepush remains the final source-preservation gate; persistent goal stays active.
 - 2026-10-02 05:04 IST independent gate: AGY authenticated Google Gemini3.1Pro-low PASS/no findings,26.00seconds/one turn/zero tools, exact9-path packet72,510bytes/SHA256b5e158b17acc6e8a68bd75ba3f51ff55f966ba91d28ca0ab4802878193529690. No findings fixed/rejected or disputed overclaim. Native publication remains inactive and uses the same existing Site; full source-preservation gate is still pending. Review receipt: docs/reviews/2026-10-02-recording-transcript-files.md.
+
 ## 2026-10-02 05:08 IST — Transcript source published inactive
 
 - Exact independent staged-diff guard passed. Fresh sanitized export280files differed from the clean child in only4reviewed production paths; copied those, preserved dependencies/applied migrations. Same Site/public audience, official workflow client10.91s/Worker65ms, pushed standaloneab191af231fc97651419db57e49ea15137064d69, saved version10/deploymentappgdep_6abeee2dfff08191944ef27a87f1d352 succeeded23:35:38UTC. Archive23files/1,607,680bytes/hash matches the review receipt. No schema, environment, provider/key/paid, real-data or domain activation.
 - Native cookie-free Home/New/Public200/private401/STTinactive503; environment2 remains synthetic/public. DB overview exact4tables/no omissions and0admission rows. Actual signed-in browser New→Private files→Home loads the empty personal library; public shell still says sign-in optional. No record/microphone/provider/upload action; native proof cannot exercise hidden transcript controls while STT is disabled. Console errors/warnings0, screenshot outside source, tab retained. Synthetic tests establish finalized JSON/save/cancel/replacement behavior; real provider/private/account-isolation remains separate.
 - Updated current roadmap/M3/M4 to distinguish the finalized source bridge from still-required graph intelligence and hosted plan eligibility. Retained unmeasured23–64active-hour planning range; no fabricated completion percentage/calendar ETA. Original domain unchanged. Current work remains authorized progress; only funding/identity/eligibility-dependent activation steps wait for human input. Canonical logical commit/push with mandatory full prepush is next; goal remains active.
+
 ## 2026-10-02 05:11 IST — Transcript preservation gate complete
 
 - Canonical6eaad20 feat(sites):preservefinalizedrecordingtranscripts pushed successfully after mandatory592/592tests in88files (31.82s, start05:09:57IST) and all LCT CI gates. Exact approved source is unchanged; native version10 remains public/inactive. No independent findings, disputed overclaims, personal data, credential/paid activation or domain changes.
@@ -7235,6 +7531,32 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Prepared a concrete manual-owner-deletion retention proposal and alternatives in the existing roadmap, with scope/cost/privacy/recovery implications,0.9 confidence/prediction/fallback and one-time decision boundary. Asked one new async retention choice; unchanged funding, second-account and inference eligibility questions were not repeated. No policy is selected from silence, no upload activated, and no approval is bundled with provider/public/domain permissions. Continue only independent safe work while the choice is pending.
 - One guessed cloudStorage.js read failed before mutation; imports/file discovery identified the actual privateFiles service/hook. This repeats the diagnostic-path trap despite the ignored discovery guard. Subsequent reads use exact discovered/imported paths; a stricter inventory-only read mode is the bounded process correction. No false source or test claim resulted. Documentation-only reconciliation does not change code/configuration/tests or require a new implementation-family review; retain existing approved source and mandatory preservation gate.
 
+## 2026-10-02 07:33 IST — Antigravity independent review approved
+
+- User identified the omitted installed `agy` route. The earlier capacity claim
+  had checked three clients, not every available eligible route. Authenticated
+  Antigravity model discovery listed Google Gemini 3.1 Pro (High); no Cloud project
+  selection or new paid API access was needed. Logged the omission in the shared
+  mistakes ledger and retained the reproducible client/guard recipe in the receipt.
+- Verified a deny-all PreToolUse hook in a fresh neutral temporary Git directory
+  before disclosure: a harmless view_file probe was denied. Sent only the exact
+  existing authorized 46-file source/test/spec/dependency packet for
+  59dea4c..d3fc09a, 263283 bytes, SHA-256
+  6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75.
+  Plan+sandbox, explicitly pinned gemini-3.1-pro-high, no permission bypass;
+  excluded source artifacts/transcripts, credentials, images, network diagnostics,
+  operational logs and private reasoning. Existing REVIEW-EGRESS-A1 applies.
+- Instrument: terminal SUCCESS, exit 0, pinned model confirmed, zero tool attempts,
+  response scope SHA matches d3fc09a. Final verdict APPROVED, no findings; nothing
+  to fix, reject or arbitrate. The reviewer performed diff-only inspection and
+  did not rerun the supplied 494 frontend, 8 regular browser and 1 real YouTube
+  validations. Raw review reasoning remains ignored local data.
+- Added docs/reviews/2026-10-02-viewer-exploration-agy.md:1 onward with the final
+  response, hashes, guard probe, validation and remaining release boundary.
+  Marked the earlier pending receipt as superseded and resolved the reviewer
+  capacity entry in ISSUES.md. No source changed after the approved d3fc09a scope.
+  PR205 remains draft; no merge or production deployment was authorized or run.
+
 ## 2026-10-02 07:44 IST — Approved private retention disclosure published
 
 - Human selected “Keep until the user deletes them.” Appended the approved amendment to docs/adr/2026-10-02-sites-private-files.md and wrote tests/intent/sites-private-retention.md before source edits. This settles private retention only; funding, actual account isolation and real-data activation remain separate pending questions. No answer was inferred from silence and no unchanged question was repeated.
@@ -7270,6 +7592,109 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Third current audit at02:49:01UTC: canonical9805ce4950404578bf822904ae0830630de64718 equals upstream, checkout clean, exact independent-review guard passes. Site remains public/active/version14; runtime revision2 still has only synthetic private storage/public .threads flags and no provider key. Prior push sessions are terminal; there is no live deployment/job to wait on. Last mandatory gate665/665tests in93files (34.52s, start08:14:44IST) passed for Soniox-preflight docs. No source/configuration/build/test, Site runtime, provider/paid, key, real-data or domain activation changed during these audits.
 - Same genuine blocker now meets the three-turn threshold. Read-only research and prerequisite checks are exhausted; inventing OAuth permission, selecting a paid provider/budget from silence, treating synthetic accounts as actual isolation, or adding another unused adapter would not advance the authorized end state. Preserve this documentation handoff, then mark the native goal blocked rather than continuing unchanged polls. This does not mark the objective complete or shrink its scope.
 - Resume from the pending Soniox budget/audience decision, actual Soniox console project-cap/recharge verification, second actual account/private checks, and supported hosted-plan approval/credentials or an explicitly selected funded alternative. Retention/manual deletion is already approved. Keep version14/environment2 and original DNS unchanged until the corresponding activation/release gates pass; follow the roadmap's recorded review, spending, consent, recovery and custom-host checks. No pending question was duplicated and no new independent review is claimed for operational documentation; exact source still retains Gemini PASS with no findings.
+
+## 2026-10-02 08:27 IST — Approved release and live verification correction
+
+- User explicitly approved merge/deployment and live end-to-end verification.
+  PR205 merged as 0e9fdc313820a99290d21dcf63bd54bb7c6ed5ba. GitHub deployment
+  6800066064 reports successful Production deployment of that exact SHA; the
+  associated live production workflow 36957085679 passed. The deploy checkout
+  was not edited or restarted; this change is the git-connected public frontend.
+- Public Chromium interaction: seven distinct selected moments, 56 cards and
+  zero overlap pairs, keyboard and visible navigation; evidence opened a closed
+  Source at 4399s, actual playback advanced from 4400.545097 to 4400.978425s
+  with paused=false and readyState=4, then Pause worked. Blocked embedding showed
+  an error, removed the failed iframe, and Retry restored readiness at retained
+  2272s. Source sample naming/export preserved the original full transcript.
+- Actual on-device meaning search returned 12 results after an 80362ms cold
+  preparation/index and a 229ms warm query. These are measured observations for
+  one desktop run, not general estimates. Twelve model requests were GET-only
+  without bodies; exact-word results opened Source. Icons/view cycling and
+  Discussion naming removal passed. Two arcs, five themes and twenty expanded
+  indicators had rounded totals of 100%; an initial harness read concatenated
+  numeric avatar initials, so its apparent percentage failure was rejected.
+- Public opener/library suite: eight pass, homepage smoke passed on retry after
+  an initial navigation timeout. No source change was made to hide that timeout.
+  The first custom playback probe had a browser-evaluation argument bug; fixed
+  the harness and retained the first failure as local evidence before rerunning.
+- Live phone interaction did fail: Source naming was intercepted by the reading
+  strip and a selected-node sheet remained above Source. Instrument, not inference.
+  Added a synthetic regression before the fix; it failed because the dialog was
+  still rendered. ThreadsViewer.jsx now suspends the narrow-screen detail sheet
+  only while Source is open, retains selection, and contains graph overlays.
+  YouTubeSourcePanel.jsx caps compact Source by available parent height so the
+  graph retains space. ADR-071 and test intent record this bounded interaction.
+- Local correction validation: 9/9 regular Source/reading Chromium tests pass,
+  including normal-click naming with timeline+selection and detail restoration;
+  the opt-in real network test was skipped here because actual public playback
+  was already directly verified. Scoped lint/build and independent review follow.
+  All recordings/transcripts/screenshots/raw network evidence remain local and
+  excluded from code review. Continue within the user's approved release scope.
+
+## 2026-10-02 08:38 IST — Phone correction independent review approved
+
+- Source commit 6247870 is pushed in PR206. Required push gate passed 494/494
+  frontend tests in 79 files; scoped lint zero errors, production build passed.
+- Google Gemini 3.1 Pro via Antigravity approved the exact five-file bounded diff
+  with no findings. Packet 9388 bytes, SHA-256
+  e8c2deb9f0c95f6ab2af61b11b0184b113bbf7f8c3e0a4c29443b0c94a4f0bbb.
+  Existing deny-all guard, confirmed model/scope, terminal SUCCESS, exit0, zero
+  tool attempts. Review receipt: docs/reviews/2026-10-02-phone-source-agy.md.
+  No finding to fix/reject/arbitrate; static review did not rerun supplied tests.
+- The user already approved the release and its end-to-end verification. This
+  correction repairs a blocking interaction discovered by that verification;
+  proceed through normal checks and recheck the affected phone flow after shipping.
+
+## 2026-10-02 09:59 IST — Viewer journey closed; hook follow-up captured
+
+- Delivered and accepted within the user's explicit release authorization. Exact
+  reviewed source heads: d3fc09ae27f2fc7727de9f803095672f28ef5310 (initial viewer)
+  and 62478701a6c148bfaa6430a23426a5637defcf34 (phone correction). Google Gemini
+  3.1 Pro through Antigravity approved both with no findings, tools denied; receipts
+  remain in docs/reviews. No source or viewer behavior was rebuilt in this closure.
+- PR205 merge: 0e9fdc313820a99290d21dcf63bd54bb7c6ed5ba. PR206/final runtime merge:
+  11dda97d2f28b0dc580cff69792a4a3a98f48073. Production deployment 6800409768 reports
+  success for that SHA; live smoke workflow 36959228508 passed. Rechecked these
+  remote records and merged PR states without rerunning accepted browser evidence.
+- Live Chromium verification completed at 08:44 IST: phone Source naming with
+  timeline+selection works, detail sheet suspends/restores the same moment, all
+  three views cycle, subsequent naming works, and Source/navigation do not overlap.
+  Zero page errors, HTTP5xx and horizontal overflow. Prior actual public checks
+  covered real Play/Pause, timestamp handoff, seven-moment navigation, speaker
+  shares/name export and local meaning search. 494 frontend tests passed.
+- Updated ISSUES.md release status and recorded the separate push-range-aware
+  documentation-gate proposal with source/rename/deletion/unknown-ref controls,
+  behavioral regression intent and required independent review. scripts/ci_local.sh
+  and the installed hook remain unchanged; their full test cost is not bypassed.
+- PR204, Fix Tailnet viewer persistence on Windows, remains OPEN/DRAFT and is
+  explicitly separate from this delivered public viewer outcome. No private
+  persistence code, deployment or release claim was included in this closure.
+
+## 2026-10-02 14:28 IST — Viewer feedback gathered and decisive boundaries reproduced
+
+- User requested a concrete UX repair plan. Read the supplied feedback locally;
+  private conversation text, participant details and attachment images are excluded
+  from repository notes and external review. Product code remains unchanged.
+- Used one bounded read-only peer for timeline/name propagation tracing against
+  the authoritative viewer worktree. The primary checkout is stale at 7b33b6e;
+  served viewer source is 11dda97, present in the d4eebbc viewer worktree.
+  Preserved dirty AGENTS.md and unrelated primary-checkout peer edits.
+- Live Chromium instruments at 1440x900 confirm desktop detail/toolbar overlap,
+  unchanged browser history across distinct selections, and clipped lower plots
+  after scrolling the complete timeline. The first diagnostic reached the clipping
+  boundary but then incorrectly requested Next on a one-node row and timed out;
+  the corrected probe used a known multi-node row and waited for layout settlement.
+  Do not count that first partial attempt as a passing journey.
+- Source schema/count probe confirms 14 authored threads, all represented, plus
+  one ungrouped lane. Timeline height alone cannot repair the nested plot clipping.
+  Source aliases reach passages/Discussion but raw IDs remain in graph percentage
+  labels and the full-text transcript display. Existing tests do not cover these
+  cross-surface outcomes. Prior delivery evidence did not establish them.
+- ISSUES.md:1619 onward records the proposed bounded outcome, owner/checkout,
+  concrete repairs, acceptance boundaries, remaining choices and next checkpoint.
+  Three optional design questions were presented; unanswered choices remain proposed.
+  Local screenshots are ignored diagnostic evidence under tmp/viewer-feedback-20261002-*.
+  No new test, source repair, independent verdict, merge or deployment is claimed.
 
 ## 2026-10-02 14:30 IST — Goal resumed with Google identity and OpenRouter intelligence
 
@@ -7310,6 +7735,45 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Exact one-path19,096byte test-repair packetSHA2563a2cb66821d303c90c991f0a80ea784c33d97b9cda2c4424adec3ccad699b1ca independently PASS/no actionable findings via authenticated AGY Google Gemini3.1Pro-low,7.235286seconds/one turn/zero tools, verified deny-all hook and existing credits. No findings fixed/rejected or unresolved overclaim. Prior27-path committed source directly byte-matches its original approved packet; reuse unchanged source review/build evidence rather than rereviewing receipts. Review content only bounded synthetic technical diff/test/migration/intent; no credentials/private artifacts/operational history disclosed.
 - Canonical7430933ec63a0c586607f62dcd859a23c82844e9 (optional jose identity) plus fcba5953a24adfab165c594c678d30beaf332127 (legacy fixture repair) pushed to origin/codex/lct-sites-serverless. Fresh Sites handoff at10:38:58UTC still reports active/public/version14. Native dc3444a31e57c1650001581c66a6b5be9f74c92c remains built/pushed but unserved. No fourth packaging attempt, valid archive/save/deployment, Google configuration, provider activation, personal upload or DNS change. Peer AGENTS.md remains dirty and excluded. Board/review receipt updated with precise states and unchanged forecast. Next human checkpoint is guidance on one further official packaging attempt using Git Bash filesystem paths; Google public client ID/origin registration remains separately pending.
 
+## 2026-10-02 16:24 IST — Exploration continuity implementation checkpoint
+
+- The active goal authorizes the bounded repairs in ISSUES.md:1619. Integration
+  owner remains Codex in the viewer-source-and-controls worktree on
+  codex/viewer-closure-record, based on served source 11dda97. Preserved dirty
+  AGENTS.md and the primary checkout. This checkpoint is edited/local, not served.
+- Added session history (useViewerHistory.js), parent navigation/scroll snapshots
+  (ThreadsViewer.jsx), graph snapshot validation/restore and alias labels
+  (MinimalGraph.jsx, graphNavigationSnapshot.js), controlled Discussion/Source
+  disclosure state, and embedded detail containment. The toolbar now has Back/
+  Forward, a quiet left-side view cycle and Source icon; the title opens Overview.
+- TimelineRibbon and timelineRibbonLayout share the full-height vertical plot
+  with labels, preserve multiple memberships, distinguish authored threads from
+  unassigned moments, and offer Expand lanes. Source aliases propagate through
+  recognized transcript prefixes without changing original bytes or offsets;
+  cards and legend resolve the current alias map. Native video controls replace
+  the extra app controls while readiness/error/retry/cancellation remain intact.
+- Relevant paths were read before changes; extracted history and display helpers
+  bound the additions. ADR-072/test-intent files document the accepted interaction
+  contract; TECH_DEBT records the remaining camera/layout monolith candidates.
+- Focused checks: 44/44 initial history/toolbar/Source/Discussion tests, 34/34
+  adjacent integration tests, then 37/37 current detail/text/history/HUD tests.
+  Existing three reading/phone journeys pass. New browser journeys pass 5/6,
+  including final-lane geometry on desktop/phone, browser Back/Forward, exact
+  source handoff and immediate cross-view naming. The initial synthetic fixture
+  omitted semantic_type/thread_ids and failed preconditions; corrected the
+  fixture rather than claiming those runs as product failures or passing evidence.
+- The actual manual-pan/hierarchy regression fails: Back restores the theme but
+  the viewport returns to an automatic fit rather than the captured pan. A bounded
+  peer is tracing snapshot vs replay using the actual browser. Hierarchy ascent
+  now says Up one level after a normal click exposed two competing Back labels.
+- Native Source integration checks pass 6/6; real network playback is running
+  separately on desktop and phone. No mock is counted as proof of real playback.
+  Next checkpoint: resolve the camera boundary, combined browser/unit/build gates,
+  independent read-only review of the exact source/test/spec packet, then release
+  under the existing approval. Remaining engineering estimate stays 1–3 hours
+  dependent on findings; provider/release waits and public verification are separate
+  and not yet measured. The independent review and deployment are still open.
+
 ## 2026-10-02 16:27 IST — Authorized packaging recovery; version15 published
 
 - Human “you may” explicitly authorized one further official packaging attempt after the recorded three-failure hard stop. Root reused the read Sites hosting contract and exact already built/pushed clean native dc3444a31e57c1650001581c66a6b5be9f74c92c source; verified Git Bash path conversion, then unchanged official package-site.sh with /c/Users paths succeeded3.1639378s. No rebuilt source, dependency/helper/migration edit or bypass of official staging/manifest checks. One bounded read-only Luna-low helper returned archive-check guidance; root alone operated the checkout/package/native tools.
@@ -7317,12 +7781,204 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Deployment appgdep_6abf8d9be0b481919688cec26605117c succeeded at2026-10-02T10:55:55.130676+00:00, URL https://threads-adityaarpitha-cloud.avalokai.chatgpt.site, environment2. Fresh native site/env checks confirm active/public/version15, owner, no schedules; only LCT_PRIVATE_STORAGE_ENABLED=synthetic and LCT_PUBLIC_THREADS_ENABLED=true. No Google client/secret/enable configuration or paid provider, real upload, DNS or original-domain activation. Foreground browser handoff queued; publication is not actual Google/browser acceptance. Retain native get/save/deploy/env output in session memory without printing secrets.
 - Reuse approved exact Gemini source/fixture diffs and passing final build/695tests. No substantive post-review source change, so no new independent review of operational receipts is required. Updated existing board/review receipt and ISSUES Windows section with resolved publication blocker, exact served identity, remaining Google Web-client/origin/two-account checkpoint and unchanged23–64active-hour/3–8focused-day unmeasured forecast. Prior Windows delay is explained by the successful corrected-path method; registration/provider/DNS wait remains separate. Mandatory documentation push hook follows; peer AGENTS.md remains preserved/excluded. Full Google private-storage journey and larger cloud beta are still incomplete.
 
+## 2026-10-02 16:36 IST — Local viewer acceptance passed
+
+- Instrument found that React Flow reported drag end only after the next history
+  restoration began. MinimalGraph.jsx:1672 now replaces camera snapshots during
+  user movement and freezes an animated fit when a drag starts. The exact browser
+  transform now returns through Back; no parent history workaround was needed.
+- Integration points: ThreadsViewer.jsx:487/513 snapshot and replay; NodeDetail.jsx:
+  613/800 detail/evidence scroll; TimelineRibbon.jsx:272/373 shared Y/full-height X
+  plot; MinimalGraphHud.jsx:129 unambiguous Up one level. Source/editor and toolbar
+  contracts are documented in ADR-072 and four focused test-intent files.
+- Final affected checks: 106/106 unit tests in 13 changed test files; 28 changed
+  source/test files have clean scoped ESLint; production build passes (2330 modules,
+  existing large-chunk notice). A lint inventory command initially ran from the
+  wrong relative path and invoked whole-repo lint, exposing the already recorded
+  unrelated backlog; corrected the inventory and did not repair unrelated files.
+- Combined Chromium: 15/15 regular journeys pass, 2 network opt-ins skipped in
+  that run. Separately enabled real native-control tests pass 2/2 at 1440px and
+  390px, using iframe clicks and the actual YouTube clock/state. The first network
+  harness missed the native Play video label; screenshot/DOM evidence identified
+  that selector error, corrected without changing the player. The mock is still
+  only wiring evidence. Screenshot inspection confirms expanded timeline alignment
+  on desktop and phone; scroll restoration is asserted through normal navigation.
+- Default git diff --check passes. A diagnostic with autocrlf disabled falsely
+  treated CRLF working files as entirely changed; discarded that diagnostic and
+  retained normal repository line-ending handling. No source was rewritten for it.
+- Next: commit/push this coherent slice with the mandatory full frontend hook,
+  then the bounded read-only Google/Gemini review. Public verification follows
+  release under the existing approval. Edits and local evidence are not a served
+  or independently approved result. Updated the milestone forecast at this boundary.
+
+## 2026-10-02 16:44 IST — Full gate and independent review approved
+
+- Source 73545641d9cb0c5ba38932a3f4d9739c1fed366e committed and pushed in PR207.
+  Required frontend hook passes 512/512 tests in 84 files. Preview deployment
+  6807065804 reports success for that exact head; production is still unchanged.
+- Google Gemini 3.1 Pro High through AGY approves the exact 35-file bounded
+  source/test/spec diff with no findings, terminal SUCCESS/exit0, zero tool
+  attempts. Packet 175443 bytes, SHA256 0388d29bfb3c0db80030d57fa47cef5bf88d405695e0543c6ec031f23a55d634.
+  Receipt: docs/reviews/2026-10-02-viewer-continuity-agy.md. No finding fixed,
+  rejected or awaiting arbitration. Operational/private artifacts excluded.
+- Review elapsed 135 seconds for this one packet. Remote Python unit/integration
+  checks pass; the browser check is still running. Existing user authorization
+  covers this bounded release and exact public-link verification.
+- This follow-up changes only receipt/milestone documentation, not source or tests.
+  Verify the reviewed source packet digest remains identical at the final PR head;
+  do not re-review unchanged receipts as a substitute for runtime evidence.
+- ETA checkpoint communicated: remaining 15–25 minutes assuming remote checks
+  pass, including merge/deploy and actual desktop/phone checks. New supported
+  findings or a failed required gate would require a refreshed forecast.
+
+## 2026-10-02 17:03 IST — Source served; production smoke contract correction
+
+- PR207 merged at 16:51:55 IST as a8a793f99844d6f8356696d34ee9a1612475134a.
+  Production deployment 6807268191 reports success at 16:52:23 IST for that SHA.
+  Final PR head 71f51e2 adds only mechanical review/milestone documentation; source,
+  tests and ADR match reviewed 7354564. Required final hook again passes 512/512.
+- Actual public-link desktop instruments pass final timeline lane alignment/click,
+  title disclosure, all seven selected-thread moments, Back/Forward and 160px
+  reading-scroll restoration below the toolbar. Native playback advances at the
+  evidence cue 4399s and pauses. Source naming updates visible source/card/detail
+  labels and preserves original downloaded transcript bytes. Phone checks follow.
+- The broader public smoke workflow 37000639428 failed only on its old Overview
+  button selector (8/9 pass). The user's selected title entry point supersedes it.
+  Read prod-threads-opener.spec.js fully; update intent, assert the old button is
+  absent, assert title aria-expanded false/true/false, and retain summary, timeline,
+  library persistence and reopen checks. Focused live test passes; all nine current
+  production smoke/opener checks pass in 28.6s, scoped spec lint clean.
+- This test-only repair is in the same authoritative worktree on a fresh branch
+  codex/viewer-continuity-smoke based on served main. Runtime source remains
+  unchanged. It requires independent review before merge; no test gate is waived.
+- Bounded the extended live probe after three different boundary failures: Legend
+  was covered by an open drawer; card body was incorrectly expected to open details
+  although its established action is relationship focus; an optional off-screen
+  details action then required viewport recovery. None is counted as a full passing
+  probe. Retain the verified primary steps and run a narrower phone journey without
+  those optional detours. No forced clicks or product changes to satisfy the probe.
+- Capture the preexisting Legend/drawer occlusion as a nonblocking follow-up in
+  ISSUES.md. It is reachable after closing details; no runtime expansion selected.
+
 ## 2026-10-02 17:12 IST — Retry authority retained; actual Google access checkpoint
 
 - Human asked why the goal stalled and explicitly approved continuation/retry again. Confirmed previous corrected-path retry already published version15; preserve it rather than repeat a completed operation. Canonical3769f0ed4f6fa5701260f73a4432db86f8522afd equals upstream; only peer AGENTS.md is dirty. Previous mandatory publication-document hook passed695/695tests/94files in60.24s/start16:33:36IST. No new source, migration, build, test or native Site setting/deployment change.
 - Fresh goal getter reports blocked, same full objective; available lifecycle tools cannot mark it active/resume. Official OpenAI Goals/long-running-work documentation confirms user/system lifecycle control and the progress-row resume surface. No duplicate goal, false completion or status workaround. User authority permits current-turn progress independently of that stored automatic-continuation state.
 - Restored documented CUA browser2 guidance and performed one focused read-only Google Cloud credentials navigation. It reached work-account “Verify it’s you”, proving reauthentication is the immediate prerequisite; not an empty-client-list result. No password/OTP entry, consent/security settings, account/project/client creation, scopes, paid activation or credential-file read. Showed/retained tab3 for handoff and asked only for completion of that browser sign-in; never repeat the library, retention or retry product decision. Account email/session URLs and private inventory are excluded from this public technical log. Existing OAuth client ID/configuration and two actual-account proof remain unknown/pending.
 - Updated the existing board with exact access checkpoint and unchanged forecast. Source/runtime review evidence is reused; operational status notes need no new independent code review. This turn can continue after human sign-in, then inspect the concrete intended project/client and respect any final credential/access boundary. No real private upload/provider/inference/domain journey is claimed.
+
+## 2026-10-02 17:17 IST — Phone reading-history race isolated
+
+- Instrument: two read-only public 390x900 runs set the first detail body to
+  160px, stable for 200ms. Changing to the next moment triggered a browser content
+  scroll adjustment to 183px while history still pointed to the first moment;
+  pushState recorded the next cursor 25ms later. Back restored the corrupted
+  183px. The corresponding local regression fails with exactly expected160 /
+  received183 before the repair; correct node replay alone was insufficient.
+- Hypothesis confirmed: rememberScroll records a content-change event against
+  the outgoing entry during the coalesced navigation delay. Confidence0.95;
+  predicted repair preserves160 on Back and183 on Forward. The hook now ignores
+  scroll recording while the rendered semantic state differs from the current
+  entry. The next snapshot still captures the incoming position. Camera-only
+  replacement and post-replay scroll remain unchanged. Fallback: retain the
+  instrumented boundary and investigate another cause if the exact test fails;
+  no tolerance relaxation or NodeDetail layout edit is selected.
+- Test intent expanded in the hook test and tests/intent/viewer-exploration-history.md.
+  Integration owner Codex; authoritative worktree unchanged, now branch
+  codex/viewer-phone-history based on main355fdf2. Dirty AGENTS.md preserved.
+  Local repair is not independently reviewed, committed or served at this point.
+- PR208's test-only title correction is independently approved by Google Gemini
+  through AGY at exact42aa3c8, no findings and zero tools. All remote required
+  checks passed; merged17:14:48 IST as355fdf2. Full hook passed512/512 and the
+  corrected nine production smoke checks passed locally before merge. No runtime
+  source changed in that PR. The exact review receipt is recorded in docs/reviews.
+- Next evidence checkpoint: failing/passing regression, local actual-example phone
+  reproduction and adjacent browser history, bounded independent review, release,
+  then actual public phone source/playback/naming/history acceptance. Remaining
+  estimate communicated20–40 minutes; engineering and validation precede review/
+  CI/deploy waits, with a refreshed range if another supported finding appears.
+
+## 2026-10-02 17:29 IST — Phone repair local acceptance passed
+
+- Actual example on the owned local server restores 160px on Back and remains
+  there at 60/310/910ms, despite the next card's automatic 183px scroll event
+  occurring before its history push. Original served code restored 183px.
+- Hook tests pass 4/4, including the new content-change race. An immediate
+  post-Back sample initially ran before the two-frame replay settled; the test
+  now polls the exact position through observable DOM, without relaxing equality.
+  Hook/test scoped ESLint is clean; TS browser spec is outside ESLint config and
+  compiles/runs through Playwright. Production build passes (2332 modules, existing
+  large-chunk notice). No runtime Source or timeline source was changed.
+- Browser runtime identity check found the normal config reads a saved port ahead
+  of the environment. Its initial six passing checks are not attributed to this
+  repair. A scratch config explicitly targets the owned 43917 server. That run
+  passed five checks and caught one transient timeline measurement (5.625px);
+  settled screenshot shows alignment. The geometry assertion now samples both
+  centers in one frame and polls the unchanged <2px condition; all six desktop/
+  phone continuity journeys pass (19.7s), including camera and name preservation.
+- A root-directory lint command resolved cached ESLint10 instead of bundled9 and
+  failed on plugin API compatibility. The app-directory --no-install command
+  succeeds. No dependency/config changes made. Record command-target mistakes
+  in the shared ledger; use explicit runtime/tool identity for subsequent gates.
+- Production smoke workflow37002783367 succeeds at merged355fdf2. Remaining
+  dependency is read-only independent review of the phone source/test/intention
+  diff, mandatory full push gate and CI, then public phone source/playback/naming/
+  Back acceptance. Updated estimate15–25 minutes from this checkpoint; prior
+ 20–40-minute range is preserved above. Core source is live, this repair is local.
+
+## 2026-10-02 17:29 IST — Phone repair reviewed; release pending
+
+- Exact source b4fe577 is committed/pushed in PR209; required full frontend gate
+  passes 513/513 in 84 files. Google Gemini 3.1 Pro High via AGY approves the
+  exact 4-file source/test/intention packet plus committed hook context, no
+  findings, zero tool attempts, 73 seconds. Receipt records exact SHA/hash and
+  excluded content in docs/reviews/2026-10-02-viewer-phone-history-agy.md.
+- The complete narrow local 390x900 journey passes: title and final lane, seven
+  distinct thread moments, exact160 Back/Forward, native video clock advance and
+  pause at cue4399s, immediate Source/cards/details/Discussion name propagation,
+  alias retention through Back and original downloaded transcript bytes preserved.
+  Zero page errors/HTTP5xx/app backend requests/horizontal overflow. Report URL is
+  explicitly the owned local server; it is not claimed as served acceptance.
+- PR209 remote gates and production release remain. Existing release approval
+  persists; no backend/persistence changes or new disclosure/spend authority.
+  This follow-up adds only receipt/checkpoint documentation; reviewed runtime/
+  tests/intention remain unchanged. Preserve the exact packet digest at handoff.
+- Next evidence checkpoint: required CI, merged/deployed exact source and the
+  public phone journey. Remaining estimate15–25 minutes from the local checkpoint,
+  assuming gates pass. No new product fix selected after independent approval.
+
+## 2026-10-02 17:39 IST — Public viewer journey delivered
+
+- PR209 final head641924e contained only mechanical receipt/checkpoint changes
+  after approved source b4fe577; reviewed source/test/intent were byte-identical.
+  Final push gate513/513 passed. Remote Python/browser/preview gates all passed.
+  Merged17:34:19 IST as970f49d637024e3a179ced3f2f47ec7af110bc08. Production
+  deployment6807963520 succeeded17:34:56 IST and is still the latest production
+  identity after verification. Backend and primary deploy checkout untouched.
+- Actual requested public URL passes complete desktop1440x900 and phone390x900
+  journeys from17:36:43 to17:37:17 IST: title disclosure; all15 lanes reachable,
+  final-label/dot alignment0px; seven distinct selected-thread moments; Back/
+  Forward and exact160px reading position; native evidence cue4399s/play/clock
+  advance/pause; immediate alias propagation through Source/cards/details/
+  Discussion and Back; downloaded original transcript bytes preserved. Zero
+  page errors/HTTP5xx/app backend requests/horizontal overflow. Captured report's
+  URL is the actual public origin. Ignored evidence: tmp/viewer-continuity-public-
+ 970f49d-run.txt, tmp/viewer-continuity-public-report.json and1440/390 screenshots.
+- Served production smoke workflow37004595816 succeeds9/9 (15.3s). Existing
+  validated desktop/phone synthetic history/camera/source/error/recovery checks
+  remain passing and are reused for unchanged code. No mock is counted as native
+  playback proof. Google Gemini/AGY approves both substantive source packets with
+  no findings, rejection or unresolved arbitration; receipts identify exact heads.
+- Local example raw SHA differed solely because Windows checkout uses CRLF:
+  normalizedLF SHA equals public386ef09b..., parsed canonical data matches exactly
+  (canonicalSHAea02f9f7...). This was verified without printing source content.
+- Existing milestone board now records served acceptance and no remaining delivery
+  dependency. Optional Legend placement, shorter labels and time replay remain
+  deferred. Closure evidence is mechanical documentation on the existing worktree
+  branch; commit/push it without changing the reviewed served source. Dirty
+  AGENTS.md remains preserved. No new product work or optional test sweep opened.
+- Forecast reconciled in ISSUES.md: refreshed phone repair/review/release estimate
+  was met. The actual source landed17:35 and public acceptance completed17:37.
 
 ## 2026-10-02 17:44 IST — Goal resumed; Google password handoff prepared
 
@@ -7343,6 +7999,152 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Resumed blocked audit: first turn advanced to Google's password challenge and prepared source-grounded client settings; second observed authoritative session-expired state and recovered the same tab through normal Try again/Next to a new password challenge; third fresh observation still shows incomplete human verification. Previous turn was limited recovery progress, not an authenticated Console session or a verified live job. The same access barrier persists across all three resumed turns. No safe remaining work in this bounded identity journey bypasses the pending browser sign-in; do not manufacture unused provider adapters or repeated status-only progress.
 - Fresh native Site/environment reads reconfirm public/active/version15/environment2 and exactly synthetic-private/public-enabled flags; no Google identity, provider key/activation, real upload or domain change. Browser tab retained for handoff; no password/OTP, challenge URL/account email, private inventory or consent/security change recorded. The existing sign-in-completion question remains pending and is not repeated.
 - After the three-turn audit, update_goal returned blocked at12:27:21UTC with the full objective unchanged. This is an access dependency, not missing retry/jose/retention authority and not completed cloud delivery. Updated the board's current status and next checkpoint: human Google Cloud verification, intended project/client inspection, then actual two-account acceptance. Prior23–64active-hour/3–8focused-day planning range and unknown registration/provider/DNS waits remain unchanged. Preserve only these two operational documents with the required push hook; no runtime/source/test/configuration or optional journey work is opened.
+
+## 2026-10-02 18:04 IST — Visible history controls repair approved
+
+- Human asked why the gap before Find, then explicitly said fix it after the
+  compact/visible disabled-arrow proposal. Existing bounded frontend publication
+  authorization persists. Owner Codex, same authoritative worktree, fresh branch
+  codex/viewer-history-controls based on served970f49d; dirty AGENTS.md preserved.
+- Instrument: public desktop arrows have28px buttons with12px padding on each
+  side, shrinking16px SVGs to4px. Both use opacity0.3. Phone44px targets retain
+ 16px SVGs but remain faint. H1 padding conflict plus disabled opacity confirmed;
+  alternative empty spacer rejected by DOM. Confidence0.99, predicted dedicated
+  icon controls restore18px arrows at opacity1 and shrink desktop group56→50px.
+- Test intent before product changes: populated synthetic desktop/phone first
+  load, disabled icon geometry/readability, desktop group<=52px, phone targets
+ >=44px, stable group width after navigation, normal Back/Forward actions.
+- Finite slice: change only history-control presentation, preserve navigation,
+  verify initial/enabled/keyboard/touch layout, eligible read-only independent
+  review and release, then check exact public toolbar. Fallback if geometry or
+  navigation fails: retain decisive probe and diagnose within this small scope.
+  No broader toolbar or graph redesign selected. Next checkpoint: failing/passing
+  browser regression and desktop/phone screenshots. Source not yet changed here.
+- Carried the owned9f9ec36 prior closure documentation into this main-based
+  branch as85c6645; no runtime change. The first multi-file patch rejected stale
+  worklog context atomically, leaving no partial edits. Verified current tails
+  before applying the repair/test-intent checkpoint. No unrelated work staged.
+
+### 2026-10-02 18:13 IST — Readable history arrows validated locally
+
+- The baseline regression failed for the reported class: desktop group56px>
+ 52px and phone disabled opacity0.3. An earlier connection refusal was an owned
+  dev-server readiness issue; restarted on43917 and confirmed HTTP200 first.
+- ThreadsViewerToolbar.jsx:7,45–47 now uses dedicated zero-padding icon buttons,
+  non-shrinking18px arrows and muted disabled text. Desktop group50px; phone
+  group90px with44×44px targets. Both icons18×18px, opacity1. Paired actual-example
+  screenshots inspected; no wrap/collision or further visual edits selected.
+- viewer-continuity.spec.ts:71 adds populated1440/390 regressions. A test-only
+  assumption that one Back would close details was unsupported; replaced with
+  explicit two-card Back/Forward/Alt+Left outcomes. Geometry assertions retained.
+  Final2/2 browser checks pass7.8s. Toolbar unit4/4; scoped ESLint and production
+  build pass. Existing large-bundle notice remains unchanged.
+- Impeccable scoped layout scan before/after returned no findings. No monolith
+  touched or new dependency introduced. Existing navigation implementation and
+  native controls remain unchanged; prior served adjacent evidence is reusable.
+- Next checkpoint: exact two-file read-only Google Gemini/AGY review, mandatory
+  full frontend push gate, release checks and public desktop/phone confirmation.
+
+### 2026-10-02 18:16 IST — History controls independently approved
+
+- Source committed82d14ec and pushed on codex/viewer-history-controls; PR210
+  attached. Required full frontend gate513/513 passes in84files,29.42s.
+- Google Gemini3.1 Pro High via AGY independently approves exact two-file diff,
+  no findings/disputes. Tool-free, zero attempted tools, eligible family and
+  authorized exclusions verified. Receipt:docs/reviews/2026-10-02-viewer-history-controls-agy.md.
+- This checkpoint/receipt changes documentation only. Next: confirm unchanged
+  source packet at final head; CI/Vercel checks, bounded approved release and
+  public1440/390 navigation/geometry evidence. Source not yet merged or served.
+
+### 2026-10-02 18:25 IST — History-control repair served and accepted
+
+- Reviewed source packet remained byte-identical at final PR head93296bcc:
+ 6431bytes, SHA25669860c4411459d8cb3a69fa8ff0509a1d27b0ccb7e696778290a390368c53b68.
+  Mechanical review receipt/board changes only. Final mandatory gate513/513
+  passes29.51s; CI browser14/14 passes55.0s, both Python checks and Vercel pass.
+- Approved release: PR210 merged12:51:41UTC as3671f86f21838ab056a2cc778ca60d89c7e39763.
+  Production deployment6808810464 success12:52:13UTC; immutable deployment
+  https://lct-mhar5a7i3-adityas-projects-9c03351d.vercel.app. Existing public alias
+  https://threads.adityaarpitha.com/view?src=%2Fexperiments%2Foverlapping.threads
+  verified against real1440/390 Chromium interactions12:54:48–12:55:02UTC.
+- Direct public values: desktop group50px,24×32px targets; phone group90px,
+ 44×44px targets; every disabled arrow18×18px, padding0, opacity1. Back/Forward,
+  Alt+Left and Alt+Right restore Overview in both viewports. Find's horizontal
+  position and group width stable after enabling. Zero page errors. Live paired
+  screenshots inspected:tmp/viewer-controls-live-1440.png and390.png; detailed
+  numeric record:tmp/viewer-controls-live-report.json. No broader audit claimed.
+- Initial public probe incorrectly sought Find as a button; existing Find is a
+  native summary. Corrected scratch-only selector to the actual toolbar summary;
+  exact assertions unchanged and final public probe passes. No product edit.
+- Production workflow37009320370 passes9/9 in14.2s against source3671f86.
+  All finite slice checks delivered. Independent Google Gemini/AGY approved final
+  source, no findings fixed/rejected/disputed. Existing unrelated unit act/bundle
+  warnings remain; no new runtime warning or source change introduced here.
+- Final closure documentation committed/pushed on the task branch; deployed
+  source remains main3671f86. Dirty preexisting AGENTS.md preserved. No backend
+  restart, recording/transcript mutation or optional UI scope opened. Remaining
+  delivery dependency:none; next checkpoint:any reported regression.
+
+### 2026-10-02 18:38 IST — Legend spacing question verified on public viewer
+
+- User question only; read-only A0 diagnostic, no runtime/source edit or release.
+  Hypothesis fixed bottom offset confirmed; alternate extra timeline reservation
+  rejected by source parent structure and direct DOM geometry. Public source3671f86.
+- MinimalLegend.jsx:141 uses bottom-14 (=56px), relative to graph container;
+  ThreadsViewer.jsx places TimelineRibbon below that container in its own flex
+  row. Repeated exact gap56px at1440/390, Legend closed/open and timeline closed/
+  open. Open/close controls actually exercised, screenshots and bounds recorded
+  tmp/legend-gap-report.json (13:07:24–13:07:31UTC), no page errors/warnings/5xx.
+- An initial open-panel screenshot caught its slide-in transition; repeated
+  bounds after animation completion falsify permanent offscreen clipping. No
+  clipping finding asserted from that transient image. Actual settled phone
+  popup fits viewport (left0,right374 at390px); broader pane checks not run.
+- Honest review scope: previous releases completed bounded functional/visual
+  verification, not a complete integrated UX audit. Existing Legend placement/
+  drawer-occlusion follow-up was explicitly deferred; this gap remains open.
+  UX-audit completeness gates not met, so no full-audit Pass claimed. Impeccable
+  layout context used for diagnosis; no unrelated redesign selected.
+- Captured concrete recommendation/assumptions/confidence/predicted checks and
+  fallback in ISSUES.md. Diagnostic outcome complete; repair not implemented.
+  These are technical issue/worklog notes only, no source/test/config changes.
+
+### 2026-10-02 18:58 IST — Navigation tooltip slice approved by request
+
+- User requests hover explanations for history arrows versus center Previous/Next. A1 bounded presentation enhancement under existing frontend envelope; no new architecture/data/provider choice. Base origin/main3671f86, fresh codex/viewer-navigation-tooltips in same attached worktree. Owned closure/diagnostic documentation carried as a4ddfa7/6224df1; no runtime scope in those commits. Dirty AGENTS.md preserved.
+- Verified semantic boundary: history retraces viewer exploration snapshots; center controls step readingPathIds in current conversation/thread. Previous/Next labels already encode scope but have no hover explanations. Existing native history titles don't provide consistent disabled/focus help.
+- Hypothesis: shared accessible tooltip button plus dynamic scope copy makes the distinction clear without altering navigation. Confidence0.96; predicted hover/focus shows the correct description, Escape dismisses, disabled controls remain inactive, callbacks/geometry unchanged. Fallback: retain exact failing boundary and simplify presentation rather than alter navigation to satisfy tests.
+- Test intent written tests/intent/viewer-navigation-tooltips.md before product edits. Finite acceptance and ownership recorded in ISSUES.md. One bounded gpt-6-sol peer reads the large graph module and extracts only its presentational reading nav; root integrates the shared component and browser checks. Eligible independent non-OpenAI review remains required.
+- Impeccable clarify context and transitions-dev tooltip guidance applied; instantaneous hint content needs no wait estimate. No unrelated Legend repair or exhaustive UX audit opened.
+
+### 2026-10-02 19:20 IST — Navigation hints validated locally
+
+- Shared TooltipButton.jsx: native disabled/activation semantics, keyboard-readable disabled wrappers, hoverable portal, Escape/blur/click dismissal, viewport clamping, resize/scroll and timer cleanup. Toolbar history copy retraces exploration; extracted GraphReadingControls.jsx describes conversation/thread reading order and first/last boundaries. Root integration owner remains Codex in codex/viewer-navigation-tooltips.
+- Confirmed adjacent scope-label defect: after closing details, the actual seven-node thread path remained active while its accessible label said Conversation (populated fixture has21 moments). Three width variants failed at that same expected regression boundary. ThreadsViewer.jsx now shares its existing path predicate with the label; navigation IDs, ordering and handlers unchanged. Test intent amended for this discovered scope requirement before the final browser run.
+- Local evidence: shared/toolbar/reading unit9/9, peer graph/viewer adjacent17/17, Chromium populated browser5/5 at1440/390/1024px (including existing geometry/history regressions), changed JSX ESLint clean, production build success. Screenshots inspected for desktop history help with Source/details/timeline and phone thread-reading help; no browser page errors or backend calls in these synthetic journeys. Manual Impeccable detector returned[]; design-context schema/sidecar drift captured for a separate optional refresh.
+- Extraction measurements: MinimalGraph2378→2381 lines (+0.13%), extracted reading component47 lines; ESLint cyclomatic complexity MinimalGraphInner100→98, GraphReadingControls7; JavaScript any-types removed0. Coverage percentage and comparative latency unknown (no coverage provider/baseline measurement); current main JS1356.12KB, gzip403.77KB, prior build size not retained. Existing large-chunk notice persists; no dependency added. TECH_DEBT records graph state coordinator as a separate candidate.
+- Changed source locations: TooltipButton1, GraphReadingControls5, MinimalGraph51/2157, ThreadsViewer390/712, ThreadsViewerToolbar47/48; tests TooltipButton11, GraphReadingControls52, viewer-continuity71. Remaining dependencies: eligible read-only independent review, mandatory full frontend push gate, remote checks and served verification. Next checkpoint: exact committed source diff and reviewer verdict.
+
+### 2026-10-02 19:34 IST — Independent review repairs and counter-evidence
+
+- Google Gemini3.1 Pro High via authenticated AGY reviewed exact0e33e3a, packet27109bytes SHA256b582589a693ae290cfd144e9d768cd1fd979baaa28f2f003f526d75dabb6cb14; tool-free neutral checkout, plan+sandbox and verified deny-all hook,0tool attempts. Verdict CHANGES_REQUESTED with three findings. Full frontend pre-push518/518 and initial remote Python/browser/Vercel checks passed; release still pending.
+- F2 supported: global Escape swallowing was reproduced through an unrelated focused input's observable cancellation handler (expected1, actual0). TooltipButton now consumes Escape only when its trigger owns focus. Added behavioral unit and browser coverage. F3 supported: identical scroll coordinates allocated new React state; functional equality bailout avoids redundant updates without changing positioning. No private-state test added; existing viewport bounds checks reused.
+- F1 independent-review overclaim: reviewer said disabled keyboard focus was invisible after CSS reset. Instrumented Chromium Tab navigation falsified that claim: wrapper actually focused, :focus-visible true, outline auto1px rgb(16,16,16). Added real browser focus-outline checks at1440/390/1024; native outline retained. Counter-evidence returns to reviewer; no speculative styling repair or waiver. Human arbitration only if the claim remains disputed after review of these facts.
+- Updated test intent before repairs. First integrated rerun exposed a harness assumption: app Escape clears graph selection as before, whereas explicit details Close retains the thread. Browser flow now verifies Escape closes details/clears selection, then re-enters the thread through normal controls and separately checks explicit Close's retained path. No navigation implementation altered to satisfy that test.
+- Final focused unit10/10, browser5/5, scoped ESLint clean, rebuilt production success (main JS1356.25KB/gzip403.81KB; large-chunk notice preexisting). Remaining dependencies: review updated committed diff, mandatory push gate519tests, remote checks and served evidence. Next checkpoint final eligible verdict.
+
+### 2026-10-02 19:47 IST — Navigation hints served and bounded acceptance complete
+
+- Google Gemini3.1 Pro High via authenticated AGY APPROVED exact255da62b323e8095eb10d87835771e8b601b1922, nine-file packet29685bytes SHA2561c6b6b3a01fcd7feca7b3244bbe1787a756d331f446a8c11827603a13a677f20;0tool attempts. F2/F3 repaired, F1 focus overclaim rejected by instrumented three-width outlines, final findings[]. No unresolved review arbitration. Reviewer did not rerun validation. Required push gate519/519, final remote Python integration/unit and Playwright smoke checks passed; PR211 exact-head squash merged011259fcd21620c4ad6982a8519816dbed722539 at14:08:35UTC.
+- GitHub Production deployment6810317638 reports exact merge SHA and successful14:09:12UTC, immutable URL lct-pftwzhdqj-adityas-projects-9c03351d.vercel.app. Public custom domain serves assets/index-BZUBIbn9.js; direct bounded bundle probe confirms final focus-scoped Escape and coordinate equality bailout. Immutable HTML comparison was unavailable because that URL redirects to Vercel login; no equivalence claim made from the login200. Public viewer remains accessible, tested directly.
+- Served actual-example journeys2/2 at1440/390px: four descriptions, unavailable reasons, keyboard focus, hoverable help/Escape dismissal, viewport bounds, Next stepping1→2of4, Back/Forward restoring both positions, explicit Close retains selected-thread description. Screenshots inspected; page errors0, console warnings/errors0, network5xx0. Production smoke on exact merged release run37017870304 passed9/9 (14.3s), completed14:10:50UTC.
+- Extra broader public Escape-close check failed after tooltips let the key through. A materially different fresh control probe confirmed identical actual drawer response with tooltip hidden/hovered:1 remaining dialog, unchanged title,1 Escape bubble,0tooltips. Recorded separately in ISSUES; exact root cause unknown, explicit Close works, no drawer source modified. Preserve the failed extra evidence; do not describe it as a passed integrated UX audit or change required tests to hide it.
+- Durable review receipt adds technical metadata only; runtime screenshots/control probes remain ignored locally and were excluded from review egress. Mistake ledger records shared scope predicate and scoped Escape regression guards. Codex owner/checkout unchanged, personal dirty AGENTS.md preserved; no backend/data deployment. This finite tooltip journey is served; human acceptance pending. Legend/full audit and drawer keyboard follow-up remain open. Next checkpoint human hover/focus use; closure-only documentation commit cannot alter reviewed source/coverage.
+
+### 2026-10-02 19:56 IST — Closure push gate diagnostic
+
+- c322b46 contains only ISSUES/WORKLOG/technical review receipt. Exact nine-file source packet still matches reviewed255da62 and SHA2561c6b6b3a01fcd7feca7b3244bbe1787a756d331f446a8c11827603a13a677f20; verification-only runner made no file changes. Owned local Vite server51080 stopped after local checks; no shared services touched.
+- Mandatory closure push blocked with518/519 passing: unchanged MinimalGraph.navigation.test.jsx camera restoration assertion saw0 setViewport calls after existing70ms wait. Previously full519/519 passed on exactly the same source; isolated unchanged test passed1/1 immediately after failure. Frame/suite timing suspected, cause unconfirmed; recorded separate ISSUES entry. No assertion, timeout, test coverage or required gate weakened.
+- Retry combined gate once after this diagnostic; if failure persists, retain committed closure and report the concrete push blocker instead of bypassing the hook. Source release remains merged/served and production9/9 smoke passed. Next evidence checkpoint combined gate result and remote closure branch SHA.
 
 ## 2026-10-02 19:12 IST — Google administrator login verified; identity project prepared
 
@@ -7373,6 +8175,335 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Authenticated AGY Google Gemini3.1Pro-low independently PASS/no findings on exact10-path source/test/intent/technical ADR plus conditional three-key runtime plan. Packet58,390bytes/SHA256b5624156823e5bf6a90ec39bf5cb3018132eecf8703034608b795f166f00fa01;17.6621035seconds/one turn/zero tools, current deny-all hook verified and existing credits. Excluded private artifacts, operational history, actual Google account/project/client inventory, secrets/.env/DB/media/participant data. Approved user-facing support contact is app copy. No findings fixed/rejected or disputed overclaim. Canonical17ee208462c993903c9ba925337d9de6924e327e directly byte-matches the reviewed diff and is pushed. Required full prepush699/699tests/95files passed61.88seconds/start19:53:06IST, all LCT gates.
 - Google's dedicated branding form now has the proposed homepage/privacy URL. It reported the concrete missing authorized domain; adding exactly the Console-named preview tenant domain clears validation and enables Save. Fields remain unsaved; no ownership/branding verification is asserted. A single H1 question batches related remaining publication/privacy/identity activation authority: publish this reviewed disclosure including the already approved work support contact, save that exact Google URL/domain, set a fresh server-only signing secret/public client ID/exact enable flag and deploy only to the existing synthetic preview. Guest entry, old apps, original domain and inactive paid/personal flows are preserved; real accounts remain the next evidence checkpoint. Browser-control/repository authority sources are named in the question. The existing project/legal/client approvals are retained rather than repeated.
 - Native served version15/source dc3444a/environment2 remain unchanged. Privacy source is edited/committed/pushed but unserved; proposed runtime configuration is independently reviewed but unapplied. Board, ISSUES and review receipt distinguish these states. Prior23–64active-hour/3–8focused-day planning range remains unmeasured; registration/account/provider/DNS effort and external waits remain unknown. Preserve these owned operational/review documents with mandatory hook; peer AGENTS/deploy-checkout dirty files are excluded. Full cloud goal is incomplete and its stored lifecycle remains user/system-controlled.
+
+## 2026-10-03 — Approved Legend repair and product decision brief
+
+- User approved reducing Legend bottom spacing and keeping it clear of Source/
+  details. Reuse the authoritative viewer worktree; new branch
+  codex/viewer-legend-spacing. Preserve the preexisting dirty AGENTS.md.
+- Existing board and test intent record hypotheses, 12px allocated utility-row
+  direction, finite acceptance and review/release dependencies before product edits.
+  Prior closure-only retry passed519/519 and ee7f131 is pushed; its initial camera
+  test failure remains recorded, not an active publication blocker.
+- One bounded read-only gpt-6-sol peer scoped deferred product decisions from local
+  product/ADR context and private supplied feedback. No transcript/participant
+  content will enter technical notes or external review; no product choice selected.
+
+### 2026-10-03 — Legend finite local acceptance
+
+- Instrumented red regression: populated14-thread artifact measured the old56px
+  gap before source edits. The first fixture omitted memberships and was rejected
+  by a new explicit14-thread readiness assertion; it did not count as product proof.
+- Shared utility row initially centered Legend beside taller reading controls,
+  giving25px desktop/45px phone clearance. Bottom alignment and compact phone
+  arrow labels corrected that generator. A second matrix exposed text Source's
+  viewport-only cap: settled384px Source in117px parent, overlapping Legend.
+  Matched the already-approved video cap to available pane height; controls can
+  scroll on short screens. Workspace bounds open-key allocation as well as panes.
+  Text/video Hide source wording differed; browser selector now matches both
+  actual public labels, with no behavior assertion removed.
+- Final Legend browser4/4 at1440x900,1024x768,390x844,320x640, plus resize100px
+  shorter and320→390. Verified gap12px, zero rectangle overlap, long aliases,
+  complete edge-key scroll, pointer/Enter/Escape/focus return, selected moment
+  preservation, reading/history, no horizontal overflow/page errors/API calls/5xx.
+  Video fixture proves layout, not real playback. Paired screenshots inspected;
+  smallest combined viewport requires scrolling, not simultaneous full-pane reading.
+- Adjacent populated hint/history journeys5/5, focused unit23/23, changed JSX
+  ESLint clean, production build success (2334modules; main JS1357.75KB,
+  gzip404.32KB; existing large-chunk notice). Manual layout detector returned[].
+  No claim of full UX/a11y/performance audit. Existing Source follow-resize and
+  real-example details Escape remain separate open issues.
+- Changed source: MinimalLegend inline layout/keyboard close; GraphReadingControls
+  optional inline presentation; MinimalGraph portal placement only; ThreadsViewer
+  workspace/utility allocation; TextSourcePanel compact cap/scroll containment.
+  Existing monolith candidates in TECH_DEBT unchanged; no broad refactor.
+- Six-axis decision packet captured in existing ISSUES with H1 status, alternatives,
+  consequences, finite evidence, recommendation and deferred scope. No product
+  implementation was inferred from the Legend approval. Next checkpoint: commit,
+  tool-free Google review, mandatory full gate and served behavior.
+
+### 2026-10-03 — Legend independent approval and mechanical integration
+
+- Google Gemini3.1 Pro High via authenticated AGY APPROVED exact d37f507f2ff9ff1ad5b08db4112cde888d9061ec,
+  findings[], tool attempts0. Eight-file diff plus tracked TextSourcePanel context:
+  32373bytes, SHA2564ad13aefe99220bb5e58dde8550b055d57451e0bfae8accd534e7eff441fb021.
+  Egress inventory/scan inspected exact bytes; no artifacts, transcripts, participants,
+  credentials, product-feedback notes or unrelated files. Existing subscription,
+  neutral cwd, pinned Google model, plan+sandbox and verified deny-all PreToolUse.
+  Reviewer did not rerun validation. AGY uses the bounded adapter because the older
+  repo convenience wrapper accepts only Grok/Claude; no independence gate waived.
+- Mandatory first pre-push gate520/520 passed. PR212 created and attached; preview
+  build passed. GitHub found conflict from branch/squash ancestry. Inspected exact
+  differences: branch already contains current main runtime plus only this repair.
+  Merge2001ba7efac72e32357fa143c9d3537eac069218 preserves reviewed source and closure
+  records. git diff d37f507..2001ba7 across all eight reviewed files is empty.
+  No source/test/coverage change; no duplicate unchanged AI review needed.
+- Actual bundled-example local layout interactions completed at1440/390/320 and
+  generated local screenshots, but the stricter console assertion failed with four
+  YouTube warnings (two web-share feature notices, two postMessage origin mismatch
+  while using localhost and closing panels). Do not call that overall probe passed
+  or infer a playback failure. Source SDK source was unchanged. Separate issue
+  records this evidence; preserve warning capture in served verification.
+- Final release dependency: second mandatory push gate, remote checks, main merge,
+  exact production identity and public layout acceptance. Runtime is not yet served.
+
+### 2026-10-03 02:23 IST — Legend served checkpoint and bounded follow-up evidence
+
+- PR212 exact head6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea merged as
+  b98435538216e0ec3171f3faf2473747a58bc099 at2026-10-02T20:33:28Z; production
+  deployment6817714804 succeeded20:34:01Z, immutable lct-g8hqa6bnr-adityas-projects-9c03351d.vercel.app,
+  public asset index-9PRobkul.js. All eight reviewed files match d37f507 exactly.
+  Required second push520/520 and exact-head remote CI/preview passed;
+  post-deploy live smoke37061405967 passed7/7 (38.0s).
+- Real public interactions at1440x900,390x844,320x640 completed finite geometry/
+  reachability3/3:12px gap, no key collision with Source/details, complete edge
+  scroll, pointer/keyboard close, selected moment preserved and reading count
+  restored after Next/Back. Local focus entry/exit2/2 at1440/390 hides utilities
+  while focused and restores Legend. No source edits followed independent review.
+- Strict public console check failed with five YouTube warnings (three web-share,
+  two postMessage origin mismatch); page errors/5xx zero. Local actual-example
+  console check previously failed with four. Do not label these overall passed or
+  claim playback acceptance: panels closed during SDK loading. Updated ISSUES
+  with public reproduction and separate loading/teardown evidence checkpoint.
+- Screenshot follow-up found public Back count1of4 with card offscreen after600ms:
+  camera translate(550,220),scale1, selected card y3245.5, visible nodes0. Local
+  same-source controls with/without key toggles both restore the camera. Bounded
+  gpt-6-sol read-only peer confirms reflow alone is falsified; saved camera, restore
+  measurement gate and later camera writer remain distinguishable hypotheses.
+  No root cause/regression attribution or speculative source repair selected.
+- Automatic approval review rejected the separate baseline-server launch with
+  only 'blocked by policy'. Stopped that method without another launch route;
+  recorded enforcement mismatch, not a human authorization gap. Next safe
+  decisive boundary is saved/restored camera and writer evidence in public timing.
+- Evidence scripts/reports/screenshots remain ignored tmp, excluded from external
+  review. Technical receipt/ISSUES add exact release metadata and honest limits.
+  Product options remain H1/deferred; engineering follow-ups are not blocked on
+  those choices. No full integrated UX/a11y/performance acceptance claimed.
+- Closure-only branch codex/viewer-legend-closure starts at served origin/main;
+  owner Codex and authoritative checkout unchanged, personal dirty AGENTS.md
+  preserved. No deploy-checkout/backend/data change. Owned Vite PID91784 cleanup
+  is limited to the verified task command on51081; no baseline process launched.
+  Next checkpoint: human product ruling for wording/passages, separate camera/SDK
+  evidence follow-up. Broader design/regeneration/layout work remains deferred.
+
+### 2026-10-03 17:31 IST — Selected label/color direction and incremental roadmap
+
+- User chose short neutral labels with a conversational voice, rejected explicit
+  speakers on cards, and asked for small changes ranked by effort toward emergent,
+  overlapping themes and progressive disclosure. Supersedes the earlier proposed
+  speaker-chip recommendation; no hierarchy replacement or artifact regeneration
+  inferred. Impeccable shape used for planning only, with existing context retained.
+- Read current card/contribution rendering, thread presentation, default prompts,
+  hierarchy consolidator and ADR-062. Direct evidence: default fixed ranges and
+  complete coverage plus nearest-parent adoption constrain active tiers; optional
+  global tiers and canonical many-to-many membership already exist. Active runtime
+  prompt overrides were not inspected, so no claim these defaults authored the
+  shared example. Current source supports a small presentation slice independently
+  of larger coverage/projection changes. Existing artifacts won't update from a
+  future prompt edit alone.
+- One bounded read-only peer launch stayed pending initialization; interrupted
+  rather than repeatedly waiting. Root completed focused reads. No external model
+  review/inference or transcript disclosure. Ranked finite milestones, estimates,
+  dependencies and acceptance in ISSUES; ranges are judgment, not measured ETA.
+- Plan first:2-4h color-only card presentation;4-8h bounded wording pilot;4-8h
+  disclosure;6-12h existing overlap disclosure;1-2days passage navigation;
+  2-5days conditional-depth prototype, production effort unknown. Review/CI/
+  content acceptance/deployment waits separate; refresh at first working preview.
+  Back/camera and Source SDK diagnosis remain independent engineering follow-ups.
+- Changed only ISSUES/WORKLOG with abstract product requirements; no private
+  participant text/artifacts or new architecture contract. Owner Codex, same
+  authoritative checkout, personal dirty AGENTS preserved. No runtime changes or
+  delivered behavior claimed. Next checkpoint small public-card preview, then
+  reviewed label examples; later projection/data decisions require their own slice.
+
+### 2026-10-03 — Approved color-only cards, preflight and test intent
+
+- User approved recommendation: ship small card presentation, then bounded label
+  pilot. Branch codex/viewer-color-only-cards from durable planning HEAD; fetched
+  origin/main remains b984355. Same authoritative checkout; personal AGENTS dirty
+  work preserved. No optional hierarchy/navigation repair added to this slice.
+- Read ConversationNode and its tests, compact renderer boundaries, Source naming,
+  Legend aliases and color contribution behavior. Public readingMode uses compact
+  cards; other consumers retain their existing appearance. Existing card dimensions,
+  speaking-time calculations and source content remain outside presentation edits.
+- Hypothesis/test intent recorded before source edit; new regression covers hidden
+  assistive shares, fallback badge, unknown time and noncompact compatibility.
+  Browser fixture will be fully populated and use actual UI naming/history/colors.
+  No external transcript/inference or new dependency. Next checkpoint expected-red,
+  presentation repair, focused validation and tool-free Google-family review.
+
+- Expected-red unit3/10 failed on the old visible contribution row/fallback badge
+  and missing text alternative; after the four-line presentation change all
+  focused30/30 passed. No contribution/color/camera code changed. First browser
+  attempt rejected a harness assumption: installed Tailwind uses clip-path
+  inset(50%), not legacy clip rect. A direct disposable element probe measured
+  absolute position,1x1px,overflow hidden,clip-path inset(50%); screenshot confirms
+  no painted names. Corrected the CSS assertion to that observed paint contract,
+  retaining clipping/size/source-action checks. This is not a product pass from
+  the failed run or a reduced invisibility requirement; next matrix reuses it.
+- Second browser matrix passed source/rename/Legend/Back, measured80/20 and90/10,
+  unknown timing, then timed out on the new alternate-color selector. Actual
+  accessible name includes '(click to cycle)' (instrumented failure snapshot
+  and ColorModeToggle source agree). Corrected the exact public label; no source
+  change or acceptance assertion removed. Third bounded matrix is the checkpoint.
+- Third matrix passed3/3 (10.5s): desktop/phone source/rename/Legend/history/
+  speaking colors, plus unchanged hierarchy and manually panned-camera return.
+  Focused units30/30; scoped ESLint clean; production build passed2334 modules,
+  JS1357.63KB/gzip404.30KB; existing large-chunk notice retained. Layout detector[].
+  Added a direct accessibility-tree check to support the assistive-text claim and
+  highest-tier unknown-time readiness; final rerun verifies this concrete gap.
+  ConversationNode's existing ~625-line mixed presentation candidate is noted
+  in TECH_DEBT; no unrelated extraction undertaken. Remaining review/CI waits
+  are unmeasured; first preview shows no source/color/camera behavior changes.
+- Final accessibility/highest-tier browser2/2 passed (10.0s): clipped name/share
+  text is retained in the accessibility tree, and an untimed aggregate also has
+  a text alternative. Desktop/phone screenshots inspected after completion.
+  Initial screenshot lookup occurred before the phone run wrote its output;
+  corrected by waiting for completion, not by claiming absent evidence.
+
+### 2026-10-03 — Color-only card independent review and publication checkpoint
+
+- Source82d8a6152bb288d4a9751de4ac835968073f0df8 committed and pushed to
+  codex/viewer-color-only-cards; PR213 attached. Mandatory pre-push gate passed
+  523/523 across86 files (26.63s); existing React act warnings remain, not a
+  warning-free full suite. Only personal AGENTS remained dirty before this
+  review-receipt amendment and is excluded from all staging/publication.
+- Independent Google Gemini3.1ProHigh through authenticated AGY approved the
+  exact source diff at2026-10-03T13:11:53Z, no findings, zero tool attempts;
+  reviewer did not rerun tests. Verified deny-all PreToolUse guard, plan+sandbox,
+  neutral directory, no permission bypass/new paid API use. Exact bounded packet
+  four files/16154bytes/SHA256464fc8d52a32470dde2350706a377dbc7c1df9b718cde985f13053368bccc219;
+  inventoried, inspected and scanned before invocation. Credentials, transcripts,
+  participants, generated artifacts, screenshots, personal AGENTS, product notes,
+  unrelated files and private reasoning excluded. Receipt in
+  docs/reviews/viewer-color-only-2026-10-03.json.
+- Repository convenience merge script cannot select Google and builds a broader
+  packet. Reused the previously verified bounded AGY adapter; exact reviewed
+  source/test equivalence, remote head and all required checks will be checked
+  before merge. This amendment records evidence only; no runtime/test change.
+- Remaining dependency: exact-head CI, merge and served desktop/phone appearance.
+  No delivery/production acceptance claim yet. Public Back-camera/YouTube findings
+  remain separate. Label pilot next after the presentation journey is closed.
+- The mandatory hook on the docs-receipt push failed2/523 after the first full
+ 523/523 pass: MinimalGraph.navigation saved-camera assertion and
+ useViewerHistory forward-branch assertion. Source/test diff from reviewed82d8
+ remains empty and initial remote source CI passed. Inspected both tests: fixed
+ 70ms/30ms waits create a timing hypothesis, not yet a proved root cause. Focused
+ unchanged2-file diagnostic passed5/5 (5.73s). No assertions, timers or product
+ code weakened/edited; one bounded full-hook retry follows with AGY finished.
+ If it fails again, report this gate as a concrete blocker instead of looping.
+
+### 2026-10-03 — Served presentation and source-only speaker-key gap
+
+- Required retry passed523/523; exact-head CI passed; reviewed files unchanged
+  through mechanical docs headc2affde. PR213 merged7cbc115 at13:19:05Z.
+  Production6828076060 succeeded13:19:46Z; Vercel metadata confirms READY,
+  main SHA7cbc115 and custom alias. Authenticated fetch and custom-domain HTML
+  both serve index-BeDjbPsk.js. Anonymous immutable URL instead returns a
+  sign-in page; initial local-hash/anonymous comparison was an invalid identity
+  oracle, not evidence of stale production. Tool-supported authenticated read
+  resolved it; no protection/permissions changed. Production smoke9/9 passed,
+  workflow37125799621. Deploy checkout/backend never touched.
+- Stopped the public assertion script after three distinct harness assumptions:
+  local bundle hash instead of exact deployed hash; conversation Next before
+  a reading path exists; a speaker-label assertion on an actually empty key.
+  Materially different read-only DOM/control inventory completed1440/390:
+ 56/56 moment alternatives clipped at1px yet accessible,30 mixed fills,
+  no horizontal overflow, no console warnings/pageerrors/5xx. This proves the
+  served presentation, not Source playback or Back-camera recovery.
+- The inventory exposed a real adjacent acceptance failure: actual source-linked
+  artifact Legend lists edge types but no speakers. Direct trace: ThreadsViewer
+  uses old buildSpeakerColorMap (node.speaker_id only); MinimalGraph already
+  uses buildSpeakerColorMapForNodes (source turns/contributions too). Shared
+  graph normalization preserves these fields/order. Synthetic fixture wrongly
+  duplicated speaker_id on moments, masking the public source-only case.
+- A1 repair inside approved identity journey: reuse existing graph color builder
+  in ThreadsViewer; retain the exact card palette, aliases, timing and all source
+  data. Confidence0.98; predict existing fixture without redundant node speaker
+  IDs fails visible Legend naming before edit and passes after, with key swatch
+  equal to its card fill. Fallback stop if shared palette identity changes.
+  Finite regression amended before runtime edit. New branch
+  codex/viewer-source-speaker-legend from served main, same authoritative checkout,
+  owner Codex; personal AGENTS preserved. Remaining review/full gate/CI/deploy and
+  actual key proof; no new human product ruling required.
+- Six-card wording pilot prepared locally under tmp/conversation-label-pilot.html
+  and JSON, original artifact SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed
+  unchanged. Manual title/summary-only selection; no raw transcript dump,
+  provider call, public rewrite or regrouping. Desktop/phone2/2 comparison toggles,
+  keyboard activation and all six original contexts passed; screenshots inspected,
+  no external request/pageerror/overflow. Preview queued in Codex. Content
+  acceptance belongs after this concrete pilot; broader authoring remains deferred.
+- Source-only expected-red failed exactly at the missing named Legend row after
+  successful graph colors and Source rename, desktop1failed/phone1not run under
+  max-failures1. No product assertion weakened. Reused existing contribution-aware
+  builder in the viewer import and memo (two lines), matching MinimalGraph's
+  normalization-preserved ordering/fields. Existing ThreadsViewer ingestion/
+  presentation decomposition candidate in TECH_DEBT assessed; no extraction
+  expands this repair. Next green checks require visible key and matching swatch.
+- Final source-only synthetic browser2/2 passed (11.0s), including Source alias,
+  exact key-to-card swatch, assistive shares,90%/unknown timing, Back and alternate
+  color. Focused contribution/color/Legend20/20 passed; scoped viewer ESLint clean;
+  build passed2334 modules14.26s, existing large-chunk warning. Actual unchanged
+  public artifact opened locally at1440/390:56 clipped alternatives,30 mixed
+  fills, both speaker keys visible and first key color matches card; no browser
+  warnings/errors/5xx/overflow. Public artifact itself is not sent for review.
+- Source b1c7ac37f94afe75bfe907011c489f1831c5d932 pushed; required hook523/523
+  passed28.10s with existing React act warnings. Final source-key diff independently
+  approved by authenticated AGY Google Gemini3.1ProHigh at13:36:38Z, no findings,
+  zero tool attempts. Exact three-file diff plus one unchanged shared-helper
+  subset:6894bytes/SHA256edb7c3cbfaae54a93442610a8d908405cc6c0c70c68ad6629d96588d4c758078,
+  inventoried/inspected/scanned. No artifacts, pilot, transcripts, participant
+  data, credentials, personal AGENTS, product notes, private reasoning or unrelated
+  files sent. Same verified tool-free guard/account, no new paid API use. Reviewer
+  report is recognized JSON within a Markdown fence, extracted/validated for exact
+  head/APPROVED/empty findings. Receipt docs/reviews/viewer-source-key-2026-10-03.json;
+  supplied source reviewed, tests not rerun. Documentation-only receipt follows;
+  reviewed source/test bytes must remain identical through exact-head CI/merge.
+- Docs-receipt hook again failed the same forward-branch timing assertion1/523,
+  while source push passed523/523. No source/test changed. This strengthens the
+  recorded variability issue, not a root-cause claim. Stop guard refused the saved
+  Vite51264 identity; port51081 now reports29744, with no matching CIM process
+  returned. No process killed or permission bypass; do not infer who owns the
+  current listener. Deploy/backend untouched. One bounded full-hook retry without
+  concurrent browser/reviewer tasks; do not modify assertions or bypass the hook.
+  If repeated, stop release
+  at this concrete gate and preserve the already-pushed reviewed source.
+- Bounded retry again failed the same forward-branch assertion1/523; stopped the
+  release attempt and did not repeat the failed push method. Read-only hook trace
+  suggests a real replay race: state changes during two restoration frames skip
+  recording, then replaying clears without scheduling another state effect.
+  This is a hypothesis until controlled-frame evidence, not merely a flaky-test
+  label. Added public Harness regression before source edit: hold browser rAF,
+  Back restores A, user jumps C before settle, release frames, then require no
+  Forward branch and Back/Forward round-trip A/C. Synthetic isolated browser state
+  only; no snapshot oracle, sleep or assertion weakened. Existing Source/Legend
+  identity acceptance includes Back, so a supported required-gate repair stays
+  within the approved continuity contract. Next diagnostic expected-red, then
+  minimal replay-settled notification if confirmed; review substantive changes.
+- Controlled-frame expected-red failed1/1 at Forward still available after C,
+  proving a dropped action independent of scheduling load. Inspected old settle
+  callback also reapplies A's saved scroll to C's current content. Added the
+  corresponding observable333px C/0px A round-trip check. Minimal repair: skip old
+  scroll when navigation meaning changed, and notify the coalesced recorder when
+  replay completes. Existing browser/history/opaque-pointer contracts remain;
+  frames/timers canceled as before, no new persistence or waits. This is a
+  corrective refinement of the timing hypothesis (now instrumented race), not
+  a test-relaxation. Added one regression; independent review must cover the
+  substantive hook/test change together with the source-key repair.
+- Final focused history/camera6/6 and browser6/6 passed23.3s: source-only color
+  identity1440/390, thread/view/source history1440/390, alias persistence and
+  manual camera/hierarchy Back/Forward. Controlled-frame drain is bounded and
+  follows queued platform frames rather than assuming exactly two frames, so
+  the regression observes outcomes instead of private helper order. Scoped lint
+  clean; rebuilt2334modules25.22s, existing bundle notice. Earlier unchanged
+  color/contribution/Legend20/20 reused. No production offscreen-camera recovery,
+  real YouTube warning fix or full UX audit claimed. Final combined review next.
+
+### 2026-10-03 19:30 IST — Combined key/Back repair independently approved
+
+- Final coherent source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; mandatory hook524/524 in86files passed32.87s, unchanged React act warnings. Google Gemini3.1ProHigh via authenticated AGY approved exact five-file diff and bounded helper/final-hook context at2026-10-03T13:58:24.081Z; no findings, zero tool attempts. Packet20471bytes SHA256703a8f18c5f282686bbf1c5bf2fd3b4ec81797210bc681d7235f7833875afb40, inventoried/inspected/scanned; excluded credentials, artifacts/pilot, transcripts/participants, personal AGENTS, private reasoning and unrelated content. Existing subscription, same deny-all PreToolUse guard and neutral plan+sandbox reviewer.
+- Sanitized receipt docs/reviews/viewer-key-replay-2026-10-03.json supersedes the earlier source-key-only verdict for final runtime scope. No source/test edits follow this review. Repository convenience scripts support Grok/Claude and broader egress, so the bounded AGY adapter is used; exact reviewed files must be identical through final PR head and CI before merge.
+- Owner Codex; authoritative viewer-source-and-controls checkout and codex/viewer-source-speaker-legend branch unchanged. Remaining dependency exact-head CI, production deployment and actual served1440/390 speaker-key/card proof. Six-label local pilot ready; no public wording or grouping changes. Original30-60 active-minute follow-up estimate was extended by the deterministic replay race repair and required second review. Revised integration/verification planning range10-20 active minutes, CI/deploy waits separate and unknown. Next evidence checkpoint PR checks plus verified served runtime identity.
 
 ## 2026-10-03 01:29 IST — Privacy-only disclosure published; Google remains inactive
 
@@ -7425,7 +8556,6 @@ User observed an empty desktop transcript until node selection, with only the cu
 - A final source audit identified BrowserRouter route state as a separate automatic retention channel. [instrument] App.jsx uses BrowserRouter; a synthetic actual BrowserRouter recording→Explore test fails1/24 while23pass and directly observes history.state.usr containing the finalized transcript and generated artifact. Earlier MemoryRouter/no-library-save evidence was too narrow. No real user/browser history was inspected. Test intent was extended before the repair; the ADR amendment preserves the original policy and earlier review history.
 - Root replaces artifact-bearing generated route state with a random reference to a one-slot page-memory handoff. Actual viewer reads/releases that slot, supports StrictMode, and refuses expired/restored references with an actionable download/regenerate message and no history/storage/network source recovery. Ordinary imports retain their existing behavior. Public/provider/identity scope stays unchanged. Repair focused37/37 recording/generated/private/public tests passes5.36s/start23:55:12IST; final lint/build/combined and new exact cumulative independent review follow. Peer AGENTS remains untouched. The failure class is logged in the shared ledger with the actual BrowserRouter privacy regression as its guard.
 
-
 ## 2026-10-04 00:07 IST — Final recording-map source locally delivered
 
 - Final source0280da2a7f70363b286c143afe5b6dd3d00a3572 fixes the actual BrowserRouter retention boundary while preserving ordinary imports. The full cumulative13-path diff from575c913 matches the final reviewed packet exactly; the final7-path repair commit contains no unrelated files. Original12-path sourcebdf638a is already pushed, with765/765tests/99files passing its unchanged mandatory hook in35.92s/start23:49:47IST. Final task/checkpoint preservation follows the same hook; no main/native merge or deployment. Peer AGENTS remains dirty and excluded.
@@ -7451,12 +8581,979 @@ User observed an empty desktop transcript until node selection, with only the cu
 - git instrument shows current production PR214 changed viewer source-key/Back handling; canonical Sites lacks useViewerHistory. Logged release drift/finite journey comparison in ISSUES rather than silently porting a broader exploration feature or overwriting recent peer work. No reproduced defect or approved source backport is claimed.
 - Decisive read-only native identity probe:2cookie-freeGET/api/auth/session at2026-10-03T19:37:34.447Z, ordinary anonymous and unique syntheticoai-authenticated-user-id header, both401/authenticatedfalse/no identity. Zero writes/providercalls, no raw identity/cookie/private source retained. This proves observed preview refusal only; internal sanitizer mechanism and future custom-host boundary are unproved. Nativecustomdomains[] and freshpublic/active16/environment2/two original flags reconfirmed. Receipt .agent-reviews/preview-identity-frontdoor.json; safe production/native metadata .agent-reviews/custom-host-readiness-proof.json.
 - Changed operational docs only:custom-host readiness receipt, milestone topcheckpoint, ISSUES and this WORKLOGentry. Existing Gemini source reviews/766-test evidence reused; no new source/config/test review round. Required task-branch preservation hook follows. Remaining domain dependencies:affected DNS records/owner access, bounded registration/Googleorigin authority and real-host TLS/guest/identity/provider/storage/currentviewer acceptance after core hosted gates. Inactive-preview publication remains separate/pending. Next checkpoint:rollback-ready DNS packet and exact custom-host validation records, not an invented CNAME. Full goal stays active/incomplete, earlier unmeasured23–64activehour/3–8focusedday range and unknown external waits retained.
+
 ## 2026-10-09 19:49 IST — Restore original cloud recording layout, approved slice
 
 - Focused checkpoint19:57IST:96/96 across7files7.06s, scoped ESLint passes. First review through AGY/Anthropic runs read-only with zero tool events; supported variable-footer growth and failure retry disclosure concerns repaired. All variable setup/activity/save status and cancellation move into the scrollable canvas; the footer holds only controls and a short desktop note. Failed setup retry is directly visible; healthy setup remains on demand. Added stalled/recovery placement check. Initial test failure came from the fixture clicking the first checkbox in document order after the modal moved below existing map results; target the modal checkbox, preserving all assertions. No runtime consent change. Browser inventory still reports policy-load failure and prior IAB controller failure persists; rendered desktop/mobile parity remains unverified. Updated exact diff re-review pending; no code activation/publication yet.
 
 - User explicitly asks to fix the cloud `/new` visual regression. Root/canonical base4dccbd2; peer AGENTS preserved. Direct source evidence confirms old canvas/footer still exist and only the Sites route uses the plain form. Confidence0.98 in restoring presentation while preserving cloud controller; fallback retain previous native29 if validation/review fails. Prediction: guest still requires fresh consent and active Stop/Cancel remain reachable, while result scrolling never owns the toolbar.
 - Intent `tests/intent/sites-recording-layout.md` precedes implementation. A bounded peer creates pure CloudRecordingToolbar from incumbent AudioInput icon/caption styling; root adapts SitesNewConversation render and recording-route SitesAccessPanel placement, without legacy backend wiring. Controller/session/storage/map behavior remains unchanged. Relevant files read; no provider call, identity activation, real recording/upload or domain change. Mandatory review and native source/served evidence remain pending. Milestone board states owner, finite checks, dependency and forecast.
+
+# 2026-10-12 — Shared semantic authoring consolidation
+
+- User activated the explicit consolidation goal. A1 implementation in isolated
+  `codex/semantic-authoring-consolidation-20261012`, integration owner Codex,
+  authoritative checkout
+  `C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`.
+  Fresh origin/main is bda16e5; primary checkout and prior personal AGENTS edits
+  preserved. No production restart, regeneration, disclosure or new paid use.
+- Hypothesis H1: experiment compilation replaces valid authored relations with
+  thread returns; H2: summary/ID-only prompts and fallback citations accept
+  ungrounded output. Predicted tests: seeded relations disappear in old compiler;
+  provider input omits exact source text; missing citations acquire a source ID.
+  Shared path plus explicit evidence should reverse these outcomes. Confidence
+  0.9 in mechanism; semantic recall remains empirical. Failure retains prior graph.
+- Test intent recorded before source edits at
+  `lct_python_backend/tests/intent/semantic_authoring_consolidation.md`.
+  Finite acceptance: exact provider input, refusal/invalid/empty/failure cases,
+  directed citations through compile/export/reload, reader inspection, adjacent
+  callers and eligible non-OpenAI review. Next checkpoint small synthetic fixture.
+
+### 2026-10-12 — Shared authoring implementation and validation checkpoint
+
+- Shared extractor now resolves exact source IDs/text, uses one deduplicated
+  speech table per existing bounded window, and rejects missing evidence instead
+  of supplying citations. Import, repair and consented owner-private local STT
+  supply persisted source records. The compiler retains canonical edges and
+  leaves thread returns as metadata. A file adapter uses the shared extractor
+  and replaces output atomically only after successful required windows.
+- Validation: 49 focused backend tests and 30 adjacent live STT tests pass with
+  isolated persistence/temp roots; compiler seven tests and frontend edge,
+  artifact and detail 35 tests pass. Synthetic extraction→real JS compiler→file
+  reload preserves both directed edges/citations and prior output on refusal.
+  No real provider inference or production data mutation was performed.
+- Exact-text input exposed a size boundary in the real 100-node graph. Existing
+  planner now also bounds rendered source size: 23 windows fit 21,000 input
+  characters each, with a 3,000-character reserve. Planning took 59–69ms in five
+  local read-only runs. Twelve disclosed turns per node remain; exhaustive=false.
+- Browser attempts: (1) viewer refused a missing synthetic thread title;
+  compiler now rejects that input and fixture has a title; (2) incomplete fixture
+  semantic metadata caused legacy rendering; fixture now supplies semantic_type;
+  (3) clicking a card focuses relationships rather than opening details. Snapshot
+  shows explicit m1→m3 and m3→m1 edges, but relationship inspection acceptance
+  remains unverified. Stopped this sequence per three-attempt rule and requested
+  human guidance for a manual walkthrough. Preserved screenshots/error contexts
+  under lct_app/test-results; pending browser test is excluded from review.
+- Source review: authenticated AGY Google Gemini3.1ProHigh, tool-free plan/sandbox
+  with existing deny-all hook; exact staged tree a934fe9, 15 technical files plus
+  bounded shared extractor/planner context; packet SHA256 f722acbe…834f2b08,
+  123,437 bytes. Packet scanned for secrets/participant data; real artifacts,
+  transcripts, personal docs and credentials excluded. Verdict pending.
+- Refactor measurements: edge_enrichment 804→763 LOC (-5.1%); planner 305→327
+  (+7.2%); compiler 87→107 (+23.0%, including stdin bridge and validation).
+  Additional source-input/file/CLI adapters are explicit shared-path plumbing;
+  no new inference stage. AST decision-count proxy (not Radon): parser42→44,
+  call24→30, run24→25, planner14→20, pack10→12. Full metrics in ignored
+  tmp/semantic-metrics.json. Before/after coverage and provider latency are
+  unavailable; no frontend runtime/dependency/bundle change, no any types removed.
+- Owner/checkout unchanged. Public regeneration, push/PR/merge/restart are not
+  performed. Remaining independent review wait and browser guidance are separate
+  from implementation effort; no credible calendar ETA before those checkpoints.
+
+### 2026-10-12 — Independent source review approved
+
+- Google Gemini3.1ProHigh via authenticated AGY approved exact staged source
+  tree a934fe9ce4cacf31e31f017769ac5ce5ec6daf13, with no findings and zero tool
+  attempts. Review conversation 0a0f4701-f843-41b8-8132-882459424ad5; receipt at
+  docs/reviews/semantic-authoring-consolidation-2026-10-12.json. Source unchanged
+  since review; subsequent edits only record intent/evidence. Browser candidate
+  test was excluded and remains unfinished; no approved viewer acceptance claim.
+- Finite implemented source slice is being preserved locally. New scope has no
+  specific publication/CI or production restart authority recorded; under the
+  Autonomy and Authority policy, no push/PR/merge/deploy is inferred from earlier
+  frontend release approval. Complete the viewer check before a concrete release
+  approval request. Persistent goal remains active.
+
+### 2026-10-12 — Local preservation before viewer guidance
+
+- Reviewed source/evidence committed locally as 8ef8161 on
+  codex/semantic-authoring-consolidation-20261012. No push/PR/merge/deployment.
+- The unfinished browser acceptance probe is preserved in a separate local
+  commit and explicitly labels its failed replay. It is not covered by the
+  approved backend review or counted as passing evidence; it must be corrected,
+  validated and reviewed after the permitted manual walkthrough. Goal is active.
+
+### 2026-10-12 — Actual CLI/HTTP boundary verified while browser gate is pending
+
+- Previous goal turn made progress (reviewed source and unfinished browser probe
+  preserved as two local commits). Current checkout d7094fd was clean. Five new
+  disposable synthetic cases exercised the actual command-line process, real JS
+  compiler, shared extractor, localhost HTTP transport and atomic file replacement
+  without replacing provider helpers: cited success, explicit empty success,
+  uncited refusal, HTTP503 and unapproved-provider refusal all passed.
+- Exact synthetic source texts/IDs reached the HTTP server; the cited response
+  exported m3→m1/u1,u3 alongside the unchanged existing edge. Failures retained
+  previous bytes; unapproved provider received zero requests. Cache disabled,
+  credentials removed only from child environment, task-owned persistence roots
+  assigned before imports, localhost server shut down. No live model, production
+  service or paid inference used. Receipt:
+  docs/reviews/semantic-cli-transport-verification-2026-10-12.json.
+- Static source tracing agrees with the browser snapshot: card click focuses
+  relationships; its Source control calls the details action. This explains the
+  last probe's unsupported expectation, but does not verify that interaction in
+  a browser. The pending human-guided manual walkthrough was not resumed, nor
+  were browser assertions weakened. Goal remains active; same viewer guidance
+  dependency has now appeared in two consecutive goal turns.
+
+### 2026-10-12 — Third viewer-guidance blocker audit
+
+- Previous goal turn was progress: actual CLI/HTTP boundary yielded five passing
+  outcomes and cbfd87c preserved the evidence. Current checkout is clean; no
+  runtime source differs from reviewed 8ef8161. Reviewer and CLI handles are
+  terminal successes, not ongoing waits.
+- Completion remains unproven: desktop/phone viewing must inspect direction,
+  citations and source speech after reload. The candidate probe still expects
+  details from card focus. Static wiring is evidence of the incorrect action,
+  not browser success. Human guidance for the materially different manual
+  walkthrough remains pending under the explicit three-attempt stop.
+- Same guidance dependency appeared in three consecutive goal turns. No other
+  necessary authorized work remains independent of it; do not repeat passing
+  tests, rerun the stopped browser sequence, infer approval from an automatic
+  continuation, or mark completion. Goal is to be marked blocked at this audit.
+  Preserve all commits and the original objective. No publication or deployment.
+
+### 2026-10-12 — Approved manual walkthrough and browser acceptance
+
+- User explicitly said “Proceed with the manual walkthrough”; this resumes the
+  stopped sequence without another product/permission request. Cua exposed no
+  browsers or apps, so used the existing Playwright Chromium setup interactively
+  against task-owned Vite port51893, with isolated browser storage and synthetic
+  shared-authoring.threads. No production backend, model, request mocks or
+  production artifact changes. Local runtime checkout abfd045; runtime source
+  remains identical to reviewed8ef8161.
+- [instrument] Card body focuses related nodes. Its Open exact source utterances
+  control opens Passage3 details; outgoing clarifies relation points to Passage1,
+  shows the explanation and exact citation title u1 newline u3. Details evidence
+  Source opens exact original speech. At390px details are a scrolling sheet and
+  Source replaces it; screenshot confirms readable relations and speech. At1440px
+  Source and details coexist. Both have document width equal to viewport width.
+- Reloading temporary /view returns to file opener; Library's saved local entry
+  navigates to /view/synthetic-consolidation-overlap-v1. That route reloads the
+  remembered artifact without reupload. Library's separate private backend calls
+  returned500 because this is Vite-only; explicit unavailable/retry states shown.
+  Logged adjacent non-blocking setup issue in ISSUES.md; no library repair added.
+- Changed lct_app/tests/e2e/shared-semantic-authoring.spec.ts:1-87. Test intent
+  now records the observed public interaction and saved-route reload boundary;
+  checks actual canonical from_node_id/to_node_id fields, both rendered directed
+  edges, exact citations, on-screen relation/source text, no overflow, and zero
+  browser page/console errors/warnings or5xx. Does not count missing-fixture skip
+  as proof. Final focused Chromium2/2 passed in32.0s at1440/390; source/relations
+  screenshots under lct_app/test-results and manual screenshots under tmp.
+- Independent review pending: bounded exact test diff only, staged tree e2fbc3f,
+  test blob645167e, packet7310bytes SHA256160ace56…905afb93a. Authenticated AGY
+  Google Gemini3.1ProHigh, tool-free plan/sandbox with verified deny-all hook;
+  excluded real speech, participant data, artifacts, images, credentials, DBs,
+  unrelated code and private reasoning. No new paid service. Earlier approved
+  backend review remains valid because runtime source is unchanged.
+- Remaining work: final reviewer verdict, then local commit/completion audit.
+  No browser guidance or product decision remains blocked on the user. No push,
+  merge or deploy authority is inferred for this backend slice. Public artifact
+  regeneration and broader UX/hierarchy work remain deferred.
+
+### 2026-10-12 16:14 IST — Final browser review approved; local handoff
+
+- AGY/Google Gemini3.1ProHigh approved exact staged tree
+  e2fbc3f820f0f02d70db2b0de65073a3f8bc49da, test blob
+  645167e64365816336c2fbfb4572a9567ac49f1a. No findings, zero tool attempts;
+  conversation dd563815-3bcb-4f41-9242-773008d6d7d8. Packet7310bytes,
+  transport11256bytes SHA25691f71489…626150d6. Receipt:
+  docs/reviews/semantic-viewer-review-2026-10-12.json. Reviewer did not run tests.
+- A reviewer coverage sentence loosely groups temporary upload and saved-route
+  reload; actual evidence is narrower: /view itself returns to the opener on
+  reload; /view/:conversationId reloads the browser-local artifact. Receipt and
+  acceptance assertions retain that distinction. No disputed finding or human
+  arbitration remains. No substantive post-review source/test edits.
+- Finite local outcome complete: previously passing121 backend/compiler/viewer
+  contract checks, five actual CLI/HTTP outcomes, and new browser2/2. Reused
+  evidence for unchanged source rather than rerunning optional suites. No local
+  pre-commit hook is installed; no required hook bypassed. No global UX or model
+  recall claim. Recorded adjacent library setup dependency without scope expansion.
+- Preparing one local commit for corrected acceptance and technical receipts.
+  This branch is unpushed: the specific publication/CI authority policy requires
+  a new envelope for this backend slice, despite general push-hygiene guidance.
+  Public regeneration was deferred in approved scope. No product choice or
+  browser guidance remains required for the local consolidation outcome.
+
+### 2026-10-14 — Release and real artifact verification authorized
+
+- User explicitly authorized the four remaining steps: release the reviewed
+  source, regenerate the existing public experiment, inspect actual grounded
+  relationships, and verify the public URL at desktop/phone widths. Prior
+  publication deferral is superseded for this bounded journey; no repeat ask.
+- Authoritative checkout/owner unchanged, starting clean2877c95; remote main
+  remains bda16e5 and task branch is not published. Existing source/test review
+  and unchanged validation can be reused, with exact PR-head gate at integration.
+- Story: existing public conversation→shared local source-grounded authoring→
+  validated atomic artifact→public viewer relations/citations/Source/reload.
+  Probe readiness and one real model window before a full regeneration. Keep
+  prior artifact bytes and identifiers for rollback; no new spend or recipient.
+- Independent bounded read-only readiness investigation delegated to GPT6Sol:
+  current backend identity, dirty deploy-checkout risks and approved local model
+  metadata/health only. It may not infer, restart, mutate or disclose source.
+- Next evidence checkpoint: provider/backend readiness plus real-window result.
+  Estimates for model work remain unknown until measured; review/CI/deploy waits
+  reported separately. Goal is release proof, not a synthetic pass count.
+
+### 2026-10-14 10:07 IST — Published release; review and real-model boundary
+
+- Branch bcb19f0 pushed; PR215 opened against bda16e5. Required frontend
+  pre-push gate524/524, backend unit/integration CI, Playwright CI and preview
+  deployment passed. No merge/backend restart/public artifact change yet.
+- Native database service is stopped; Start-Service was denied by Windows.
+  Requested the single Administrator service-start action, explained it in
+  plain language, and continued independent release work. No elevation bypass.
+  Primary deploy checkout has four unrelated dirty files; preserved untouched.
+- M5 Ollama metadata identifies existing installed models. Historical explicit
+  owner_private classification plus owned-service registry establishes the
+  existing private boundary; CLI needs no database settings. No external model,
+  new model download, paid usage or transcript review disclosure used.
+- AGY catalog retired the previous model. One repeated old-model invocation
+  resulted from an unavailable bare Python edit command; corrected using the
+  canonical venv and catalog-verified Claude Opus5.5Medium. AGY review succeeded
+  tool-free on exact PR head bcb19f0 and requested changes (five findings).
+  Standard helper accounts are unauthenticated; no helper approval is claimed.
+- Review triage: F2 confirmed optional context can exceed the fixed reserve;
+  omit context that will not fit, preserving every exact source character.
+  F3 preserve existing output permission mode; directory crash durability is
+  outside the atomic-replacement promise. F4 expose bounded compiler stderr,
+  enforce30s timeout, offload compilation so CLI status can continue.
+- F1/F5 production-path premises falsified by read-only call-site tracing:
+  imports/repair already serialize ORM turns, nodes have canonical id; reconnect
+  protects prior node IDs without restoring prior graph into the new processor.
+  Current persisted turn IDs feed current graph and scan. Send these exact
+  tracked code excerpts in re-review; do not broaden malformed-input behavior
+  or silently change reconnect architecture to satisfy an overclaim.
+- Real inference: first13-node window passed5/5 syntactic grounding checks in
+  57.2s; this did not establish semantic quality. Full run then refused its
+  first window (5raw/0kept) and wrote no candidate. Diagnostic second call
+  returned6edges with no supporting_utterance_ids. The canonical output example
+  omitted that required field, despite appended evidence instructions. Hypothesis
+  confirmed at request/response boundary; corrected the example, preserving
+  strict parser refusal. No minimum link count or citation fallback introduced.
+- Test intent expanded before repairs; focused synthetic regression58passed,
+  1POSIX permission test correctly skipped on Windows. Existing Python support
+  and pytest asyncio warnings remain. A first run using shared pytest temp
+  location emitted the already-recorded cleanup PermissionError after exit0;
+  isolated --basetemp avoids it. No live persistence used by tests.
+- Next checkpoint: corrected real-window result; relevant combined validation,
+  exact updated-head independent review/CI, then merge only with an approved
+  verdict. Full23-window model duration still unknown; no false ETA from one run.
+
+### 2026-10-14 10:12 IST — Corrected real window and cross-platform assertion
+
+- Corrected canonical example passed the real first window6raw/6kept in55.6s.
+  A complete new scan is running; first two windows passed in26.7s/157.8s.
+  Output remains staged privately; neither these counts nor the syntax check
+  establish semantic quality. Public bytes remain unchanged.
+- Final focused synthetic backend59passed/1POSIX-only skip and CLI/HTTP5/5
+  passed. Required push frontend524/524 passed again. Remote unit CI then
+  reported1failed/2085passed/5skipped: new diagnostic test assumed Node stderr
+  was one line. Linux emits a multiline source excerpt while Windows tail
+  truncation happened to remove it. Replaced the fragile regex with two exact
+  diagnostic substring assertions; same failure behavior/source retention checks.
+  This is a test portability repair, not a weakened runtime gate.
+- Re-review of cbd99927 is in progress with bounded tracked context for F1/F5;
+  record its result before requesting review of this final assertion update.
+  No merge while either independent review or CI remains unresolved.
+
+- Re-review returned APPROVED for cbd99927, zero tool attempts, but included
+  two advisory findings, so the strict no-findings merge gate remains unmet.
+  Added the missing new-file0600 POSIX case beside existing-mode preservation.
+  Remaining resumed-session question is falsifiable from the current-session
+  hierarchy-consolidation function (no prior graph reads); include that tracked
+  function in final review. Earlier ORM/reconnect findings were withdrawn.
+
+### 2026-10-14 — Source released; real-data and public acceptance held
+
+- Final exact PR215 head d229f788a059444f62599fafa6edae6835adff47 approved by
+  authenticated AGY/Anthropic Claude Opus5.5Medium with no findings and zero tool
+  attempts. Earlier supported optional-context/compiler/permission findings were
+  fixed; ORM/reconnect premises falsified and withdrawn; missing POSIX new-file
+  mode test added. Final packet19,605bytes SHA256
+  a354194461d9fb715018deea1e4a5021bd34aa6ead3e80a0f60c28cf1920394b;
+  prior full updated-diff review cbd99927. Only bounded scanned technical source,
+  tests and context were sent, excluding real speech/artifacts, participant data,
+  credentials, DBs and private reasoning. Reviewer did not execute tests.
+- Final CI unit/integration and Playwright passed; preview passed. Focused backend
+  59passed/1POSIX skip before final test parameterization; final adapter module
+  22passed/2POSIX skips on Windows; Linux CI exercised the POSIX cases. Required
+  frontend push gate524/524 and five actual CLI/local HTTP outcomes passed.
+  PR215 squash-merged2026-10-14T04:50:27Z; main/source
+  2acf515be7d667d08eddb27ea6bb30c2ed4a91cc. Vercel deployment
+  dpl_BMMNQ1SwRbHLGsb65aDqosaRhy3P is production READY at that SHA with the
+  public domain alias. Do not infer browser or backend acceptance from metadata.
+- Primary checkout fast-forwarded7b33b6e→2acf515 after ignored byte-verified
+  backups. Restored its private2,933-byte WORKLOG append and verified the three
+  unrelated dirty observability files unchanged; nothing unrelated staged or
+  published. Native PostgreSQL remains Stopped; service start denied by Windows.
+  No elevation bypass. Asked user to run Start-Service postgresql-x64-15 in an
+  Administrator PowerShell and explained that this starts the existing DB only.
+  No backend listener or runtime-source acceptance yet.
+- [instrument] Real corrected window6raw/6kept had real citation IDs but manual
+  inspection found logical-support labels on ordinary topic transitions. Full
+  scan was intentionally cancelled after16/23 windows (~1,061s); no candidate
+  written. Kept original artifact bytes/hash unchanged. This invalidates a
+  semantic-quality claim, not the parser/atomic-output tests. Never manufacture
+  acceptance by counting IDs, filling links, filtering a hand-edited artifact,
+  or presenting an invalid model payload as an empty success.
+- Bounded follow-up trial in prompts.json added evidence-first wording, explicit
+  valid-empty instruction and removed conflicting retrieved-context guidance.
+  Actual private Qwen synthetic topic-change case still invented references_back
+  (6.87s). Alternative already-installed private Muse returned invalid_edge_payload
+  (9.69s), not valid empty. Positive control was not reached. Three failed quality
+  methods now require a stop/guidance under AGENTS.md. Saved exact trial patch and
+  synthetic reports privately under tmp; restored prompts.json to reviewed main.
+  No post-review runtime changes remain. Cause of poor semantic precision is not
+  established; selected-source sufficiency versus model behavior remains open.
+- Two public browser attempts were inconclusive timeouts (node REPL deadline,
+  then Chromium DOM-content navigation20s). Stopped that method per two-cycle
+  rule. Read-only public fetch also timed out; Cua inventory has no surfaces.
+  No public screenshot, UI pass or app-defect claim. Prior local synthetic
+  1440/390px browser evidence is unchanged and narrower than public acceptance.
+- Updated ISSUES.md milestone with owner, exact source/runtime states, finite
+  outstanding checks, blockers and next checkpoint. Follow-up evidence branch
+  codex/semantic-grounding-check-20261014 starts at merged main. No new spend or
+  transcript recipient; all model work stayed on the existing owner-private
+  service. Semantic-repair and public-verification ETA is unknown. Recommended
+  next diagnostic, pending guidance: inspect actual selected passages before any
+  further model/prompt retry; resume backend only after the service-start result.
+- Changed technical checkpoint documentation only: ISSUES.md milestone and this
+  append; machine-readable source/review/deployment/blocker receipt below. No
+  optional hierarchy, library or UI work opened.
+
+### 2026-10-14 12:16 IST — Resumed read-only trace and actual public bytes
+
+- User explicitly approved resuming the bounded read-only investigation, then
+  said go on. No model request or product/config/test edit after that ruling.
+  Disposable replay of attach_source_turns and format_node_list proved12-turn
+  prefix selection:656/1,263 unique turns visible across23 windows;607 omitted;
+  93/100 nodes clipped. First topic12/159, second12/132. All six saved first-window
+  edge citations exist and were endpoint-visible. Exact IDs do not establish
+  the claimed support meaning. The prior two-turn negative failure means source
+  clipping is not proven to be the sole cause of model semantic error.
+- Counterfactual removed the cap in the disposable process only: existing planner
+  refused p01 plus ancestor closure. Largest complete ancestor102,015chars versus
+  21,000budget; largest complete L1 input7,019chars. No source file changed.
+  A one-line cap deletion is not a valid repair. Private trace/examples/summary
+  remain under tmp/source-selection-trace-20261014, excluded from review egress.
+- Delegated one independent bounded transport-only probe to GPT6Sol low. DNS,
+  TCP and TLS succeeded; custom root/view HEAD200. Deployment host HEAD302 to
+  Vercel SSO, never followed. Agent made4HEAD requests against a3-request limit,
+  disclosed the overrun and made no more. Recorded the procedural miss; do not
+  portray it as a compliant3-request run. No product edits or response bodies.
+- Root's separate static-artifact GET had20s absolute abort/4MiB limits and
+  completed200 in2.366s,2,621,266bytes. SHA256386ef09b…58b7d19 equals committed
+  Git blob. Different Windows working-file SHA7088642a…e763fed is fully explained
+  by60,202CRLF pairs; normalized bytes equal Git. Distinguish these identities in
+  receipt. This proves served old-artifact identity, not viewer interactions.
+- Cua documentation refreshed; getBrowser returned No browser is available;
+  createBrowserTab(iab) returned Browser is not available. No native/UI bypass.
+  Requested a connected browser tab. No public Source/details/navigation pass.
+- Recorded concrete bounded source-selection proposal/acceptance/files in existing
+  milestone. AGENTS reserves architecture selection, so asked the user whether
+  to replace the12-turn prefix with complete passages across existing bounded
+  requests, retaining one extractor and exact citations. Implementation choice,
+  connected browser and pending Windows Administrator DB step are distinct.
+  New docs-only checkpoint d3a44a9 was pushed; required frontend524/524 passed.
+  No additional independent runtime review claimed for this read-only follow-up.
+
+### 2026-10-14 — Approved complete-passage implementation slice
+
+- User selected complete passage coverage. A1 implementation is now authorized:
+  replace the twelve-turn prefix with exact whole-turn pages inside the existing
+  extractor. Owner/integration: Codex, isolated semantic-authoring-consolidation
+  checkout, branch codex/semantic-grounding-check-20261014. No new extractor,
+  provider, spend, or public artifact disclosure. Test intent recorded first.
+- Hypothesis [instrument]: source attachment discards later referenced turns;
+  removing the cap alone overflows broad ancestor closures. Repair the selection
+  and window materialization together. Predict complete node/turn association
+  coverage with bounded requests, exact text, late citations, overlap and atomic
+  failure retention. Confidence0.9 for coverage, not semantic meaning. Fallback:
+  keep reviewed prior artifact and report any indivisible over-budget passage.
+- Acceptance: focused and adjacent isolated tests; offline actual-artifact
+  coverage/budget/nonmutation check; independent non-OpenAI review of bounded
+  technical diff; real private meaning checks before generation/publication.
+  Next checkpoint: source coverage evidence and reviewer-ready diff. DB remains
+  Stopped; Windows Administrator start is still a separate dependency.
+- Connected Chrome now rendered an empty root on the public route twice. This
+  is a rendering failure observation, not a diagnosed cause. Browser closed
+  before static-asset DOM inspection; evidence is in ignored
+  tmp/public-viewer-acceptance-20261014/browser-evidence.json. Public interaction
+  acceptance remains blocked; continue bounded asset diagnosis independently.
+
+- Security [instrument]: bounded static GETs served HTML/JS/CSS/favicon200.
+  Bundle inspection found a nonempty VITE_AUTH_TOKEN. Root compared its value
+  in memory against primary backend AUTH_TOKEN: equal. No value printed or
+  authenticated request made. Backend remains stopped. Policy S1/H1 requires
+  credential authority; asked for one-time rotation/removal/redeploy containment.
+  Hold backend restart, live generation and publication meanwhile; continue only
+  unrelated local source repair. Redacted receipt in ignored tmp. Agent's exact
+  JS-copy deletion was denied; no bypass/retry, local deletion unconfirmed.
+- Coverage implementation: removed prefix cap, sorted validated references in
+  source order, projected ancestor evidence onto complete whole-turn request
+  pages, preserved node closure/overlap and actual adjacent-moment speech.
+  Added complete node/turn association invariant and public-entry-point tests.
+  First test run41passed/1failure/2Windows skips: the new artifact fixture omitted
+  its required edge_schema, so it refused before reaching the target boundary.
+  Fixed fixture without weakening assertions. Rerun42passed/2POSIX skips in2.49s.
+  Offline actual-data plan:1263/1263 turns,7099/7099 associations,61windows
+  (18backbone/34local/9boundary),max20996chars/30nodes,8.165s planning; exact text
+  and prior artifact unchanged. Coverage is not a semantic-precision verdict.
+- The existing async caller now offloads the pure window planner to a worker:
+  the observed8.165s preparation must not freeze status/cancellation. This is
+  the only adjacent runtime edit, in edge_enrichment.py. Cancelled callers may
+  leave pure preparation finishing in the worker but cannot proceed to model
+  calls or artifact publication. No new asynchronous presentation is introduced.
+- Final focused+adjacent validation:58passed/2POSIX Windows skips in3.81s,
+  including real transport-boundary passage tests, cancellation during blocked
+  preparation, shared authoring, persisted repair, live-STT wiring and CLI status.
+  Existing Python3.9 deprecation/event-loop warnings remain. No DB or provider
+  contacted. Source/test slice is ready for bounded independent review; it is
+  not merged, served or semantically accepted. Public artifact remains unchanged.
+- Independent review of exact committed runtime/test/intent slice d871841:
+  Claude Opus5.5Medium via authenticated AGY was quota-refused before inference
+  (0input/output tokens,0tools), so it gave no verdict. Fresh catalog confirmed
+  eligible Google Gemini3.8FlashHigh; same authenticated account, isolated review
+  cwd, plan+sandbox and verified deny-all PreToolUse. Gemini APPROVED the exact
+  slice,findings=[],0tools. No findings fixed/rejected or unresolved overclaims.
+  Packet40,254bytes SHA256593167d8f154cc0d789b182d2a1b6a861487826a85e07b9aff38ba9517102842;
+  bounded5changed source/test/intent files plus unchanged parser/adapter context.
+  Excluded operational history, credentials, env, DB, transcripts, participant
+  data, media, generated artifacts and private reasoning. Existing subscription
+  only. Reviewer did not rerun tests; root's58pass evidence remains the validation.
+- Durable receipt: docs/reviews/complete-passage-coverage-2026-10-14.json.
+  Subsequent changes are technical checkpoint documents only; runtime/test blobs
+  unchanged. Source is local-only: do not push, create a preview, merge or deploy
+  while verified credential exposure awaits its containment ruling. This safety
+  hold supersedes routine push-before-idle; no permission denial was bypassed.
+  Prior forecast remains preserved above; new61-request generation effort is
+  unknown until meaning controls pass. Backend service and public blank-root
+  acceptance remain distinct outstanding dependencies.
+
+## 2026-10-14 — Approved release goal and credential containment
+
+- User set the active goal to finish and deploy the current viewer/pipeline
+  consolidation and explicitly authorized credential rotation, frontend removal
+  and redeployment. This supersedes the previous containment authority hold.
+- Integration owner: Codex. Authoritative source checkout remains
+  `C:/Users/adity/.codex/worktrees/semantic-authoring-consolidation/live_conversational_threads`,
+  branch `codex/semantic-grounding-check-20261014`. Unrelated dirty work in the
+  primary deploy checkout remains preserved.
+- Backend AUTH_TOKEN rotated in its existing private configuration, preserving
+  every other byte and existing file permissions. No secret value was printed,
+  committed or sent to a reviewer. Backend remains stopped pending database
+  readiness. Vercel production VITE_AUTH_TOKEN cleared; production rebuilt from
+  already released source 2acf515 as dpl_73zdC7VYKbj3iPY1277ALad5r2uN, READY
+  with custom-domain alias assigned. Served-bundle verification is next.
+- Hypothesis (0.99): build-time VITE_AUTH_TOKEN injection caused the public
+  credential exposure. Clearing it removes the value from a fresh bundle;
+  rotation is needed because old cached bundles remain available. Add a build
+  refusal for nonempty browser-token configuration to prevent recurrence.
+  Predicted checks: normal build succeeds, sentinel credential builds fail
+  before output without printing the value; clean served assets contain neither
+  retired nor current credential. Fallback: keep backend offline if containment
+  verification fails. No new authentication system is selected in this slice.
+- Finite release acceptance: accurate bounded relationship generation with exact
+  source/citations and safe failed-run retention; reviewed source plus CI merged
+  and served; browser Source/timestamp/rename/thread/navigation/details journey
+  on desktop and narrow screens; selected card visible after history restore.
+  Larger hierarchy redesign and broad label rollout stay deferred.
+- One bounded gpt-6-sol agent owns viewer navigation/details/YouTube lifecycle
+  diagnosis and focused repairs. Root owns credential/build policy, pipeline,
+  review and release integration. Shared docs are root-owned.
+- Remaining dependency: Windows Administrator must start the existing database
+  after containment is verified. Next evidence checkpoint: redacted served
+  containment receipt and real public initial-render diagnostic.
+- Served containment now verified: public HTML/script200, new asset
+  index-4gUOrqrw.js, one empty token configuration occurrence, zero nonempty
+  token values and no current backend credential. Redacted receipt:
+  docs/reviews/credential-containment-2026-10-14.json. Connected Chrome renders
+  the actual conversation; timeline and evidence drawer interactions succeed.
+  Earlier empty root is no longer reproduced, causal diagnosis unconfirmed.
+- Build guard red/green: initial test setup had an incorrect config path;
+  corrected it, then observed the intended two credential-refusal failures
+  against unchanged config with positive build/dev controls passing. Added
+  configResolved refusal and5focused+adjacent tests pass; normal build passes.
+  Existing large-bundle warning persists; no broad bundling work added.
+- Meaning diagnostic hypothesis (0.75): transition/reference confusion persists
+  because the generic positive-example taxonomy does not make the abstention
+  boundary concrete. A private synthetic-only probe adds explicit negative
+  examples and source-overlap distinctions to the existing instruction in
+  memory. Predict no edges for topic shift/shared-word cases and correctly
+  directed support/reference for explicit positive cases. Same approved M5
+  Qwen model only; no full regeneration until these controls pass. Fallback:
+  retain old artifact and inspect failed evidence, bounded by investigation
+  limits. First launch failed before imports because tmp script lacked repo
+  import path; fixed harness, no provider had been called.
+
+### 2026-10-14 — Release meaning and real browser checkpoint
+
+- Same approved private Qwen model: unambiguous controls passed4/4 (topic
+  transition and independent facts abstained; explicit support/reference retained).
+  Earlier shared-word case is preserved as ambiguous because its speech explicitly
+  announces a subject change, which the existing tangent taxonomy allows. No
+  semantic oracle was silently changed.
+- The real first complete-passage window (20nodes,61planned windows,20866chars)
+  took47.0s and returned3edges. At least its h01→p01 supports explanation invokes
+  generated heading claims/inquiry rather than an uttered supporting argument.
+  Structural validity does not establish meaning. No full regeneration/public
+  artifact write. Hypothesis0.8: labels/hierarchy prime false semantic arguments.
+  Counterfactual now removes only model-input name/level fields in a disposable
+  formatter, preserving IDs, exact speech, memberships and original window.
+  Prediction: heading-based claims disappear while explicit speech remains
+  available. This is the final bounded diagnostic of this prompt/input method;
+  if unsupported edges persist, retain artifact and report the concrete limit.
+- Actual public browser: renamed a speaker with a synthetic test name; observed
+  immediate updates in250 Source rows and37 graph nodes. Blank input correctly
+  refuses renaming; reloaded the original public artifact for restoration. Narrow
+  verification in progress. Source evidence15:49 opened correct YouTube fallback;
+  actual player readiness timed out on initial load plus one retry. HTTP SDK and
+  embed200 do not prove browser playback. No further identical retry.
+- Viewer subagent handoff:13focused unit and4production-preview browser cases
+  pass, plus build/ESLint. Covers history offscreen restoration, manual-pan
+  preservation, tooltip-first Escape, pending YouTube SDK lifecycle. Stub evidence
+  does not establish actual playback. Final scoped diff awaits independent review.
+
+### 2026-10-14 — Coherent source committed; review authentication boundary
+
+- New source commits8c65023 (build refusal) and41c648a (viewer reliability).
+  Full frontend87files/529tests pass in34.65s. Touched build config/new test ESLint
+  initially found two unchanged process-global errors; explicit node:process
+  import fixes the touched file without changing behavior. Lint now passes.
+  Prior agent13unit/4production-preview browser, build and Python58pass/2POSIX
+  skips are reused for unchanged source. No changed acceptance threshold.
+- Final no-heading real-window counterfactual55.0s produced3self-edges; parser
+  correctly rejected all with no_grounded_edge_evidence. This is a failed scan,
+  not valid-empty or an improvement claim. Stopped this bounded diagnostic
+  method. Keep prior public artifact; no prompt/input source repair or full run.
+  Meaning remains an engineering dependency requiring a materially different
+  safe investigation, not permission to fabricate links or loosen the parser.
+- Exact final technical review packet78685bytes SHA256
+  3d79f7968e9da50f705bc795c7e06c2faf76b88b9288c0d8c5211e4f89398792;
+  15committed source/test/intent files plus bounded committed technical context.
+  Scanned exact bytes for current backend credential and generic secret patterns.
+  Excluded operational history, credentials/env/DB/media/transcript/participant
+  data, generated artifacts, unrelated files and private reasoning. AGY Gemini
+  refused authentication before inference (0tokens/0tools); no review verdict.
+  Claude CLI loggedIn=false; Grok catalog unauthenticated. Standalone Gemini's
+  expired cache is not proof of an authenticated safe review session. No paid
+  API fallback or small local reviewer. Independent review remains a merge gate.
+- Public390px Source is readable below toolbar; temporary viewport reset.
+  Original artifact reload removed synthetic speaker name. Direct nocookie
+  embed stayed blank independently of viewer, with extension console errors;
+  this is evidence against assuming the React component is the sole cause, not
+  confirmation of a network/browser root cause. Actual playback unverified.
+  These interactions are a scoped walkthrough, not a complete ux-audit PASS.
+- Database still Stopped with no43181listener. User asked for ELI5; explained
+  existing Administrator Start-Service action, no new product approval.
+  Durable receipt: docs/reviews/viewer-release-progress-2026-10-14.json.
+  Next checkpoint: publish review-ready source branch/PR and CI; never merge
+  without eligible independent approval. Goal remains active and incomplete.
+
+### 2026-10-14 — Structural context hypothesis and bounded repair
+
+- Same release owner and authoritative worktree. Outcome for this slice: give
+  the existing extractor the grouping context it needs to distinguish hierarchy
+  from authored semantic relationships. No new extractor or ancestor postfilter.
+- [instrument] format_node_list currently omits parent/membership identifiers;
+  attach_source_turns legitimately inherits speech into ancestors. The model
+  therefore cannot directly inspect the grouping the prompt tells it not to
+  mistake for an argument. Parser source checks already require both endpoints;
+  an earlier empty-endpoint suspicion was disproved without a code change.
+- Hypothesis0.8: explicit bounded parent IDs plus the existing abstention rule
+  reduce ancestor-heading echoes. Alternative: the approved private model still
+  cannot reliably discriminate these relations. Predicted checks: request input
+  preserves actual hierarchy, exact source and complete coverage within budgets;
+  actual-source negative grouping echoes disappear while a spoken positive
+  relation remains. The synthetic transport test cannot prove that last claim.
+- Test intent recorded before implementation in
+  lct_python_backend/tests/intent/semantic_authoring_consolidation.md. Finite
+  acceptance: focused/adjacent isolated checks, real coverage recalculation,
+  bounded private-model meaning preflight, then eligible independent diff review.
+  Fallback: retain the prior public artifact and stop this method if meaning
+  fails. No full regeneration or public replacement based on structural tests.
+- Existing dependencies remain database Administrator start and authenticated
+  independent review. Windows permission denial is not bypassed. Source edits
+  remain separate from merged/served/accepted states; next evidence checkpoint
+  is provider-input red/green plus recalculated coverage.
+- Validation: intended red failed because provider input lacked parent_ids;
+  after implementation6focused checks pass. Combined adjacent checks total64pass,
+  2existing POSIX skips. A first runner used pytest's shared temporary root and
+  encountered an exit cleanup permission error; subsequent runs assign a fresh
+  owned basetemp before imports and finish cleanly. Existing Python3.9/dependency
+  and pytest event-loop deprecation warnings remain, no test threshold changed.
+- Real offline plan now62requests (19backbone/34local/9boundary), all1263/1263
+  turns and7099/7099associations, exact text, max20982chars/30nodes,13.04s pure
+  preparation. Prior61request/8.165s measurement remains above. Added header
+  context has a measurable preparation/request cost; async cancellation behavior
+  remains passing. No optimizer or alternate planner added.
+- Same private model with explicitly supported low reasoning and cache disabled:
+  actual edited production instruction, no diagnostic prompt append. Synthetic
+  grouping-only case abstains (13.48s), distinct spoken cross-level support is
+  retained (19.23s), explicit callback correctly points backward (21.91s). No
+  extra predicates in these three results. Actual local page selected by both
+  anchors having visible speech, not a hardcoded old index: now24of62,20730chars.
+  Real meaning output still requires adjudication; no full run or public write.
+- Preexisting issue captured in ISSUES.md: reasoning configuration is omitted
+  from synchronous completion-cache identity. Direct source confirms the omitted
+  argument; private probes use cache off. Impact/potential replay and separate
+  regression repair recorded; non-blocking and not expanded into this slice.
+- Actual local page24finished in266.09s, HTTP200/model pin correct/final stop,
+  valid JSON,1raw/1kept causal edge. The three earlier ancestor echoes are absent.
+  Only transport metadata/answer JSON retained privately; no reasoning text saved.
+  Manual source inspection: the wider passage plausibly supports the causal
+  connection, but its three citations are target-side and omit details used in
+  the full explanation. Do not equate parse/citation-ID validity with citation
+  sufficiency or declare real-source precision accepted. Full regeneration and
+  public artifact replacement remain held. No retry or prompt fishing this turn.
+- Source grouping repair itself is coherent and validated; independent review
+  of its final diff remains blocked by previously observed reviewer sign-in
+  failures. No new authentication evidence, so no blind reviewer retry. Existing
+  Gemini approval covers the earlier source-coverage slice only. This new slice
+  has no eligible final verdict yet; no merge or deployment of it is requested.
+
+### 2026-10-14 — Required push gate exposed navigation test timing assumption
+
+- New grouping-source commit4ba70c8saved locally. Required pre-push frontend gate
+  failed1/529 (528pass): forward-history truncation asserted before async replay
+  settled. Push stopped; no bypass. The same5history tests pass when run alone.
+- Hypothesis0.85: a fixed60ms interaction flush assumes two browser frames and
+  the coalesced history write have finished, which is not guaranteed under load.
+  Runtime already has a controlled-frame queued-jump regression; do not change
+  runtime based on this correlation alone. Disconfirming probe: delay actual
+  test RAF callbacks100ms each and retain the original immediate assertion.
+  Predict deterministic failure, followed by success when awaiting the same
+  visible Forward-disabled and restored-node outcomes through bounded polling.
+- Test intent recorded in the test header before the repair. No reduced oracle,
+  skipped test, increased timeout or hook bypass. Keep this test reliability
+  repair separate from the relationship-input commit; independent review of
+  the substantive final test diff remains required.
+- [instrument] Delaying RAF100ms reproduces the exact failed Forward assertion;
+  a bounded public-state poll passes but adds an act warning. Final repair reuses
+  the existing controlled-frame fixture, holds navigation genuinely unsettled,
+  then settles frames under act before asserting the same Forward-disabled and
+  restored-node outcomes. No runtime change, wall-clock enlargement or new
+  dependency. Focused history+snapshot8/8pass with no warnings; ESLint passes.
+  Hook-required full suite will run again at push. Source4ba70c8remains local
+  until that required gate succeeds; no repeated push without a material repair.
+
+### 2026-10-14 — Evidence-first citation diagnostic
+
+- Previous goal turn made progress: grouping context4ba70c8and controlled-frame
+  regressioncbb4ed6are pushed. Required local529/529frontend gate passed; current
+  PR216head matches cbb4ed6. Unit/Postgres CI and preview succeed; browser smoke
+  still running at the first fresh observation. Database remains stopped.
+- Current bounded outcome: preserve the accepted relationship contract while
+  making citations justify the complete explanation. Owner Root Codex, same
+  authoritative isolated checkout. No new relationship layer or architecture.
+- Hypothesis0.75: the output example writes an explanation before selecting
+  citations, encouraging sparse post-hoc citations to a richer narrative.
+  Alternative: model capacity/turn fragmentation still defeats the contract.
+  Diagnostic selects existing supporting_utterance_ids first, then relation and
+  explanation strictly from that cited speech; same fields/model/source/window,
+  private cache-off configuration and budgets. Temporary prompt copy only.
+- Predicted outcomes: an explicitly spoken cause remains; chronology-only case
+  abstains; actual page's explanation loses uncited details or cites the needed
+  source. Inspect all returned predicates, not parse success alone. One actual
+  page per method attempt; no full regeneration/public write until meaning passes.
+  Fallback: retain artifact and stop this method if it still overclaims. No new
+  human decision requested for this existing-contract diagnostic.
+
+- Outcome: both manufactured controls pass (chronology abstains; explicit cause
+  retained with both citations). Actual page24 completes in195.72s with one edge,
+  but its explanation again includes details absent from the four cited turns.
+  Evidence-first ordering does not repair citation sufficiency. Method stopped;
+  no canonical prompt edit, full regeneration or public artifact replacement.
+  Latest PR216head cbb4ed6 has green unit, real-Postgres and browser-smoke CI.
+
+### 2026-10-14 — Search preparation and retry boundary
+
+- Outcome: a reader can distinguish worker startup from model loading, observe
+  measured loaded bytes, cancel and retry without an old worker failing the new
+  attempt. Integration owner Root Codex; authoritative isolated checkout and
+  codex/semantic-grounding-check-20261014 branch unchanged.
+- [instrument] The public fresh Source iframe has a324x210box, controls=1,
+  strict-origin-when-cross-origin and the correct origin; embedded document
+  inspection times out. No supported root-cause claim or playback pass. Browser
+  navigation timeout resolved by observing the same created tab, not reopening.
+- Read-only peer/source inspection confirms model status begins before Worker
+  construction; pipeline has no progress callback, and onerror lacks active
+  worker/request identity. Hypothesis0.9: a late old-worker error can abort retry;
+  this does not explain the actual model-loading wait. Falsify with a captured
+  cancelled-worker error and a successful second result through the Find UI.
+- Bounded repair: guard all callbacks with active worker/request identity,
+  handle unreadable messages, show startup and vendor-reported model byte counts
+  through existing status presentation. No new provider/dependency/telemetry
+  payload, invented percentage or download-time estimate. Vendor4.3 callback
+  performs best-effort public model metadata reads; it cannot prove WASM health.
+- Test intent added before implementation. Acceptance: stale-error retry,
+  message-error recovery, no-history status, actual worker progress/result
+  contract using synthetic transport; adjacent timing/search tests and build.
+  Independent exact-diff review still required. Fallback: retain text search and
+  explicit cancellation; do not call synthetic worker tests actual model success.
+- [instrument] All three new UI regressions fail on the prior source, including
+  an old cancelled worker aborting its retry. Repair passes18focused search,
+  timing and worker-boundary checks; the realistic two-document worker fixture
+  verifies both ranked scores. Touched ESLint, design detector and production
+  build pass. Existing large-chunk warning remains. Built main asset
+  index-CxbNNjG7.js; worker conversationSearch.worker-C3PV6wx8.js.
+- Actual built browser run reaches model loading, advancing1.6MB at56s to7.6MB
+  at295s. This proves measured loading progresses; it does not prove readiness
+  or search quality. Desktop and390x844status remain legible, Cancel reachable;
+  viewport reset. Private screenshots tmp/search-boundary-20261014/. Keep the
+  same live attempt, do not restart a progressing download to manufacture speed.
+- Vendor-source inspection also shows default jsDelivr WASM dependencies despite
+  a local emitted binary; this is a dependency observation, not the wait's cause.
+  No CDN/runtime change made without a decisive need. Remaining acceptance:
+  actual model/result/source journey and independent final-diff review. Review
+  authentication requested asynchronously while authorized verification continues.
+
+### 2026-10-14 — Smaller-window source diagnostic (no product budget change)
+
+- Search repair61912d2is committed; required push gate running. Actual browser
+  model download is progressing, so preserve that same attempt. Source meaning
+  remains a required dependency of the existing release, not optional expansion.
+- Hypothesis0.7: competing endpoint context in29-node/20K requests prevents the
+  private model from keeping explanations within their citations. Test the same
+  approved planner/extractor with18nodes/9Kchars in an ignored diagnostic only,
+  without changing prompt, relation semantics, provider, source bytes or product
+  defaults. This changes input granularity rather than adding another filter.
+- First prove all7099node-turn associations and1263turns still reach complete
+  bounded requests, then inspect the first actual page containing both implicated
+  moments. Refuse before inference if its evidence cannot test the hypothesis.
+  One actual page at most for this method; if it still overclaims, stop and retain
+  the artifact. A passing page would remain narrow evidence, not a full scan or
+  authority to replace the public file. Owner/integration Root Codex, same checkout.
+
+- [instrument] Offline smaller-window plan covers7099/7099associations and
+  1263/1263turns across202requests, max9000chars/18nodes. Actual window103
+  finishes195.19s with one edge. Its two cited turns describe curiosity blocked
+  by a rat race and equipment hard to buy; they do not establish the claimed
+  enabling relationship or the shift to software. The explanation also assigns
+  equipment cost to the wrong endpoint. Smaller context therefore fails meaning
+  acceptance too. Stop this diagnostic method; no product budget/prompt change,
+  full regeneration or artifact replacement. Private evidence stays under
+  tmp/smaller-windows-20261014/real/. Next semantic step requires a concrete
+  model/contract diagnostic ruling, not another wording or window-size retry.
+- Search61912d2pushed successfully after534/534required frontend checks; exact-head
+  unit, real-Postgres, browser-smoke and Vercel preview all pass. Actual first
+  browser model download eventually reports a network error after observed byte
+  progress. Literal recovery returns3matches for advertisers. Offered Retry starts
+  a new worker and advances3.1MB/197s; preserve this same attempt while pending.
+  No actual semantic-search success is claimed. Independent final-diff review is
+  still blocked on existing reviewer authentication; no further login retries or
+  new account/project/spend. Database administrator action remains pending.
+- Prepared and secret-scanned exact technical review packet for61912d2,21files,
+  112076bytes, SHA256ff879f41dc35535dcff3b49448f9534bfcc7ca5c92121f85e8cbea98abf376e1.
+  No egress. It excludes operational history, credentials, env, databases,
+  transcripts, participant data, generated private probes and unrelated files.
+  Evidence packet will be refreshed for the final PR head before an authenticated
+  reviewer invocation. Not independently reviewed, merged, served or accepted.
+
+### 2026-10-15 00:03 IST — Review recovered; real search reaches a terminal failure
+
+- Integration owner Root Codex; authoritative isolated checkout and branch remain
+  semantic-authoring-consolidation / codex/semantic-grounding-check-20261014.
+  PR216head613de10 has green unit, real-Postgres, browser-smoke and preview CI.
+- Fresh AGY catalog succeeded, providing new authentication evidence. One bounded
+  Google Gemini gemini-3.8-flash-high review then completed SUCCESS/exit0 with
+  zero tool attempts and APPROVED/no findings for exact source613de10. Exact
+  outgoing121067bytes and file inventory/scan/capability receipt are recorded in
+  docs/reviews/viewer-release-independent-2026-10-14.json. No private transcript
+  or diagnostic artifact was disclosed; the deny-all tool hook stayed active.
+- [instrument] The second actual browser model download ended in network error
+  after observed13.4MB/664s. Stop retries. Text search still returned3matches;
+  selecting one opened Source and its exact YouTube timestamp986s. This proves
+  failure recovery and literal navigation, not actual meaning search or playback.
+  Desktop/narrow loading and terminal-error screenshots remain private in
+  tmp/search-boundary-20261014/.
+- Bounded public-asset diagnostics: model configuration and WASM HEAD requests
+  returned200. A separate Python transfer of the same pinned model asset received
+  2359296/22972370bytes in95.797s before its budget ended. Slow transfer therefore
+  also occurs outside the browser; this does not establish the browser error's
+  root cause, complete asset integrity or successful inference. No CDN/provider,
+  model dependency, public artifact or hosting change was made.
+- Integration boundary: required merge/review helpers accept only Grok/Claude,
+  while current policy explicitly permits Gemini. Bounded A1 repair consumes a
+  completed strict Gemini receipt, validates exact PR scope/head and pins merge
+  to that reviewed head while retaining required CI. One delegated owner changes
+  only those helpers and focused synthetic CLI-boundary tests/intent. Parent
+  owns operational notes. No new review egress route or relaxed acceptance.
+- Finite next checkpoint: validate the helper's positive and refusal/race cases,
+  review the updated exact technical diff with Gemini, then integrate the proven
+  source repairs and verify served identity. Source613de10 approval does not cover
+  the new helper. Semantic regeneration remains held pending the requested private
+  model diagnostic ruling; database privilege and actual playback remain separate
+  dependencies. Integration/review waits and unresolved model/network effort have
+  no supported calendar delivery date yet.
+- Helper acceptance:7/7isolated public CLI checks pass, including current-head
+  success with required checks and exact merge pin, missing receipt, malformed/
+  negative review, stale PR identity, forbidden source exclusion, a head change
+  during checks, and refusal to skip checks. Parent inspection found two initial
+  negative tests failed before reaching their intended boundary; both now assert
+  the actual stale-identity/exclusion messages. PowerShell parsing and diff check
+  pass. No live PR mutation occurs in these synthetic checks.
+- [instrument] The same existing built local61912d2Source player subsequently
+  loaded. Clicking native Play produced paused=false,readyState4,error=null.
+  Clicking the16:26transcript row sought the playing video to986.847141s. Native
+  controls auto-hide, so reveal and Pause were executed together; paused=true
+  confirmed. No player code/configuration change or third loading retry. Private
+  screenshots embedded-playing-after-transcript-seek.jpg and embedded-paused.jpg
+  under tmp/search-boundary-20261014/. This now proves actual local embedded
+  playback/seek/pause; new production identity and its journey remain to verify.
+
+### 2026-10-15 00:38 IST — Reviewed source merged and served; acceptance holds remain
+
+- Final exact25-file technical diff208a8f843dd2b06052c442c79488152c0434a157
+  independently APPROVED by Google Gemini gemini-3.8-flash-high with no findings,
+  no rejected findings/overclaims and zero tool attempts. Review completed
+  2026-10-14T18:52:05.291Z using the existing AGY account and verified deny-all
+  hook. Exact outgoing143932bytes SHA256
+  58271e62c3d534b0eb5b4aeb4d15cf14fc6be246d630b9830451dee92b54a36d;
+  packet132697bytes SHA256
+  8a8dcfb3306b2cba81a7e0ce9557b5c05fbf04a59bb139c808a98c82b077398c.
+  Full file inventory, eight excluded operational files, pre-egress scan,
+  validation and harness limitation are in the tracked independent-review receipt.
+  No credential/env/database/transcript/participant/private artifact was sent.
+- Seven isolated CLI checks, parse and diff checks pass. Required push gate
+  passes534/534frontend tests across88files in37.81s. Exact-head unit, real
+  Postgres, Playwright smoke and Vercel preview CI all pass. Skipped optional
+  checks are not acceptance evidence. No required hook/check was bypassed.
+- The required helper validated the completed exact-head receipt, retained CI,
+  rechecked PR identity and merged with --match-head-commit208a8f8. PR216 merged
+  at2026-10-14T18:53:06Z as0e1fb3b318d7b180d88d61aea93018cd4db344ad.
+  Production dpl_EoukQkxiXzrcs4FTz8VUjZDQ5jCE is READY and aliases the public
+  domain. HTTP200entry /assets/index-07NxGK4m.js has zero nonempty frontend
+  credentials and excludes the current private credential. Search worker is
+  conversationSearch.worker-C3PV6wx8.js. Held artifact SHA386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19
+  remains unchanged; no generated replacement was published.
+- Actual new production browser: map renders, text search returns3matches,
+  selected result opens Source986s, Back restores Graph/arcs and enables Forward.
+  Video initial readiness and one offered retry both timeout; no further retry.
+  The prior local native Play/seek/Pause success does not prove production
+  reliability. Scoped audit remains INCOMPLETE; no actual model inference success
+  or full UX/performance/a11y acceptance is claimed. Screenshots under
+  tmp/search-boundary-20261014/ include public-0e1fb3b-video-timeout.jpg and
+  public-0e1fb3b-map-after-back.jpg. The public viewer tab is kept as a deliverable.
+- Integration owner/root checkout unchanged. Primary remains2acf515 with its
+  unrelated dirty WORKLOG/observability work preserved; PostgreSQL is stopped.
+  No backend pull, restart or permission workaround. Backend runtime, revocation
+  probe and generation wait on the existing Administrator service-start step.
+  Meaning acceptance waits on the separately requested bounded private model
+  comparison ruling; full regeneration/public replacement held. On-device model
+  delivery and reliable public video remain unaccepted. Goal is not complete.
+- Next checkpoint: the concrete pending service/model dependencies, then bounded
+  private meaning checks and runtime verification; no further wording/window-size
+  retries or model-download loop. Remaining model/network effort is unknown;
+  Windows privilege and human decision waits are separate from implementation.
+  This post-merge checkpoint changes only operational notes/receipts and will be
+  preserved on the task branch; it changes no reviewed behavior or test coverage.
+
+### 2026-10-15 — Production media readiness boundary investigation
+
+- Previous goal turn is progress: reviewed source merged/served with credential
+  containment, actual literal-search/Source/Back evidence and explicit remaining
+  holds. Current checkout is clean at52a03af; PostgreSQL still stopped. No service
+  start retry or private-model selection without the pending human action/ruling.
+- Current bounded journey: public reader opens Source and gets native playback.
+  Owner Root Codex; authoritative isolated checkout unchanged. No production
+  source edit. H1deployment security-header blocking was falsified: public and
+  owned local document HEAD both200 with no CSP/referrer/COEP/COOP/CORP/frame or
+  permission headers. Evidence tmp/media-response-boundary-20261015.json.
+- H2origin-specific initial embed refusal is unsupported: two public embed HTML
+  requests with explicit public/loopback context each200 in1.178/0.864s,140393/
+  140398bytes; neither embeds playability data. This proves only HTTP entry
+  availability, not browser requests, player readiness or playback. No media was
+  downloaded. Private diagnostic HTML remains under tmp/, excluded from review.
+- H3the app's20s readiness timer destroys a valid slow player before it can
+  become ready. Confidence0.55; no fix proposed without stronger evidence.
+  Counterfactual: one isolated owned loopback fixture uses the same public video,
+  SDK/host/options/no-autoplay but waits up to120s with elapsed/status/cancellation.
+  Predict onReady after20s if deadline is premature; before20s would not establish
+  it, and no readiness by120s would leave the cause unresolved. Cache/context are
+  confounds; no product timeout/architecture change or production retry loop.
+  Finite next checkpoint is that single measured outcome, then stop this method.
+- [instrument] H3 counterfactual completed: SDK ready at0.412s, but no player
+  onReady by120.014s. The fixture reached its terminal stop state, destroyed the
+  instance and cleared its clock; its browser tab and owned50118server were
+  closed. Private terminal screenshot: tmp/media-readiness-probe-20261015/terminal.jpg.
+  This does not support increasing the20s product timeout. Header inspection,
+  entry HTML and delayed-readiness methods are bounded and stopped; the media
+  cause remains unresolved, with no further production retry or source change.
+- Same-model search delivery assessment: the existing feature-extraction/q8
+  pipeline requires config.json, tokenizer.json, tokenizer_config.json and
+  onnx/model_quantized.onnx from already-pinned revision751bff37182d3f1213fa05d7196b954e230abad9.
+  The public model repository labels it Apache-2.0. Published model size22972370
+  and SHA256afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1
+  were identified; no model inference or private input was sent to that host.
+  The installed ONNX runtime1.31.0-dev.20260914-8d85527a0 defaults to jsDelivr
+  despite Vite already emitting26861777bytes of identical asyncify WASM. An
+  explicit local runtime path and complete model mirror could remove those
+  external initialization dependencies while retaining on-device inference.
+  This is a proposed delivery repair, not proof of the browser error's cause.
+  Safari below26 has a separate non-asyncify fallback that must be preserved.
+- A0 acquisition precondition: one materially different short-range probe for
+  the same public pinned model timed out after25.469s with no verified range.
+  No concurrent/full acquisition ran, no retry, no complete model was obtained,
+  and no assets were added to the product. This method is stopped after the
+  earlier failed browser/full-stream methods. Evidence remains ignored at
+  tmp/search-assets-20261015/probe.json. Same-origin implementation is deferred
+  until verified assets are available; no half-mirror or remote fallback change.
+- Current scope is operational evidence only; source/runtime remain0e1fb3b.
+  Goal stays incomplete. Owner/integration Root Codex, authoritative isolated
+  checkout unchanged. Next checkpoints: Administrator starts the existing DB;
+  separately pending human ruling on the bounded installed private-model
+  comparison; verified search assets and a materially different media diagnostic
+  before their respective actual browser acceptance. Network/model effort is
+  unknown, with no new calendar ETA. No new privilege, hosting service, provider,
+  paid API, dependency, model selection, transcript disclosure or public artifact
+  change occurred. User's ELI5 request answered with the single Windows command.
+
+### 2026-10-15 — Selected thread camera ownership repair begins
+
+- Current outcome/owner/acceptance/dependencies are recorded in ISSUES.md.
+  New branch codex/viewer-selected-card-framing starts from served main0e1fb3b;
+  two prior operational checkpoint commits were cherry-picked without changing
+  source. Primary dirty files remain preserved; no DB service-start retry.
+- [instrument] Two actual public thread selections show the correct first-of-seven
+  detail but a final selected-card rectangle wholly outside the map. A transient
+  centered card is later replaced by zoom0.85. Read-only gpt-6-sol investigation
+  confirms a180ms compact overview frame can follow selected-card RAF centering.
+  The minimally supported repair skips that frame for a visible selected node
+  and cancels a pending frame when selection changes. Confidence0.9; no speculative
+  coordinate reconciliation or camera coordinator refactor is included.
+- Test intent before implementation: exercise controlled public MinimalGraph
+  selection while overview framing is pending, assert final projected card
+  visibility after timers settle, retain unselected framing and saved history.
+  Source/speaker files are unchanged from the prior actual public rename proof,
+  so that evidence is reused. A fresh synthetic file upload hit a browser file-URL
+  permission boundary and was stopped without changing permission or real names.
+  No private data or generated artifacts are included in independent review.
+- Fixture precondition corrected before interpreting red evidence: React Flow's
+  mock now supplies measured300x210reading-card dimensions; missing measurements
+  previously produced NaN. With valid geometry the pending overview regression
+  decisively fails at right3300.4outside390px, while initial framing/history pass.
+  The visible-selection guard fixes it. A second public tier-change case then
+  exposes the separate two-RAF initial fit overwriting selection; the same
+  ownership condition now consumes that pending fit instead. Both camera paths
+  retain the existing restoration guard and allow framing when selection is
+  absent from the displayed tier. No new coordinator or layout algorithm.
+- Final local validation:30/30focused navigation/history/motion/toolbar checks,
+  touched ESLint and production build pass; unchanged large-bundle warning.
+  First guard's actual preview keyboard journey traverses all7agency moments,
+  all six inspected2-through7cards remain inside the map and outside details,
+  and Next is disabled at7of7. The final two-guard bundle index-Crtj18K4.js then
+  passes the actual initial tier-to-moment jump, Source beside details, keyboard
+  next, Back/Forward and phone Source/detail handoff plus keyboard next/back.
+  Phone details intentionally cover the map; readable selected detail and no
+  horizontal overflow were observed, not simultaneous unobscured phone cards.
+  Final desktop selected card x541.5/y281.71/w345/h241.5is fully inside the map;
+  with Source open x901.5clears Source's360px and details atx1428.33.
+  Private DOM/screenshot evidence remains tmp/thread-camera-20261015/.
+  Fast combined expansion/row-selection did not retain the row twice; a fresh
+  single row click after observing expanded UI works. This could be tool/layout
+  settling; no app defect or acceptance claim for that fast sequence is inferred.
+  Independent exact-diff review, full push gate and served walkthrough remain.
 
 ## 2026-10-16 — Core live workspace migration
 
@@ -7518,20 +9615,17 @@ Root reuses clean ef4fcd5 worktree. Source shows global SitesAccessPanel supplie
 
 22:59IST: focused69 and full1023 pass. Independent Claude review found recording entry could retain an expanded account panel from another route; confirmed against App's persistent wildcard route. Added route-entry collapse without persisting dismissal/focus theft, preserving explicit hash opens; removed unreachable compact-label branch. Added existing-suite navigation regression; revalidation follows.
 
-
 ## 2026-10-16 23:09 IST — Profile layout accepted locally; live provider diagnostics
 
 Final1024/1024/119files pass9.64s and client/Worker build passes. Independent Claude opus5.5 final PASS/zero findings; exact hashes/dispositions in docs/reviews/2026-10-16-profile-menu.md. Actual1280/320px browser verifies centered Start, left indicators and Profile inside More; Settings contains routine saving notice/link. Source publication next. Changes remain in the three runtime components and two test files recorded in the receipt; no provider backend edits.
 
 One authorized synthetic OpenRouter generation returned502/invalid_completion after10.55s; Worker diagnostic request e0b318d563f0072e7f81e9b2db175fc4 reports hierarchy/child_level after an upstream completion. The map was rejected, no artifact saved, no paid retry or reservation release. One Soniox session authorization returned201 and issued a temporary key (discarded in memory, expiry17:32:41UTC); no audio sent. This disconfirms a generally invalid Soniox credential but does not establish audio or credit availability. Separate GET models health remains refused; exact401vs403 is hidden by current sanitization. Console stuck loading prevents scope inspection. OpenRouter balance dashboard redirects to sign-in; requested existing-account login, not a key or permission change. These limits are recorded in ISSUES. No secrets/private logs persisted.
 
-
 ## Served receipt — 23:12 IST
 
 Application source `eea4877` is committed/pushed; native source `57fb30c5630143b00d0499e4a76c3c8b538ec95b` is pushed and published as public Site45/env37. Saved version `appgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_148a683654308191b93e84f1d4460a0a`; deployment `appgdep_6ad26180c4c08191a5622746039de614` succeeded2026-10-16T17:40:47.945377UTC. Archive39files/1925120bytes/SHA256 `ecea6a8e3bba21b5ca0e4288d85b46591084dafebbc2170ebcfa8ad8da529f12`.
 
 Fresh separate live guest browser confirms `/assets/index-CxdC-Qt3.js`, Profile inside More opens the account panel and closes with focus on More, local-saving status/link in Settings, no standalone profile or idle saving notice, Start center640 at1280CSSpx. Screenshot `/private/tmp/lct-profile-menu-live.png`. Signed-in behavior and320px geometry were tested in the explicit synthetic preview, not claimed as live-account tests. User recording tab was untouched. Previous Site44/env37 is the rollback; no provider/account/domain/runtime configuration changed.
-
 
 ## 2026-10-17 09:40 IST — Asus-first Meet preflight and bounded acceptance
 
@@ -7541,7 +9635,6 @@ Hypotheses: existing host reachable confirmed; ready-to-run bot stack disproved 
 
 Documentation only: prepend the active Asus milestone to `docs/plans/2026-10-01-lct-sites-migration.md` and recovery blocker to `ISSUES.md`, append this entry to `docs/WORKLOG.md`. Acceptance, owner/checkout, dependency, next checkpoint and unknown recovery forecast are recorded in the board. Tests exception: operational evidence/plan only, no executable change; validate exact diff and whitespace. Previous provider/UI receipts are preserved and do not count as acceptance for this journey. Next: establish preserved runtime/configuration and safe startup before synthetic E2E, keeping cloud hosting/new spend deferred.
 
-
 ## 2026-10-17 10:32 IST — Preserved Asus recovery and decisive startup boundary
 
 Recovered exact upstream Attendee500168b in a new worktree; preserved the original416 tracked deletions and LCT's four dirty files. Verified stopped-Docker backup source/copy hashes for data/main VHD and settings. 7-Zip direct VHD failed; WSL metadata access was slow; a Windows read-only disk mount plus complete7-Zip filesystem metadata succeeded and was dismounted. No saved containers, one old anonymous volume retained. Full public-source SCP timed out; bounded source archive succeeded using a partial file then rename, so incomplete output is never accepted as source. No private data or secrets copied to Mac.
@@ -7549,7 +9642,6 @@ Recovered exact upstream Attendee500168b in a new worktree; preserved the origin
 Docker SSH launch acknowledgement was not readiness: new SSH probe found no engine/process. One-time existing interactive-session launch restores actual engine29.5.3; verified zero-container inventory and removed the temporary launch task. Native exit codes are mandatory before interpreting inventories. First actual build failed in Windows credential helper under SSH; build is now dispatched in existing interactive session with separate completion/log files. No Docker prune, volume deletion, whole-WSL shutdown, unrelated process termination, network exposure, bot join or provider request.
 
 Preparation intent: separate local recovery Compose/config/bootstrap source, loopback-only API, fresh uniquely named volumes/secrets, one-bot limit and no scheduler; check refusal/idempotence and non-recording health before attempting Meet. The supplied room is authorized only before11:00IST with10:55 operational leave cutoff. Board updated with dependencies and no acceptance claim. Build compatibility, cloud relay, owner access, actual captions/threads/audio remain incomplete.
-
 
 ## 2026-10-17 10:41 IST — Isolated recovery configuration reviewed and prepared
 
@@ -7559,13 +9651,11 @@ Two tests pass on Mac and Asus; actual Docker Compose parse passes and actual vo
 
 Existing Site opened through official source helper, still native57fb30c / publicversion45; no Site code/configuration/publication changed. Build runs on Asus independently of SSH in a one-time task, downloading upstream dependencies. Remaining: actual image, API/storage/sandbox readiness, then narrow authenticated cloud integration and test. Before11 window is not promised; no bot has joined. Existing Site and other Asus services/data remain untouched.
 
-
 ## 2026-10-17 10:52 IST — Cloud relay implementation, inactive
 
 Recovery preparation b0f57f4 is committed/pushed. Source-only follow-on adds a narrow project-authenticated Attendee API/snapshot/audio surface and an off-by-default Site relay. Root remains integration owner in the same worktree. It reuses Attendee's existing create/leave implementation and project-scoped key; Site identity restricts the first pilot to the configured owner. New additive meeting receipts retain URL hashes, ownership and uncertain joins; duplicate IDs never POST a second bot, even after the original ends. No new paid provider, public audience expansion, credential transfer or network exposure is activated.
 
 First9 real-in-memory-SQLite Worker boundary tests pass; backend range tests and actual Docker-backed API/schema checks remain pending. Test intent: tests/intent/sites-meetings.md. Source/schema changes remain uncommitted, unreviewed and unserved. Native source remains unchanged. The current preparation review applies only to b0f57f4, not this new relay. Next: complete viewer integration, focused/combined tests, exact independent review and native deployment only after runtime readiness. The old room will not be used if the before11 window is missed; requested a separate empty room/window while continuing independent work.
-
 
 ## 2026-10-17 11:01 IST — Meeting viewer and cutoff
 
@@ -7577,7 +9667,6 @@ First9 real-in-memory-SQLite Worker boundary tests pass; backend range tests and
 
 11:05:49 focused UI/Worker/auth checks and4 isolated Python tests pass. First combined run1043/1044 passed; sole failure was a historical migration test requiring its0012 receipt to remain the last entry forever. Changed the assertion to require its unique original idx/tag; all exact SQL and unchanged0011→0012 snapshot assertions remain. New0013 is additive meeting ownership only. Improved More focus to the first destination and reused existing bounded private-file saves for meeting transcript/maps.
 
-
 ## 2026-10-17 11:14 IST — Reviewed boundaries and renewed room authority
 
 User explicitly said the scheduled call is not happening and the same room may be tested after11. This supersedes the earlier cutoff for that room; retain a five-minute synthetic test and explicit participant/admission checks. No bot has joined. Current live LCT tab is a guest; Google sign-in started and user completion requested. Browser tab inventory was automatically rejected because it could expose unrelated browsing; no workaround or further broad inventory attempted.
@@ -7586,13 +9675,11 @@ First new independent Gemini4ArgonMedium review failed with six supported areas:
 
 Combined1044 checks/build and synthetic real-Chromium1280/375px journey passed before reviewer repairs. Browser probe had a temporary syntax typo then failed on unbundled extensionless imports; using the repository bundler resolved the fixture module and the third attempt passed, one join and one model request intercepted locally. No real provider/Meet evidence is implied. UI snapshot reuses calm graph/transcript panels; saved source identity aligns with the recording clock. Final validation and fresh review follow.
 
-
 ## 2026-10-17 11:24 IST — Integration source validated; runtime still pending
 
 Full1048 checks across122 files pass;4 isolated Python checks pass. Final build and intercepted Chromium1280/375px journey pass. Independent Gemini review passes the substantive fixes; final display-only review also passes after an actual missing displaySpeaker rendering branch was found and fixed. Receipt: docs/reviews/2026-10-17-asus-site-meetings.md. All source remains inactive/unserved; no real bot/audio/map is claimed.
 
 The isolated data-service startup initially failed to register because an inferred Windows account string did not map to a SID. Read-only inspection identified the already verified interactive build principal `adity`; using that exact principal registered the one-time task successfully. Task remains running, not yet ready; no repeated startup was sent. Build has reached package unpacking. No Funnel change or credentials transferred to the Site. User reports sign-in completed, but the controlled in-app tab still reads guest after refresh; a focused Chrome URL lookup found no matching tab. Asked only which browser contains the existing session, without requesting another sign-in or enumerating unrelated tabs. Remaining seven acceptance checks and forecast uncertainty are unchanged.
-
 
 ## 2026-10-17 11:33 IST — Export repair and bounded Windows startup stop
 
@@ -7604,7 +9691,6 @@ Startup is stopped at the AGENTS three-attempt boundary: initial account-name re
 
 Prepared repair_windows_acl.ps1 and updated README with actual-principal preflight; real Windows dry run passes for exactly six existing runtime files, with no writes. Applying it would save old ACLs, grant only the current user and SYSTEM, verify ACL postconditions and unchanged secret bytes, and start no service. User continuation requested because of the explicit loop-limit rule; no ACL change or startup retry until that response. The independent image build continues, now downloading Chrome. Runtime API/storage/sandbox and actual Meet tests remain unverified.
 
-
 ## 2026-10-17 11:41 IST — Prepared release and exact remaining runtime gates
 
 Official native Site source acbbeb987fbe806d8d051198c1119c80f3cd2667 is pushed and its archive built; no live version saved/deployed. Native publication-on-push was explicitly false. Export review and1049 checks pass; source receipt includes exact archive hash. ACL script received final independent PASS and a second actual Windows dry run after identity/elevation and ancestor-link guards. It is not applied; startup remains paused awaiting loop-limit guidance. Services and recordings have not started.
@@ -7612,7 +9698,6 @@ Official native Site source acbbeb987fbe806d8d051198c1119c80f3cd2667 is pushed a
 The first full image build failed at Chrome apt installation because archive.ubuntu.com stopped responding for two ALSA dependency packages. Exact read-only HEAD probes on Asus later returned200 for both paths. Dispatched one cached retry at unchanged clean upstream500168b, with distinct log/exit files and a two-hour bound; no dependency versions, hashes or sandbox settings changed. Do not infer completion from dispatch. If this build attempt fails, stop that method and report its concrete result rather than repeat. The earlier successful base layers and Chrome download are retained in Docker cache.
 
 Pending user questions remain the limited ACL continuation and which browser contains the reported signed-in Site account. No new permission for the already approved Meet room is required; the cancelled call allows testing after11. No bot, caption capture, audio recording, paid model call, Funnel route or live Site change has occurred. Actual E2E is incomplete.
-
 
 ## 2026-10-17 12:30 IST — Approved ACL correction and actual account verification
 
@@ -7623,7 +9708,6 @@ The first encoded probe-launch command exceeded Windows' command-line limit, bef
 The independent cached image retry exited1 while fetching Docker Hub's anonymous base-image token, with TLS handshake timeout; source compilation did not resume. Three image approaches have failed (SSH credential helper, Ubuntu dependency connectivity, Docker Hub TLS), so that image method is stopped at its declared boundary. Read-only Windows HEAD probes now reach auth.docker.io(404) and registry-1.docker.io(401); those prove host TLS reachability, not Docker builder connectivity. No Docker/WSL restart, proxy/DNS/TLS change or further image retry occurred.
 
 Focused Chrome lookup found no existing /new tab. A fresh LCT page in the already connected Chrome profile remains guest; its official Google popup offers two existing accounts. Used only selected-popup lookup after our click, not broad tab enumeration. Asked which account should own private recordings. The already authorized Meet room remains available after11; no new meeting consent is required. Site remains45/env37, no actual Meet/captions/audio/map generation or Funnel change.
-
 
 ## 2026-10-17 13:10 IST — Actual build progress and bounded security/storage proposals
 
@@ -7650,7 +9734,6 @@ and actual test10–20min after all prerequisites. Root/worktree unchanged. Exac
 Google owner selection and explicit kernel-permission question remain pending;
 no bot, recording, paid model request, network exposure or Site publication.
 
-
 ## 2026-10-17 13:20 IST — Local storage executable verified; acceptance still pending
 
 Root/authoritative checkout unchanged. Reviewed recovery source is committed/pushed
@@ -7673,7 +9756,6 @@ then approved sandbox probe and the same seven real acceptance checks. Build and
 transfer calendar wait remain unknown; earlier conditional30–60min integration and
 10–20min test forecast starts only after prerequisites, not at this entry. Existing
 Site45/env37 and the earlier native prepared source remain unchanged.
-
 
 ## 2026-10-17 15:08 IST — Approved sandbox succeeds; balance check validated
 
@@ -7704,7 +9786,6 @@ runtime compatibility flag. ISSUES records this without changing test/product
 oracles. Official native source opened, only two runtime files projected, packaging
 underway. LiveSite remains45/env37 until deployment; balance outcome unverified.
 
-
 ## 2026-10-17 15:13 IST — Balance served and actual build retry dispatched
 
 Native494f6ed/source c8097cb is served as46/env37, successful native deployment and
@@ -7722,7 +9803,6 @@ leases and services. Preparation of synthetic audio uses the existing upstream
 output_audio API only if its actual source contract supports the one-bot pilot;
 no ambient microphone, new public speech endpoint or TTS provider is activated.
 
-
 ## 2026-10-17 15:37 IST — Real-runtime acceptance staged; host scope separate
 
 Root/integration owner and authoritative worktree remain unchanged. Added check_runtime.py:1–96 and start_runtime_after_build.ps1:1–73 plus README actual-acceptance intent. Wrong persistence-root subprocess refuses before Django imports/writes. The final independent Gemini review passes after supported completion-preservation, stopped-holder and rejected-app cleanup repairs; receipt docs/reviews/2026-10-17-runtime-readiness.md. Actual positive schema/API/S3 checks remain pending the image. Staged public files only; no credential transfer or worker/public route.
@@ -7730,7 +9810,6 @@ Root/integration owner and authoritative worktree remain unchanged. Added check_
 The current cached build began15:10:39, task still running at15:36; latest log15:16:19 remains the62.5MB OpenCV wheel. TaskRunning is not asserted as download progress. No automatic new retry. One non-recording continuation is dispatched after Windows parse/hash guards under the same limited account, bounded150minutes; it waits for this build then checks only the isolated app/API/S3. Native dispatch/readiness results must still be observed.
 
 Chosen LCT Google owner is now verified signed in; user conversation is preserved. Meet prejoin for that selected account says Ask to join, mic/camera off, no room join. Automatic approval review rejected selecting the other existing Google account, treating it as outside selected-account scope. No retry/bypass. A separate one-time host-account check or user-host admission question remains pending; recording ownership stays unchanged. Seven real Meet checks remain incomplete. Source planning estimate30–60min integration plus10–20min pilot remains conditional on image/readiness and host availability; actual build/network wait is additional and unknown.
-
 
 ## 2026-10-17 15:58 IST — Cached download failure; verified-artifact transport
 
@@ -7740,20 +9819,17 @@ Instrument: native cached build exit1, pipReadTimeout at OpenCV after1688.6s; ap
 
 Hypothesis for materially different A1 transport: long unresumable Linux Docker downloads are the failure boundary; official identical wheels fetched resumably on Mac, SHA/size checked against PyPI release metadata and transferred to an external public-only build context will bypass those two downloads. Predicted validation: exact requirements/source remain unchanged, real Windows constructor refuses hash drift, and build uses local OpenCV/Zoom wheels before actual imports/API/S3 acceptance. Confidence0.86; if the new method fails, preserve its receipts/cache and stop rather than automatically retry. No new package, provider, privilege, registry, TLS change or host restart. Test intent recorded before code: constructor must reject wrong source/hash, private/unexpected/symlink wheel files and existing output; verify exact one-line Docker recipe delta and retain prior failed receipts. Preparation is not runtime success.
 
-
 ## 2026-10-17 16:04 IST — Host readiness resolved; wheels validated on Mac
 
 Focused browser inventory revealed two Chrome profiles: earlier control was work profile while approved Google session is in the other connected profile. Correct profile shows the chosen existing host account and Join now; user independently confirms Join now. Continued without microphone/camera permissions; no host or bot joined yet. Host selection/verification dependencies are resolved. Do not request the same sign-in again. The queued Join now/Ask question is answered. Profile identity must be verified immediately before later host actuation; private LCT recording owner remains unchanged.
 
 Both exact public Linux wheels downloaded and match official PyPI sizes/SHA256 on Mac. New constructor/receipt separation independent Gemini PASS; actual Windows parser, duplicate-completion receipt preservation and native JSON contract pass. Public transfer initial path refused; server pwd reveals /C:/Users/adity, corrected to that actual absolute namespace. SFTP batch now uploads to a new public-only directory; no runtime environment or old data is moved. Source changes remain isolated/uncommitted until this coherent slice is preserved. Actual native constructor, build and API/S3 remain unaccepted.
 
-
 ## 2026-10-17 16:16 IST — Actual host refusal and live empty receipts
 
 Operator-only meet_host_guard.mjs:1–30 fixes the class behind the work-profile confusion: room, real account-switcher identity and disabled AV permission controls are bound before Join now. Actual wrong-room and wrong-account prejoin calls both refuse; still-prejoin confirmed. Supported independent-review title-collision finding fixed via actual switcher structure, final Gemini PASS; receipt docs/reviews/2026-10-17-meet-host-guard.md. Positive allowed join waits for runtime. User reports Join now and actual correct-profile browser corroborates; no additional host/sign-in decision remains. Fixed the mistake mechanism and recorded the cross-project ledger as required.
 
 Native existing Site remains active/public46, env37; new meeting variables absent, OpenRouter enabled/Gemini disabled unchanged. Actual live DB/DB binding contains lct_meetings with zero rows, has_morefalse, no truncation. No bot or receipt created. Full public wheel SFTP timed out300s with13,839,360 retained bytes; one small chunk SCP succeeded. A more decisive native Windows HTTPS probe returned exact verified1048576bytes/206 in5.310677s. One limited-account20minute fetch task now downloads both identical official wheels with15minute per-file bounds and exact size/hash checks into a separate fresh context; no Docker/service/provider call. Public Mac downloads/chunks/failed transfers are all retained. Runtime API/S3 and the seven actual Meet checks remain pending.
-
 
 ## 2026-10-17 16:30 IST — Transport control artifact falsified; prefix recovery
 
@@ -7763,16 +9839,13 @@ Prepared one bounded native-cmd resume with explicit immediate integer LASTEXITC
 
 Separate browser gate: Meet host remains ready, but the one-hour LCT cookie expired. The first renewal challenge expired during tool inspection; a fresh attempt reached the approved account chooser but final popup inspection failed. Direct real /api/auth/session confirms authenticatedfalse; no renewal claimed. Browser control now explicitly requires ChatGPT Chrome extension update. Requested user update/reconnect and fresh LCT owner sign-in, not repeat host selection or a new permission. No tool bypass. This handoff is pending while independent Asus work continues.
 
-
 ## 2026-10-17 16:33 IST — Native status correction reviewed
 
 Saved the exact one-time correction as attendee_stack/recovery/resume_verified_wheel.ps1 (documentation header plus unchanged native body). Independent Gemini PASS, receipt docs/reviews/2026-10-17-native-wheel-resume.md. Native success0/nonzero37 controls precede the only resumed download; no Start-Process status heuristic remains in this correction. Final artifact receipt remains pending, not a successful build claim. Existing source changes are prepared for durable branch preservation. Browser extension update/LCT owner reauthentication remain the pending human logistics; host account readiness stays resolved.
 
-
 ## 2026-10-17 16:37 IST — Asus verified transport acceptance
 
 Actual host-wheels-resume-exit0/result verifies both official wheels181,078,042totalbytes, exact prior prefix80,113,664bytes, native_exit0 and prior_exit_preservedtrue. Both files copied to fresh public-verified-wheels-host-ready context, with no runtime environment. One guarded native constructor/build/app-only readiness setup now dispatches; its actual preparation and task states still need collection. No worker/bot/public route/env/recording/inference operation. Source96a3ec9 pushed; current docs preservation follows next checkpoint.
-
 
 ## 2026-10-17 17:00 IST — Build method stopped at diagnostic loop boundary
 
@@ -7838,11 +9911,9 @@ User explicitly requests existing-Site custom hostname plus HTTPS/Google E2E and
 
 Independent Gemini exact technical-plan PASS, receipt docs/reviews/2026-10-19-custom-domain-cutover.md. Unchanged complete10-record zone guard preceded one normal authenticated Vercel POST, created rec_f0c1350b33dbb976bd87b53c, threads CNAME custom-domains.chatgpt.site./TTL60. Exact11-record readback preserves all10old full objects. Both authoritative CNAME answers and ordinary recursive A positive; HTTP302→correctHTTPS. Native provideractive/SSLpending_validation, initial ordinary TLS handshake failure. No bypass/HTTPS acceptance claim. Personal-account project search found no match; direct known project/client in existing organization profile requires Google verification, but testing existing-origin allowance first avoids unnecessary human attention. No Google setting, Site version/env/binding, private data or paid provider mutation. Next evidence: real valid TLS/certificate and custom-host app/Google flow. Original forecast15–30minutes mechanics after review stands; certificate/account wait unknown.
 
-
 ## 2026-10-19 10:31 IST — Custom-domain HTTPS and Google journey delivered
 
 Same Site47/env37/domain handle is active; native live URL nowhttps://threads.adityaarpitha.com. Certificate SAN/validity/TLS1.3, HTML200 / and /meeting, exact native-v47 JS/CSS hashes, config200/session401/no-store and cross-origin403 pass. Browser actual Google account callback matches approved owner; reload, private list, cancellation, sign-out/guest refusal and restored login pass. No Console edit needed. Guest403 is edge error1010, not claimed app-level JSON. Owner list is genuinely empty, not proof of a nonempty-file restore. Both original-origin routes remain200/no redirect; prior local files remain under that origin. All10old DNS objects exactly preserved, only the one CNAME added; DB binding/table set and27env entries/revision unchanged, no private file content/write/delete or bot/inference/source deploy. docs/reviews/2026-10-19-custom-domain-cutover.md records live acceptance and limits; plan/current milestone appended. Approximately11minutes against15–30minute forecast; no remaining cutover dependency, documentation commit/push then user visual acceptance. Separate Meet connection/audio approvals remain pending; no activation.
-
 
 ## 2026-10-19 10:55 IST — Guest Meet capture, local saving by default
 
@@ -7858,11 +9929,9 @@ Live-audio focused checks reduced from9render failures to1fake-timer sequencing 
 
 Combined acceptance1094/1096 initially passed; the two failures were the sanitized-source fixture missing the new required guest module. The fixture now includes that dependency and the isolated exported Worker imports it without source fallback. Existing export/privacy assertions remain. Production client/Worker build passes (index-CJFwh0gt.js), but nothing has been published or activated yet.
 
-
 ## 2026-10-19 11:18 IST — Guest implementation validated; review checkpoint
 
 Complete1096/1096 across124files, Python6/6 and client/Worker build pass. Exact-source guest/audio code and sanitized native checkout prepared; no new Site/version/deployment/env/relay/worker/bot/provider request. Independent Google Gemini empty timeout120s, authenticated Grok no-verdict timeout240s, AGY Anthropic explicit429quota exhaust eligible review routes. Direct Claude CLI is signed out. Review methods stopped after three attempts; no false PASS or paid upgrade/retry. Receipt docs/reviews/2026-10-19-guest-meeting-flow.md; human/external review remains the release dependency. Actual host empty/People1/AVoff and synthetic tab-audio selection prepared. Large public overlay transfer reset SSH; small hostname probe succeeds, actual stage/image reconciliation still needed before any retry. Existing data/services/source remain preserved. Commit/push the coherent reviewable slice before waiting; do not claim real guest Meet E2E.
-
 
 ## 2026-10-19 11:26 IST — Guest review handoff preserved
 
@@ -7870,33 +9939,27 @@ Source172c2f1 is pushed/exact remote verified. Native Site47/env37 remains untou
 
 Temporary synthetic player teardown: the mandated proc_probe could not run because its Python lacks psutil; no zero-process result was inferred or new dependency installed. Exact loopback listener instrumentlsof plus PID/UID/script identity check identified only the owned57036player, which was stopped. Host settled at You left the meeting, presentation ended with that call. Current implementation/test/review hold persists; no speech was played or bot sent.
 
-
 ## 2026-10-19 12:49 IST — Mobile QA, not yet mobile accepted
 
 In response to the mobile question, inspected unchanged guest build index-CJFwh0gt / CSS index-BOfItOV3 through an isolated loopback synthetic HTTP fixture. No real bot/provider/microphone/cloud APIs. Measured CSS320x600,390x843 and843x360 after accounting for existing Chrome110percent zoom. Portrait has no horizontal overflow,44px primary controls,16px URL field; permission form, transcript collapse/fullscreen and independently scrolling transcript, audio/export/settings/map drawers exercised. Found reproducible graph z-50 header over z-40 tools close button (normal close misses; independent nav toggle succeeds), and unscrollable More/Profile row partly clipped in360px landscape. Logged ISSUES and full receipt in docs/reviews/2026-10-19-guest-meeting-flow.md; no product files changed for this question. Product fix candidates: overlay stacking and viewport-limited scrollable menu. Confidence0.99 from hit-test/rect + source. Physical iOS/Android, keyboard/safe-area, touch graph and live-media checks remain pending. Mobile signoff blocked, no deployed/E2E claim. Temporary viewport restored; owned tab/server closed. Existing exact-source review hold still applies. Unchanged full tests/build reused.
-
 
 ## 2026-10-19 — Approved mobile overlay repair started
 
 User explicitly requests fixing the two observed mobile defects. Root integration owner, authoritative codex/lct-inference-choice at a6187a2, clean before edits. H1/instrument: graph header z50 escapes the graph's non-stacking root and covers sibling tools z40; predicted isolated graph stacking lets Close receive the actual center hit without changing graph-local ordering. Alternative state-handler failure falsified by successful separate nav toggle. H2/instrument: More has no viewport height/vertical overflow limit, clipping Profile at360px height; predicted dvh-bounded scrolling keeps every row fully reachable. Confidence0.99; assumption existing44px header/rows remain, fallback retain source and stop release if browser hit/scroll fails. Change only two small shared components (LiveConversationGraph39lines, ConversationNavigation41lines), neither a decomposition candidate. Test intent appended before product edits. Existing independent-review hold remains; this approval permits routine repair and validation, not a review bypass. Remaining15–30minutes local implementation/browser/checks, release review/runtime waits separate and unknown. Next checkpoint: actual Close hit and menu scroll/activation against the rebuilt exact source.
 
-
 ## 2026-10-19 — Mobile fixes pass rebuilt browser acceptance
 
 Changed only LiveConversationGraph.jsx:14 (isolated graph stacking) and ConversationNavigation.jsx:27 (dvh/safe-area-bounded scrollable More). Actual rebuilt client index-B8UF_jts / CSS index-Cbb5AhPE verified in the synthetic local browser. At320/390widths the populated-map Close receives the center hit and normal click closes tools; thread/path expansion and moment selection still work. At843x360 More ends343.99px, UI scroll37.73px exposes the full44px Profile row through335.16px; tapping opens Site access. Escape returns focus; transcript collapse/fullscreen and footer remain usable, no horizontal overflow. Focused59/59, full1096/1096/124files and client/Worker build pass. Complete receipt docs/reviews/2026-10-19-guest-meeting-flow.md; historical defect notes retained and ISSUES amended. No claim of physical-phone/live Meet acceptance, no paid/provider/bot/production call or fourth review. Ready for existing human/restored-independent review; not live. Preserve/push this coherent repair, then stop the owned fixture and reset viewport. Local mechanics fit prior15–30minute forecast; review/runtime wait remains unknown.
 
-
 ## 2026-10-19 21:14 IST — Relay, review and real Meet release approved
 
 User explicitly approves protected Asus relay/server-secret connection, renewed required review, deployment to the existing Site and real captions/threads/audio E2E. This resumes the stopped review methods; it is not a review waiver or expansion beyond the existing one-bot/five-minute synthetic test. Root integrates in authoritative codex/lct-inference-choice, clean3cc1711, Mac hostname confirmed. Existing Site47/env37/custom hostname and Asus four-service runtime preserved. Fresh actual Asus inventory: app/data up, no worker, no /lct-meet handler; upstream clean500168b. Review route readiness succeeds through existing AGY authenticated model inventory; initial sandbox-only inventory could not bind/write its own log, normal escalated access works. New exact-source code-only packet prepared/scanned for eligible Gemini3.8FlashHigh review with a longer bounded timeout; no private/runtime data. Finite acceptance: review PASS/dispositions, exact runtime API/audio preflight and wrong-key refusal, scoped relay preserving every prior handler, existing secret into same Site, guest/UI source deployed, actual empty Meet admission/captions/source map/live WAV/final playable MP3/local reload/guest2 refusal, then joins closed/worker stopped with data retained. Forecast45–90minutes integration/test plus review/host/audio handoff waits, unknown on newly observed failures; previous forecasts retained. Next evidence: actual independent verdict and scoped API readiness before any bot.
-
 
 ## 2026-10-19 21:26 IST — Required independent review passes; deployment package ready
 
 Explicit user-approved compact route completed in14.167seconds: Google Gemini3.8FlashLow through existing authenticated AGY, fresh conversation1e9fd852-2379-433a-92c7-d993327c7500, exact source3cc17111e7831d258b923dfe70e956b9a2e38f49 relative to a4934921f3f3b4259db70bf1f844421c076c9003, source diff plus unchanged identity/archive context. Packet83937bytes/SHA2569cdfc733dfb088600c472c2bcedd2eee1582ffdf56acd99b152cac3782e7320c, actual verdict PASS/findings[],37019input/14output tokens. No secrets, real data, private logs/media/memory, tools or new metered route. Earlier full-source112672byte GeminiFlashHigh timed out240s; not counted as review. Grok and direct Claude normal readiness now report signed out. Auto-review rejected the compact route until the user specifically approved one bounded attempt; that authorization is now consumed successfully. No further no-verdict retry dispatched.
 
 All342 sanitized current-source files match the prepared native checkout byte-for-byte. Native standalone package has only build script (first wrong npm script was not a code defect); normal sandbox blocked linked Vite cache, authorized standard build succeeds after escalation. Exact prepared client index-Bd1x6nDF.js/CSS index-BffMn1rS.css; build/path can change asset hashes without source divergence. Source helper packaging uses the completed native build unchanged. Review/build/source equivalence complete; real recorder/Meet acceptance still pending.
-
 
 ## 2026-10-19 21:40 IST — Existing Site48 deployed; approved file preflight passed
 
@@ -7908,13 +9971,11 @@ Approved next operation prepared: preserve original Compose/env bytes, new publi
 
 Current dependency: authenticated SSH/file transfer and actual empty-room host/tab-audio handoff. Personal Chrome tab-creation method hit two inconclusive timeouts and is stopped; unrelated live Work-profile meeting was not touched. Human host handoff requested for the approved test room and the paused31second synthetic loopback player (one-hour expiry). No bot or live/private recording or paid inference started. Native deployment is served; actual captions/threads/WAV/finalMP3/localreload/isolation remain unaccepted. Current integration owner/root and authoritative worktree unchanged; next evidence checkpoint is actual file hashes/runtime API acceptance, then protected relay before a single bot. Prior5–15minute mechanics forecast is missed due intermittent transport plus review wait, not source/build failure; remaining mechanics10–20minutes only after stable transport, live pilot10–20minutes plus unknown human/network waits.
 
-
 ## 2026-10-19 21:42 IST — SSH continuation stopped; cloud guest access deployed independently
 
 [instrument] Three follow-up operations after the successful approved preflight failed: (1) activation script copied, then cloud_api.py SFTP transfer exceeded45seconds before activation could be invoked; (2) separate read-only transfer-state script's SFTP hit TCPconnect timeout; (3) materially different short EncodedCommand read-only metadata diagnostic with verbose SSH hit TCPconnect timeout before authentication. No activation command was dispatched; no runtime overlay/relay/keytransfer/worker/bot was intentionally applied. Partial public files are untrusted until reconciled by hash. Previous reachable TCPgreeting does not imply current SSH readiness. Stop this affected method under AGENTS three-failure rule; human connection/restoration plus bounded continuation requested. No SSH/Tailscale service restart or network/permission widening attempted. Existing app/data configuration is preserved; actual current runtime cannot be reverified through the failed connection.
 
 Independent authorized cloud work: set only LCT_MEETINGS_GUEST_ENABLED=true, preserving all other entries and absent recorder credentials/enabled flag. Same savedSite48 redeployed, appgdep_6ad64128391c8191bc8f408517dc0d4c succeeded env38. This permits normal browser-scoped guest access, while recorder status/joins remain fail-closed until the actual connection. Guest API/cookie/accurate inactive UI acceptance in progress; no real Meet acceptance claimed. Test host told no bot would join while connection is unavailable. Required captions/threads/liveWAV/finalMP3/localreopen/isolation/pilotcleanup remain pending; optional work not opened.
-
 
 ## 2026-10-19 21:44 IST — Actual anonymous cloud guest boundary accepted; live pilot blocked
 
@@ -7924,7 +9985,6 @@ Actual custom-host in-app browser after reload displays the new guest/local-defa
 
 Finite real Meet journey remains NOT delivered. Asus SSH hard stop/partial staged-file reconciliation plus empty-room/tab-audio handoff remain; reviewed source and cloud guest boundary are served/accepted separately. No serversecret transferred, public relay added, pilotworker or bot started. Existing data retained. Leave the test room until connection is restored; loopback synthetic player may expire and must be refreshed for a later test. No further SSH attempt in this turn without the requested human continuation. Documentation commit/push preserves exact deployment/review/transport receipts; unchanged product does not need another external review.
 
-
 ## 2026-10-19 22:34 IST — User-requested access recheck; existing RustDesk alternative works
 
 User challenges why machine/host checks were handed back. Fresh read-only public-key-free network recheck: Asus SSHgreeting0.259seconds, Tailscale directping52ms. One explicitly user-requested bounded authenticated metadata recheck still exits255/connection timeout without mutation. Do not infer the Asus is asleep or its service stopped from that client failure. New personal Chrome inventory is visible but one fresh approved-room tab creation again times out35seconds; kernel resets, no join/recording asserted. Stop that extension method.
@@ -7932,7 +9992,6 @@ User challenges why machine/host checks were handed back. Fresh read-only public
 Different existing safe method: RustDesk's saved Asus target connects with existing access, desktop image arrives, clock and ordinary desktop establish host awake. No new credential/account/permission/security setting, update or service restart. Pointer opens WindowsStart and terminal taskbar menu; keyboard/search/shell-launch observations lag or are inconclusive, so no successful service query/rootcause claimed yet. One user-change notification caused immediate state refresh before further input. Existing terminals/other apps are preserved; no private displayed content is copied into repository/review. New PowerShell launcher selected, actual new prompt/service status still pending. No bot/relay/serversecret/runtime activation. Main user journey/authoritative checkout/root integration owner remain unchanged; remaining evidence checkpoint is actual remote service and staged-file check, then existing approved release/pilot gates.
 
 Attention correction: requesting an operator-only Asus-awake check was premature while an existing RustDesk connection had not been inspected. Available alternative access must be checked before treating one failed control method as a human dependency. This does not waive AGENTS stop limits or authorize a service/network restart. User does not need to perform the machine-awake check. Browser host/admission limitation remains separate, and no unrelated meeting is touched.
-
 
 ## 2026-10-19 22:45 IST — Direct Asus service check accepted; host-awake handoff withdrawn
 
@@ -7944,11 +10003,9 @@ Root cause remains unknown: Windows service stopped/asleep is falsified; transpo
 
 Correction to attention generator: one unavailable control method was wrongly promoted to an operator-only host-check dependency without inspecting the existing alternative. Operator machine-awake check withdrawn. Recovery README now requires method-specific evidence, available-alternative coverage, and visible exact input before any remote command execution; no new permission or loop-limit waiver. Durable software enforcement of attention preflight is not implemented; log as open process debt, not a solved guard. Bounded delivery remains the single real Meet journey in the same checkout with root integration owner. Next evidence is reliable authenticated file/command transfer and recorder-stage readback, then already-approved scoped connection/pilot; machine wakefulness itself needs no further human answer. No revised completion date is justified while those controls remain unavailable.
 
-
 ## 2026-10-19 23:00 IST — Connection recovery and decisive real API refusal
 
 User authorizes RustDesk/SSH/Chrome routine repair and completion. Existing-key SSH succeeds outside Mac sandbox, verified host key and hostname; no sshd restart/key/permission change. Native Chrome reaches approved host account and exact room with AV off; actual Meet says first participant. Extension tab command remains unreliable; native control works. Public file reconciliation shows no partial modules and no prior overlay. App-only update now runs exact prepared image/nonroot, credentials and datastore config unchanged, worker off. First guard failed because Compose config omitted inactive worker profile; explicit all-profile validation reconciled exact existing overlay and passed. Actual authenticated API list empty, wrong key/anonymous401, admin404. Real live-audio fake-bot route returns Endpoint unavailable instead of scoped Meeting not found. Local exact regex evaluation confirms rf-string interpolated {0,12} to tuple(0,12). Fix escapes only the quantifier; new RequestFactory middleware behavior tests exercise accepted IDs, bounds, mutations and credential refusal without DB writes. Relay/bot remain off until validation and independent review. Hypothesis confidence0.99 from effective regex plus real route; fallback keep relay/bot off.
-
 
 ## 2026-10-19 23:08 IST — Repaired API and protected relay accepted; server secret connected
 
@@ -7957,7 +10014,6 @@ cloud_api.py:22 escapes the rf-string quantifier; test_meeting_api_routes.py:1�
 Actual app8393c66369988cc75f22445fca62e931f07b08a536fa34b09ed60bfee66a66cd, prepared imageef5518b4/nonroot, credential/data config retained. Actual API source/DB/cookie-independent key/refusal/fakeBot-scoped snapshot/audio/liveWAV acceptance passes with Bot0/AudioChunk0. Only approved /lct-meet proxy added; exact complete existing Funnel baseline SHA1A9B2711C6EDF83C3AD6231612D4B4F1EA96E8E3F1C93B48BE1E2D68E9BA0289 preserved. Actual public HTTPS anonymous401JSON, wrongkey401JSON, existingkey200JSON empty results/private-no-store, with key remaining inside recorder for that probe.
 
 Automatic review rejected initial tool-memory secret transfer; user explicitly approves one temporary-memory direct transfer. Completed to same Site masked serversecret without file/console/browser/review disclosure or retained memory copy. Env39 key only; env40 adds exact relay URL, previously verified selected owner as secret, enabled=true and explicitly closed join deadline. Same savedSite48 deployment appgdep_6ad6551fc21c81918503185cf593ed50 succeeds env40; audience/data unchanged. Native Chrome avoids failed extension navigation, switches approved existing host account, joins approved room with AV off and positive first-participant evidence. Synthetic31second tab shared with tab audio and paused. No bot yet. Next evidence: verified worker startup, short joinwindow, one real guest bot/captions/threads/WAV/MP3/localreopen/isolation/cleanup.
-
 
 ## 2026-10-19 23:37 IST — Single real Meet pilot executed; capture gap isolated, not delivered
 
@@ -7971,25 +10027,21 @@ Cleanup accepted: host and bot left; synthetic sharing off; host captions prefer
 
 Prepared follow-up docs/plans/2026-10-19-meet-capture-followup.md and proposed/enable_capture_gate.py: no runtime apply. Gemini independent PASS exact source-only packet; receipt docs/reviews/2026-10-19-capture-gate-proposal.md. Wrong-root-before-import realCLI refusal and compile pass; actual no-write runtime dry-run mandatory. Current human attention H1: prior one-pilot envelope consumed, at most two further bounded pilots plus confirmed organizationflag and temporary private INFO/masking diagnostic requested. No second bot while pending. Caption presentation mapping remains hypothesis only; no speculative source edit. Next evidence: actual gate dry-run, then incoming captions/PCM/participant-resolution diagnostics and reviewed repair before final pilot. Scope/owner/checkout unchanged; prior forecast missed due actual failed boundary and browser helper stall. Each furtherpilot10–20minutes, diagnosis/review/network additional unknown.
 
-
 ## 2026-10-19 23:39 IST — Effective audio-gate cause confirmed without writes
 
 One bounded client transport variant (IPQoSnone/no master/stdinclosed; same key, host checking and crypto) returns actual org_flagfalse/stored_request_flagtrue/effectivefalse. A public-file transfer plus short-File command with IPQoSnone then runs the exact independently reviewed proposed script in dry-run: requestedtrue, orgfalse/effectivefalse before; unsaved orgtrue gives effectivetrue; org restoredfalse; one retainedBot and concurrency1; no bot/provider call or durable write. This is instrument evidence confirming the audio-chunk gate cause, confidence0.99. It does not establish the separate missing-caption cause or prove SSH transport permanently repaired. No global SSH/server/service/network/credential setting changed; client variant now supports two successful commands plus source transfer.
 
 The reviewed guard is concrete and actual preconditions now pass; human bounded-follow-up ruling remains pending because the earlier one-pilot allowance was used. No flag enabled, diagnostic log setting changed or second bot sent while waiting. SameSite48/env42/oneendedrow/workerstopped and actual localMP3reopen/isolation evidence retained. Next permitted step after explicit ruling is single-boolean apply with readback, fresh exact room/source/worker readiness, then bounded diagnostic/final pilots; no raw private log/artifact egress and no unbounded retry.
 
-
 ## 2026-10-19 23:44 IST — Bounded capture follow-up authorized
 
 Human approves the exact reviewed gate preflight/flag-only apply plus at most two further five-minute synthetic pilots in the same empty room. Root owns integration in the existing codex/lct-inference-choice checkout; Site48 and original data/routes/caps remain authoritative. Fresh actual dry-run again passes: stored requesttrue, orgfalse/effectivefalse, unsaved orgtrue/effectivetrue, one terminal bot/concurrency1, no provider/bot/write. Apply file SFTP hits banner timeout; use existing hash-verified staged script through short command instead, no server/key/network change. Caption cause remains unresolved. Finite acceptance remains incremental captions/source-linked threads/liveWAV/finalMP3/local reload/guest refusal/reconnect and cleanup. Next checkpoint: flag readback then private masked worker diagnostics in first follow-up pilot; second pilot reserved for repaired-flow verification. Conditional pilot10–20minutes each, diagnosis/review/transport additional unknown; no new completion-date promise.
-
 
 ## 2026-10-20 00:03 IST — Gate applied; original request resumed for capture diagnosis
 
 Actual reviewed flag apply passes: only dedicated orgfalse→true, Bot1/concurrency1 retained, no bot/provider in gate operation. Subsequent independent DB read verifies effectivecapturetrue/balance500centicredits/autopayfalse and no other bot. Temporary worker-only masked INFO overlay starts one-off diagnostic workerb23b02f4c1550912241f56f39d2d8dea4675250a23d54125b0f65de08a3e2d5e, preserving stopped81c36 worker/logs and every nonworker config/env/credential byte. Celery readiness1. Site48 env43 short joinwindow succeeded; guest creates durable request8eea560b-261f-4bd0-8378-c86682f7ccda but no bot reaches Asus. Env44/deployment appgdep_6ad660bf154881918264cbbc8dbffae2 closes joins. Original receipt stays uncertain; no reservation/quota reset. Actual botcount1, no task/caption events; internal and protected-relay dedupGET200empty plus invalid-empty-payloadPOST400JSON with bot count retained. Site GET202reconciliation works; original create failure remains unclassified, not blamed on SSH or credits.
 
 One guarded recorder-side attempt reuses original dedupkey, same approved empty room and ≤300second cap; this is diagnostic recovery, not a claim that cloud creation passed. Prevalidation inadvertently mutated nested outbound defaults; subsequent HTTP400 enable_closed_captions_timeout_secondspositiveinteger is a diagnostic artifact, no bot. Corrected prevalidation uses deepcopy plus input-equality assertion. Corrected exact original request returns201/bot_31KiGtypf0P3kHzK/joining/Bot2. Original guest record positively reconciles to that bot; correct host AVoff admits exactly named recorder, no other participants. First newly authorized bot now used; second remains reserved for verified repair. Synthetic audio still paused. Next evidence is live captions/PCM with private masked incoming-message diagnostics. Original cloud POST failure and caption cause remain unresolved; no raw logs/media/participants went to review.
-
 
 ## 2026-10-20 00:14 IST — First follow-up pilot closed; repaired dialog class validated
 
@@ -8067,7 +10119,6 @@ Native342source files match sanitized export; exactly2backend paths differ from 
 
 Existing Site50/versionappgprj_6abe98e1b1b08191b2b763a78e1da819~appgver_f1a2684778ac8191b77019205e8c9a9a; deployed appgdep_6ad67829385881919c0be286492abe3a/succeeded/env50. Actual custom-host ordinary guest API response: enabledtrue/canJoinfalse/maxSeconds90/modeguest. Three ended D1records retained. Newjoinwindowclosed/diagnosticsfalse/MAX_SECONDS90. No bot or map consumed by this release; both conditional slots remainunused. Dedicated ready first-failure worker692a... remains unchanged/idle and host alone/AVoff. Next: publish longer admission window with strict90cap, one diagnostic bot/artifact, leave/stop/windowclose. CloudPOST/actual captions/threads/liveaudio remain unaccepted.
 
-
 ## 2026-10-20 01:51 IST — Bounded diagnostic stop/client preflight; no bot sent
 
 Root remains integration owner in the authoritative codex/lct-inference-choice worktree. Existing Site50/env50 serves maxSeconds90/canJoinfalse; original3meeting receipts retained and both conditional bot slots unused. Prepared four public operational files under attendee_stack/recovery/proposed: stop_diagnostic_worker.ps1 targets only the exact idle diagnostic worker and creates an80second same-user timer with2second stop grace; run_diagnostic_once.ps1 requires that timer's actual PID/encoded-command hash and remaining deadline; create_diagnostic_once.py is default-dry-run, exact dedicated DB/project/3terminal bots/gate/concurrency/schema/wire/no-redirect and one-POST continuation; check_stop_guard.ps1 exercises default readiness plus wrong-target and missing-timer refusal. The SSH timer command remains open until supervisor completion, avoiding reliance on detached process survival after Windows SSH disconnect. The browser path must separately prove the actual supervisor alive with>=60seconds left before dispatch, and continuation needs>=30seconds. No OS permission, account, network, key, image, route, provider or data removal. Never infer cloud-create acceptance from recorder-side continuation.
@@ -8075,7 +10126,6 @@ Root remains integration owner in the authoritative codex/lct-inference-choice w
 Hypothesis: Attendee's max_uptime begins after joined_at, so a pre-admission UI failure needs this external bound. Prediction: default validation does not arm/stop/create; wrong holder, absent supervisor, malformed arguments or wrong persistence root refuse. Fallback: no bot before successful actual timer proof; stop only exact diagnostic worker and close joins after the attempt. Confidence0.9 in bounded actuation; actual Meet/UI success remains uncertain. Test intent is in each public helper. Actual default validation9.80s/exit0: correct holder ready, PowerShell parse valid, wrong-holder refused, both holders running, real serializer valid/deepcopy wire unchanged, BotCount3, missing guard refused for both CheckGuard/Create. Local malformed and wrong-root CLI cases refuse before Django import; py_compile passes. No supervisor armed/bot/provider request. This is operational dry-run evidence, not an invented success fixture or a final capture acceptance.
 
 Next checkpoint: independent clean code-only review of this coherent helper slice, then actual timer/one<=90second first-failure artifact and cleanup. Exact9UI tests/review and1106combined/build evidence are reused for unchanged product code. Forecast diagnostic5–10minutes after reviewed timer readiness; actual supported repair and cloud-create effort remain unknown, final verification10–20minutes after repair/review. Prior forecasts retained, no completion date promised.
-
 
 ## 2026-10-20 02:02 IST — Fourth bot created through cloud; diagnostic timer truncated useful capture
 
@@ -8089,23 +10139,19 @@ Guard parent reports failure from cached Start-Process ExitCode despite persiste
 
 Supported routine repair prepared before seeking any extra bot authority: two-phase guard waits<=120seconds idle for explicit Begin; actual85second dispatch deadline is acknowledged immediately before UI Join, preserving preflight time. Sameworker/image/user/profile/key/routes; new v2guard directory preserves old receipts. Bot continuation now requires active85second timer and exact4terminal-bot precondition. Parent checks persisted receipt+actualDockerstate rather than nullablecachedExitCode. Testsintent meet-diagnostic-window.md and five-case isolated production handshake prefix test; realstopblock remains unchanged/reuses actual stop evidence. No timer/restart/newbot for this validation. Nextcheckpoint actualsynthetic tests + independent exactrepairreview, then human ruling for one additional shortdiagnostic if needed; do not silently use the conditional finalslot as an undiagnosed retry. Forecastmiss: my timerdesign consumed preflight and truncated useful firstfailure capture; this is agenttestdesign error, not absent userpermission or machinewakefulness. ActualMeetrepair effort remains unknown.
 
-
 ## 2026-10-20 — Two-phase dispatch guard validation passes
 
 Actual read-only/isolated validation exit0/16.10seconds: all3PowerShell files parse; actualstoppedworker refuses readiness; unchangeddeepcopy/schema/wire validates on4terminalbots; productionchildhandshake prefix passes valid, missingtrigger expiry, wrongworker, deadline100s and deadline1s refusal. Syntheticfiles are exclusively fresh ownedprivate subdirectories; child deliberately ends before unchangedDockerstop. No realv2guard created, supervisor armed, worker restarted, bot/paid request. Review the coherentchanged5operationalfiles plus testsintent; reuse prior actualexactstoprecord and unchanged9UI/1106product/buildchecks.
 
-
 ## 2026-10-20 — Dispatch-window repair independently reviewed and pushed
 
 Exact3b42a790cb2350714a8a7b4a996dd15c40cd6c9b pushed to existing taskbranch. GoogleGemini3.8FlashLow/AGY, freshfa6be998-5a13-48af-8cc1-bd0f05c14063,15.71seconds,SUCCESS/PASS/findings[]. Packet24017bytes/SHA89aadc0d198c40c0388435aac7c8e500e9a7349cb905be175595aca68992e0d8;5publicoperationalfiles+testintent, sanitized spec/results, fixed exclusions. Real5protocol cases/schema/refusal complete; no activation. Concrete continuation plan prepared before one-time new short-bot ruling; current actual Site50/env52closed,workerstopped,4recordsretained,hostleft. Final<=300second slot remains unused/conditional, not repurposed. No pending operator SSH/Chrome reconnect or sign-in action. Nextevidence depends only on additional short-test allowance, followed by actual artifact; no other optional slice opened.
-
 
 ## 2026-10-20 08:34 IST — Additional short diagnostic explicitly approved
 
 Human approves one additional<=90second synthetic diagnostic in the same empty room with corrected timer, then supported repair/review before final captions/threads/audio test. Root remains owner/same authoritative codex/lct-inference-choice checkout atcf2a0f8 clean. Existing four endedD1records retained; no new bot on accepting approval. Prepared repair3b42a79 is independently reviewed; fiveprotocol/schema/refusal checks passed. Recheck actualruntimeidentity/4terminalbots/readonlysource/profile before restarting only exact692a diagnostic worker. Publish only temporary admission deadline on existing savedSite50/cap90, actual supervisor proof and Begin85secondack immediately before UIJoin. No operator setup/sign-in approval is missing; no new key/permission/provider/route/purchase. One-map budget unchanged; no inference in diagnostic.
 
 Finite acceptance: actual cloudcreate once/reconciliation, namedbot admission ifrequested, firstfailedUI capture privately, stop/leave/closedjoins/workerstop/hostleave with4old+1newrecords retained. Only supported repair plus independentreview can enable unused<=300second finalbot; livecaptions/threads/livePCM/finalMP3/localreload/isolation/reconnect remain incomplete. Nextcheckpoint actual privatefirstfailureartifact and boundedcleanup. Forecastdiagnostic5–10minutes after freshreadiness; repairunknown; final10–20minutes afterrepair/review; no calendarpromise.
-
 
 ## 2026-10-20 08:49 IST — Corrected timer passes actual run; public relay DNS blocks dispatch
 
@@ -8116,7 +10162,6 @@ V2guard actually arms and independentPID/command identity passes. Begin acknowle
 Cleanup: existingSite50/env54 appgdep_6ad6db79459881918bc6238046a433de succeeds03:10:11.685UTC, joinsclosed/diagnosticsfalse, workerstopped. HostleftpositiveUI; no tabshare/playerstart. Read-onlyactualFunnelpreflight: currentnodeDNSmatchesexistinghostname, backendRunning/SelfOnline, AllowFunneltrue, /lct-meet→127.0.0.1:8088, completeconfigurationequalsretainedoriginalafter-guestbaseline; actual4terminalbots/schema pass. MacsystemMagicDNS resolves100.81.65.74 and unauthenticatedrelayGET401gunicorn as expected; this observesprivate tailnetaccessonly. DisconfirmingpublicDNS probes independently returnNXDOMAIN/Status3/noA/AAAA viaCloudflareDoH andGoogleDoH, consistentwithCloudflareWorker530originDNSerror (officialdocs). Do not attribute tokey/schema/Chromeprofile/Meetselector.
 
 Oneidempotentsameroutereannouncement prepared withcompletebefore/afterequality. SFTPcopytimesout65seconds beforeexecution; materiallydifferent short3048byteencoded/no-inputSSHcommand then succeeds37.03seconds, confirmsidenticalFunnelconfiguration/no newroute/permission/bot. NoFunnelreset, service/key/networkchange. ExistingSFTPintermittencyremains; donotcallSSHpermanentlyrepaired. PublicDNSpropagationcheck remainsnextcheckpoint; officialTailscaledocsallowupto10minutes. No actualfirstfailedUI/captions/livePCM/threadverificationyet; no inference. Ifpublicroutecannotrecover, independentreadonly/in-scopepreparationcontinues, newarchitecture/provider/routewouldrequireitsownruling.
-
 
 ## 2026-10-20 — Existing internal API fallback prepared and validated
 
@@ -8170,7 +10215,6 @@ Freshpreparedtimerderivativeschangeonlyone-shotdirectory literal; normalizedbyte
 
 Root/same authoritative codex/lct-inference-choice checkout at07c142b, clean before this note. Human approves exactly one further<=5minute synthetic Meet run per prepared plan; no repeat approval needed for existing account/profile/keys/relay/source repairs. SameSite50/env58/newjoinsclosed, six preserved recordings and stopped repairedworker are starting preconditions. Fresh preflight verifies exactsource533a3da1/afeecf3a/readonlyUI26017221, image/profile/ownership, terminal6bots/orggate. Host verifies emptyroom/AVoff, syntheticplayerprepared. Next decisivecheckpoint actual guest cloud-create ->admission ->incremental captions/liveWAV, one map call only if valid new words arrive; then reload/privacy/finalaudio/cleanup. One-shot285second guard is prepared/unarmed. Expected10–20active minutes plus Googleadmission/control waits; no completion claim from preflight.
 
-
 ## 2026-10-20 11:42 IST — Repaired guest pilot proves ingestion; full live acceptance interrupted
 
 Root integration owner; authoritative `codex/lct-inference-choice` worktree remains unchanged in product source at07c142b (reviewed repair0b38804). Fresh stopped-worker content/ownership/image/profile checks pass: payload533a3da1/audioafeecf3a/readonlyUI26017221; six retained terminal bots; capture gate true. Only exactworker692a6837 started; Celery reports one responsive worker. Same Site50/sourcecf34cbc6 temporarily serves env59/deploymentappgdep_6ad701b4e38481918e2098e5498f1da7, admission end06:07:40.303Z/max300. Real285second supervisor arms with actualPID64032 and matching command hash; Begin acknowledges deadline06:02:11.6899576Z before a single ordinary guest UI submission. No internal-create fallback or repeated POST.
@@ -8189,16 +10233,13 @@ Finite remaining dependency: stable emptyhost+syntheticplayer for full31second c
 
 User asks whether audio import is ready; answer-only, no new feature implementation authorized. Source FileUpload.jsx accepts MP3/WAV/M4A/OGG/FLAC/AAC/WebM/MP4, and legacy useFileUploadStream sends the bulk Python upload pipeline. SitesNewConversation does not mount that component; original Import.jsx is transcript TXT/PDF/text/URL, not audio. Actual customdomain Home Import audio -> /new shows recorder and no audiofilechooser, confirming a misleading served entry. This is a separate missing cloud journey, not a ready audioimportfeature or a reason to pivot from Meet. Track in ISSUES.md; next scoped work would connect file -> transcription -> timedtranscript/threads -> defaultlocalpersistence with limits/cancel/error/privacy acceptance. No user audio uploaded or transcription/spend attempted for this question.
 
-
 ## 2026-10-20 11:47 IST — Final Meet continuation and next audio-import journey approved
 
 Human explicitlyapproves finalone<=5minuteMeetcheck plus oneadditionalmanualmapcall underunchangedcaps, then completeMP3/WAV/M4Aaudioimport withtranscripts/threads/defaultlocalstorage. Root integrationowner/sameauthoritativecodex/lct-inference-choice checkout at80738cf. FinishMeetfirst; importimplementation opens onlyafterthisboundedtestandcleanup. ExistingSite50/env60/public/customdomain/sourcecf34cbc6 confirmed; no newSite/provider/route/permission/purchase. Finalfresh285secondtimer namespacev2 normalizesexactlybacktopreviouslyreviewedtimer; positivereadinessnowrequiresallsevenretainedterminalbots and lastactualJoined+Permission. Freshscriptsprepared, notyetarmed; preflight/sourcehash checknext. Twohost/player tabs retainedashandoffs immediately; AVoff/emptyroomcheckedbeforebot. FiniteMeetacceptance full31secondclip -> at leasttwoincrementalfinalcaptionupdates/nonzeroPCM -> onesource-linkedmapwhileactive -> reloadnobotretry -> normalleave/finalaudio/localprivacy/cleanup. Proposed10–20activeminutesafterreadiness; externalcontrolwaitunknown. Audioimportestimate followsactualprovider/APIboundarycheck; no promisefromlegacycomponentexistence.
 
-
 ## 2026-10-20 12:15 IST — Audio import implementation begins after decisive provider probe
 
 Meet finalslot consumed, exactstop/closedjoins/8terminalrecords/hostleft accepted, noanotherbot ormap. SourcehelperopenssameSite50/cf34cbc6 in /private/tmp/lct-audio-import-site-open after one unexplained early failure; no sourceoverwrite/historychange. CurrentSonioxmetadatahealth refuses but actualexisting /session201 +5secondsyntheticWAV ->30finaltokens verifies STTcredential/provider. No quota/key reset. Native20session/300secondcaps unchanged. Plan and TestIntent written beforeimplementation; directbrowserdecode->16kPCM->existingSonioxWebSocket->exactsourceGemini/ORmap->existinglocalarchive. Originalbytesretained, no mic/serverfileupload. Files: audioImportFile.js, AudioImportSession.js, sonioxSessionClient.js, useAudioImport.js, SitesAudioImport.jsx; narrowRecordingSession extraction, optionalstrictPCM SonioxStream config, Home/route and correctaudiofilenameextensions. Focusedtests/actual3formatdecode/oneproviderimport/reload/privacy/ephemeral/cancel next. Estimate40–70minimplementation/tests +10–20minreview/publication, externalwaitunknown. Sourceedited only, notvalidated/committed/served.
-
 
 ## 2026-10-20 12:35 IST — Final Meet fails setup; audio import validated locally
 
@@ -8207,7 +10248,6 @@ Owner root; authoritative codex/lct-inference-choice worktree at 80738cf plus th
 Audio import source now implements MP3/WAV/M4A -> metadata and local mono16kPCM decoding -> one existing Soniox temporary-key session -> one selected Gemini/OpenRouter map -> browser archive by default. Original format/bytes retained. Consent, local/ephemeral choice, cancellation, provider refusal and exports covered. Files: new audioImportFile.js, AudioImportSession.js, sonioxSessionClient.js, useAudioImport.js, SitesAudioImport.jsx and behavioral tests; adjacent recordingSession.js extraction, optional PCM config in sonioxStream.js, route/Home/nav and localOnly export components. Full frontend 127 files/1121 tests pass in 20.94s with established Node26 flag. Sites build passes. Actual Chrome decoder accepted all three five-second formats at16000Hz/160000PCM bytes; mobile390px form usable. Explicit preview provider refusal retains original M4A and reload restores it without a provider request. This preview proves decoding/recovery only. Existing hosted temporary-key probe already returned30final tokens from five seconds of synthetic WAV; full hosted file-to-map acceptance remains pending review/publication.
 
 Next checkpoint: independent exact-source family review, native Site push/archive/save/deploy, then actual hosted synthetic import with local reload, exports and privacy. Existing limits20MiB/300seconds/20sessions unchanged. STT health GET/models refusal is a false-negative for actual session usability; separate issue retained. Estimated remaining10–20active minutes review/publication plus browser/provider waits; no calendar promise.
-
 
 ## 2026-10-20 13:08 IST — Served import handoff with an explicit failed-map boundary
 
@@ -8221,16 +10261,13 @@ The final permitted map request returned 502 with `invalid_completion / hierarch
 
 Browser QA found a readiness race that erased a missing-local-file error. Separating setup errors and adding a public-page regression fixed it. A synthetic SQLite clock initially had the wrong function arity; fixing its signature restored deterministic tests without weakening SQL or assertions. Missing-map copy is now truthful after reload. The required engineering ledger has a guard receipt. The exact owned preview process, PID75398, was stopped after command/cwd verification through normal sandbox escalation. Host/player were already left/ended; one optional tab-cleanup focus check timed out, without an active call or recorder. Evidence screenshot: `/private/tmp/lct-audio-import-live-final.jpg`. No private conversation or credential entered a test or external review.
 
-
 ## 2026-10-21 18:42 IST — Active Goal: finish audio import before Meet
 
 Root owns the existing codex/lct-inference-choice checkout, clean at feb9619. Execution verified on adityas-MacBook-Pro.local. Existing public Site53/custom hostname reverified; official source helper opened exact native0c1a2191584b25158162b293e017a15181440225 after normal network escalation resolved sandbox DNS. No new Site/environment/provider call. Plan docs/plans/2026-10-21-tier-safe-generation.md and tests/intent/tier-safe-generation.md record hypotheses, typed-reference repair, five-tier/source/privacy invariants, finite acceptance, forecast and fallback before code edits. Free parent strings are schema-valid despite prompt-only ordering; exact prior invalid output remains unavailable. Next decisive evidence: offline schema counterexample and v2 public-adapter round-trip/refusal, then exact independent review/deployment. Existing generation/bot allowances remain exhausted; no release or cap change. Meet work remains deferred until this slice is ready.
 
-
 ## 2026-10-21 18:50 IST — Tier-safe contract validated/reviewed; source release underway
 
 Source34a2620 committed/pushed to existing task branch, exact ten-path packet49042d6a/105433bytes passes independent Google Gemini3.8FlashLow review (fresh d550a554,14.197s,no findings). Existing validator unchanged; new generationSchema.js:1-68, tieredGeneration.js:1-47, generationHierarchy.js:1-24 route typed coordinates, openRouterGeneration.js:1-105 uses typed schema/prompt, sites/openRouter.js allowlists the fixed content-free diagnostic. New public adapter/Worker regressions and old wire assertions cover all tiers/source/overlap/path/refusal with isolated storage. Full1160/130files/5.84s and build pass; offlineAjv35/35 confirms higher-tier schema constraints. No live model call. Fresh live ledger has13rows/2unresolved, exact same latestfailed819a33a2 andolder23de48fb; preserved before release. Curated351files copied byte-for-byte to clean official native checkout, onlyfive expected production paths changed. Supported source helper packaging underway; deploy/native/live acceptance not yet claimed. Remaining dependency specific reservation recovery plus one capped hosted validation; no new allowance inferred from Goal. Plan and review receipt retained.
-
 
 ## 2026-10-21 19:05 IST — Reviewed generation repair served, real acceptance reserved
 
@@ -8240,16 +10277,13 @@ Separate exact unapplied SQLproposal targets819a33a2 only, preservesolder23de48f
 
 Final handoff suite19:04:16IST:1172/1172 in131files,11.01s, including12unapplied recovery guards. No productcodechanged after review/build/deploy. Exact evidence and pendingH1 remain in review receipt.
 
-
 ## 2026-10-21 19:09 IST — Import mobile account navigation parity
 
 Current audio journey remains pending exactH1 validation; independent safe UI repair continues. Actual390px custom-host import shows both floating Sign in and More->Profile. Instrumented source SitesAccessPanel.jsx:47 omits /import-audio from the route group that hides the standalone trigger and restores menu focus. User's earlier Profile-inside-three-dots instruction already decides the product behavior; this is A1 routine parity, no new taste/account permission. Hypothesis0.98: add exact import/trailing-slash routes to existing group; predict new guest/signed-in import variants fail hidden-panel assertion before and pass afterward, repeatedopen/close/hash/focus preserved. Fallback previous savedSite54, no auth/network/storage logic change. Testintent audio-import-profile-parity.md before code; SitesAccessPanel261lines remains cohesive, existing550line mixed test suite candidate documented in TECH_DEBT. Root/sameauthoritativeworktree, no inference/bot/recovery. Nextcheckpoint regression evidence then exactindependentreview/sameSitepublication;15-25active minutes separately from pendinghuman/providerwait.
 
-
 ## 2026-10-21 19:14 IST — Import profile parity validated/reviewed
 
 Sourceaa14b98 committed; task push underway. Four new guest/signed-in import/trailing-slash variants fail before and all37accountcases pass after exactroutegroupchange atSitesAccessPanel.jsx:47. Existing test550lines parameterized, no duplicates/expectationsremoved;45focused and1176/131files/9.85s combined/build pass. Independent Gemini3.8FlashLow PASS packetd44a7f5a/57887bytes/fresh5e7f85dd. Static localpreview no upstream/POST verifies More/Profile/Close/focus/nooverflow354CSSpx with390override/110percentlocalhostzoom; notliveidentity/providerproof. Viewportreset/previewtabclosed; ownedQAserverport52010 shutdownpending.351curatedfilesmatchreviewedexport, nativeonlySitesAccessPanel.jsx changed; officialhelperpublicationunderway. H1exactrecovery/onerealimport requeststillpending, no provider/bot/DBwrite. Nextcheckpoint actualcloudcompactlayout; no extra permissionquestion.
-
 
 ## 2026-10-21 19:18 IST — Import menu fix served and actual mobile behavior accepted
 
@@ -8257,13 +10291,11 @@ Sourceaa14b98f8ad0674f1e245c048da4d7fb98bac575 taskpushed/exactremote verified; 
 
 Currentaudioacceptance pending the already-presented one-timeH1 recovery+onecappedtest; approvalnotinferredfromGoal/time. Meetstillnextrequiredjourney, no newbot. UIissue resolvedinISSUES without alteringolderrecords. No remaining safe productchange necessary for this reviewed import slice before decisive realprovidercheck. Updatedboard/reviewrecords capture preciseboundary; preserve taskbranchhandoff next.
 
-
 ## 2026-10-21 19:33 IST — Goal continuation: actual local reopen and optional private-history gap
 
 Previousgoalturnclassifiedprogress: source/review/twoactualreleases/UIaccepted. Currentclean15e706d. ActualSite55reopens retainedsynthetic90e282cc with2speaker/159token transcript and31.087846secondoriginalMP3, whichplays toended=true/errornull. Actualguest/privatefilesrefusal andliveprivate2MiBcap verified. No newSTT/model/bot. CurrentdownloadMedia explicitlydoesnotsupportblob; ordinaryUIaudioactionnotificationtimesout, existingfilesystemcopiesare20October (notfresh), so no freshdownloadsuccessclaim. NativeChrome inspection reportsMaclocked; internalDownloadsURL blockedbybrowsersecurity, no workaround. Newhumanbrowserhandoffrequestedunlock/pendingSaveasnewcopies; H1generationrequeststillpendingseparately.
 
 Completionaudit finds /import-audio deliberatelyhidesallmanualcloudsavecontrols evenforsignedin users. Existing Goal/acceptedproduct alreadyrequiresoptionalprivatecloudhistory; A1 connectexistingprivatefileAPI only, preservelocaldefault/ephemeral/publicoptin/serverowners/caps. Plan2026-10-21-import-private-history.md andtestintentcreatedbeforecode. Newhook/compactstatus + pagewiring, no existingauth/backend/APIchanges or private-listautofetch. Nextcheckpoint signed-in/guest/refusal/cancel/sourcebyte regressions, then fullchecks/review/sameSiterelease.30-50active minutes+10-20review/release; human/actualproviderwaitunknown.
-
 
 ## 2026-10-21 19:48 IST — Optional import private copies validated/reviewed
 
@@ -8315,11 +10347,9 @@ Same combined reserved-test ruling remains unanswered after3resumedGoalturns (fi
 
 Userapprovescombined3STT/4maps/oneMeet+exact819a33a2release, no repeattestpermission. FreshSite57/env64/13rows2holders/preflight passes; onlybothflags off→env65/deploymentappgdep_6ad9cde3bc4481919719d6a813b54d2e actualChromeoff. Auto-reviewrejects promotioncommand beforeexecution: durablejournal/migrationautomaticapplication exceedsitsinterpretationofone-timeSQLscope. No actual0015/journal/sourcewrite or release. AllnativeDBtools read-only; no supportedone-timeSQLwriter identified, no unsafealternative route. Priorflagsrestoreenv66/same57/deploymentappgdep_6ad9cf36115c81919f267dea1233ada5 successful08:54:37UTC; actual13rows strictcompareequal,0newSTT/model/bot. Preparedproposal onlyoutsideappliedroots,13isolatedSQLite/metadata checks pass; independentGoogleGemini3.8FlashLowPASS fresh232894bc/15.975s/24168bytes/6bade426. Proposedthreefilesnowpreservedunder docs/proposals, notlct_app/drizzle/nativejournal. Newmethodplan/review namesonlyremainingdurableeffect; exacttestallowancesunusedvalid. Combinedrequestshouldhavespecifiedthisdeploymentmethodexplicitly; current humanrequestisnotanotherpaid/botallowance. Sitesstorageguidance schema-only requiresnarrowoperationalexception ifmethodapproved. YouTubequestionansweredwithoutpivot. Boardupdated, scope/forecasts/preserveddata/nextdecision explicit.
 
-
 ## 2026-10-22 14:50 IST — Exact durable recovery method approved; activation begins
 
 Human explicitly approves the exact three-file migration method and narrow Sites schema-only exception; combined3STT/4maps/oneMeet allowance remains unused. Root/same authoritative checkout, prior7321e6. Both flags paused atenv67/deploymentappgdep_6ad9d2f3b1fc8191a2a80077e2114886 succeeds09:10:36UTC; actualChrome normalhealthGETs confirm bothdisabled. Current13rows/twoholders still exact. Chrome extension updated normally to1.26.1015.10801, existingprofile reconnects browser7; retainedlocalimport reopens transcript, no new provider call. Officialsource opening initially cannotresolvehost inside sandbox; knownnetwork escalation is the materially different method, not repeated blindretry. Testintent before sourceinstall. Exact approved SQL/journal/snapshot promoted from proposal after hash/prefix guards; prior15entries untouched. Recovery test now runs installedSQL and verifies exactreviewedbody/proposal/snapshotmetadata. No new product logic, caps, schema, provider/key/permission/route. Nextcheckpoint isolatedtests/build, sameSiteOFFdeployment and exactone-rowpostflight; no live successclaim yet.
-
 
 ## 2026-10-22 — Exact recovery served; first live map refused and bounded dispatch stops
 
@@ -8328,7 +10358,6 @@ Task f1d87691dbcd0be15d6a6e31f6f325124c128a19 pushed.13focused/1202combined test
 OrdinaryUI selects approved31.09secMP3/explicitconsent/one submit. Actualincremental two-speaker transcript succeeds, originalaudio preserved; automaticone map returns providerrefusal. New attemptd1445dc2 created1792661065333/max8192/nullcompleted/nullrelease;14total records. Bothholders nowoccupied again; do not recover without specific ruling. Combinedallowances used1STT/1map/0bots. The approved stop-on-any-failure rule now ends furtherpaid/botdispatch; WAV/M4A/Meet unrun. No retry or replacementcall. Continue free source/logdiagnosis, localreopen/export/audio/mobileproof; no completionclaim.
 
 A documentation-only append was mechanically rejected as a shared-deploy-checkout write although its absolute destination was the authoritative worktree. Read-only pwd/git-toplevel/worktreeinventory prove distinct taskworktree f1d8769 versus primarye339fca. This continuation names the correctworkingdirectory and asserts branch/path before writing; no protected-checkout edit or permission bypass.
-
 
 ## 2026-10-22 15:15 IST — Retired Vertex model diagnosed; exact continuation reviewed, not activated
 
@@ -8346,20 +10375,17 @@ Actualfailure Worker diagnostics provider_refused/upstream404/providerStatusunkn
 
 Forecast: previous45–90active-minute live-validation estimate now interrupted by newly proven upstreamretirement, not exhaustedcredit. MP3preservation/export/privacy/mobile checks complete; maps/WAV/M4A/Meet remain unaccepted. Replacement/recovery plan prepared and reviewed before any newhumanrequest. One initial preparationcommand had a Pythonparseerror and executednothing; savedcorrectedpreparationscript succeeds, no repeatedblindmethod. Routine browserAPI discovery had unavailablegenericviewportdocumentation; actualadvertisedcapabilitydocumentation supplies supportedset/reset, usedonce andreset. Fulltasknotcomplete. No sourcepermission/useraccount/secretchange.
 
-
 ## 2026-10-22 17:35 IST — Approved model-retirement activation
 
 ActualMac/clean taskd48379a verified; root/sameauthoritativeworktree. Human grants exact priorreviewed continuation after ELI5; no duplicateask. FreshsamepublicSite58/env68/14rows/twoholders targetd1445dc2 older23de48fb match, targetolder15minutes. Bothflags pausedenv69/deploymentappgdep_6ad9fb5505308191b2bcfda59dac7d1c successful12:02:53UTC andactualChromeoff. Officialhelper opens native9f974d75. Hash/prefixchecked exactapproved0016SQL/journal/snapshot promoted in taskandnative; original16entries retained. Testintentupdated before activationassertions; local tests nowinstalledSQL/proposal equality, snapshot/journal exactness, oldrefusalbehavior. Independentreview reused for byte-identicalproductionproposal; no substantiveproductlogicnew. Newtestallowance4maps/2STT/sameunusedonebot still0used. Nextcheckpoint focused/combined/build/sameSiteOFFpublication/exact14rowtarget-onlypostflight, thennewmodel/freechecks/retainedMP3map.
 
 Focusedactivation26cases exposesoneoldmetadataassertion equating the entirefuturejournal to0015receipt; actualdiff isexactapprovedappended0016. H1over-specifictestoracle confirmedbydiff; changeonlytoexactoriginal16entryprefixandoriginalsnapshot, withnew0016testcheckingcurrentwhole17entryjournal. This retainsallhistoricalguards; noSQL/productlogicchange.
 
-
 ## 2026-10-22 17:42 IST — Replacement served; first real map accepted
 
 Task31fedc5pushed; full1215/132files7.36s/buildpass. Onlythreeexactreviewedmigrationfiles nativecb661df7a12a90892b67341fe404636c3c34273d/Site59/versionappgver_bbce17ba0ed48191a4342ae20784786d/archive7f0890cb/2048000bytes47files. OFFenv69/deploymentappgdep_6ad9fc47ccdc81919f3837ba57b06232 succeeds12:06:56UTC. Exactcomplete14rowpostflight changesonlyd1445dc2.recovery_released_at null→1792670805000, olderholder/allotherfieldsunchanged. Modelonly3.5FlashLite+priorenabledOpenRoutertrue/Geminifalse env70/deploymentappgdep_6ad9fc81b7508191a760718232da2a77 succeeds12:07:53UTC; caps/key/provider/privacyunchanged. Actualfreehealth acceptskey/accountcreditavailable/328ms; freshpublicVertexcataloguecompatible, notgenerationproofalone.
 
 OrdinaryretainedMP3UI newmodelshown/consentchecked/automaticupdatesoff/oneGenerate. Actualvalidmapaccepted andsaved: realattemptd5296643 created1792670910525 completed1792670915610/max8192, total15rows. Five-tier graph visible; sourcebutton→Sourcewordsdisclosure opens exactfirstutterance. Mapexportrecording011fba94.threads15130bytes/SHA c9845ad8a281030e6f03e7523d03e000be3f71ca8bca136c34db1bc33a0bb1b1. Newenvelopeused1map/0STT/0bots; lifetimevalidation2maps/1STT. No re-transcription/retry. LocalstandaloneNodevalidatorinitially cannotresolveextensionlessViteimport; esbuildexistingbundler is distinctsupportedmethod, no sourcepatch/dependency. Nextcheckpoint localreload/exportsourcevalidation/mobile, thenWAV/M4A, Meetlast.
-
 
 ## 2026-10-22 18:00 IST — All three real file formats pass; Meet preflight remains unsent
 
@@ -8368,7 +10394,6 @@ MP3local011fba94 map7nodes/fivetiers/onepath validates with159tokens/twoutteranc
 Responsiveoverride observations returned1512CSSpx twice despite390requested; resetaftereach andstoppedthatmethod, nofresh390mapclaim. Prioractual390importproof remainsseparate; current screenshotmp3-map-mobilefilename is NOT proof of390width. Sourcegraph/provenancevalidation passes; physicalphone/Safariunverified.
 
 Freshread-onlyAsus12.238s succeeds exactsourcefb0e59ab/stoppedworker/eightterminalrecords/0active. Afterpublicfreshnamespaceguardderivativesprepared/hashnormalized, SFTPnewfoldertransfertimesout beforeSSHconnection;TCP22checkalsotimesout. No successfulremoteuploadclaimed; no workerstart/timerarm/bot/providerdispatch/windowopen. LocalfixtureHTTPserver58916bindrequiresnormalsandboxnetworkescalation, nowservesonlysynthetic31secMP3/noautoplay. HostGoogleaccountadityaarpitha selectedunderpriorauthority, mic/cameraoff, actualjoinedroomPeople1/firstonehere/onlyyou. Norecording/notesenabled. Hostandplayerhandoffmarked. FirstbackgroundShareScreenreportsgenericCantshareerror; foregroundprofilemethodsameproblem; beforefurtheraction hosttabdisappearsfromownedanduserinventory. Causeunknown, no replacementbot/hostclaim. ReconcileconnectionsbeforeconsumingunusedMeetallowance. No broadpermissions/securitychanges.
-
 
 ## 2026-10-22 18:16 IST — IPv6 restores Asus control; real map mobile proof; Meet not dispatched
 
@@ -8382,7 +10407,6 @@ Independent IAB/view local opener loads already-generated .threads through norma
 
 Separate IAB at390px navigating the known Chrome audio-import UUID displays This import is not saved in this browser and disabled Create, confirming browser-local isolation without newprovider/session/map. Viewport reset and temporary IABtab closed. Chrome resultMP3 retained as deliverable; WAV/M4A/emptyhost/pausedsyntheticplayer/preparedguestform retained as handoffs. Guestform consent/link prepared but Join disabled because windowclosed. No timer/worker/bot/map starts while handoffpending.
 
-
 ## 2026-10-22 20:21 IST — Sharing-control explanation and bounded supported diagnostics
 
 User asks why the manual sharing handoff is needed; prior test authority persists. Supported browser troubleshooting guidance consulted; normal Chrome DOM control remains connected. Previous host tab absent from owned/relevant user inventory; new same-room approved host opened, correct account/alone/AVoff observed. No new bot/map/timer/window/worker activation. Fresh existingIPv6 hash-checked read-only Asus preflight succeeds: samefb0e59ab/eightterminalrecords/0active/stoppedworker.
@@ -8390,7 +10414,6 @@ User asks why the manual sharing handoff is needed; prior test authority persist
 Explicit native Window-menu selection and tab accessibility work; Meet page web controls are not exposed in native AX. A materially different single DOMkeyboard Enter activation produces the same Can'tshare error beforepicker; exposed capture-error logs provide no rootcause. Screenshot/private/tmp/lct-meet-share-failure-20261022.png retained privately. Initial nativeReturn immediate UI sample stillshowederror; I incorrectly announced no effect. Laterdialogdisappears, so native effect is uncertain, not provenfailed. Correctedtheclaim tohuman. Further native focused-share activation is intercepted beforeinput because another Chrome window becameactive; lateststate re-queried, no action taken in unrelatedwindow. Stopglobalnativeinput, no repeatedactivationorpermissionreset. DOMdocument.hasFocus is unavailable in supported read-onlyscope, no hiddenAPIworkaround.
 
 Finite next evidence remains actual synthetic-tab/audio sharing, not more permission. Fresh host/pausedplayer/preparedguestform retained as handoffs; playerobserved pausedtrue/currentTime0. RootcauseofShareScreenfailureunknown. FullMeetacceptance remains incomplete; unusedonebot/onemap allowancepreserved. Product source/deployment/data/keys/caps unchanged; no unnecessary product tests/review/redeploy for this diagnostic-only record.
-
 
 ## 2026-10-23 20:16 IST — Workspace sharing resolved; terminal-task repair prepared
 
@@ -8404,7 +10427,6 @@ Stagingthreepublicfiles timedout35sec: laterreadonlyreconciliationprovescandidat
 
 IndependentexactGoogleGemini3.8FlashLowreviewdispatchedviaexistingAGYsubscription;25207bytepacket/e5f1e2b4, publiccode/design/syntheticfixturesonly, rawlogs/artifacts/media/records/credentials excluded. PacketcorrectlylabelsactualWindowsdryrun/real-statechecksnotyetpassed. No furtherpermissionrequestforalreadyapprovedroutinework. At observed23Octgap, no newworker/timer/joinwindow/bot/mapstarted. BrowsercurrentinventorydoesnotshoworiginalWorkspacecall andincludesotherpages; do notactonunrelatedcall/calendar. Re-establishapprovedemptyhostafterrepairreadiness. Originalonebot/onemapunusedandvalid; fullGoalincomplete. Nextcheckpointreviewplusactualdryrun/real-modelproof, thenhashcheckedstoppedsourceapply andfreshguardedguestUItest. Forecast30–60activeminuterepairrange interruptedbytransport andexecutiongap; externalwait/livefixeffortunknown.
 
-
 ## 2026-10-23 22:53 IST — Terminal-task guard reviewed and validated; application pending
 
 Outcome remains one complete guest Meet journey; root owns integration in the existing codex/lct-inference-choice worktree. V2 exact independent Google review PASS, no findings, packet 30,568 bytes/SHA592ffb8073855619c76df337157ae50128dce0ebd21c5d5c569daca679a2059d, fresh e73346fe-bbb7-40e1-afff-20abf3c9da3d. First findings and evidence-based disposition retained in docs/reviews/2026-10-23-terminal-task-review.md. Sixteen isolated task/archive cases pass. V2 source f9d671d4 and installer a9e19643 remain prepared under attendee_stack/recovery/proposed, with explicit source/owner/mode checks and rollback archive; no source application yet.
@@ -8412,7 +10434,6 @@ Outcome remains one complete guest Meet journey; root owns integration in the ex
 Latest read-only SSH stdin validation succeeds in20.292seconds/exit0 after prior banner timeout: actual Windows parser/default dry-run passes; current worker source is original7c264ffa with retained UID/GID/mode and worker stopped. Real Django state-contract test reproduces original terminal controller construction under a sentinel, candidate returns before it, all eight retained bot rows unchanged. No queue ack/purge/data write/worker/bot/map. Do not infer live capture from this proof.
 
 Native Chrome Profiles selection reopens the explicitly approved Aditya(repub.live) profile without changing access. Its saved Workspace Meet group is closed; no unrelated call is joined or changed. Remaining dependency is fresh empty host/synthetic sharing plus source application/readback and guarded runtime preflight. Next evidence checkpoint: exact candidate installed in stopped worker, then sole unused bot/map under existing285second guard. Prior30–60active-minute repair estimate missed due intermittent SSH and execution gaps; remaining operation/live validation estimated25–45active minutes after connectivity/host readiness, external waits and newly exposed live defects unknown. No new authority is requested.
-
 
 ## 2026-10-24 07:02 IST — Guard installed; Workspace sharing works; engine recovery approved once
 
@@ -8423,7 +10444,6 @@ Overnight gap invalidates live readiness. Explicit repub Workspace profile reope
 Guarded activation's first Docker inspect returnsHTTP500 after78.663s and exits before docker start/one-shot creation. Alternate IPv6 exact-worker read timesout35s. Distinct bounded Windows diagnostic succeeds17.504s: SSH/Tailscale running, Desktoprunning, version query timesout8s (only its read-only client killed). Host/WSL metadata succeeds8.717s: docker-desktoprunning/other listed distributionsstopped; freeRAM718000of32947224KiB andC:15472177152of1972924035072bytes. Low memory is not causal proof. Clientfile29.5.3/noDOCKER_API_VERSIONoverride. Installed CLI-help/guard-existence query timesout25s/nooutput; not a passing check. All failed method outputs retained privately; no blind engine/API/permission change, no bot or map. Self-excluding process tool cannot run because existing Python runtimes lackpsutil; it reports unavailable, neverzero. No dependency installed or unrelated process killed.
 
 Broader host-wide recovery is a new H1 scope, separate from dedicated-worker authority. Prepared authored plan; exact6485byte Google/AGYreview463288b6/fresh71d39e6c PASS/no findings in13.448s; raw runtime logs/private media/records/credentials excluded. Operator explicitly approves one graceful Docker Desktop restart. One hostname-guarded command dispatched with60secondCLI/110secondtransport bounds; result pending, no repeat permitted. A timeout requires read-only reconciliation, not another restart. Persistent data retained; unrelated in-flight workloads may be interrupted under the specific approval. Existing single bot/map still unused. Next checkpoint exact engine/container/source/data postflight, then actual285second guard/guest acceptance; full journey remains incomplete. Remaining recovery5–15active minutes and live15–25 after readiness, external waits/new defects unknown; previous ranges missed due newly observed engine failure and execution gaps.
-
 
 ## 2026-10-25 00:23 IST — Restart/start result and current access blocker
 
@@ -8437,11 +10457,9 @@ No worker-start command was reached by the failed activation; no guard armed, jo
 
 Integration root/same authoritative branch. Next dependency is restoration of one existing Asus access path, not another approval of the product or test. Next evidence checkpoint is fresh exact runtime/source/data/queue/guard validation, followed by the same finite guest journey. Prior5–15recovery/15–25live active-minute forecast is missed because startup was uncertain and execution/connection gaps intervened; no reliable completion time until stable access. Goal remains incomplete/blocked (existing blocked Goal metadata preserved). Keep completed MP3/WAV/M4A delivery separate from unaccepted Meet capture. No new product edits after the reviewed guard; documentation-only diff check suffices here.
 
-
 ## 2026-10-25 00:48 IST — Durable checkpoint and control-plane limitation
 
 Checkpoint14707de8d4df9c66706ae150913a45c93440db67 is pushed and independently confirmed by git ls-remote on the exact task branch; working tree clean at that check. Local origin tracking ref is absent, so it was not used as remote proof. Latest native Sites environment read fails at the ChatGPT MCP transport, not an application/provider response; no new env write or deployment occurs. Site59/env70/closedjoins are last-verified values, not a fresh current-state assertion. Source guard and accepted import code remain unchanged. Both Asus transports and RustDesk are unavailable, native Tailscale inspection stalled, and runtime postrestart state remains unknown. Routine work is authorized; restoring one existing access path is the remaining connection handoff, with no new product/test permission requested.
-
 
 ## 2026-10-25 07:35 IST — Asus peer back; Windows access still unavailable
 
@@ -8451,7 +10469,6 @@ Materially different saved RustDesk path: fresh native AX/menu exposes the exist
 
 Documentation-only update to docs/plans/2026-10-01-lct-sites-migration.md current checkpoint, ISSUES.md existing access blocker, and this log. Integration root/authoritative codex/lct-inference-choice worktree unchanged. Imports remain delivered; guest Meet acceptance remains incomplete. Remaining dependency is an existing Windows control path. Next evidence: exact runtime/source/data/queue and Site readiness, empty approved Workspace host sharing, then the same unused one285second-guarded bot and one map with captions/audio/local-reload/privacy/shutdown acceptance. Existing approval persists; no repeated product permission requested. Forecast remains unknown until access is stable; prior recovery range missed for documented engine and transport failures. No unchanged source re-review or unrelated tests required; validate exact documentation diff before commit/push.
 
-
 ## 2026-10-26 07:30 IST — Fresh Asus access failure; Sites controls recovered
 
 Resumed approved Meet journey, root/same authoritative checkout clean at6c7fc63. Hypothesis: restored peer presence permits authenticated commands; alternative service/path failure. Normal Tailscale client proves Running and exact peer Online/Active with fresh07:21:57IST handshake. IPv4 SSH times out TCP connection10.021s; existing IPv6 route times out10.011s, both before hostname/auth receipt. Native saved RustDesk Connect reaches Connecting then a real remote-window error; screenshot directly proves rendezvous failure for both WebRTC and fallback. No Windows desktop/input or remote command reached. Stop these three failed methods; requested one local read-only service/listener handoff, not repeated product permission. User instead asks alternatives; researched official hosted Attendee pricing/realtime/transcription, Google Compute pricing/credit terms, AWS Lightsail and Google Meet Media API restrictions. No new hosting selection/account/provider/spend/retention or deployment inferred from the question.
@@ -8460,7 +10477,6 @@ Using updated Sites1.1.2 guidance, normal native get_site and environment read b
 
 New readiness issue: Mac temporary22October helper files absent. Inspected tracked older acceptance helper in full; it expects five bots and must not replace current eight-record preconditions. Record recovery/hash/readiness dependency rather than claim the guard is ready. No host copy or live data touched. Updated current milestone board, ISSUES and WORKLOG only. Existing source/import evidence unchanged; documentation diff check sufficient, no unchanged source re-review. Next evidence: existing Windows access plus exact runtime/Site/host-sharing readiness, or explicit cloud-host selection, before the single guarded ordinary guest Meet flow. No ETA until external dependency resolves; prior forecasts remain missed for documented engine/transport gaps.
 
-
 ## 2026-10-26 — Hosted provider trial selected; preparation only
 
 User explicitly selects small hosted Attendee trial. Root/same authoritative worktree, Site unchanged. Chrome basic Google identity login reaches app.attendee.dev dashboard: five free hours, zero bots and no API keys. Prepared named project-key modal without submitting. No legal-acceptance control appeared in this flow; no billing method/purchase/upgrade. API create form exposes only room/name, so it cannot provide the required visible server lifetime cap. Official rendered API schema confirms explicit180second-cap fields, native captions and MP3. Public OpenAPI file fetch returns403; stopped that read method and used rendered official field disclosures instead. Scalar's own docs warn web API client can use external proxy; no credential was placed there.
@@ -8468,7 +10484,6 @@ User explicitly selects small hosted Attendee trial. Root/same authoritative wor
 Prepared attendee_stack/hosted_trial/trial.py (225LOC), test_trial.py (82LOC), plan2026-10-26-hosted-attendee-trial.md and current board. Six isolated behavior cases pass, compile/diff check pass; no provider call from tests. Scope is one synthetic hosted provider proof/local artifacts, not a production adapter or full live-thread/browser-local journey. Client uses hidden direct key input, fixed API endpoint, no proxies/redirects, exact S3 media allowlist/no forwarded API key, positive empty-project gate and exclusive pre-POST marker. Key creation/entry and real trial still pending. No secret, real transcript/media/account or actual room URL is included in external-review packet. Existing AGY model-read sandbox limitation resolved through ordinary approved escalation; authenticated catalogue exposes Gemini3.8FlashLow. Exact source review next before live use; no unchanged Site tests/deployment required.
 
 Hosted trial first exact Google review returns FINDINGS, not PASS. Factual dispositions and substantive receipt/custody improvements are recorded in docs/reviews/2026-10-26-hosted-attendee-trial.md. Revised client remains below300LOC; one focused direct-provider operation, no split required. Eleven isolated cases now cover direct API origin, no token on signed MP3 download, bounded/JSON refusals, unknown media-host refusal, terminal failure, cleanup uncertainty and no repeated create. No live request/key generated. Existing31.087846second synthetic MP3 reverified by full SHA1d94b415904466f1d6768f63bcca4b60748ea9531f26f4a028389b6b2afa6154 and124882bytes; it remains local and excluded from review. Revised exact source review next.
-
 
 ## 2026-10-26 08:19 IST — Hosted source reviewed; credential created, private entry pending
 
@@ -8480,13 +10495,11 @@ User explicitly authorizes the prepared credential handoff. Clicked Create once 
 
 Updated milestone board and issue with this concrete dependency. Same Site/source/environment/production data untouched; Asus stopped methods not resumed. Next checkpoint is real preflight plus fresh host readiness, then one <=180second native-caption/MP3 pilot, terminal/playback/local-file checks and host/share teardown. Hosted adapter/live threads/browser persistence remain a separate unaccepted next slice. Forecast20–40active minutes after readiness; human/provider wait unknown. Commit/push this source and evidence checkpoint before idle; no repeated unchanged review/test run is needed for documentation-only receipt changes.
 
-
 ## 2026-10-26 08:24 IST — First hosted authentication preflight refuses; no dispatch
 
 User supplies Terminal output: TrialError/API HTTP401, retry_create:false. Run root contains initial intent only, with no preflight/create/bot/START marker; saved a separate private technical failure receipt with explicit user-report provenance. No key value is retained. Fixed endpoint and Authorization Token format rechecked against official list-bots docs and agree with code; therefore header mismatch is disconfirmed, not proof of a copied-value cause. Current clipboard examined only for length/whitespace/shape, never printed or transferred; this cannot establish that the failed entry was the intended key. Browser project now lists a second user-created key; do not create/delete/rotate another key. Asked for one manual corrected private-input preflight in fresh provider-run-02; old run retained, same one-bot allowance unused. New read-only preflight is routine authorized diagnosis, not a replacement live test.
 
 Fresh host observation finds the earlier call returned to Meet home. Reopened the exact approved room in correct Workspace identity; pre-join says no one else. Microphone had reset on navigation and is explicitly turned off; camera permission remains absent/off. Did not join, share or start notes. Earlier sharing proof remains historical only; require fresh sharing before START. No provider bot or Site/configuration change. Self-excluding local process probe cannot run because its interpreter lacks psutil; report no process conclusion and do not install a dependency or substitute a self-matching filter. User confirms process exited through the supplied prompt/output. Source/review remain unchanged, task checkpoint725ec41 is pushed and verified by exact ls-remote. Authentication and private entry remain next dependency; forecast resumes only once positive preflight/room readiness exist.
-
 
 ## 2026-10-26 08:40 IST — Local entry refusal isolated; safe diagnostics improved
 
@@ -8498,7 +10511,6 @@ User asks other ways. Read-only Sites capability check confirms server-only runt
 
 
 Hosted helper repair296ab8a final checkpoint: added adjacent absent-parent public CLI refusal;15 focused cases now pass, both sources compile into an isolated temp root, exact diff check passes. Independent Google Gemini3.8FlashLow/AGY fresh08e2503e-ca11-4c9c-8660-5dcdd5169c12 returns SUCCESS/PASS/no findings on the inspected32,490-byte source/test/delta packet (SHA16db1e5bbff6bd54391ef9f7d1cfdd18b0598f5f63f6a0f5d3182f273858f5bb;17.639s transport). Review receipt appended. No runtime input/API retry or bot; current manual method stays stopped. All task changes are committed for push; primary checkout and live Site remain untouched. Proposed existing-Site server secret plus hosted adapter is the recommended answer to the alternatives question; no selection/activation inferred. No new review of unchanged receipts required.
-
 
 ## 2026-10-26 — Site-hosted Attendee route selected
 
@@ -8516,7 +10528,6 @@ Final local validation before independent review:50focused/adjacent cases pass. 
 
 Changed production paths: sites/hostedAttendee.js1-117 direct API/media boundary; sites/hostedTrial.js1-119 owner/singleton/create/reconcile/leave controller; sites/worker.js10/43 route integration; src/pages/SitesHostedTrial.jsx1-123 protected synthetic-trial controls/caption/download UI; src/routes/AppRoutes.jsx7/40 route; db/schema.ts107-123 plus generated0017 SQL/snapshot/journal. Test additions cover actual SQLite and UI; old0016 test retains exact approved journal prefix, and ci_local.sh inherits the known test-only Node setting. Client/Worker build passes,192.41kB Worker. No file approaches300LOC; no monolith split needed. Exact source packet/review and native payload verification next, then default-off publication. No key, provider call, bot, data mutation or live deployment yet; one <=180second allowance unused.
 
-
 ## 2026-10-26 09:30 IST — Protected hosted Site deployed; provider key handoff pending
 
 Root/same authoritative worktree. Exact source5072b4a pushed; Google Gemini3.8FlashLow independent review PASS/no findings,71105byte packet/6d629639329dcbf18fccd9ad10d99a1f9e673a42fbabda46bce7912794448e3a, fresha645d564-6def-48cf-8e4f-3e3a666c51d3,15.935seconds. No private data/credentials/logs/media disclosed. Nine production files mirror into nativebf8e898; no package changes. Official native packaging recovered an unnecessary installer/shared-dependency-link mutation by preserving packages, proving complete lock inventories equal, restoring the confirmed-empty target and original tracked link. Native build and final mandatory1236/1236/135files pass9.74s at09:25:10. First sandbox test invocation was denied Vite temp write before tests; approved normal worktree execution passes. Installer audit16existing locked findings captured as untriaged separate issue, no auditfix/upgrades.
@@ -8526,7 +10537,6 @@ Archive preflight failed on AppleDouble names but orchestration mistakenly proce
 Actual Chrome custom-domain /meeting-trial serves new page; approved Google owner chooser completes, actual account panel says Your account/Signed in/Sign out. One popup-closed read and one transient CDP timeout were not treated as sign-in failure; current DOM/AX proves owner recognition. Live screenshot/private/tmp/lct-hosted-site-live-20261026.png. Synthetic390px preview is separate layout evidence, not runtime/auth proof. Desktop Site-settings and Terminal control are explicitly denied, so user privately entering LCT_HOSTED_ATTENDEE_API_KEY is the only current setup handoff; no bypass or new key. Next evidence positive closed-gate server check plus fresh host/synthetic sharing, then same unused180second native-caption/MP3/local-download pilot. Full guest live threads/automatic local archive/both-computers-off acceptance remains unproven. Forecast15–30active pilot minutes after key/host readiness, external waits/new defects unknown; prior implementation estimate reached publication but did not remove private-input dependency.
 
 Receipt docs/reviews/2026-10-26-hosted-attendee-site.md added; previous review/trial plan/milestone board/ISSUES/TECH_DEBT updated with exact states and remaining gate. No product change since reviewed5072b4a and no new code review needed for these receipts. Documents are progress custody, not acceptance. Finish diff validation/commit/push before idle; live trial retained for the user, synthetic preview teardown remains routine.
-
 
 ## 2026-10-26 23:13 IST — New room selected; hosted dispatch remains closed
 
@@ -8539,7 +10549,6 @@ Actual custom-domain trial field is prepared with the new room, consent unchecke
 
 Owner-session follow-up: routine existing-account chooser was selected, but the live panel later explicitly reports This sign-in attempt is missing or expired. Popup inspection timed out; attempted cancel then had no matching control because the panel had already changed. Fresh AX confirmed expiry, not successful sign-in or its cause. No password/token/cookie read, new scope, identity change, reset or repeated sign-in. Close only the Site panel and retain the disabled prepared form. Session readiness remains to establish once key/host prerequisites are available; no further human sign-in request at this blocked stage. Final live screenshot /private/tmp/lct-hosted-new-room-20261026.png. No capture/room transfer/call-control action was completed.
 
-
 ## 2026-10-27 00:23 IST — Exact secret settings opened; protected configuration diagnosis
 
 Read official OpenAI Docs managing-a-site runtime-values section; supported web route is ChatGPT Sites -> exact LCT row -> More actions -> Settings. In-app Google management login returns a generic refusal; existing Chrome owner session opens actual settings directly. Corrects the earlier assumption that denied native desktop settings made the web settings unavailable. Exact settings URL is https://chatgpt.com/space/sites/appgprj_6abe98e1b1b08191b2b763a78e1da819/settings. Prepared one last hosted-key row, SecretON before value, focused password field. User privately enters and reports saved; native environment73 confirms key name/is_secrettrue, value not read. No key/clipboard capture, new credential, relay-key overwrite or private disclosure. Same60 deployment appgdep_6adfa0402f0c819189e9fab18761190e succeeds2026-10-26T18:47:52.867277Z, admissionOFF.
@@ -8550,7 +10559,6 @@ Instrument: fresh owner-only trial status is successful but configuredfalse afte
 
 
 Configuration diagnostic validation:26focused public Worker/UI cases pass1.22s, mandatory1242/1242 in135files17.71s, client+Worker build succeeds192.83kB Worker. Five changed source/test files remain119/119/123/169/87lines; no monolith/refactor needed. Added fixed configurationIssues only after owner authorization, no values/lengths/hash/client key or provider call. Full original regex predicates/admission/create/leave/idempotency/media behavior preserved. Packet excludes worklog/issues/runtime/private UI evidence; exact independent Google review next.
-
 
 ## 2026-10-27 00:39 IST — Configuration diagnosis reviewed and published; runtime key gate isolated
 
@@ -8569,7 +10577,6 @@ Follow-up before asking another blind paste: current diagnostic establishes key 
 
 Refined key diagnostics:32focused cases and1248/1248 combined135files pass (4.87seconds combined). Valid20/512boundaries and unavailable/empty/whitespace/length/unsupported categories are tested through public Worker routes with zero outbound calls/rows, plus continued owner-only disclosure. No accepted-language expansion or raw/numeric-length/type/hash echo. Existing UI displays fixed returned messages without new product changes. Exact independent review required for this substantive diagnostic refinement before publication.
 
-
 ## 2026-10-27 00:54 IST — Length failure isolated without exposing the secret
 
 Refinement0b16467 pushed;32focused/1248combined135files pass4.87s. GoogleGemini3.8FlashLow fresh463df610-9f00-44b8-99b8-7378e5922b9f SUCCESS/PASS, no findings reported,47226byte packet/4380891245806650080e4fdd9d97f49d90dcdf7b845e05553458896725194c5b,14.399s transport. No private data or runtime material in packet. Official build193.25kB/nativef52e9e7, archive649289bytes/5c89eec22a6ca12b4ebe54c153af311ebbbc3b21de162180ed0de905607139e6;48of49payloads identical, only Worker changes. Same Site62/env73/appgdep_6adfa7c712208191b688559175db7c9b succeeds00:49:58IST, no install/schema/client/key/gate change.
@@ -8578,14 +10585,12 @@ Earlier private-correction ask was held because missing versus malformed runtime
 
 Root/same authoritative worktree. Next actual checkpoint unchanged: runtime configuredtrue, closed-gate authenticated+empty project, actual allowance and fresh empty Workspace/synthetic tab sharing, same unused180second provider pilot; no bot/provider/STT/map/reservation/spend. Full capture remains unproven. Forecast waits on private key/extension readiness; previous pilot estimate excludes this newly exposed diagnosis, not quietly counted as delivered. Exact updated review receipt/board/issues preserve local/committed/pushed/served/accepted distinctions.
 
-
 ## 2026-10-27 08:25 IST — Selected Recorder replay journey
 
 User explicitly requests their supplied Recorder recording for a visible streaming-input/live-thread test. Root/same authoritative worktree; no source edits yet. Existing Site62/env73 confirmed. Complete bounded ledgers:17 map attempts/one older unresolved,16 STT sessions; no mutation/release. Existing browser account opens the exact selected recording and ordinary Download produces a local M4A; original preserved. A150second excerpt is prepared locally, no personal media/transcript copied into repository or review. Source inspection finds the actual generator: import hook waits for finish and passes busy as map-saving, so live controls cannot dispatch during input. Existing microphone live scheduler/canvas can be reused. Plan/test intent written before implementation; same caps/providers/local storage and no bot. Next evidence focused regression plus exact code-only review, then one consented real replay (one STT/two maps maximum); full streaming acceptance remains pending.
 
 
 Live replay source wiring complete: useAudioImport.js owns a per-import cancellation signal and synchronous live-generation claim; SitesAudioImport.jsx exposes existing live controls during transcription; RecordingConversationMap.jsx accepts the claim/cancellation hooks. Three public-form regressions prove increasing partial sources and visible maps while input is held, no completion retry after refusal, and joint cancellation/late-result rejection. Focused67tests/3files pass; production117/99/130lines, test324lines assessed in TECH_DEBT. Combined acceptance running. No real provider call yet.
-
 
 ## 2026-10-27 08:43 IST — Real streamed audio and live-canvas acceptance passes
 
@@ -8604,7 +10609,6 @@ Final direct-field audit correction: explicit conversation_threads[].steps lengt
 
 Added scripts/verify_live_replay_receipt.py as the durable measurement guard: emits utterances and explicit thread-step lengths separately, rejects non-growing/non-prefix/future-source snapshots, prints no transcript content. Local safety tool only, no deployment or runtime change. Written testing exception to avoid redundant test infrastructure: direct synthetic success (unequal utterance/step counts), future-token refusal and incomplete-final refusal, followed by exact private receipts; no network/data writes.
 
-
 ## 2026-10-27 09:03 IST — Twenty-minute stability request: decisive guards found
 
 User requests a20minute audio replay to test sustained live threads. Root/same authoritative worktree. Prepared actual1200second/14,629,744byte excerpt in a fresh private root; original retained and no personal data in repo/review. NativeSite63/env73 confirmed; exact complete reads retain19model rows/one older unresolved and17STT. Public duration300seconds, validators/schema ceiling900, six-map UI limit and one remaining ordinary model slot cannot complete this test. No long provider request, source/migration/env change, quota/reset/release or bot. Prepared bounded owner-only separate trial accounting proposal; architecture/call-budget expansion requires one explicit new allowance, not another generic test permission. Official duration/pricing docs verified, costs estimates only. Next evidence reviewed proposed envelope and ruling, then exact implementation/closed-gate tests; no sustained stability claim yet.
@@ -8612,11 +10616,9 @@ User requests a20minute audio replay to test sustained live threads. Root/same a
 
 20minute proposal checkpoint: full local decode succeeds, file1200seconds/14,629,744bytes, no paid operation. Two bounded independent design reviews return findings; supported omissions addressed explicitly, no source/code-review PASS claimed. Final proposal adds reserve/dispatch crash states, no replacement after uncertain mint/socket drop,1500second effective trial deadline/1260second maximum key exposure,27periodic+1final request allocation,128KiB trial request ceiling and honest small-sample/censored metrics. Existing generator sends utterances, not prior map history; no guessed tokenizer equivalence. Exact source remains unimplemented/unactivated pending one new finite allowance. Fresh ledgers19/17 unchanged; Site63/env73 unchanged. Plan/review receipt committed/pushed for custody, no unchanged CI or further plan-review loop.
 
-
 ## 2026-10-27 15:22 IST — Explicit twenty-minute allowance accepted
 
 Owner approves the exact one-stream/28-map private replay envelope, separate schema-only trial receipts and same-Site deployment after tests/review. No purchase, key-limit increase, recovery or public-policy expansion. Root/same authoritative checkout; input1200seconds/14,629,744bytes retained. Test intent written before source edits. First source-open permission review times out before execution; authorized retry launches. Subsequent Git read resets; scoped credential is now confirmed expired by currentUTC09:51 and renewed through native same-Site tool. Known native checkout remains4921270/Site63, clean. Renewed opening in progress, no provider dispatch.
-
 
 ## 2026-10-27 15:48 IST — Private replay implementation and isolated acceptance
 
@@ -8625,7 +10627,6 @@ Root owns the finite twenty-minute replay in codex/lct-inference-choice at the e
 Test intent precedes edits. Real isolated SQLite tests cover identity/origin, balance, duplicate/concurrent/sequence/final/cap/deadline, uncertain mint/dispatch/provider refusal/95second timeout, input/recording refusal and earlier schema/holder preservation. Page regressions exercise live graph during held input, final catch-up/local save, cancellation and late response suppression. Focused18server/import checks pass; mandatory final combined1269/1269 in137files,4.35seconds. No fixture result is claimed as live stability. React checklist: effects clean up stream/timers/tasks/observers, nonurgent instrumentation updates once/second, bounded arrays and memoized transcript artifact; existing graph retained. New modules below150lines and schema/handlers/routes below300, no monolith refactor needed.
 
 Next checkpoint: exact independent code-only review, official native build/package then deploy closed gate to the same Site. Actual owner preflight must establish sufficient existing credit before activation; then ~20minutes real input plus final map/reload. Forecast25–40active minutes after successful deployment/credit; review/build/credential waits separate, unknown until observed. Prior proposal estimate excluded implementation/review; that added engineering time is now explicit. Local edited only until commit below; public runtime remains Site63/environment73.
-
 
 ## 2026-10-27 16:36 IST — Private replay deployed closed; actual session handoff blocks provider run
 
@@ -8636,7 +10637,6 @@ Same publicSite64/env74/appgdep_6ae07f295ef08191b510f0ed21fd8185 succeeds2026-10
 Browser navigation reports timeouts but subsequent state shows deployed page; no second Site/source restart. Owner sign-in attempt1 and2 explicitly expire (two-minute challenge). Final grouped attempt cannot resolve its rendered Google control from diff-only AX output; full-snapshot correction is attempted but automatic approval review rejects further auth clicks as beyond the bounded final attempt. Do not route around rejection or confuse Sign in/Account initial optimistic render with confirmed session. Existing supported browser API binding remains Chrome1; third-attempt actual final completion unknown, live page remains guest. This is a browser-control/session dependency, not missing test approval. Marked exact private replay page for handoff and asked user to complete existing approved Google-owner sign-in, no password/token sharing and no replay start. No further authentication action after rejection.
 
 Remaining finite acceptance: owner session→actual sufficient credit→temporary activation→one1200second real stream/serial live maps/final complete source→local reload→gateoff/postflight. Twenty-minute provider stability remains untested. Test allowance unused. Forecast25–40active minutes begins only after owner/balance checkpoint; missed immediate execution because browser/auth window expired during control latency. This wait is separate from completed implementation/review/build/deployment; no invented completion date. Original150second replay and hosted Meet states remain separate. Root/same authoritative worktree; primary untouched.
-
 
 ## 2026-10-27 — Renewed owner sign-in fails at the actual120second boundary
 
@@ -8774,7 +10774,6 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - Leading zeros in `integer()`: pre-existing and harmless.
   - The test mock "lacks `.run()`": false; completion uses `UPDATE … RETURNING` + `.first()`.
 - Full suite 142 files / 1,349 tests.
-
 
 ## 2026-11-04 00:54 IST — Paid 16k run (owner-approved here, "Yes, both")
 - One 20-minute run (`source-first-20min.json`, `google/gemini-3.5-flash-lite` on `google-vertex`), Worker built from `2417acf0`, harness DB from all repo migrations including 0019, `LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS=16384`.

@@ -21,6 +21,7 @@ vi.mock('reactflow', async () => {
       nodes.map(node => React.createElement('span', { key: node.id, 'data-node-id': node.id }, node.data?.title))),
     ReactFlowProvider: ({ children }) => children,
     useReactFlow: () => flow,
+    useNodesInitialized: () => true,
     applyNodeChanges: (_changes, nodes) => nodes,
   };
 });

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from contextvars import ContextVar
@@ -116,6 +117,16 @@ DEFAULT_CHUNK_OVERLAP_S = _bounded_env_int("STT_CHUNK_OVERLAP_S", default=1, min
 # essentially all real transients (10054 resets, getaddrinfo blips, 502s).
 DEFAULT_CHUNK_MAX_RETRIES = _bounded_env_int("STT_CHUNK_MAX_RETRIES", default=4, minimum=0, maximum=8)
 DEFAULT_CHUNK_RETRY_BACKOFF_S = max(0.0, _env_float("STT_CHUNK_RETRY_BACKOFF_S", default=1.5))
+# How long one STT request waits for a busy server before giving up. A server at
+# capacity answers 503 + Retry-After (the M5 local STT admits one request at a
+# time and says "retry in 30 s"); each wait follows Retry-After, capped by what
+# is left of this budget. The chunk backoff above (~22.5 s in all) gave up long
+# before a busy slot freed up. 0 disables waiting; a non-finite value falls back
+# to the default rather than waiting forever.
+_saturated_wait_budget = _env_float("STT_SATURATED_WAIT_BUDGET_S", default=900.0)
+STT_SATURATED_WAIT_BUDGET_S = (
+    max(0.0, _saturated_wait_budget) if math.isfinite(_saturated_wait_budget) else 900.0
+)
 
 # Dynamic silence-based segmentation defaults
 DEFAULT_MIN_SEGMENT_MS = _bounded_env_int("SEGMENT_MIN_MS", default=120_000, minimum=60_000, maximum=300_000)

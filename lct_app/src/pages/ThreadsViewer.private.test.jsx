@@ -31,6 +31,8 @@ beforeEach(() => {
 afterEach(async () => { if (root) await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.__MG_DEBUG__ = false; window.history.replaceState(null, "", "/"); });
 const mount = (bundle = fixture) => act(async () => root.render(<ThreadsViewer privateBundle={bundle} onPrivateClose={context.close} />));
 const click = label => act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === label).click());
+// Main's viewer has one cycling view-mode control; speaker naming lives in the Source panel.
+const switchView = async label => { for (let i = 0; i < 3 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
 
 it("opens only the supplied private graph despite competing public/local/Drive/src/router inputs, without persistence, URL changes or diagnostics", async () => {
   const log = vi.spyOn(console, "log").mockImplementation(() => {}), originalUrl = window.location.href;
@@ -41,19 +43,25 @@ it("opens only the supplied private graph despite competing public/local/Drive/s
   expect(host.querySelector('[data-testid="graph"]').dataset.diagnostics).toBe("false");
   expect(context.local).toEqual({ id: "colliding-local-id", title: "Existing local record" });
   expect(context.remote).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled();
-  expect(localStorage.length).toBe(0); expect(window.location.href).toBe(originalUrl); expect(window.history.state).toEqual({ marker: "existing-router-state" });
+  expect(localStorage.length).toBe(0); expect(window.location.href).toBe(originalUrl); // Main's in-memory exploration history may add only its opaque session marker; router
+  // state survives and no conversation content enters browser history.
+  const { lctExploration, ...routerState } = window.history.state;
+  expect(routerState).toEqual({ marker: "existing-router-state" });
+  if (lctExploration) expect(Object.keys(lctExploration).sort()).toEqual(["cursor", "owner"]);
+  expect(JSON.stringify(window.history.state)).not.toMatch(/Fixture idea|Synthetic question/);
 });
 
 it("reads bundled exact discussion, hides share-link controls and keeps speaker naming in memory", async () => {
   const originalUrl = window.location.href;
-  await mount(); await click("Discussion");
+  await mount(); await switchView("Discussion");
   expect(host.querySelector('[aria-label="Discussion"]')).toBeTruthy();
   expect(host.querySelector('[data-utterance-id="fixture-utterance-1"]').textContent).toContain("Synthetic question for the storage check.");
   expect(host.querySelector('button[aria-label^="Copy link"]')).toBeNull();
+  await act(async () => host.querySelector('button[aria-label="Source"]').click());
   expect(host.textContent).toContain("Names change in this view only");
-  const input = host.querySelector('form input');
+  const input = host.querySelector('input[aria-label="Speaker name"]');
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "Reviewed fixture speaker"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-  await act(async () => host.querySelector('form').dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => input.closest('form').dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(host.textContent).toContain("Reviewed fixture speaker");
   expect(context.local).toEqual({ id: "colliding-local-id", title: "Existing local record" });
   expect(fixture.utterances[0].speaker_display).toBeUndefined();

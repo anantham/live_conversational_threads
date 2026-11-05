@@ -41,6 +41,8 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.__MG_DEBUG__ = false; });
 const click = label => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label).click());
+// Main's viewer has one cycling view-mode control; speaker naming lives in the Source panel.
+const switchView = async label => { for (let i = 0; i < 3 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
 
 it.each([false, true])('opens the actual generated source in Graph/Discussion without remembering or saving speaker edits (compact=%s)', async compact => {
   context.compact = compact;
@@ -51,15 +53,16 @@ it.each([false, true])('opens the actual generated source in Graph/Discussion wi
   expect(host.querySelector('[data-testid="graph"]').dataset.diagnostics).toBe('false');
   const graphColor = host.querySelector('[data-node-id="fixture-moment"]').style.background;
   expect(graphColor).toBe(host.querySelector('[data-testid="legend"] [data-speaker-id="fixture-speaker"]').style.backgroundColor);
-  await click('Discussion');
+  await switchView('Discussion');
   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent.includes('Synthetic generated moment')).click());
   expect(host.querySelector('[data-utterance-id="utterance-0001"]').textContent).toContain('Exact synthetic recorded words.');
   expect(host.querySelector('[data-utterance-id="utterance-0001"] > span[aria-hidden="true"]').style.backgroundColor).toBe(graphColor);
   expect(host.querySelector('button[aria-label^="Copy link"]')).toBeNull();
+  await act(async () => host.querySelector('button[aria-label="Source"]').click());
   expect(host.textContent).toContain('Names change in this view only');
-  const input = host.querySelector('form input');
+  const input = host.querySelector('input[aria-label="Speaker name"]');
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Reviewed fixture speaker'); input.dispatchEvent(new Event('input', { bubbles: true })); });
-  await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await act(async () => input.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(host.textContent).toContain('Reviewed fixture speaker');
   expect(context.local).toEqual({ id: 'fixture-existing', title: 'Existing fixture' });
   expect(context.bundle.utterances[0].speaker_display).toBeUndefined();

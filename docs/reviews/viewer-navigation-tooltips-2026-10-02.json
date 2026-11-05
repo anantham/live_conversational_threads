@@ -1,0 +1,63 @@
+{
+  "pullRequest": "https://github.com/anantham/live_conversational_threads/pull/211",
+  "implementerFamily": "OpenAI",
+  "reviewerFamily": "Google Gemini",
+  "reviewerModel": "gemini-3.1-pro-high",
+  "route": "Authenticated AGY CLI, read-only inline packet, neutral cwd, plan+sandbox, verified deny-all hook",
+  "reviewedHead": "255da62b323e8095eb10d87835771e8b601b1922",
+  "verifiedCurrentHead": "255da62b323e8095eb10d87835771e8b601b1922",
+  "base": "3671f86f21838ab056a2cc778ca60d89c7e39763",
+  "verdict": "APPROVED",
+  "findings": [],
+  "packet": {
+    "files": [
+      "lct_app/src/components/TooltipButton.jsx",
+      "lct_app/src/components/TooltipButton.test.jsx",
+      "lct_app/src/components/graph/GraphReadingControls.jsx",
+      "lct_app/src/components/graph/GraphReadingControls.test.jsx",
+      "lct_app/src/components/MinimalGraph.jsx",
+      "lct_app/src/pages/ThreadsViewer.jsx",
+      "lct_app/src/components/threads/ThreadsViewerToolbar.jsx",
+      "lct_app/tests/e2e/viewer-continuity.spec.ts",
+      "tests/intent/viewer-navigation-tooltips.md"
+    ],
+    "bytes": 29685,
+    "sha256": "1c6b6b3a01fcd7feca7b3244bbe1787a756d331f446a8c11827603a13a677f20"
+  },
+  "completed": "2026-10-02T14:05:39.455Z",
+  "toolAttempts": 0,
+  "conversation": "753e8451-2d3d-47ea-a559-0fedc4a0da54",
+  "priorFindingDisposition": {
+    "F1": "Overclaim rejected by actual Chromium focus outline evidence at three widths; native outline retained; final review approved.",
+    "F2": "Fixed; Escape consumed only when trigger owns focus, regression reproduced before repair and passed after.",
+    "F3": "Fixed; unchanged tooltip coordinates reuse previous position state."
+  },
+  "validation": {
+    "focusedUnit": "10/10",
+    "adjacentUnit": "17/17 before tooltip-only review repairs",
+    "browser": "5/5 populated Chromium journeys at1440/390/1024",
+    "fullFrontend": "519/519 across86 files",
+    "lint": "Changed JSX clean",
+    "build": "Success"
+  },
+  "limitations": "supplied source review; validation not rerun",
+  "publication": {
+    "pullRequest": 211,
+    "state": "Merged and served; human acceptance pending",
+    "mergeCommit": "011259fcd21620c4ad6982a8519816dbed722539",
+    "mergedAt": "2026-10-02T14:08:35Z",
+    "productionDeployment": 6810317638,
+    "deploymentState": "success",
+    "deployedAt": "2026-10-02T14:09:12Z",
+    "publicURL": "https://threads.adityaarpitha.com/view?src=%2Fexperiments%2Foverlapping.threads",
+    "immutableURL": "https://lct-pftwzhdqj-adityas-projects-9c03351d.vercel.app",
+    "publicBundle": "/assets/index-BZUBIbn9.js",
+    "publicArrowJourneys": "2/2 at1440/390px, completed2026-10-02T14:10:23.910Z",
+    "publicBrowserErrors": 0,
+    "publicConsoleWarningsErrors": 0,
+    "publicNetwork5xx": 0,
+    "productionSmoke": "9/9, run37017870304, completed2026-10-02T14:10:50Z",
+    "identityLimit": "Immutable HTML redirects to Vercel login; no HTML equivalence claim. Exact SHA from Production metadata; final tooltip focus-scoped Escape/equality bailout observed in public bundle."
+  },
+  "openAdjacentIssue": "Details remain open on Source-focused Escape in the real bundled example, identically with tooltip hidden and hovered, while the key bubbles. Separate ISSUES entry; explicit Close works; cause unconfirmed. Normal arrow acceptance passed; no full UX audit claimed."
+}

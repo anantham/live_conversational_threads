@@ -591,24 +591,39 @@ The `lct_app/` frontend deploys to Vercel (project `lct_app`, id `prj_XpoD0R7ciZ
 
 ## Backend (Asus) — restart + deploy
 
-The Python backend does **not** deploy via Vercel (that's frontend-only). It runs on the **Asus** (`asus-strix-scar`, over Tailscale) as a hidden `uvicorn` on **:43181**, served to the tailnet at `https://asus-strix-scar.tail4741ad.ts.net`. It is launched by **`logs/start_lct_backend.ps1`** (NOT a Scheduled Task) which runs `.venv\Scripts\python -m uvicorn lct_python_backend.backend:lct_app --host 0.0.0.0 --port 43181` (hidden window; logs → `logs/lct_backend.manual.*.log`). **No `--reload`**, so backend code changes need a manual restart.
+The Python backend does **not** deploy via Vercel (that's frontend-only). It runs on the **Asus** (`asus-strix-scar`, over Tailscale) as a hidden `uvicorn` on **:43181**, served to the tailnet at `https://asus-strix-scar.tail4741ad.ts.net`. **No `--reload`**, so backend code changes need a restart.
 
-**Restart the backend** (THE recurring step — do it over SSH from the Mac, or locally):
-```powershell
-# 1. stop the current backend (frees :43181)
-Get-NetTCPConnection -LocalPort 43181 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-# 2. start fresh (the script refuses to start a duplicate while :43181 is held, so STOP first)
-powershell -ExecutionPolicy Bypass -File "C:\Users\adity\Documents\Ongoing Local\live_conversational_threads\logs\start_lct_backend.ps1"
-# 3. wait ~15-30s, then verify with an authed GET to the tailnet URL
+**Who runs it (verified live 2026-11-04):** IndrasNet's supervisor, `scripts/start_all.py --autostart` (TemporalCoordination repo, `grimoire/IndrasNet`), started by Windows Task Scheduler. Its `lct_backend` agent (enabled by `ENABLE_LCT_BACKEND=1`) runs `.venv\Scripts\python -m uvicorn lct_python_backend.backend:lct_app --host 0.0.0.0 --port 43181` from this repo's root and probes `GET /api/import/health` every 30 s. The live log is **`logs/backend.log`**. The `logs/lct_backend.manual.*.log` files are from the old manual launcher and have not been written since 2026-09-25.
+
+**Supervisor limits** (from the copy of `start_all.py` synced to the Mac; re-check the Asus copy if it matters):
+- When the backend exits, including when you stop it deliberately, the supervisor restarts it after a backoff. Each exit counts as a crash. The count resets only after 5 minutes with no exit, so after 5 exits without such a quiet gap it stops restarting `lct_backend`.
+- Its startup probe allows **180 s**. If the new process fails to come up in that time (for example, the new code fails to import), the supervisor logs "restart failed" and **does not retry**. The backend then stays down.
+- No SSH-safe way to bring the backend back after that has been verified yet. `logs/start_lct_backend.ps1` refuses elevated shells, and SSH sessions to the Asus are elevated. It works from a normal local terminal on the Asus; otherwise ask the owner.
+
+**Check what is running:** `GET /api/version` needs no token. It reports `git_sha` (captured at process start, so a `git pull` without a restart does not change it), `git_dirty`, `canonical_python` (true when the repo's `.venv` serves :43181) and `pid`:
+```bash
+curl -s https://asus-strix-scar.tail4741ad.ts.net/api/version
 ```
-SSH form from the Mac: `ssh adity@asus-strix-scar "powershell -NoProfile -EncodedCommand <b64>"` — a bare `powershell -Command` with pipes / `$_` mangles, so base64-encode the script as UTF-16LE.
+
+**Restart the backend:**
+1. Check `logs/backend.log` for import/STT work in the last few minutes (`[CHUNK]`, `[SEGMENT`, `[STT`, `POST /api/import`; ignore the `GET /api/import/health` probes). Stopping kills a running import without a graceful shutdown, so wait until it finishes.
+2. Pre-flight: `.\.venv\Scripts\python -c "import lct_python_backend.backend"` from the repo root. The import does not connect to the database, and a failure here means the supervisor's restart would fail too (see limits above).
+3. Stop the listener once and let the supervisor bring it back. It took about 12 s on 2026-11-04; allow up to 180 s and do **not** stop it again while it starts:
+   ```powershell
+   Get-NetTCPConnection -LocalPort 43181 -State Listen | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
+   ```
+4. Poll `/api/version` until the `pid` changes and `git_sha`, `git_dirty: false` and `canonical_python: true` are as expected.
+
+**SSH from the Mac:** `ssh adity@asus-strix-scar "powershell -NoProfile -EncodedCommand <b64>"`. A bare `powershell -Command` mangles pipes and `$_`, so base64-encode the script as UTF-16LE. The tailnet link can degrade (DERP relay, dropped sessions). For a multi-step deploy, copy a script **under `logs/`** (gitignored, so the checkout stays clean) and start it detached (`Invoke-CimMethod Win32_Process -MethodName Create`), so a dropped session cannot stop it halfway. Have it log each step to a file under `logs/`.
 
 **Full backend deploy** after merging a backend change to `main`:
-1. On the Asus: `git -C "<repo>" pull --ff-only origin main` (the Asus checkout tracks `main`).
-2. If the change includes an Alembic migration: from `lct_python_backend/`, `..\.venv\Scripts\python -m alembic upgrade head` (DB URL comes from `.env`).
-3. Restart (above). Any frontend half auto-deploys via Vercel separately.
+1. Run `git status` on the Asus checkout; it tracks `main` and has been found dirty. Park any uncommitted edits on a pushed `wip/...` branch (never discard them), then `git switch main` and confirm `git status --porcelain` is empty.
+2. `git -C "<repo>" pull --ff-only origin main`.
+3. Run the pre-flight import (restart step 2) now, before touching the database.
+4. If the change includes an Alembic migration: check `logs/backend.log` for running imports first (restart step 1), then from `lct_python_backend/`, `..\.venv\Scripts\python -m alembic upgrade head` (DB URL comes from `.env`).
+5. Restart (above). Any frontend half auto-deploys via Vercel separately.
 
-**Gotchas:** `start_services.ps1` is a *different* (dev) orchestrator — it starts a backend on **:43180** (`backend:app`, `--reload`) + IndrasNet; the **production/tailnet backend is the :43181 one from `start_lct_backend.ps1`**. `AUTH_TOKEN` for authed calls is in `lct_python_backend/.env`.
+**Gotchas:** production Python is **3.9.21** (the Asus `.venv`), older than CI and the M5, so 3.10-only syntax passes CI and breaks on production. `from __future__ import annotations` makes `X | None` safe in plain code and tests, but FastAPI route signatures and Pydantic models evaluate their annotations at runtime, so use `Optional[X]` there. `start_services.ps1` is a *different* (dev) orchestrator: it starts a backend on **:43180** (`backend:app`, `--reload`) + IndrasNet. `AUTH_TOKEN` for authed calls is in `lct_python_backend/.env`.
 
 ## Design Context (frontend)
 

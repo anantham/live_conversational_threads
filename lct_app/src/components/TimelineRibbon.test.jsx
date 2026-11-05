@@ -10,6 +10,7 @@ import TimelineRibbon from "./TimelineRibbon";
  * - Keep the resting header free of persistent instructional copy.
  * - Make long thread names discoverable on hover and let readers widen the label gutter.
  * - Preserve return markers, time ticks, selection, and within-thread navigation.
+ * - Publish the selected thread's chronological authored node IDs for graph reading controls.
  */
 
 let container;
@@ -136,6 +137,23 @@ describe("TimelineRibbon render", () => {
     expect(updater(null)).toBe("a1");
   });
 
+  it("publishes the chosen thread path and clears it on a second click", () => {
+    const onReadingPathChange = vi.fn();
+    render({ graphData: threadedGraph, selectedNode: null, onReadingPathChange });
+    const visionLabel = [...container.querySelectorAll("button")].find(
+      (button) => !button.getAttribute("aria-label") && button.textContent.includes("vision"),
+    );
+    act(() => visionLabel.click());
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({
+      threadId: "thread::vision", nodeIds: ["a1", "a2", "a3"],
+    });
+    act(() => visionLabel.click());
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({ threadId: null, nodeIds: [] });
+    act(() => visionLabel.click());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({ threadId: null, nodeIds: [] });
+  });
+
   it("collapses to a compact bar and expands without losing its rows", () => {
     render({ graphData: threadedGraph, selectedNode: null });
     const collapse = container.querySelector('button[aria-label="Hide thread timeline"]');
@@ -192,5 +210,59 @@ describe("TimelineRibbon render", () => {
     expect(container.querySelector("section")?.dataset.open).toBe("true");
     act(() => container.querySelector('[aria-label="Hide thread timeline"]').click());
     expect(onExpandedChange).toHaveBeenCalledWith(false);
+  });
+
+  it("exposes all 15 lanes in one scroll area, with honest counts and an expansion control", () => {
+    const authored = Array.from({ length: 14 }, (_, index) => ({
+      id: `n${index}`, thread_id: `thread::${index}`, thread_ids: [`thread::${index}`], timestamp_start: index * 10,
+    }));
+    const graphData = [[...authored, { id: "free", timestamp_start: 150 }]];
+    render({ graphData, selectedNode: null });
+    expect(container.textContent).toContain("14 threads · 1 unassigned");
+    expect(container.querySelectorAll('[data-testid="timeline-node"]')).toHaveLength(15);
+    const viewport = container.querySelector('[data-testid="timeline-lane-viewport"]');
+    const gutter = container.querySelector('[data-testid="thread-label-gutter"]');
+    const plot = container.querySelector('[data-testid="timeline-node"]').parentElement.parentElement;
+    expect(viewport.className).toContain("overflow-y-auto");
+    expect(gutter.style.height).toBe("468px");
+    expect(plot.style.height).toBe(gutter.style.height);
+    expect(viewport.style.maxHeight).toBe("202px");
+    const expand = [...container.querySelectorAll("button")].find((button) => button.textContent === "Expand lanes");
+    expect(expand).not.toBeNull();
+    act(() => expand.click());
+    expect(viewport.style.maxHeight).toBe("55dvh");
+    expect(container.querySelector('[aria-expanded="true"][aria-controls="thread-timeline-lanes"]')).not.toBeNull();
+  });
+
+  it("navigates all unique moments in a selected secondary thread", () => {
+    const graphData = [[
+      { id: "shared", thread_id: "alpha", thread_ids: ["alpha", "beta"], timestamp_start: 0 },
+      { id: "own", thread_id: "beta", thread_ids: ["beta"], timestamp_start: 10 },
+    ]];
+    const onReadingPathChange = vi.fn();
+    const setSelectedNode = vi.fn();
+    render({ graphData, selectedNode: null, onReadingPathChange, setSelectedNode });
+    const beta = [...container.querySelectorAll('[data-testid="thread-label-gutter"] button')].find((button) => button.textContent.includes("beta"));
+    act(() => beta.click());
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({ threadId: "beta", nodeIds: ["shared", "own"] });
+    act(() => container.querySelector('[aria-label="Next node in beta"]').click());
+    expect(setSelectedNode.mock.calls[0][0](null)).toBe("shared");
+    expect(container.querySelectorAll('[data-testid="timeline-node"]')).toHaveLength(3);
+    expect(container.querySelector("polyline").getAttribute("points").trim().split(" ")).toHaveLength(2);
+  });
+
+  it("restores a parent reading path without announcing a new lane click", () => {
+    const onReadingPathChange = vi.fn();
+    render({ graphData: threadedGraph, selectedNode: null, activeThreadId: "thread::privacy", onReadingPathChange });
+    const gutter = container.querySelector('[data-viewer-scroll="timeline"]');
+    const plot = container.querySelector('[data-viewer-scroll="timeline-x"]');
+    expect(gutter).not.toBeNull();
+    expect(plot).not.toBeNull();
+    expect(gutter.contains(plot)).toBe(true);
+    expect(container.querySelector('[data-testid="thread-label-gutter"] .bg-blue-50')?.textContent).toContain("privacy");
+    expect(onReadingPathChange).not.toHaveBeenCalled();
+    render({ graphData: threadedGraph, selectedNode: null, activeThreadId: null, onReadingPathChange });
+    expect(container.querySelector('[data-testid="thread-label-gutter"] .bg-blue-50')).toBeNull();
+    expect(onReadingPathChange).not.toHaveBeenCalled();
   });
 });

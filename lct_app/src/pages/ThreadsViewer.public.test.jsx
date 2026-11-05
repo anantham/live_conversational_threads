@@ -16,14 +16,17 @@ vi.mock("../components/TimelineRibbon", () => ({ default: () => null }));
 vi.mock("../components/threads/YouTubeSourcePanel", () => ({ default: () => null }));
 vi.mock("../components/threads/DriveThreadsGate", () => ({ default: () => <div>Wrong Drive gate</div> }));
 vi.mock("../components/threads/PublicDriveThreadsGate", () => ({ default: () => null }));
-vi.mock("../components/discussion/DiscussionView", () => ({ default: ({ nodes, onRenameSpeaker, linkBase }) => <div><span>{nodes[0].speaker_display || "Original speaker"}</span><a data-testid="discussion-link" href={linkBase + "#discussion=one"}>Branch link</a><button type="button" onClick={() => onRenameSpeaker("speaker-one", "Reviewed name")}>Rename fixture speaker</button></div> }));
+vi.mock("../components/discussion/DiscussionView", () => ({ default: ({ nodes, linkBase }) => <div><span>{nodes[0].speaker_display || "Original speaker"}</span><a data-testid="discussion-link" href={linkBase + "#discussion=one"}>Branch link</a></div> }));
+// Main moved speaker naming into the Source panel; the public copy must still keep names in this view only.
+vi.mock("../components/threads/TextSourcePanel", () => ({ default: ({ onRenameSpeaker, namesStayInView }) => <aside data-names-stay-in-view={String(namesStayInView)}><button type="button" onClick={() => onRenameSpeaker("speaker-one", "Reviewed name")}>Rename fixture speaker</button></aside> }));
 import ThreadsViewer from "./ThreadsViewer";
 
-const fixture = { format: "lct.threads", format_version: 2, conversation_id: "same-local-id", conversation_title: "Public fixture", graph_data: [{ id: "one", node_name: "Synthetic public idea", summary: "No personal data", speaker_id: "speaker-one", speaker_display: "Original speaker", semantic_level: 1 }], edges: [], edge_schema: { version: 1, directed: true, endpoint_space: "graph_data.id" } };
+const fixture = { format: "lct.threads", format_version: 2, conversation_id: "same-local-id", conversation_title: "Public fixture", graph_data: [{ id: "one", node_name: "Synthetic public idea", summary: "No personal data", speaker_id: "speaker-one", speaker_display: "Original speaker", semantic_level: 1 }], utterances: [{ id: "u1", speaker_id: "speaker-one", text: "Synthetic public words" }], edges: [], edge_schema: { version: 1, directed: true, endpoint_space: "graph_data.id" } };
 let root, host;
 beforeEach(() => { globalThis.IS_REACT_ACT_ENVIRONMENT = true; window.__MG_DEBUG__ = false; localStorage.clear(); context.local = { id: "same-local-id", title: "Private device fixture" }; context.navigate.mockReset(); host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 const click = label => act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === label).click());
+const switchView = async label => { for (let i = 0; i < 3 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
 
 it("loads only the public endpoint, keeps branch links public and changes names in this view without replacing local history", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => structuredClone(fixture) }));
@@ -33,8 +36,10 @@ it("loads only the public endpoint, keeps branch links public and changes names 
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(fetch.mock.calls[0][0]).toBe(`/api/cloud/public-threads/${context.id}/content`);
   expect(fetch.mock.calls[0][1].credentials).toBe("omit");
-  await click("Discussion");
+  await switchView("Discussion");
   expect(host.querySelector('[data-testid="discussion-link"]').href).toContain(`/public/${context.id}`);
+  await act(async () => host.querySelector('button[aria-label="Source"]').click());
+  expect(host.querySelector("[data-names-stay-in-view]").dataset.namesStayInView).toBe("true");
   await click("Rename fixture speaker");
   expect(host.textContent).toContain("Reviewed name");
   expect(context.local).toEqual({ id: "same-local-id", title: "Private device fixture" });
