@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-11-05 11:54 IST — Test the RESTART_REQUESTED route on the Asus backend
+
+- Owner-approved live test, run as a detached script on the Asus
+  (`logs/restart_request_test.ps1`, log `logs/restart_request_test_20261105_115343.log`)
+  because the tailnet link kept dropping. The script aborts before writing if
+  `/api/version` does not answer, an import ran in the last 10 minutes, or the
+  pre-flight import fails.
+- First run (11:29) aborted at its first check: `/api/version` did not answer within
+  5 s. `start_all.log` shows `web_server` and `lct_backend` probes timing out at the
+  same moments 11:28-11:30, i.e. the whole machine stalling [correlation]. Nothing was
+  written.
+- Second run (11:53, 20 s timeout): no import activity, pre-flight import OK, request
+  file (`lct_backend`, ASCII, no BOM) picked up in 2.1 s; `start_all.log`: "clean
+  restart requested ... restarting immediately ... Started (port 43181)", no `CRASH:`
+  line. `/api/version` pid 21568 → 40916 after 19.3 s, same SHA `1cca862b`, clean,
+  canonical Python. AGENTS.md now prefers this route for restarts; the down-backend
+  (takeover) path remains untested.
+
 ## 2026-11-05 11:40 IST — Verify the Asus supervisor against the Asus copy
 
 - Read-only check over SSH. Task Scheduler task `\IndraSupervisor` (user
