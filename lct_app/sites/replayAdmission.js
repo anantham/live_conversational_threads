@@ -1,4 +1,4 @@
-import { OpenRouterError } from './openRouterPolicy.js';
+import { OpenRouterError, STALE_ATTEMPT_MS } from './openRouterPolicy.js';
 export const REPLAY_PREFIX = '/api/cloud/replay-trial';
 export const REPLAY_SECONDS = 1260, REPLAY_MAPS = 28;
 export const replayError = (status, code, message) => new OpenRouterError(status, code, message);
@@ -35,10 +35,10 @@ export async function reserveReplay(env, config, owner, { requestId, kind, seque
         AND (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'map') < ?
         AND NOT EXISTS (SELECT 1 FROM lct_audio_replay_attempts WHERE kind = 'map' AND phase = 'final')
         AND NOT EXISTS (SELECT 1 FROM lct_audio_replay_attempts WHERE kind = 'map' AND created_at > ?)))
-      AND (SELECT COUNT(*) FROM lct_openrouter_attempts WHERE completed_at IS NULL AND recovery_released_at IS NULL) < 2
+      AND (SELECT COUNT(*) FROM lct_openrouter_attempts WHERE completed_at IS NULL AND recovery_released_at IS NULL AND created_at > ?) < 2
       AND (SELECT COUNT(*) FROM lct_soniox_sessions WHERE lease_until IS NULL OR lease_until > ?) < 2
     RETURNING request_id`).bind(requestId, kind, sequence, phase, now, inputBytes, sourceEnd, owner, config.id, now,
-      kind, kind, sequence - 1, phase === 'final' ? 28 : 27, now - 45000, now).first();
+      kind, kind, sequence - 1, phase === 'final' ? 28 : 27, now - 45000, now - STALE_ATTEMPT_MS, now).first();
   if (!row) throw replayError(409, 'admission', 'Replay admission refused a duplicate, concurrent, expired or out-of-order operation. Preserve its existing receipt.');
   const dispatched = await env.DB.prepare("UPDATE lct_audio_replay_attempts SET state = 'dispatching' WHERE request_id = ? AND state = 'reserved' RETURNING request_id").bind(requestId).first();
   if (!dispatched) throw replayError(503, 'uncertain', 'Replay dispatch acknowledgement is unavailable. The reserved operation remains spent.');

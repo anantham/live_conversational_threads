@@ -7,6 +7,7 @@ import worker from '../../../sites/worker.js';
 import { readThreadsFile } from '../threadsArtifact.js';
 import { buildDiscussionModel } from '../../components/discussion/discussionModel.js';
 import { MAP_CLIENT_DEADLINE_MS, MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../cloud/generationDeadlines.js';
+import { STALE_ATTEMPT_MS } from '../../../sites/openRouterPolicy.js';
 
 const SITE = 'https://fixture-inference.example.chatgpt.site', PREFIX = '/api/cloud/openrouter';
 const KEY = 'synthetic-owner-key';
@@ -147,15 +148,32 @@ describe('OpenRouter Worker API with actual generated SQLite schema', () => {
     expect(count()).toBe(1); expect(row().completed_at).toBe(null);
   });
 
-  it('retains uncertain concurrency slots across long waits and enable toggles', async () => {
+  it('retains uncertain concurrency slots while an attempt could still run, across enable toggles', async () => {
     vi.useFakeTimers();
     for (let index = 0; index < 2; index++) {
       fetch.mockImplementationOnce(async () => new Response('unknown', { status: 200 }));
-      expect((await worker.fetch(req(), env)).status).toBe(502); await vi.advanceTimersByTimeAsync(3600_000);
+      expect((await worker.fetch(req(), env)).status).toBe(502); await vi.advanceTimersByTimeAsync(10_000);
     }
     env.LCT_OPENROUTER_ENABLED = 'false'; await worker.fetch(req(), env); env.LCT_OPENROUTER_ENABLED = 'true';
     expect((await worker.fetch(req(), env)).status).toBe(429); expect(count()).toBe(2); expect(fetch).toHaveBeenCalledTimes(2);
     expect(await (await worker.fetch(req('/status', { method: 'GET' }), env)).json()).toMatchObject({ enabled: true, available: false });
+  });
+
+  it('frees uncertain slots once no Worker can still run them, without refunding the attempt count', async () => {
+    vi.useFakeTimers();
+    for (let index = 0; index < 2; index++) {
+      fetch.mockImplementationOnce(async () => new Response('unknown', { status: 200 }));
+      expect((await worker.fetch(req(), env)).status).toBe(502); await vi.advanceTimersByTimeAsync(10_000);
+    }
+    // A slot may only be freed after both Worker windows have closed, and must be freed within 5 minutes.
+    expect(STALE_ATTEMPT_MS).toBeGreaterThan(MAP_INPUT_WINDOW_MS + MAP_PROVIDER_WINDOW_MS);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(await (await worker.fetch(req('/status', { method: 'GET' }), env)).json()).toMatchObject({ enabled: true, available: true });
+    expect((await worker.fetch(req(), env)).status).toBe(200); expect(count()).toBe(3);
+    // The two failures stay unfinished and counted: the cap of 4 now leaves one attempt.
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts WHERE completed_at IS NULL').get().n).toBe(2);
+    await vi.advanceTimersByTimeAsync(10_000); expect((await worker.fetch(req(), env)).status).toBe(200);
+    await vi.advanceTimersByTimeAsync(10_000); expect((await worker.fetch(req(), env)).status).toBe(429); expect(count()).toBe(4);
   });
 
   it('bounds stalled provider bodies and cancels the reader without refunding admission', async () => {
