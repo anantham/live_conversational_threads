@@ -43,11 +43,16 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
-      # Only the Sites Worker and cloud services are lint-clean today. The whole tree has ~129
-      # older errors, and the Sites pages have one (an unused mapError in SitesNewConversation.jsx);
-      # widen this list as those are fixed rather than gating every PR on unrelated debt.
-      - name: Lint (Sites Worker and cloud services)
-        run: npx eslint sites src/services/cloud
+      # Lints the Sites code that is clean today: the Worker, cloud services, the Sites pages and
+      # their components. The whole tree has ~129 older errors. src/services/serverless (the Worker
+      # tests) is left out for now: 32 errors, mostly Node globals (`global`, `process`) that the
+      # browser lint config does not know. Widen this list as those are fixed rather than gating
+      # every PR on unrelated debt.
+      - name: Lint (Sites Worker, cloud services and Sites pages)
+        run: >-
+          npx eslint sites src/services/cloud src/services/privateFiles.js
+          'src/pages/Sites*.jsx' 'src/components/Sites*.jsx' src/components/recording
+          src/App.sites.test.jsx
 
       - name: Unit and integration tests
         run: npm test
