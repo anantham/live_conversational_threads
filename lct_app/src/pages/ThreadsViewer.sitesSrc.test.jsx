@@ -40,6 +40,12 @@ it("opens a ?src= link with the Site's serverless provider, without sending Site
   expect(fetch.mock.calls[0][1]).toMatchObject({ credentials: "omit" });
 });
 
+it("reports a network-level ?src= failure (CORS, DNS) as a load error", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+  await act(async () => root.render(<ThreadsViewer />));
+  expect(host.textContent).toContain("Could not load artifact: Failed to fetch");
+});
+
 it("reports a failed ?src= fetch as a load error rather than a crash", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }));
   await act(async () => root.render(<ThreadsViewer />));

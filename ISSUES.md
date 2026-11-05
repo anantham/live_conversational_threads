@@ -2174,3 +2174,9 @@ Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps w
 - **Cause:** `ThreadsViewer` calls `dataProvider.conversations.fetchThreadsFile` (line 309). Only `BackendDataProvider` defines it, and the Site uses `ServerlessDataProvider`.
 - **Fix:** `ServerlessDataProvider.conversations.fetchThreadsFile(src)` fetches with `credentials: 'omit'`, like the public-threads load, so Site cookies never go to the shared URL.
 - **Not covered:** the error copy is still the raw message. A friendlier message is in the UX review's fix plan.
+
+## 2026-11-05 — The backend provider's ?src= fetch sends same-origin cookies (non-blocking, pre-existing)
+
+- **What:** found by the Gemini review of PR #232. `BackendDataProvider.conversations.fetchThreadsFile` is `fetch(src)`, so a same-origin `?src=` carries the default `same-origin` credentials. The Site's serverless provider now uses `credentials: 'omit'`.
+- **Impact:** self-hosted only, and only where the backend authenticates by cookie. Whether it does needs checking: if auth is header-only (`AUTH_TOKEN`), this is inert.
+- **Next step:** check the backend's auth mechanism, then add `credentials: 'omit'` there as well if it's cookie-based.
