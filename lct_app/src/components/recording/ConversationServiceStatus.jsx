@@ -10,7 +10,7 @@ const accountBalanceText = {
 };
 
 // Red only for something that actually failed. "Available but not yet confirmed" is a quiet ring, not a warning.
-const colors = { checking: 'bg-slate-300', ready: 'bg-emerald-500', idle: 'bg-white ring-1 ring-inset ring-slate-400', uncertain: 'bg-amber-500', limited: 'bg-amber-500', error: 'bg-rose-500', off: 'bg-slate-400' };
+const colors = { checking: 'bg-slate-300', ready: 'bg-emerald-500', idle: 'bg-white ring-1 ring-inset ring-slate-500', uncertain: 'bg-amber-500', limited: 'bg-amber-500', error: 'bg-rose-500', off: 'bg-slate-400' };
 const headlines = { checking: 'Checking', ready: 'Working', idle: 'Available', off: 'Switched off', limited: 'Not available right now', error: 'Not reachable' };
 // What a visitor can do, in plain words. The provider's own check stays under Details.
 const plain = {
@@ -50,9 +50,9 @@ function ServiceIndicator({ service, label, Icon, evidence }) {
   const result = evidence?.service === service && Date.now() - evidence.at < 120_000 ? evidence : null;
   const stale = current && now - current.receivedAt > 120_000;
   const failed = result?.ok === false;
-  const verified = result?.ok === true && (!current || current.receivedAt < result.at || (current.enabled && (current.capacity === 'busy' || (current.available && current.reachable && current.allowance !== 'exhausted'))));
   // Soniox keys may lack permission to list models; that says nothing about transcription.
   const listingOnly = current?.probe === 'model_listing' && current?.access === 'permission_denied';
+  const verified = result?.ok === true && (!current || current.receivedAt < result.at || (current.enabled && (current.capacity === 'busy' || (current.available && (current.reachable || listingOnly) && current.allowance !== 'exhausted'))));
   const limited = current?.capacity === 'exhausted' || current?.allowance === 'exhausted';
   const state = failed ? 'error' : verified ? 'ready' : !current ? 'checking' : !current.enabled ? 'off' : limited ? 'limited' : stale || current.capacity === 'busy' ? 'uncertain' : !current.available || (!current.reachable && !listingOnly) ? 'error' : 'idle';
   const busy = state === 'uncertain' && !stale;
@@ -71,6 +71,7 @@ function ServiceIndicator({ service, label, Icon, evidence }) {
         {current.allowance === 'key_available' && <p>Key allowance available.</p>}
         {service === 'openrouter' && current.account_balance && <p>{accountBalanceText[current.account_balance] || accountBalanceText.unavailable}</p>}
         {current.allowance === 'unknown' && !current.account_balance && <p>Credit balance unavailable to this check.</p>}
+        {result?.detail && !failed && !verified && <p>This session: {result.detail}</p>}
       </details>}
       <button className="mt-2 min-h-11 underline underline-offset-4" onClick={() => { setRevision(v => v + 1); }}>Check again</button>
     </div>}

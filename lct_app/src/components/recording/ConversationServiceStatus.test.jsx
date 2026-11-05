@@ -81,3 +81,12 @@ it('still reports a key that fails authentication as not reachable', async () =>
   expect(host.querySelector('button[aria-label^="Live transcription"]').getAttribute('aria-label')).toBe('Live transcription: Not reachable');
   expect(host.querySelector('button[aria-label^="Live transcription"] span').className).toContain('rose');
 });
+
+it('keeps a live transcript green across a refresh that only says the key cannot list models', async () => {
+  vi.useFakeTimers();
+  fetch.mockImplementation(async path => new Response(JSON.stringify({ ...live[path.split('/').at(-1)], checked_at: Date.now() })));
+  await render({ voice: { service: 'soniox', at: Date.now() + 1, ok: true, detail: 'Transcript is receiving words from Soniox.' } });
+  expect(host.querySelector('button[aria-label^="Live transcription"]').getAttribute('aria-label')).toBe('Live transcription: Working');
+  await act(async () => vi.advanceTimersByTimeAsync(60_000)); // the background refresh lands after the evidence
+  expect(host.querySelector('button[aria-label^="Live transcription"]').getAttribute('aria-label')).toBe('Live transcription: Working');
+});

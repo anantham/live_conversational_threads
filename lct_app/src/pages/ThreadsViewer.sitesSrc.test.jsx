@@ -56,3 +56,10 @@ it.each([
   expect(JSON.stringify(warn.mock.calls)).toContain(technical);
   warn.mockRestore();
 });
+
+it("does not blame the network for a readable file that is not a map", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ type: "article" }) }));
+  await act(async () => root.render(<ThreadsViewer />));
+  expect(host.textContent).not.toContain("could not be reached");
+  expect(host.textContent).not.toContain("Synthetic shared idea");
+});

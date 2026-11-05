@@ -8909,3 +8909,10 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - `lct_app/src/pages/ThreadsViewer.jsx`: failed `?src=` loads show plain copy (missing / refused / unreachable / not a map file); the raw cause goes to `console.warn`.
 - Tests: updated status, access-panel, App shell, New-page and viewer tests; added live-shape status tests, a first-visit panel test, a Bookmarks test and four share-link copy cases. Full suite 146 files / 1,429 tests (outside the sandbox). `build:sites` OK. Lint: only pre-existing issues in SitesNewConversation.jsx. Mutation: 8 mutants, all killed.
 - Not done (still in the fix plan): moving diagnostics to Settings › Runtime (kept under Details instead), the one-line "what Threads does" and example map, naming and wayfinding.
+- 16:40 IST — Gemini 3.8 Flash (High) review round 1 (packet `review-ux/`, sha256 in `packet.sha256`): NO-GO.
+  - Adopted P1: a 60 s refresh that only said "cannot list models" dropped a live transcript from Working back to Available (the `verified` test required `reachable`). Fixed with `reachable || listingOnly`; new test red-proved. Before this branch the same refresh turned it red.
+  - Declined P1 "a valid JSON non-map is reported as unreachable": `ingest` catches its own validation error and sets its own message, so the share-link catch never sees it. Added a test that pins this.
+  - Adopted P2: `aria-expanded`/`aria-controls` on the collapsed Sign in chip. Adopted P3: the quiet ring is `ring-slate-500` (3:1 non-text contrast). Restored the session's own result detail under Details when it isn't the headline.
+  - Declined P2 "assert 12px/32px classes in tests": that would test CSS implementation (the intent doc says verify placement visually); sizes were measured in the browser.
+  - Not adopted: Escape to close the account panel. It never had it; logged in ISSUES.md.
+  - Full suite 146 files / 1,431 tests.
