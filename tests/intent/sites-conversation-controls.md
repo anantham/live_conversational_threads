@@ -19,3 +19,8 @@
   fails; cache both probes together and consume no reservation. Public responses
   contain coarse state only, never account amounts, key labels or credentials.
   This extends the earlier key-only check; no generation-success claim follows.
+
+- 5 November: the map panel is usually closed, so map state must be visible on the map button on every page that
+  shows a map (new conversation, meetings, audio import): "Updating" while a map request runs, "Needs attention"
+  with a rose dot and one screen-reader announcement when a request fails, and plain "AI map" again after a
+  successful retry. Updating takes precedence over an older error. Tests check this with the panel closed.

@@ -16,7 +16,7 @@ const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-l
 
 export default function SitesAudioImport() {
   const flow = useAudioImport();
-  const [panel, setPanel] = useState(null), [minimized, setMinimized] = useState(false), [fullscreen, setFullscreen] = useState(false), [generating, setGenerating] = useState(false);
+  const [panel, setPanel] = useState(null), [minimized, setMinimized] = useState(false), [fullscreen, setFullscreen] = useState(false), [generating, setGenerating] = useState(false), [mapError, setMapError] = useState('');
   const { archive, recording, audio, transcript, map, activity, busy, capability } = flow;
   const privateFiles = useImportPrivateFiles(busy || generating);
   const artifact = useMemo(() => {
@@ -38,7 +38,7 @@ export default function SitesAudioImport() {
     if (link && !link.hasAttribute('download') && !window.confirm('Leave this import? Processing will stop. Download unsaved files before leaving.')) event.preventDefault();
   }
   return <main onClickCapture={guardNavigation} className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#fdfdfb] text-slate-800">
-    <ConversationNavigation title="Import audio" panel={panel} onPanelChange={setPanel} />
+    <ConversationNavigation title="Import audio" panel={panel} onPanelChange={setPanel} mapUpdating={generating} mapError={mapError} />
     <section aria-label="Audio import canvas" className="relative flex min-h-0 flex-col overflow-hidden">
       <div className="shrink-0 px-5 py-2 text-xs leading-5">
         {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}</p>}
@@ -82,7 +82,7 @@ export default function SitesAudioImport() {
         <div hidden={panel !== 'settings'}><h2 className="pt-12 text-lg font-medium">Settings</h2><fieldset disabled={busy || generating}><ConversationStorageSettings preference={archive.preference} onChange={archive.choose} error={archive.preferenceError} /></fieldset><ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} /></div>
         <div hidden={panel !== 'map'}>
           {!artifact?.source && <p className="pt-12 text-sm text-slate-600">Threads appear after your transcript is ready.</p>}
-          {artifact?.source && <RecordingConversationMap localOnly={!privateFiles.ready} source={artifact.source} savedBundle={map} retention={recording.retention} backend={flow.backend} onBackendChange={flow.setBackend} privateEnabled={privateFiles.ready} saving={activity?.stage === 'mapping' || privateFiles.saving} recordingBusy={busy} liveActive={['transcribing', 'finalizing'].includes(activity?.stage)} onMapAttempt={flow.claimLiveMap} stopSignal={flow.mapStopSignal} onGeneratingChange={setGenerating} onMapChange={flow.mapReady} onPrivateSave={privateFiles.save} />}
+          {artifact?.source && <RecordingConversationMap localOnly={!privateFiles.ready} source={artifact.source} savedBundle={map} retention={recording.retention} backend={flow.backend} onBackendChange={flow.setBackend} privateEnabled={privateFiles.ready} saving={activity?.stage === 'mapping' || privateFiles.saving} recordingBusy={busy} liveActive={['transcribing', 'finalizing'].includes(activity?.stage)} onMapAttempt={flow.claimLiveMap} stopSignal={flow.mapStopSignal} onGeneratingChange={setGenerating} onMapStatusChange={setMapError} onMapChange={flow.mapReady} onPrivateSave={privateFiles.save} />}
         </div>
         <div hidden={panel !== 'files'}>
           <RecordingAudioFiles localOnly={!privateFiles.ready} retention={recording?.retention} audio={audio} recordingId={recording?.id} privateEnabled={privateFiles.ready} busy={busy || generating || privateFiles.saving} onPrivateSave={privateFiles.save} />

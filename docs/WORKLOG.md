@@ -8897,3 +8897,25 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - Declined P2 "the backend provider sends same-origin cookies on ?src=": pre-existing and in a different provider; logged in ISSUES.md.
   - Declined P2 "zero-click ingest of an external map": that's the existing design of ?src= on both providers; node text renders through React (escaped), the same as a dropped file.
   - Declined P3 "no fetch timeout": pre-existing viewer behaviour, shared with the backend path.
+
+## 2026-11-05 16:26 IST — Map failures visible with the map panel closed
+
+- Branch `fix/sites-map-attention-indicator` from `codex/lct-inference-choice` @ a354a33b.
+- Cause: d4e755b0 (16 Oct) replaced the text nav, whose "AI map · Needs attention / · Updating" label was the only
+  place a map failure showed while the panel was closed, with the icon-only `ConversationNavigation`. The new
+  conversation page kept setting `mapError` but nothing read it; meetings and audio import never wired
+  `onMapStatusChange` at all. Since the panel's `<aside>` is `hidden`, a failed generation looked like nothing happened.
+- `lct_app/src/components/recording/ConversationNavigation.jsx`: new `mapUpdating` / `mapError` props. The map
+  button's label becomes "AI map · Updating" or "AI map · Needs attention", with a small dot (slate pulsing / rose),
+  plus an sr-only `role="status"` line announced only for failure.
+- `lct_app/src/pages/SitesNewConversation.jsx`, `SitesMeetingView.jsx`, `SitesAudioImport.jsx`: pass the state;
+  the latter two now track `mapError` via `onMapStatusChange`. Clears the one lint error in the Sites pages.
+- Tests: new case in `ConversationNavigation.test.jsx`; the generation-failure tests in
+  `SitesNewConversation.test.jsx` (closed panel, then retry clears it) and `SitesAudioImport.test.jsx` now assert the
+  button state. With the page wiring reverted, 4 tests fail. Full suite 1,422/1,423 in the sandbox; the one failure
+  is `publicDrive.test.js` (needs local port binding; 15/15 outside the sandbox). `build:sites` passes.
+- Not covered by a test: the meeting page wiring (same one-line prop as the other two; its tests have no failure fixture).
+- 16:35 IST — Independent review: agy, model reported "Gemini 3.8 Flash" (`--model gemini-3.8-flash-high`), packet
+  `review-map-attention/` (change.diff `0914200d…`, plus the full ConversationNavigation.jsx and
+  RecordingConversationMap.jsx). Verdict: NO MATERIAL FINDINGS. It confirmed `RecordingConversationMap` clears its
+  error when a retry or status check starts, so the badge cannot stick after a successful retry.

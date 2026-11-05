@@ -544,8 +544,16 @@ describe('Sites recording page', () => {
     expect(container.querySelector('#recording-map-json')).toBeNull();
     expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
     expect(container.textContent).not.toContain('fixture upstream detail');
+    // The failure must stay visible once the map panel is closed: the map button carries it.
+    await click('Close tools');
+    expect(container.querySelector('[aria-label="Conversation tools"]').hidden).toBe(true);
+    expect(container.querySelector('[aria-label="AI map · Needs attention"]')).toBeTruthy();
+    expect(container.textContent).toContain('The AI map needs attention.');
+    await click('AI map · Needs attention');
     await click('Generate conversation map');
     expect(generationCalls()).toHaveLength(2); expect(container.querySelector('#recording-map-json')).toBeTruthy();
+    expect(container.querySelector('[aria-label="AI map"]')).toBeTruthy();
+    expect(container.textContent).not.toContain('The AI map needs attention.');
     expect(JSON.parse(localStorage.getItem('lct.recording_map_timing.v1')).at(-1)).toMatchObject({ stage: 'generate', outcome: 'success', retryCount: 1 });
   });
 
