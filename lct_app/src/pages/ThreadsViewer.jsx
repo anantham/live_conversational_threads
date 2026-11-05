@@ -60,6 +60,13 @@ import {
  * preference persistence, utterance loading). Audio is not part of the bundle.
  */
 
+const SHARE_LINK_ERRORS = {
+  missing: "This shared map could not be found. The link may have moved or expired; ask whoever sent it for a new one.",
+  refused: "The site holding this shared map did not let it be opened. Ask whoever sent the link for a downloaded copy.",
+  unreachable: "This shared map could not be reached. Its host may be offline, or may not allow other sites to open its files.",
+  notMap: "This link does not lead to a Threads map file.",
+};
+
 export default function ThreadsViewer({ privateBundle, onPrivateClose }) {
   return <CardDisplayProvider><ThreadsViewerContent privateBundle={privateBundle} onPrivateClose={onPrivateClose} /></CardDisplayProvider>;
 }
@@ -330,12 +337,18 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     setSrcLoading(true);
     (async () => {
       try {
-        const resp = await dataProvider.conversations.fetchThreadsFile(src);
-        if (!resp.ok) throw new Error(`fetch failed (${resp.status})`);
-        const data = await resp.json();
+        let resp;
+        try { resp = await dataProvider.conversations.fetchThreadsFile(src); }
+        catch (cause) { throw Object.assign(new Error(`fetch rejected: ${cause?.message || cause}`), { share: "unreachable" }); }
+        if (!resp.ok) throw Object.assign(new Error(`fetch failed (${resp.status})`), { share: [404, 410].includes(resp.status) ? "missing" : "refused" });
+        let data;
+        try { data = await resp.json(); }
+        catch (cause) { throw Object.assign(new Error(`unreadable JSON: ${cause?.message || cause}`), { share: "notMap" }); }
         if (!cancelled) ingest(data, { sourceName: src });
       } catch (e) {
-        if (!cancelled) setError(`Could not load artifact: ${String(e?.message || e)}`);
+        // A visitor sees what happened in plain words; the technical cause goes to the console.
+        console.warn("[ThreadsViewer] shared link could not load", { src, cause: String(e?.message || e) });
+        if (!cancelled) setError(SHARE_LINK_ERRORS[e?.share] || SHARE_LINK_ERRORS.unreachable);
       } finally {
         if (!cancelled) setSrcLoading(false);
       }

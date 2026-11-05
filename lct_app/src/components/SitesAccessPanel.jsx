@@ -8,15 +8,6 @@ import { recordAuthUiTiming, requestWithin } from "./sitesAuthUi";
 const SESSION_TIMEOUT_MS = 10_000;
 const TIMING_KEY = "lct.sites_session_check_timing.v1";
 const TIMING_OUTCOMES = new Set(["guest", "signed-in", "error", "timeout", "cancelled"]);
-const DISMISSED_KEY = "lct.sites_access_dismissed.v1";
-
-function wasDismissed() {
-  try {
-    return window.localStorage.getItem(DISMISSED_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
 
 // Keep only small, payload-free samples; storage may be unavailable in private browsing.
 function recordTiming(durationMs, outcome, retryCount) {
@@ -46,8 +37,9 @@ export default function SitesAccessPanel() {
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
   const inRecording = ["/new", "/new/", "/import-audio", "/import-audio/"].includes(pathname) || pathname.startsWith("/meeting/");
   const inMeetingEntry = pathname === "/meeting" || pathname === "/meeting/";
-  const dismissedRef = useRef(wasDismissed());
-  const [expanded, setExpanded] = useState(() => inPrivateFiles || (!inRecording && !inMeetingEntry && !dismissedRef.current) || hash === "#site-access");
+  // Offer, never direct: the panel waits to be asked (the chip, a #site-access link, or a
+  // feature that needs an account). Private files show it inline, since they need an account.
+  const [expanded, setExpanded] = useState(() => inPrivateFiles || hash === "#site-access");
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const panelRef = useRef(null);
@@ -85,14 +77,8 @@ export default function SitesAccessPanel() {
   }, [expanded, inRecording]);
 
   function dismissPanel() {
-    dismissedRef.current = true;
     focusOnDismiss.current = true;
     setExpanded(false);
-    try {
-      window.localStorage.setItem(DISMISSED_KEY, "true");
-    } catch {
-      // A storage refusal affects this browser preference only.
-    }
   }
 
   useEffect(() => {
@@ -100,7 +86,7 @@ export default function SitesAccessPanel() {
     else if (inRecording || inMeetingEntry) {
       if (panelRef.current?.contains(document.activeElement)) focusOnDismiss.current = true;
       setExpanded(false);
-    } else if (!dismissedRef.current && !wasDismissed()) setExpanded(true);
+    }
   }, [hash, inRecording, inMeetingEntry, openPanel]);
 
   useEffect(() => {
@@ -220,7 +206,9 @@ export default function SitesAccessPanel() {
 
   return (
     <aside hidden={inRecording && !expanded} ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit p-1"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
-      {!expanded ? !inRecording && <button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span>{status === "guest" ? "Sign in" : "Account"}</span></button> : <>
+      {!expanded ? !inRecording && <div className="flex items-center"><button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" aria-expanded={false} aria-controls="site-access" onClick={openPanel}><UserRound size={18} aria-hidden="true" /><span>{status === "guest" ? "Sign in" : "Account"}</span></button>
+        {/* The data-use disclosure stays one click from every public page while the panel is closed. */}
+        <a className="inline-flex min-h-11 items-center rounded-lg px-3 text-xs text-slate-600 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/privacy">Privacy</a></div> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-800">{status === "signed-in" ? "Your account" : status === "guest" ? "Sign in" : "Account"}</p>
         <button type="button" className="ml-auto flex h-11 w-11 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-slate-700" aria-label="Close site access" onClick={dismissPanel}><X size={18} aria-hidden="true" /></button>

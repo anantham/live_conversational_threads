@@ -22,7 +22,8 @@ function NavigationCapture() {
   return null;
 }
 
-async function mount(initialPath = "/") {
+// The panel waits to be asked, so tests of its contents open it with an access link.
+async function mount(initialPath = "/#site-access") {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -82,7 +83,7 @@ describe("SitesAccessPanel", () => {
   });
 
   it('collapses on entry to recording without storing dismissal and honors explicit access links', async () => {
-    fetch.mockResolvedValue(sessionResponse(401)); await mount('/');
+    fetch.mockResolvedValue(sessionResponse(401)); await mount('/#site-access');
     const panel = container.querySelector('#site-access');
     expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
     await act(async () => navigate('/new'));
@@ -92,9 +93,25 @@ describe("SitesAccessPanel", () => {
     await act(async () => navigate('/new'));
     expect(panel.hidden).toBe(true);
     await act(async () => navigate('/public'));
-    expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
+    expect(panel.querySelector('[aria-label="Close site access"]')).toBeNull();
+    expect(container.textContent).toBe("Sign inPrivacy");
     await act(async () => navigate('/new#site-access'));
     expect(panel.hidden).toBe(false);
+  });
+
+  it("waits to be asked on a first visit: a compact Sign in, no panel, nothing stored", async () => {
+    fetch.mockResolvedValue(sessionResponse(401));
+    for (const path of ["/", "/public", "/view"]) {
+      await mount(path);
+      expect(container.textContent).toBe("Sign inPrivacy");
+      expect(container.querySelector('[aria-label="Close site access"]')).toBeNull();
+      await act(async () => root.unmount()); root = null; container.remove();
+    }
+    await mount("/");
+    await act(async () => container.querySelector("button").click());
+    expect(container.textContent).toContain("Browsing as guest");
+    expect(document.activeElement).toBe(container.querySelector("#site-access"));
+    expect(Object.keys(localStorage).filter(key => key.includes("dismiss"))).toEqual([]);
   });
 
   // Test intent: Google remains unavailable until runtime configuration; failures and cancellation
@@ -109,40 +126,37 @@ describe("SitesAccessPanel", () => {
     expect(document.activeElement).toBe(container.querySelector("#site-access"));
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
     expect(document.activeElement).toBe(container.querySelector("button"));
-    expect(container.textContent).toBe("Sign in");
+    expect(container.textContent).toBe("Sign inPrivacy");
   });
 
   it('uses neutral Account wording while the compact session check is pending or failed', async () => {
-    localStorage.setItem("lct.sites_access_dismissed.v1", "true");
     vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
-    await mount(); expect(container.textContent).toBe("Account");
+    await mount("/"); expect(container.textContent).toBe("AccountPrivacy");
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
-    expect(container.textContent).toBe("Account");
+    expect(container.textContent).toBe("AccountPrivacy");
     await act(async () => container.querySelector("button").click());
     expect(container.textContent).toContain("Retry connection");
   });
 
-  it("dismisses to a compact control, remembers the choice, and keeps authentication unchanged", async () => {
+  it("dismisses to a compact control and keeps authentication unchanged", async () => {
     fetch.mockResolvedValue(sessionResponse(401));
     await mount();
     expect(container.textContent).toContain("Without signing in, new conversations save in this browser unless you choose ephemeral mode.");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(container.textContent).toBe("Sign in");
-    expect(localStorage.getItem("lct.sites_access_dismissed.v1")).toBe("true");
+    expect(container.textContent).toBe("Sign inPrivacy");
     expect(fetch.mock.calls.filter(([path]) => path === "/api/auth/session")).toHaveLength(1);
     expect(fetch.mock.calls.some(([path]) => path === "/api/auth/logout")).toBe(false);
     await act(async () => root.unmount());
     root = null;
     container.remove();
-    await mount();
-    expect(container.textContent).toBe("Sign in");
+    await mount("/");
+    expect(container.textContent).toBe("Sign inPrivacy");
     await act(async () => container.querySelector("button").click());
     expect(container.textContent).toContain("Browsing as guest");
     expect(document.activeElement).toBe(container.querySelector("#site-access"));
   });
 
   it("reopens on a private access link even when the hash is already set", async () => {
-    localStorage.setItem("lct.sites_access_dismissed.v1", "true");
     fetch.mockResolvedValue(sessionResponse(401));
     await mount("/private-files");
     const panel = container.querySelector("#site-access");
@@ -161,7 +175,6 @@ describe("SitesAccessPanel", () => {
   });
 
   it("opens for an initial access hash and tolerates unavailable preference storage", async () => {
-    localStorage.setItem("lct.sites_access_dismissed.v1", "true");
     fetch.mockResolvedValue(sessionResponse(401));
     await mount("/private-files#site-access");
     expect(container.textContent).toContain("Browsing as guest");
@@ -173,11 +186,11 @@ describe("SitesAccessPanel", () => {
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(container.textContent).toBe("Sign in");
+    expect(container.textContent).toBe("Sign inPrivacy");
     await act(async () => navigate('/new'));
     expect(container.querySelector('#site-access').hidden).toBe(true);
     await act(async () => navigate('/public'));
-    expect(container.textContent).toBe("Sign in");
+    expect(container.textContent).toBe("Sign inPrivacy");
     vi.restoreAllMocks();
   });
   it("keeps Google sign-in inactive until the runtime config is enabled and configured", async () => {
@@ -429,7 +442,7 @@ describe("SitesAccessPanel", () => {
     expect(container.querySelector('[role="status"]').classList.contains("sr-only")).toBe(true);
     expect(container.textContent).not.toContain("Sign in to save");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(container.textContent).toBe("Account");
+    expect(container.textContent).toBe("AccountPrivacy");
   });
 
   it("offers retry after a malformed successful response and recovers to guest", async () => {
@@ -512,7 +525,7 @@ describe("SitesAccessPanel", () => {
   it('keeps meeting entry quiet until the account panel is explicitly requested', async () => {
     fetch.mockRejectedValue(new TypeError('Failed to fetch'));
     await mount('/meeting');
-    expect(container.textContent).toBe('Account');
+    expect(container.textContent).toBe('AccountPrivacy');
     expect(container.querySelector('a[href^="/signin"]')).toBeNull();
     await act(async () => navigate('/meeting#site-access'));
     expect(container.querySelector('#site-access').hidden).toBe(false);
