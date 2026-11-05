@@ -1,0 +1,128 @@
+import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
+import { resolveIdentity } from './auth.js';
+import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission } from './openRouterPolicy.js';
+import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
+
+const PREFIXES = { '/api/cloud/openrouter': openRouterPolicy, '/api/cloud/gemini': geminiPolicy };
+const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_finish', 'choice_message',
+  'choice_refusal', 'choice_tools_empty', 'choice_tools_present', 'choice_content', 'content_size', 'content_json',
+  'required_shape', 'graph_shape', 'metadata', 'node_shape', 'node_evidence', 'node_excerpt', 'node_speaker',
+  'node_provenance', 'memberships', 'hierarchy', 'edges', 'threads', 'bundle_validation', 'bundle_json', 'bundle_size']);
+const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backlink', 'primary_mismatch',
+  'membership_missing', 'membership_level', 'membership_backlink', 'secondary_duplicate',
+  'child_missing', 'child_level', 'child_backlink', 'cycle']);
+const PROVIDER_STATUSES = new Set(['INVALID_ARGUMENT', 'UNAUTHENTICATED', 'PERMISSION_DENIED',
+  'NOT_FOUND', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION', 'UNAVAILABLE', 'INTERNAL']);
+
+async function logProviderRefusal(env, response, signal, backend) {
+  if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
+  let providerStatus = 'unknown';
+  try {
+    const body = await openRouterWait(signal, 2000, diagnosticSignal =>
+      readOpenRouterJSON(response, diagnosticSignal, 16 * 1024, true));
+    const envelope = Array.isArray(body) && body.length === 1 ? body[0] : body;
+    if (PROVIDER_STATUSES.has(envelope?.error?.status)) providerStatus = envelope.error.status;
+  } catch { /* Missing, oversized and non-JSON error bodies remain content-free. */ }
+  try {
+    console.error(backend === 'gemini' ? '[gemini] provider refused' : '[openrouter] provider refused',
+      { code: 'provider_refused', upstreamStatus: response.status, providerStatus });
+  } catch { /* Diagnostics must not change admission or the public refusal. */ }
+}
+
+export function logOpenRouterFailure(env, code, validationStage, validationRule, backend = 'openrouter') {
+  if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
+  try {
+    const stage = VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown';
+    console.error(backend === 'gemini' ? '[gemini] generation failed' : '[openrouter] generation failed', { code, validationStage: stage,
+      ...(stage === 'hierarchy' ? { validationRule: HIERARCHY_RULES.has(validationRule) ? validationRule : 'unknown' } : {}) });
+  } catch { /* Diagnostics must never replace the public result or release an attempt. */ }
+}
+
+async function generate(request, env, policy) {
+  if (request.headers.get('origin') !== new URL(request.url).origin
+    || request.headers.get(policy.consentHeader) !== 'generate-v1') {
+    throw new OpenRouterError(403, 'consent', `Confirm permission on this Site to send the transcript to ${policy.label}${policy.backend === 'openrouter' ? ' and the selected model provider' : ' (Google AI Studio)'}.`);
+  }
+  if (!policy.enabled) throw new OpenRouterError(503, 'generation_inactive', 'Generation is waiting for confirmed provider setup and spending limits. No provider request was made.');
+  if (policy.audience === 'authenticated' && !await resolveIdentity(request, env)) {
+    throw new OpenRouterError(401, 'sign_in', 'Sign in for the current generation test. Public browsing is still available.');
+  }
+  await readOpenRouterAdmission(env);
+  if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    throw new OpenRouterError(415, 'content_type', 'Send recording source as JSON. No attempt was requested.');
+  }
+  const input = await openRouterWait(request.signal, 30_000, signal => readOpenRouterJSON(request, signal, 512 * 1024));
+  let wire;
+  try { wire = buildOpenRouterGenerationRequest({ source: input?.source, model: policy.backend === 'gemini' ? `google/${policy.model}` : policy.model, maxTokens: policy.maxTokens }); }
+  catch { throw new OpenRouterError(400, 'source', 'The recording source is invalid or too large. No attempt was requested.'); }
+  if (policy.backend === 'gemini') {
+    // Explicit compatibility contract; future OpenRouter fields cannot leak into this route.
+    wire = { model: policy.model, max_tokens: wire.max_tokens, stream: false,
+      messages: wire.messages, response_format: wire.response_format };
+  }
+  else wire.provider = { ...wire.provider, only: [policy.provider], data_collection: policy.dataCollection };
+  if (new TextEncoder().encode(JSON.stringify(wire)).byteLength > 512 * 1024) {
+    throw new OpenRouterError(400, 'source', 'The generation request is too large. No attempt was requested.');
+  }
+  if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was cancelled before an attempt was requested.');
+
+  const id = crypto.randomUUID(), now = Date.now();
+  const admitted = await env.DB.prepare(`INSERT INTO lct_openrouter_attempts (id, created_at, max_output_tokens)
+    SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_openrouter_attempts) < ?
+      AND NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
+      AND (SELECT COUNT(*) FROM lct_openrouter_attempts
+           WHERE completed_at IS NULL AND recovery_released_at IS NULL) < ?
+    RETURNING id`).bind(id, now, policy.maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
+  if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
+
+  const artifact = await openRouterWait(request.signal, 60_000, async signal => {
+    const response = await fetch(policy.endpoint, { method: 'POST',
+      headers: { Authorization: `Bearer ${policy.key}`, 'Content-Type': 'application/json' },
+      // Edge fetch supports manual; the exact-200 gate below refuses redirects.
+      body: JSON.stringify(wire), signal, redirect: 'manual' });
+    if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
+    if (response.status !== 200) {
+      await logProviderRefusal(env, response, signal, policy.backend);
+      void response.body?.cancel().catch(() => {});
+      throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation. The attempt remains counted. Check provider availability and allowance before retrying.`);
+    }
+    const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
+    try { return recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion }).bundle; }
+    catch (error) {
+      logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
+      throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`);
+    }
+  });
+  if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
+  const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
+  if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
+  return openRouterJSON(200, { request_id: id, artifact });
+}
+
+export async function handleOpenRouter(request, env) {
+  const path = new URL(request.url).pathname;
+  const prefix = Object.keys(PREFIXES).find(value => path === value || path.startsWith(value + '/'));
+  if (!prefix) return null;
+  try {
+    const policy = PREFIXES[prefix](env);
+    if (path === prefix + '/status' && request.method === 'GET') {
+      let admission = null;
+      if (policy.configured) { try { admission = await readOpenRouterAdmission(env); } catch { /* Disabled readiness, no provider access. */ } }
+      const enabled = policy.enabled && Boolean(admission);
+      const available = enabled && admission.attempts < policy.maxRequests && admission.unresolved < policy.maxConcurrent
+        && (admission.latest == null || admission.latest <= Date.now() - policy.admissionIntervalMs);
+      return openRouterJSON(200, { enabled, available, configured: policy.configured, schema_ready: Boolean(admission),
+        backend: policy.backend, audience: policy.audience, model: policy.model, provider: policy.provider, max_output_tokens: policy.maxTokens,
+        message: !enabled ? 'Generation is waiting for provider, admission storage and spending-limit setup.'
+          : available ? 'Generation is available within shared attempt and token limits.'
+            : 'The shared generation limit is reached or another attempt is starting. Unresolved attempts and lifetime limits need owner review.' });
+    }
+    if (path !== prefix + '/generate') throw new OpenRouterError(404, 'route', 'This generation endpoint does not exist.');
+    if (request.method !== 'POST') throw new OpenRouterError(405, 'method', 'Use POST to generate a conversation map.');
+    return await generate(request, env, policy);
+  } catch (error) {
+    if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code });
+    logOpenRouterFailure(env, 'generation_failed', undefined, undefined, prefix.endsWith('/gemini') ? 'gemini' : 'openrouter');
+    return openRouterJSON(503, { error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved. Check admission storage and provider setup before retrying.', code: 'generation_failed' });
+  }
+}

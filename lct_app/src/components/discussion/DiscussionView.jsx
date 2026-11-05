@@ -233,7 +233,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
   };
   return <section data-viewer-scroll="discussion" aria-label="Discussion" className="h-full min-h-0 overflow-y-auto bg-[#fdfdfb] px-3 py-5 sm:px-6">
     <div className="mx-auto max-w-[75ch]">
-      <p className="mb-3 text-sm leading-6 text-slate-600">Open a branch to follow its ideas and exact words. A moment can belong to several ideas; shared links lead to the same passage.</p>
+      <p className="mb-3 text-sm leading-6 text-slate-600">Open a branch to follow its ideas and exact words. A moment can belong to several ideas{linkBase ? "; shared links lead to the same passage." : "."}</p>
       <p role={linkStatus ? "status" : undefined} aria-live="polite" aria-atomic="true"
         className={linkStatus ? "mb-3 text-xs text-slate-700" : "sr-only"}>{linkStatus}</p>
       {speakers.size > 0 && <div role="group" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Speaker colors">

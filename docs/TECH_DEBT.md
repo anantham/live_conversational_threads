@@ -1,5 +1,11 @@
 # TECH_DEBT
 
+## 2026-10-09 — Sites UI regression suite boundaries
+
+The original-layout restoration keeps production controller under200lines and extracts the81-line pure toolbar. Recording/access tests remain mixed journey suites (>400/>300lines); existing test-only split candidate still applies. Incumbent NewConversation/AudioInput controllers were read for presentation evidence and deliberately not coupled to the cloud lifecycle. No broader refactor belongs to this visual repair.
+
+SitesNewConversation.test.jsx combines consent, recording, private file and generated-map journeys (>400lines); SitesAccessPanel.test.jsx combines presentation, session and sign-out journeys (>300lines). The compact-controls slice extracts the production permission dialog while preserving focused behavioral coverage. Consider a separate test-only split into journey files with a small shared synthetic setup; no backend/runtime refactor is needed here.
+
 ## 2026-09-08 — ConversationNode presentation size
 
 ConversationNode remains ~580 lines of marker, metric, and action rendering.
@@ -356,6 +362,45 @@ and the tested flow is small. If more source types or actions are added,
 extract a useAudioSourceAction hook and keep rendering in the component;
 do not create a second processing state machine for the current feature.
 
+## 2026-10-02 — Browse source boundaries
+
+Browse.jsx is639lines after the scoped Sites exclusions. It mixes browser-local file/draft rendering with legacy server listing, contact filtering, export/delete controls and owner-audio entry. The Sites guard avoids mounting the owner sections without changing local/Vercel behavior. Future work should extract a browser-local library and a server-history component with separately owned loading/actions; preserve current public-behavior tests. This is a refactor candidate, not part of the public-entry slice.
+
+## 2026-10-02 — Public viewer boundaries
+
+ThreadsViewer.jsx (~744lines) mixes ingestion sources, local remembering, speaker editing and three presentation modes. The new public loader/task presentation lives in separate modules and the existing viewer receives only a bounded public-ID/no-remember branch. Future extraction should centralize source ingestion and persistence policy while keeping public reads/edits separate from local history. Browse's previously logged monolith is only changed to link to the separate public library. No broad refactor in this feature.
+
+## 2026-10-02 — Hosted recording lifecycle
+
+The new recordingSession.js is slightly over300lines. It owns one capture lifecycle, including bounded authorization, microphone teardown and final-chunk handling; Soniox transport and timing receipts are already separate. Keep these state transitions together for this first slice. If another capture source is added, extract the setup/response bounds without duplicating cancellation ownership. SitesNewConversation.jsx separates this flow from the large legacy NewConversation page; the latter is unchanged. The new page's capability check and private-save task handling are candidates for the existing shared task hook after live behavior is established. No broad refactor is needed to verify guest access.
+
+## 2026-10-02 — Transcript companion boundaries
+
+The transcript adapter (~106lines), file section (~46lines), and hosted recording page (~147lines) keep token normalization, local file presentation, and capture/save lifecycle separate. Stream validation remains within its cohesive ~215line transport. Reuse the existing private-save task for both audio and transcript; a broader shared-task extraction is still a later candidate, not a reason to rewrite capture or change the legacy page during this slice.
+
+## 2026-10-02 — Private viewer source and diagnostic boundaries
+
+ThreadsViewer (~720lines) now supports an explicit private in-memory bundle in addition to public/local/Drive sources. Loading remains isolated in PrivateConversation and privateThreads; centralizing viewer source/persistence policy is still a later extraction candidate. MinimalGraph (~2200lines) mixes layout, camera, interaction and HUD wiring; this slice adds only stable per-instance diagnostic guards. Separate diagnostic context from camera/state hooks when decomposing that existing monolith. No broad refactor or new graph state machine is required for private reopening. PublicTaskStatus now accepts a private load label; a neutral component name can follow a future shared task presentation cleanup, preserving public callers.
+
+## 2026-10-02 — Google identity fixture boundaries
+
+The private-storage public API test file now exceeds300lines because it exercises real generated SQLite, byte effects and recovery interleavings as well as provider-qualified identities. Its cohesive harness is retained for this slice; a later shared synthetic D1/JWKS fixture can remove duplication with the separate auth suite without coupling tests to private helpers. Auth policy, verifier, storage and recovery remain separate small production modules; no broader refactor is needed here.
+
+### 2026-10-03 — Generated recording viewer keeps handoff separate
+
+2026-10-04 note:graphProvenance.js (~310lines) cohesively derives source IDs, ownership and evidence metrics across the hierarchy. Keep its shared traversal intact for this bounded repair. colorModes.js (~500lines) holds several independent palettes; a later extraction can move speaker ownership/palette and other lenses into separate pure modules, retaining public color API regression checks. ThreadsViewer remains the existing ingestion/presentation extraction candidate; this change only chooses the shared palette, with no graph/viewer monolith rewrite.
+
+ThreadsViewer's existing ingestion/persistence/presentation monolith remains the same extraction candidate. The generated-map handoff is a separate small module with one bounded page-memory slot; no source payload enters generated BrowserRouter state. SitesNewConversation.test.jsx now exceeds300lines while covering the complete synthetic recording/transcript/generation boundary. Retain its cohesive public-behavior checks for this slice; later extract shared capture/status fixtures, preserving actual BrowserRouter history and source/file-byte assertions rather than testing private helpers. No broad refactor is included.
+
+- 2026-10-15: SitesAccessPanel.jsx remains a large existing session/access UI (~300 lines). This slice only corrects stale activation copy; extracting the session timing hook is optional and deferred to avoid identity regression.
+
+## 2026-10-16 — Cloud live workspace
+
+Keep the bounded RecordingSession engine intact; conversation continuity is now separated into cloudConversationSession rather than extending its300-line transport state machine. SitesNewConversation and RecordingConversationMap remain under250lines. Existing MinimalGraph is large and reused unmodified; future graph/tool layout decomposition is separate from this migration.
+
+- 2026-10-16: SitesNewConversation remains the recording controller (~220 lines); extracted navigation and service indicators. SitesAccessPanel mixes identity lifecycle and panel layout (~280 lines); future presentation extraction should preserve the existing auth timeout/reset tests. No broad auth refactor in this slice.
+
+- 2026-10-16: Browser storage is isolated into localConversationStore/ConversationArchive/useConversationArchive and small settings/library components. Browse and SitesAccessPanel remain large existing orchestration files; extracted recorded-library UI instead of growing their persistence concerns. Future candidate: split account presentation from identity controller; no broad rewrite in retention slice.
 ## 2026-10-02 — Static viewer exploration
 
 MinimalGraph.jsx (~2,260 lines), ThreadsViewer.jsx (~730 lines), and

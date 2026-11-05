@@ -1,0 +1,32 @@
+# Selectable cloud inference — review and local acceptance
+
+2026-10-15. Integration owner: root Codex, isolated Mac worktree based on 7d5ab77. User requested direct Gemini/OpenRouter selection and activation/E2E. No new Site, schema, dependency or budget-cap expansion.
+
+Final review: Anthropic Claude Sonnet 5.5, direct existing Claude Code subscription, PASS with no supported P0/P1. Source packet SHA256: `4e25916f324a443c00ea2e733f36369bdff05a2e8b92ad4fc336cba38ed46dff`, 60,513 bytes. Code/synthetic tests only; no keys, operational logs, personal files, memory or real recordings. Tools/MCP disabled and fresh review directory/no-session-persistence used. First AGY/Gemini attempt timed out without a response; Grok oversized packet truncated, then its compact review remained stalled and was cancelled. Neither is counted as a verdict. Initial Claude review findings drove explicit Gemini wire allowlist, recipient readiness equality, bounded backend diagnostics, clear direct-Google data policy, and stronger shared-limit tests; revised source passed follow-up review.
+
+Remaining reviewer observations: Google's current structured-output documentation explicitly supports nullable type arrays, enum, additionalProperties, minimum/maximum and minItems used by the schema (https://ai.google.dev/gemini-api/docs/structured-output). Gemini OpenAI compatibility documents structured outputs and bearer API-key authentication (https://ai.google.dev/gemini-api/docs/openai). Current stable direct model is gemini-3.5-flash-lite; existing OpenRouter google/gemini-2.5-flash-lite Google Vertex endpoint was present in the public catalog. 8192 output-token cap is retained. Gemini intentionally shares the OpenRouter-named audience/count/token settings. A live provider result remains required; a review or status flag is not that result. Reviewer suggestion to test outside admission was not followed.
+
+Validation: 98 focused tests after corrections; mandatory scripts/ci_local.sh934/934 tests109files passed17:26:17IST (15.88s). Earlier two failures were proven jsdom25 versus Node24/26 fixture incompatibilities: Blob.text absent and AbortSignal branding. Test-only Node Blob and signal bridge fixes preserve real Worker/response behavior. Node26 tests run with --no-experimental-webstorage so jsdom owns storage. No production identity code was altered.
+
+Actual built-browser synthetic fixture check passed desktop1280x900 and mobile390x844: record/transcribe controls, finalized transcript, Gemini-only request, refusal without retry, backend switch clears consent, no mobile horizontal overflow. Native build passed; 7application files change and304other tracked files/all11migration SQL files remain unchanged (311total files). Runtime Gemini, Google sign-in and private ownership are not proven by this intercepted local check.
+
+Packet inventory:
+- lct_app/sites/openRouter.js
+- lct_app/sites/openRouterPolicy.js
+- lct_app/src/services/cloud/openRouterClient.js
+- lct_app/src/services/cloud/openRouterGeneration.js
+- lct_app/src/services/serverless/sitesInferenceChoice.test.js
+- lct_app/src/components/recording/RecordingConversationMap.jsx
+- lct_app/src/pages/SitesPrivacy.jsx
+- lct_app/src/pages/SitesPrivacy.test.jsx
+- lct_app/src/services/cloud/openRouterClient.test.js
+- lct_app/src/pages/SitesNewConversation.test.jsx
+- lct_app/src/components/SitesAccessPanel.jsx
+- lct_app/src/components/SitesAccessPanel.test.jsx
+- lct_app/src/services/googleDriveThreads.test.js
+
+Follow-up diagnostics/recovery preparation: Claude Sonnet5.5 direct subscription PASS/no supported defects on39471-byte source/synthetic packet SHA a6cca741aedf0f327c727dfc459241eb140c56ded8fcb384e5d44b9720350751. Content-free status, bounded read, Gemini array envelope and cancellation were reviewed. SQL recovery remains unapplied outside journal and requires provider-OFF exact-row preflight plus owner decision. Full956/956tests110files14.55s/start17:54:55IST passed;61focused checks passed. Optional review suggestions do not change behavior or block this slice. Actual runtime results and limitations are in the milestone checkpoint.
+
+Inline Google access repair: AGY/Gemini3.8FlashLow PASS with no supported findings on compact31134-byte source/synthetic packet SHA b78baedc622af36f5a66192c75700fca05c22caa9eaf87f6249bf3c4c5616123 (base a835076). Inventory: App.jsx, PrivateFiles.jsx, SitesAccessPanel.jsx, PrivateFiles.test.jsx, App.public-reader.test.jsx, PrivateFiles.access.test.jsx, plus unchanged AppRoutes context. Clean fresh review folder; sandbox and slash expansion disabled; excluded secrets, operational logs, personal data, media and private memory. Direct Claude returned only a session-limit error, no verdict. Review confirms one inline panel, route exclusion, first-viewport placement, and cleanup/remount behavior. The recovery migration promotes the exact earlier-reviewed SQL body; equality, guard/refusal/replay and snapshot predecessor checks pass. Final959/959 tests111files and native build pass; desktop/mobile synthetic browser QA passes. Actual OAuth origin registration remains an independent human dependency.
+
+Parent-link repair and unapplied second recovery: AGY/Gemini3.8FlashLow PASS,55512bytes/SHA c461acff71ee0b5c2a8bcd68b2a585bef258c27d624628573679d9540424a247, base c033a06. Inventory: generationHierarchy.js, openRouterGeneration.js, unchanged recordingThreads.js and sites/openRouter.js, generationHierarchy.test.js, sitesInferenceChoice.test.js, proposed diagnostic recovery SQL and its synthetic SQLite test. Fresh clean folder; no tools requested, sandbox/slash-disable; code and authored synthetic input only, no credentials/private data/runtime output. Informational suggestions: add redundant outer SQL time-window predicate and helper shape guard. Existing exact8/6/2 predicate and validated sole caller cover these cases; no substantive repair required. Review is not proof of a real generated map. Final989/989checks113files and native build pass; full failure/retry evidence recorded in milestone board.

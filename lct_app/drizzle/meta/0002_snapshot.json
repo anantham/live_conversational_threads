@@ -1,0 +1,259 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "588724ae-6df4-4dc7-9eba-526b0487b560",
+  "prevId": "7511e9ef-5572-4ffc-b48a-601c676bc8e1",
+  "tables": {
+    "lct_cloud_files": {
+      "name": "lct_cloud_files",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "filename": {
+          "name": "filename",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_cloud_files_object_key_unique": {
+          "name": "lct_cloud_files_object_key_unique",
+          "columns": [
+            "object_key"
+          ],
+          "isUnique": true
+        },
+        "lct_cloud_files_owner_state_created_id_idx": {
+          "name": "lct_cloud_files_owner_state_created_id_idx",
+          "columns": [
+            "owner_user_id",
+            "state",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_cloud_files_kind_check": {
+          "name": "lct_cloud_files_kind_check",
+          "value": "\"lct_cloud_files\".\"kind\" in ('file', 'threads', 'audio')"
+        },
+        "lct_cloud_files_state_check": {
+          "name": "lct_cloud_files_state_check",
+          "value": "\"lct_cloud_files\".\"state\" in ('staging', 'ready', 'deleting')"
+        },
+        "lct_cloud_files_byte_size_check": {
+          "name": "lct_cloud_files_byte_size_check",
+          "value": "\"lct_cloud_files\".\"byte_size\" > 0"
+        }
+      }
+    },
+    "lct_cloud_file_fences": {
+      "name": "lct_cloud_file_fences",
+      "columns": {
+        "object_key": {
+          "name": "object_key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "lct_public_threads": {
+      "name": "lct_public_threads",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "node_count": {
+          "name": "node_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "delete_hash": {
+          "name": "delete_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lct_public_threads_state_created_id_idx": {
+          "name": "lct_public_threads_state_created_id_idx",
+          "columns": [
+            "state",
+            "created_at",
+            "id"
+          ],
+          "isUnique": false
+        },
+        "lct_public_threads_created_idx": {
+          "name": "lct_public_threads_created_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lct_public_threads_state_check": {
+          "name": "lct_public_threads_state_check",
+          "value": "\"lct_public_threads\".\"state\" in ('ready', 'removed')"
+        },
+        "lct_public_threads_payload_check": {
+          "name": "lct_public_threads_payload_check",
+          "value": "(\"lct_public_threads\".\"state\" = 'ready' and \"lct_public_threads\".\"payload\" is not null and \"lct_public_threads\".\"payload_hash\" is not null and \"lct_public_threads\".\"byte_size\" > 0 and \"lct_public_threads\".\"byte_size\" <= 524288) or (\"lct_public_threads\".\"state\" = 'removed' and \"lct_public_threads\".\"payload\" is null and \"lct_public_threads\".\"payload_hash\" is null and \"lct_public_threads\".\"byte_size\" = 0 and \"lct_public_threads\".\"node_count\" = 0 and \"lct_public_threads\".\"title\" = '')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
