@@ -1,6 +1,7 @@
 import { copyFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
+import { assertSiteAssetLimits } from './asset-limits.mjs';
 import { copySiteStorageMetadata, storageMetadataFiles } from './storage-packaging.mjs';
 
 // Paths are relative to the source tree, independent of the caller's cwd.
@@ -20,4 +21,6 @@ for (const [directory, expected] of [
     throw new Error('Unexpected files in ' + directory + '; refuse to publish this Site build.');
   }
 }
+const assets = await assertSiteAssetLimits(fileURLToPath(new URL('../dist/client/', import.meta.url)));
+console.log(`Site assets: ${assets.files} files; largest ${assets.largest.path} (${assets.largest.bytes} bytes).`);
 await copySiteStorageMetadata(root, fileURLToPath(new URL('../dist/', import.meta.url)));

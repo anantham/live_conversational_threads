@@ -10944,3 +10944,15 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 - `.github/workflows/sites-ci.yml`: the lint step now also covers `src/pages/Sites*.jsx`, `src/components/Sites*.jsx`, `src/components/recording`, `src/services/privateFiles.js` and `src/App.sites.test.jsx` (103 files in all, 13 Sites pages). PR #237 removed the one error that kept the pages out.
 - Checked locally: exit 0 with 5 existing warnings (exhaustive-deps); a planted unused variable in `SitesAudioImport.jsx` makes it exit 1.
 - Still left out: `src/services/serverless` (Worker tests), 32 errors, mostly Node globals (`global`, `process`) unknown to the browser lint config, plus unused args.
+
+
+## 2026-11-05 22:34 IST — CPU-only search repair approved
+
+Owner selects the CPU-only recommendation, including runtime proof, asset-size guard, independent review and same-Site publication. Root isolates work from the older checkout's three dirty documentation files using the managed sites-cpu-search worktree at156e915a. Intent/finite plan written before product edits. No further approval needed for routine in-scope repairs/review/PR/deployment; generation activation and new-key setup remain separate. Next checkpoint: real pinned-model/WASM ranking and under-limit build.
+
+
+## 2026-11-05 — CPU runtime proof and pre-review checkpoint
+
+Implementation pairs explicit same-package/same-origin CPU factory and WASM URLs; both Vite configs select the existing WASM-only provider. Sites build now rejects any client asset above25MiB, including non-WASM files; export includes the guard and all previously hand-supplemented hosted/replay handlers. ONNX is declared directly at its existing identical locked version; no non-root lock graph drift. Full1529/163files and focused15 pass, lint0errors/5old warnings, normal/Sites builds pass; largest14,264,838bytes. Actual built worker executes real q8 MiniLM through WASM and ranks two distinct queries in both3- and66-passage synthetic cases. Warm query~8ms; cold local context226ms/2510ms, one sample each/excludes download/not physical-browser timing. Missing asset refuses without results or CDN fallback.
+
+Harness attempt1 identified missing Cache API, attempt2 main-metadata URL rejection; corrected realistic fixtures only after static source tracing and authoritative main==pin identity. Third run succeeds; subsequent short/long/refusal run succeeds with XMLHttpRequest404 adapter, avoiding a false pass from an absent harness API. No product guard weakened. Metadata-discovery reproducibility issue logged in ISSUES; independent source/model fixture remains public and bounded. CUA unavailable is not routed around. Next: independent exact code review, scoped PR+CI and same-Site publication; generation remains off.
