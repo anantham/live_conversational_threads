@@ -321,8 +321,11 @@ describe('Sites recording page', () => {
   it('makes stalled setup elapsed/cancellable and allows a successful explicit retry', async () => {
     vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
     await mount();
-    expect(container.textContent).toContain('Time remaining unknown');
+    // A check that may still be fast says nothing yet, and makes no claim about transcription.
+    expect(container.textContent).not.toContain('Checking connections');
+    expect(container.textContent).not.toContain('Live transcription is not available yet');
     await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(container.textContent).toContain('Checking connections');
     expect(container.textContent).toContain('2 s elapsed');
     await click('Cancel connection check');
     expect(container.textContent).toContain('Setup stopped or timed out');

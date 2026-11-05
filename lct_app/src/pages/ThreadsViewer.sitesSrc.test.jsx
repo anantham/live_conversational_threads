@@ -40,15 +40,19 @@ it("opens a ?src= link with the Site's serverless provider, without sending Site
   expect(fetch.mock.calls[0][1]).toMatchObject({ credentials: "omit" });
 });
 
-it("reports a network-level ?src= failure (CORS, DNS) as a load error", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+// A visitor reads what happened in plain words; the raw cause goes to the console only.
+it.each([
+  ["a network failure (CORS, DNS)", () => Promise.reject(new TypeError("Failed to fetch")), "This shared map could not be reached.", "Failed to fetch"],
+  ["a missing file", async () => ({ ok: false, status: 404, json: async () => ({}) }), "This shared map could not be found.", "fetch failed (404)"],
+  ["a refusal", async () => ({ ok: false, status: 403, json: async () => ({}) }), "did not let it be opened", "fetch failed (403)"],
+  ["a file that is not JSON", async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } }), "This link does not lead to a Threads map file.", "Unexpected token"],
+])("explains %s in plain words", async (_, response, copy, technical) => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.stubGlobal("fetch", vi.fn(response));
   await act(async () => root.render(<ThreadsViewer />));
-  expect(host.textContent).toContain("Could not load artifact: Failed to fetch");
-});
-
-it("reports a failed ?src= fetch as a load error rather than a crash", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }));
-  await act(async () => root.render(<ThreadsViewer />));
-  expect(host.textContent).toContain("Could not load artifact: fetch failed (404)");
+  expect(host.textContent).toContain(copy);
+  expect(host.textContent).not.toContain(technical);
   expect(host.textContent).not.toContain("is not a function");
+  expect(JSON.stringify(warn.mock.calls)).toContain(technical);
+  warn.mockRestore();
 });
