@@ -160,6 +160,8 @@ export default function SitesNewConversation() {
   }
 
   const active = ACTIVE.has(activity?.stage), live = capabilities?.transcription?.enabled;
+  // A fast check stays silent; only one that runs past two seconds says so.
+  const slowSetup = Boolean(setup && elapsed >= 2);
   const transcribe = transcriptionChoice ?? Boolean(live);
   useEffect(() => { if (active) stopControl.current?.focus(); }, [active]);
   useEffect(() => { if (activity?.stage === 'paused') resumeControl.current?.focus(); }, [activity?.stage]);
@@ -192,8 +194,8 @@ export default function SitesNewConversation() {
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={archive.preference} onRetry={archive.retry} />}
         {restoring && <p role="status">Opening saved conversation…</p>}
         {!supported && <p className="text-rose-800">This browser needs HTTPS, microphone access and audio-recording support.</p>}
-        {(setup || activity || saving) && <><p role="status">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : setup ? 'Checking connections' : activity.message}</p>{(setup || active || saving) && <p className="tabular-nums">{elapsed} s elapsed · Time remaining unknown</p>}{setup && <button className="min-h-8 underline underline-offset-2" onClick={() => setupRequest.current?.abort()}>Cancel connection check</button>}{saving && <button className="min-h-8 underline underline-offset-2" onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</>}
-        {!active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
+        {(slowSetup || activity || saving) && <><p role="status">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : slowSetup ? 'Checking connections' : activity.message}</p>{(slowSetup || active || saving) && <p className="tabular-nums">{elapsed} s elapsed · Time remaining unknown</p>}{slowSetup && <button className="min-h-8 underline underline-offset-2" onClick={() => setupRequest.current?.abort()}>Cancel connection check</button>}{saving && <button className="min-h-8 underline underline-offset-2" onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</>}
+        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
         {active && <p>Keep this tab open while recording.</p>}
       </div>
       {error && <p role="alert" className="shrink-0 bg-rose-50 px-5 py-2 text-xs text-rose-900">{error}</p>}

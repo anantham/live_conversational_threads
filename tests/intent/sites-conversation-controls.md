@@ -20,6 +20,9 @@
   contain coarse state only, never account amounts, key labels or credentials.
   This extends the earlier key-only check; no generation-success claim follows.
 
+- 5 November (UX review): indicators speak to a visitor first. "Available" (a quiet ring) means reachable but not yet confirmed; red is kept for a real failure or a key that cannot authenticate; a shared limit is amber "Not available right now". A Soniox key that cannot list models is not a transcription failure. Provider detail, latency and balance stay available under Details. A connection check that finishes within 2 s shows nothing, and no "not available" line appears before the check answers.
+- The account panel waits to be asked (chip, `#site-access` link, private files). A Privacy link stays beside the chip.
+
 - 5 November: the map panel is usually closed, so map state must be visible on the map button on every page that
   shows a map (new conversation, meetings, audio import): "Updating" while a map request runs, "Needs attention"
   with a rose dot and one screen-reader announcement when a request fails, and plain "AI map" again after a

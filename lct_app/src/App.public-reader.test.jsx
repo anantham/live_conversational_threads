@@ -68,9 +68,10 @@ it.each(["/view", "/view/synthetic-artifact", "/public/synthetic-public-id"])(
 
     await act(async () => host.querySelector('a[href="/browse"]').click());
     expect(host.textContent).toContain("Library content");
-    expect(host.querySelector("#site-access")?.textContent).toContain("Browsing as guest");
+    // The account panel waits to be asked in the Library; Google config loads only once it opens.
+    expect(host.querySelector("#site-access button")?.textContent).toBe("Sign in");
     expect(fetch).toHaveBeenCalledWith("/api/auth/session", expect.any(Object));
-    expect(fetch).toHaveBeenCalledWith("/api/auth/config", expect.any(Object));
+    expect(fetch).not.toHaveBeenCalledWith("/api/auth/config", expect.any(Object));
 
     await act(async () => host.querySelector('a[href="/private-files"]').click());
     expect(host.textContent).toContain("Private cloud files");
