@@ -1,0 +1,57 @@
+name: Sites CI
+
+# Checks for the ChatGPT Sites build, which is production (threads.adityaarpitha.com) and is
+# integrated on the Codex Sites branches. The other workflows only run for `main`, so before this
+# nothing ran the frontend unit tests or the Sites build on these branches.
+#
+# No path filters on purpose: the run takes a few minutes, and a path-filtered check that is later
+# made required stays "expected" forever on PRs that do not touch those paths.
+
+on:
+  pull_request:
+    branches: [codex/lct-inference-choice, codex/lct-sites-serverless]
+  push:
+    branches: [codex/lct-inference-choice, codex/lct-sites-serverless]
+  workflow_dispatch:
+
+concurrency:
+  group: sites-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Unit tests, Sites lint and Sites build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: lct_app
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Worker tests use node:sqlite (unflagged from Node 22.13), so Node 20 cannot run them.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: lct_app/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # Only the Sites Worker and cloud services are lint-clean today. The whole tree has ~129
+      # older errors, and the Sites pages have one (an unused mapError in SitesNewConversation.jsx);
+      # widen this list as those are fixed rather than gating every PR on unrelated debt.
+      - name: Lint (Sites Worker and cloud services)
+        run: npx eslint sites src/services/cloud
+
+      - name: Unit and integration tests
+        run: npm test
+
+      # Builds dist/client and dist/server/index.js and checks both before publication.
+      - name: Sites build
+        run: npm run build:sites
