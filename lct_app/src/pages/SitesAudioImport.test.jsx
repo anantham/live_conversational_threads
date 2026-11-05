@@ -305,6 +305,7 @@ it('does not retry a refused live request when the import finishes', async () =>
   await mount(); await choose(); await permit(); await click('Create transcript & threads');
   await enableLive(); await click('Generate conversation map');
   expect(posts).toHaveLength(1); expect(container.textContent).toContain('provider refused');
+  expect(container.querySelector('[aria-label="AI map · Needs attention"]')).toBeTruthy();
   expect(container.querySelector('input[aria-label="Update map while I speak"]').checked).toBe(false);
   await act(async () => fixture.finishTranscript()); await flushArchive();
   expect(posts).toHaveLength(1); expect(fixture.writes.at(-1).snapshot.map).toBeNull();

@@ -20,7 +20,7 @@ export default function SitesMeetingView({ id }) {
   const { data, error, refresh } = useSiteMeeting(id);
   const local = useMeetingArchive(id, data);
   const [panel, setPanel] = useState(null), [minimized, setMinimized] = useState(false), [fullscreen, setFullscreen] = useState(false);
-  const [backend, setBackend] = useState('openrouter'), [generating, setGenerating] = useState(false);
+  const [backend, setBackend] = useState('openrouter'), [generating, setGenerating] = useState(false), [mapError, setMapError] = useState('');
   const [leaving, setLeaving] = useState(false), [leaveMessage, setLeaveMessage] = useState('');
   const [privateEnabled, setPrivateEnabled] = useState(false), [saving, setSaving] = useState(false), [saveMessage, setSaveMessage] = useState('');
   const uploads = useRef(null);
@@ -69,7 +69,7 @@ export default function SitesMeetingView({ id }) {
   let audioURL = '';
   try { audioURL = localAudioURL || (snapshot?.audio_available ? meetingPath(id) + '/audio' : ''); } catch { /* Invalid route is reported by the polling hook. */ }
   return <main className="grid h-[100dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#fdfdfb] text-slate-800">
-    <ConversationNavigation panel={panel} onPanelChange={setPanel} />
+    <ConversationNavigation panel={panel} onPanelChange={setPanel} mapUpdating={generating} mapError={mapError} />
     <section aria-label="Meeting canvas" className="relative flex min-h-0 flex-col overflow-hidden">
       <div className="px-5 py-2 text-xs leading-5">
         <p role="status">{data ? meetingStateText(state) : 'Connecting to your meeting'}</p>
@@ -85,7 +85,7 @@ export default function SitesMeetingView({ id }) {
         <CloseConversationTools onClose={() => setPanel(null)} />
         <div hidden={panel !== 'map'}>
           {!artifact?.source && <p className="pt-12 text-sm">The map becomes available after captions and the recording clock arrive.</p>}
-          {artifact?.source && <RecordingConversationMap source={artifact.source} savedBundle={local.map} retention={local.ready ? local.retention : 'ephemeral'} backend={backend} onBackendChange={setBackend} onGeneratingChange={setGenerating} onMapChange={mapChanged} saving={saving} privateEnabled={privateEnabled} onPrivateSave={savePrivate} liveActive={!ended && !error} recordingBusy={!ended} />}
+          {artifact?.source && <RecordingConversationMap source={artifact.source} savedBundle={local.map} retention={local.ready ? local.retention : 'ephemeral'} backend={backend} onBackendChange={setBackend} onGeneratingChange={setGenerating} onMapStatusChange={setMapError} onMapChange={mapChanged} saving={saving} privateEnabled={privateEnabled} onPrivateSave={savePrivate} liveActive={!ended && !error} recordingBusy={!ended} />}
         </div>
         <div hidden={panel !== 'files'} className="pt-12">
           <h2 className="font-medium">Files &amp; export</h2>

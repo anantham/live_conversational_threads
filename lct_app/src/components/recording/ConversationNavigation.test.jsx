@@ -28,3 +28,20 @@ it('keeps destinations in More, retains icon names, dismisses with Escape and op
   await act(async () => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })));
   expect(more.getAttribute('aria-expanded')).toBe('false');
 });
+
+it('shows map progress and failure on the map button, with an announcement only for failure', async () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  const render = props => act(async () => root.render(<MemoryRouter><ConversationNavigation panel={null} onPanelChange={() => {}} {...props} /></MemoryRouter>));
+  const mapButton = () => host.querySelector('[aria-label^="AI map"]');
+  const announcement = () => host.querySelector('[role="status"]').textContent;
+  await render({});
+  expect(mapButton().getAttribute('aria-label')).toBe('AI map'); expect(mapButton().querySelector('span')).toBeNull(); expect(announcement()).toBe('');
+  await render({ mapError: 'The provider refused the request.' });
+  expect(mapButton().getAttribute('aria-label')).toBe('AI map · Needs attention');
+  expect(mapButton().querySelector('span').className).toContain('bg-rose-600');
+  expect(announcement()).toContain('needs attention');
+  // A new attempt is shown as updating even before the old error is cleared.
+  await render({ mapError: 'The provider refused the request.', mapUpdating: true });
+  expect(mapButton().getAttribute('aria-label')).toBe('AI map · Updating'); expect(announcement()).toBe('');
+});

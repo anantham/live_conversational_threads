@@ -188,7 +188,7 @@ export default function SitesNewConversation() {
     if (!window.confirm('Leave this conversation? Download or save your audio, transcript and map first. Unsaved copies will be lost.')) event.preventDefault();
   }
   return <main onClickCapture={guardNavigation} className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#fdfdfb] font-sans text-slate-800">
-    <ConversationNavigation panel={panel} onPanelChange={setPanel} />
+    <ConversationNavigation panel={panel} onPanelChange={setPanel} mapUpdating={generating} mapError={mapError} />
     <section aria-label="Conversation canvas" tabIndex={0} className="relative flex min-h-0 flex-col overflow-hidden focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-400">
       <div className="mx-auto w-full max-w-3xl shrink-0 px-5 py-2 text-xs leading-5 text-slate-600">
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={archive.preference} onRetry={archive.retry} />}
