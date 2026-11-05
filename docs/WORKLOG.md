@@ -8916,3 +8916,4 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
   - Declined P2 "assert 12px/32px classes in tests": that would test CSS implementation (the intent doc says verify placement visually); sizes were measured in the browser.
   - Not adopted: Escape to close the account panel. It never had it; logged in ISSUES.md.
   - Full suite 146 files / 1,431 tests.
+- 17:00 IST — Round 2 (Gemini 3.8 Flash (High), packet `review-ux2/`): GO. It confirmed the `verified` fix cannot turn green without session evidence or stay green after a failure, and agreed `ingest` never throws to the share-link catch. Adopted its P3: the non-map test now asserts the validator's message appears.
