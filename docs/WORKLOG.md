@@ -8883,3 +8883,10 @@ User u do it authorizes another normal owner sign-in; one fresh attempt performe
 ## 2026-11-04 04:55 IST — Retargeted to codex/lct-inference-choice; final Gemini round
 - #227 merged into `fix/openrouter-approved-model-fallback` (995911b0), but that branch had already landed in `codex/lct-inference-choice` via #219/#226, so the commits were off the Site's deploy branch. The parent session pointed this out. Opened #228, same branch → `codex/lct-inference-choice` (base 66508a0f; clean merge, exactly the 4 commits).
 - Final round on the full diff (scratchpad `review4/`, full.diff `9da988fc…`): NO-GO with one P2 test-quality finding and no acceptance, weakening or crash findings. Two round-2 tests had been refused by the round-3 distinct-targets rule before the sibling check ran. Rewritten so two distinct tier-named targets drift beside a bare sibling. Both now fail under the reviewer's mutant (touched check reduced to `startsWith(affix)`). Test-only change.
+
+## 2026-11-05 11:35 IST — Fix /view?src= share links on the Site (bug from the UX review)
+- Branch `fix/sites-src-share-links` from `codex/lct-inference-choice` @ fbd1a830.
+- `lct_app/src/services/ServerlessDataProvider.js`: added `fetchThreadsFile(src)` → `fetch(src, { credentials: 'omit' })`.
+- Red first: `lct_app/src/pages/ThreadsViewer.sitesSrc.test.jsx` renders the viewer with the real serverless provider at `/view?src=…`. Before the fix it showed "…fetchThreadsFile is not a function"; after it, the map renders. A second case checks that a 404 is reported as a load error. Mutants (no `credentials: 'omit'`; method removed) each fail.
+- Browser check: a Sites-mode dev server loaded `/view?src=/experiments/overlapping.threads` and rendered the map (two arcs). The only console error was the absent local `/api/auth/session`.
+- Full suite 145 files / 1,400 tests. `publicDrive.test.js` needs local port binding, which the sandbox refuses (`listen EPERM`); outside the sandbox it passes 15/15. Lint clean on the changed files; `ThreadsViewer.public.test.jsx` already had two prop-types lint errors before this change.

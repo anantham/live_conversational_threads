@@ -2167,3 +2167,10 @@ Supersedes the 10/10 figure above. With compact-JSON wording A, 20-minute maps w
 - **Pre-existing:** the code before this branch gives the identical repair (measured on the reviewer's input). The branch does not change that path.
 - **Impact:** needs a reply whose every resolved id shares a trailing word. That is unlikely, but it is the suffix form of the residual already documented in `lct_app/sites/README.md`.
 - **Next step:** if it matters, require tier-named replies on the all-tiers path to drift by prefix only, and decide whether that would also refuse a real drift.
+
+## 2026-11-05 — Shared /view?src= links fail on the Site (fixed on `fix/sites-src-share-links`)
+
+- **What happened:** found in the 2026-11-05 UX review. On the live Site, `threads.adityaarpitha.com/view?src=<url>` showed "Could not load artifact: s.conversations.fetchThreadsFile is not a function".
+- **Cause:** `ThreadsViewer` calls `dataProvider.conversations.fetchThreadsFile` (line 309). Only `BackendDataProvider` defines it, and the Site uses `ServerlessDataProvider`.
+- **Fix:** `ServerlessDataProvider.conversations.fetchThreadsFile(src)` fetches with `credentials: 'omit'`, like the public-threads load, so Site cookies never go to the shared URL.
+- **Not covered:** the error copy is still the raw message. A friendlier message is in the UX review's fix plan.
