@@ -49,7 +49,10 @@ export class ServerlessDataProvider extends DataProvider {
           nodes: nodes,
           edges: [] // We don't generate explicit edges yet in phase 1, edge_relations is on nodes
         };
-      }
+      },
+      // A hosted map shared as /view?src=<url>. The file lives elsewhere, so the
+      // Site's own cookies never go with it (as for public threads).
+      fetchThreadsFile: async (src) => fetch(src, { credentials: 'omit' })
     };
 
     this._audio = {};

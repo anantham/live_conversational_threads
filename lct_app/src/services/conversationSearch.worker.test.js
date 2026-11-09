@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { pipeline } from '@huggingface/transformers';
+import { env, pipeline } from '@huggingface/transformers';
 
 // Test intent: exercise the worker's message boundary with synthetic model I/O.
 // Measured aggregate bytes reach the UI without vendor paths or source text;
@@ -48,4 +48,16 @@ it('reports a failed load and allows a subsequent request to complete', async ()
   await vi.waitFor(() => expect(messages.find(message => message.type === 'error')).toMatchObject({ requestId: 1, message: 'On-device search failed: Synthetic model unavailable' }));
   start(2);
   await vi.waitFor(() => expect(messages.find(message => message.type === 'results')).toMatchObject({ requestId: 2, results: [{ id: 'd1', score: 1 }, { id: 'd2', score: 0 }] }));
+});
+
+// Runtime URLs are a deployment/ABI boundary; the built real-model smoke complements this mock.
+it('pairs local CPU runtime assets and keeps the requested WASM/q8 search contract', async () => {
+  pipeline.mockResolvedValue(vectorize);
+  start(7);
+  await vi.waitFor(() => expect(messages.find(message => message.type === 'results')).toMatchObject({ requestId: 7, results: [{ id: 'd1', score: 1 }, { id: 'd2', score: 0 }] }));
+  expect(pipeline.mock.calls[0][2]).toMatchObject({ device: 'wasm', dtype: 'q8' });
+  const paths = env.backends.onnx.wasm.wasmPaths;
+  expect(new URL(paths.wasm).pathname).toMatch(/\/ort-wasm-simd-threaded\.wasm$/);
+  expect(new URL(paths.mjs).pathname).toMatch(/\/ort-wasm-simd-threaded\.mjs$/);
+  expect(new URL(paths.wasm).origin).toBe(new URL(paths.mjs).origin);
 });

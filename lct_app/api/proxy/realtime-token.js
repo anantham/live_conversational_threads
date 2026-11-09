@@ -4,10 +4,10 @@ export const config = {
   runtime: 'edge',
 };
 
-export default async function handler(req) {
+export async function handleRealtimeTokenRequest(req, { trialKey, ...guardOptions } = {}) {
   // Origin allowlist + preflight + method + rate limit (shared). Previously
   // this route had NO origin check and NO rate limit — an open relay.
-  const blocked = guardRequest(req, { maxPerMin: 10 });
+  const blocked = guardRequest(req, { ...guardOptions, maxPerMin: 10 });
   if (blocked) return blocked;
   const origin = req.headers.get('origin');
   const cors = corsHeaders(origin);
@@ -15,8 +15,8 @@ export default async function handler(req) {
   // NO_LOG_BYOK_KEY_ASSERTION
   // BYOK wins; otherwise the trial rides the server-side OPENAI_TRIAL_KEY.
   const byokKey = req.headers.get('x-lct-byok-key');
-  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
-  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!trialKey;
+  const apiKey = byokKey || (usingTrial ? trialKey : null);
   if (!apiKey) {
     return new Response('Missing x-lct-byok-key header', { status: 401, headers: cors });
   }
@@ -56,7 +56,11 @@ export default async function handler(req) {
         ...cors
       }
     });
-  } catch (err) {
+  } catch {
     return new Response('Proxy Error', { status: 502, headers: cors });
   }
+}
+
+export default function handler(req) {
+  return handleRealtimeTokenRequest(req, { trialKey: process.env.OPENAI_TRIAL_KEY });
 }

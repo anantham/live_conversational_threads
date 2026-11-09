@@ -1,0 +1,10 @@
+# Meet caption-language scope
+
+- Run the actual pinned public global selector against generic synthetic duplicate language lists; reproduce an outside-Settings click and show that a true click result does not establish the intended setting.
+- Exercise the derived script in a real jsdom DOM: one visible owning Settings dialog, one Meeting language list and one exact target; verify canonical selected state and preserve unrelated controls.
+- Refuse ambiguous/hidden/missing/disabled/ignored selections and malicious selector-like input without unrelated mutations. Selection confirmation must precede closing Settings in the public Python UI method.
+- Preserve existing nine public dialog/readiness/diagnostic checks, exact input hash and existing-output refusal. Tests use synthetic DOM/state only; no browser, framework persistence, network, bot, model, recording or real transcript.
+- Keep local script/fixture evidence distinct from actual Asus-runtime and live Meet acceptance. Never relax a required postcondition to make the test pass.
+- A presence lookup may see hidden Settings markup: bounded selection waits must allow the owning dialog to become visible without treating a premature false result as a completed failure.
+- Before applying to the stopped worker, verify its exact image/user/mount/current source and eight terminal records; default dry-run must not mutate the source. Preserve an exclusive original-byte backup and file ACL/attributes, verify exact new bytes afterward, and leave the worker stopped. Unknown source/backup, active holder, linked path or permission denial refuses.
+- Validate exclusive file writing and restoration on fresh tiny public Windows fixtures, including a deliberately interrupted partial write, mismatched-source/content and read-only refusal. Preserve exact ACL/attributes; never weaken that guard or inject failures against the recorder. A process/power loss still requires reconciliation from the preserved original backup with the worker stopped.

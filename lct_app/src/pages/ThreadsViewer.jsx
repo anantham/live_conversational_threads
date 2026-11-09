@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Rows3 } from "lucide-react";
+import PropTypes from "prop-types";
 
 import { useDataProvider } from "../services/dataProvider";
 import MinimalGraph from "../components/MinimalGraph";
@@ -16,6 +17,7 @@ import { buildViewerFindGroups } from "../components/threads/viewerFindModel";
 import { buildConversationSearchDocuments } from "../services/conversationSearch";
 import { buildSpeakerContributions } from "../components/graph/speakerContributions";
 import DiscussionView from "../components/discussion/DiscussionView";
+import PublicThreadsLoader from "./PublicThreadsLoader";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
 import TextSourcePanel from "../components/threads/TextSourcePanel";
@@ -33,6 +35,7 @@ import {
   validateThreadsArtifact,
 } from "../services/threadsArtifact";
 import { indexExplicitEdges } from "../services/edgeContract";
+import { readGeneratedMap, releaseGeneratedMap } from "../services/cloud/generatedMapHandoff.js";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
@@ -57,16 +60,27 @@ import {
  * preference persistence, utterance loading). Audio is not part of the bundle.
  */
 
-export default function ThreadsViewer() {
-  return <CardDisplayProvider><ThreadsViewerContent /></CardDisplayProvider>;
+const SHARE_LINK_ERRORS = {
+  missing: "This shared map could not be found. The link may have moved or expired; ask whoever sent it for a new one.",
+  refused: "The site holding this shared map did not let it be opened. Ask whoever sent the link for a downloaded copy.",
+  unreachable: "This shared map could not be reached. Its host may be offline, or may not allow other sites to open its files.",
+  notMap: "This link does not lead to a Threads map file.",
+};
+
+export default function ThreadsViewer({ privateBundle, onPrivateClose }) {
+  return <CardDisplayProvider><ThreadsViewerContent privateBundle={privateBundle} onPrivateClose={onPrivateClose} /></CardDisplayProvider>;
 }
 
-function ThreadsViewerContent() {
+function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
+  const privateMode = privateBundle !== undefined;
   const dataProvider = useDataProvider();
   const location = useLocation();
   const navigate = useNavigate();
-  const { artifactId } = useParams();
-  const driveFileId = typeof window === "undefined"
+  const { artifactId, publicId } = useParams();
+  const generatedMapId = !privateMode && !publicId && location.state?.remember === false ? location.state?.generatedMapId : null;
+  const generatedBundle = useMemo(() => readGeneratedMap(generatedMapId), [generatedMapId]);
+  const ephemeral = !privateMode && !publicId && location.state?.remember === false && Boolean(generatedMapId || location.state?.threadsBundle);
+  const driveFileId = privateMode || typeof window === "undefined"
     ? ""
     : new URLSearchParams(location.search).get("driveFile") || "";
   const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
@@ -79,7 +93,7 @@ function ThreadsViewerContent() {
   const [discussionExpanded, setDiscussionExpanded] = useState([]);
   const [sourcePosition, setSourcePosition] = useState(null);
   const [textSourceMode, setTextSourceMode] = useState("transcript");
-  const [viewMode, setViewMode] = useState(() => typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+  const [viewMode, setViewMode] = useState(() => !privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -95,7 +109,7 @@ function ThreadsViewerContent() {
   // map arrives. Seeded from the URL so the very first render is already loading.
   const [srcLoading, setSrcLoading] = useState(
     () =>
-      Boolean(artifactId || location.state?.threadsBundle) ||
+      privateMode || Boolean(artifactId || generatedMapId || location.state?.threadsBundle) ||
       (typeof window !== "undefined"
         && ["src", "driveFile"].some((key) => new URLSearchParams(window.location.search).has(key))),
   );
@@ -132,6 +146,7 @@ function ThreadsViewerContent() {
   }, [compactViewer, viewMode]);
 
   useEffect(() => {
+    if (privateMode) return;
     const showLinkedDiscussion = () => {
       if (window.location.hash.startsWith("#discussion=")) {
         setFocusMode(false);
@@ -141,7 +156,7 @@ function ThreadsViewerContent() {
     };
     window.addEventListener("hashchange", showLinkedDiscussion);
     return () => window.removeEventListener("hashchange", showLinkedDiscussion);
-  }, []);
+  }, [privateMode]);
 
   useEffect(() => {
     if (!focusMode) return undefined;
@@ -167,7 +182,7 @@ function ThreadsViewerContent() {
       setSourcePosition(null);
       setTextSourceMode("transcript");
       setSourceSeek(null);
-      setViewMode(typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+      setViewMode(!privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
       setOverviewOpen(false);
       setSourceOpen(false);
       setSourceTextSelection(null);
@@ -179,7 +194,7 @@ function ThreadsViewerContent() {
       setMediaNode(null);
       setMobileMapOpen(false);
       setMobileDeckState(null);
-      if (remember) {
+      if (remember && !privateMode) {
         setLibraryStatus({ state: "saving", message: "Saving on this device…" });
         void rememberThreadsArtifact(validated, {
           sourceName,
@@ -202,16 +217,30 @@ function ThreadsViewerContent() {
       }
     } catch (e) {
       setBundle(null);
-      setError(String(e?.message || e));
+      setError(privateMode ? "This private conversation map cannot be displayed. Return to your files and try another copy." : String(e?.message || e));
     }
-  }, []);
+  }, [privateMode]);
+
+  useEffect(() => {
+    if (!privateMode) return;
+    ingest(privateBundle, { remember: false });
+    setSrcLoading(false);
+    setLibraryStatus({ state: "private", message: "Private cloud copy · edits stay in this view" });
+  }, [privateMode, privateBundle, ingest]);
+
+  const ingestPublic = useCallback((data) => {
+    ingest(data, { remember: false });
+    setSrcLoading(false);
+    setLibraryStatus({ state: "public", message: "Public copy · edits stay in this view" });
+  }, [ingest]);
+  useEffect(() => { if (publicId && !privateMode) { setBundle(null); setError(""); setLibraryStatus(null); } }, [publicId, privateMode]);
 
   // A Drive link is stable, while its short-lived OAuth token is deliberately
   // not. Reopen the validated artifact already saved for this exact Drive file
   // before mounting Google authorization. Explicit Refresh remains the only
   // operation that contacts Drive again.
   useEffect(() => {
-    if (!driveFileId || artifactId || location.state?.threadsBundle || driveRefreshRequested) return;
+    if (privateMode || publicId || !driveFileId || artifactId || location.state?.threadsBundle || driveRefreshRequested) return;
     let cancelled = false;
     setSrcLoading(true);
     void getThreadsLibraryRecordByDriveFileId(driveFileId)
@@ -235,11 +264,11 @@ function ThreadsViewerContent() {
     return () => {
       cancelled = true;
     };
-  }, [artifactId, driveFileId, driveRefreshRequested, ingest, location.state]);
+  }, [privateMode, artifactId, publicId, driveFileId, driveRefreshRequested, ingest, location.state]);
 
   const handleFile = useCallback(
     async (file) => {
-      if (!file) return;
+      if (privateMode || !file) return;
       try {
         const data = await readThreadsFile(file);
         ingest(data, { sourceName: file.name });
@@ -248,23 +277,30 @@ function ThreadsViewerContent() {
         setError(`Could not read .threads file: ${String(e?.message || e)}`);
       }
     },
-    [ingest],
+    [privateMode, ingest],
   );
 
   // Browse passes a parsed bundle through router state so the file opens even
-  // when persistent browser storage is unavailable. The viewer then attempts
-  // the one shared remember step and reports its result honestly in the header.
+  // when persistent browser storage is unavailable. Generated results explicitly
+  // opt out of remembering; ordinary imported files keep the shared remember step.
   useEffect(() => {
-    const routedBundle = location.state?.threadsBundle;
-    if (!routedBundle || consumedRouteState.current) return;
+    const routedBundle = generatedBundle || location.state?.threadsBundle;
+    if (privateMode || publicId || consumedRouteState.current || (!routedBundle && !generatedMapId)) return;
     consumedRouteState.current = true;
-    ingest(routedBundle, { sourceName: location.state?.sourceName || "" });
+    if (!routedBundle) {
+      setError("This generated map is no longer available in this page. Open a downloaded .threads copy or generate another map.");
+      setSrcLoading(false);
+      return;
+    }
+    ingest(routedBundle, { sourceName: location.state?.sourceName || "", remember: !ephemeral });
+    releaseGeneratedMap(generatedMapId);
+    if (ephemeral) setLibraryStatus({ state: "memory", message: "Generated map · not saved" });
     setSrcLoading(false);
-  }, [ingest, location.state]);
+  }, [ingest, privateMode, publicId, ephemeral, generatedMapId, generatedBundle, location.state]);
 
   // Stable browser-local deep link used by Browse's "On this device" rows.
   useEffect(() => {
-    if (!artifactId) return;
+    if (privateMode || ephemeral || !artifactId) return;
     let cancelled = false;
     setSrcLoading(true);
     void getThreadsLibraryRecord(artifactId)
@@ -288,25 +324,31 @@ function ThreadsViewerContent() {
     return () => {
       cancelled = true;
     };
-  }, [artifactId, ingest]);
+  }, [privateMode, ephemeral, artifactId, ingest]);
 
   // Optional ?src=<url> — fetch a hosted .threads (NOT an /api/ call). Lets a
   // share be a plain link to a hosted file without any backend.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (artifactId || location.state?.threadsBundle) return;
+    if (privateMode || publicId || artifactId || location.state?.threadsBundle) return;
     const src = new URLSearchParams(window.location.search).get("src");
     if (!src) return;
     let cancelled = false;
     setSrcLoading(true);
     (async () => {
       try {
-        const resp = await dataProvider.conversations.fetchThreadsFile(src);
-        if (!resp.ok) throw new Error(`fetch failed (${resp.status})`);
-        const data = await resp.json();
+        let resp;
+        try { resp = await dataProvider.conversations.fetchThreadsFile(src); }
+        catch (cause) { throw Object.assign(new Error(`fetch rejected: ${cause?.message || cause}`), { share: "unreachable" }); }
+        if (!resp.ok) throw Object.assign(new Error(`fetch failed (${resp.status})`), { share: [404, 410].includes(resp.status) ? "missing" : "refused" });
+        let data;
+        try { data = await resp.json(); }
+        catch (cause) { throw Object.assign(new Error(`unreadable JSON: ${cause?.message || cause}`), { share: "notMap" }); }
         if (!cancelled) ingest(data, { sourceName: src });
       } catch (e) {
-        if (!cancelled) setError(`Could not load artifact: ${String(e?.message || e)}`);
+        // A visitor sees what happened in plain words; the technical cause goes to the console.
+        console.warn("[ThreadsViewer] shared link could not load", { src, cause: String(e?.message || e) });
+        if (!cancelled) setError(SHARE_LINK_ERRORS[e?.share] || SHARE_LINK_ERRORS.unreachable);
       } finally {
         if (!cancelled) setSrcLoading(false);
       }
@@ -314,7 +356,7 @@ function ThreadsViewerContent() {
     return () => {
       cancelled = true;
     };
-  }, [artifactId, dataProvider, ingest, location.state]);
+  }, [privateMode, artifactId, publicId, dataProvider, ingest, location.state]);
 
   const onDrop = useCallback(
     (e) => {
@@ -365,24 +407,24 @@ function ThreadsViewerContent() {
     }
   }, [bundle, onFindNode]);
   const discussionLinkBase = useMemo(() => {
-    if (typeof window === "undefined") return null;
+    if (privateMode || ephemeral || typeof window === "undefined") return null;
     const url = new URL(location.pathname + location.search, window.location.origin);
-    if (artifactId || url.searchParams.has("src") || url.searchParams.has("driveFile")) return url.href;
+    if (publicId || artifactId || url.searchParams.has("src") || url.searchParams.has("driveFile")) return url.href;
     if (!libraryStatus?.recordId) return null;
     url.pathname = `/view/${encodeURIComponent(libraryStatus.recordId)}`;
     url.search = "";
     url.hash = "";
     return url.href;
-  }, [artifactId, libraryStatus?.recordId, location.pathname, location.search]);
+  }, [privateMode, ephemeral, artifactId, publicId, libraryStatus?.recordId, location.pathname, location.search]);
   // Diagnostic (cold-open blank-graph investigation): confirms MinimalGraph
   // mounts only AFTER the .threads bundle is present, with a non-empty node
   // count — distinguishes the data-ready path (blank => camera) from a
   // data-arrival race. Toggle off with window.__MG_DEBUG__ = false.
   useEffect(() => {
-    if (typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
+    if (!privateMode && !ephemeral && typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
       console.log("[ThreadsViewer] bundle ready -> MinimalGraph", { graphDataLen: (bundle?.graph_data || []).length, flatNodes: flatNodes.length });
     }
-  }, [bundle, flatNodes.length]);
+  }, [privateMode, ephemeral, bundle, flatNodes.length]);
   const selectedNodeData = useMemo(
     () =>
       selectedNode
@@ -469,22 +511,35 @@ function ThreadsViewerContent() {
     triggerDownload(lines.join("\n"));
   }, [bundle, flatNodes]);
 
-  const openLibrary = useCallback(() => navigate("/browse"), [navigate]);
+  const downloadMap = useCallback(() => {
+    if (!bundle) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `recording-${String(bundle.conversation_id || "map").replace(/[^a-z0-9_-]/gi, "-").slice(0, 80)}.threads`;
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  }, [bundle]);
+
+  const openLibrary = useCallback(() => privateMode ? onPrivateClose() : navigate(publicId ? "/public" : "/browse"), [privateMode, onPrivateClose, navigate, publicId]);
   const renameSpeaker = useCallback((speakerId, name) => {
     const updated = renameArtifactSpeaker(bundle, speakerId, name);
     setBundle(updated);
+    if (privateMode) { setLibraryStatus({ state: "private", message: "Speaker names changed in this view only" }); return; }
+    if (publicId) { setLibraryStatus({ state: "public", message: "Speaker names changed in this view only" }); return; }
+    if (ephemeral) { setLibraryStatus({ state: "memory", message: "Speaker names changed in this view only · not saved" }); return; }
     setLibraryStatus({ state: "saving", message: "Saving speaker names…" });
     void rememberThreadsArtifact(updated).then((record) => {
       setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
     }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
-  }, [bundle]);
+  }, [bundle, publicId, privateMode, ephemeral]);
   const openAnother = useCallback(() => {
+    if (privateMode) { onPrivateClose(); return; }
     setBundle(null);
     setError("");
     setLibraryStatus(null);
     setMobileMapOpen(false);
     navigate("/view");
-  }, [navigate]);
+  }, [privateMode, onPrivateClose, navigate]);
 
   const onGraphNavigationChange = useCallback((snapshot, { replace = false } = {}) => {
     setGraphNavigation(snapshot);
@@ -524,6 +579,10 @@ function ThreadsViewerContent() {
     if (selectYouTubeRef(bundle) && validMediaSeconds(seconds)) { seekSourcePassage(seconds); return; }
     setSourceSeek(null); setSourceTextSelection({kind: "utterance", utteranceId: String(id)}); setTextSourceMode("utterances"); setSourceOpen(true);
   }, [bundle, seekSourcePassage]);
+
+  // Private/public early exits sit after every hook so hook order is stable.
+  if (privateMode && !bundle && !srcLoading) return <main className="min-h-dvh bg-[#fdfdfb] p-6 font-sans text-slate-800"><p role="alert" className="max-w-[65ch] text-sm leading-6">{error || "This private conversation map cannot be displayed."}</p><button type="button" className="mt-5 min-h-11 rounded-lg border border-slate-300 px-4 py-2 text-sm" onClick={onPrivateClose}>Back to private files</button></main>;
+  if (!privateMode && publicId && !bundle) return <PublicThreadsLoader key={publicId} id={publicId} onArtifact={ingestPublic} />;
 
   // ---- Loading state: fetching a hosted ?src= artifact --------------------
   if (!bundle && srcLoading && !error) {
@@ -612,15 +671,20 @@ function ThreadsViewerContent() {
 
   // ---- Loaded state: the map ----------------------------------------------
   const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
-  const refreshFromDrive = driveFileId ? () => setDriveRefreshRequested(true) : undefined;
+  const refreshFromDrive = !publicId && driveFileId ? () => setDriveRefreshRequested(true) : undefined;
+  const sourceNotice = privateMode
+    ? <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-slate-100 px-4 text-sm text-slate-700"><span>Private cloud copy · edits stay in this view</span><button type="button" onClick={onPrivateClose} className="min-h-11 font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700">Close private conversation</button></div>
+    : ephemeral ? <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-slate-100 px-4 text-sm text-slate-700"><span>Generated map · kept in this view · not saved</span><button type="button" className="min-h-11 font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={downloadMap}>Download map</button></div>
+      : publicId && <div className="shrink-0 border-b border-slate-200 bg-amber-50 px-4 py-2 text-xs text-slate-700">Public copy · visible to everyone · edits stay in this view</div>;
+  const namesStayInView = privateMode || ephemeral || Boolean(publicId);
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
   const renderSourcePanel = (node) => sourceTextSelection || !selectYouTubeRef(bundle)
-    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
-    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} onClose={() => setSourceOpen(false)} />;
+    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
+    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} recordTimings={!privateMode} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
-    graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult}
+    graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult} meaningSearch={!privateMode}
     history={history}
     sourceAvailable={Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube") || bundle.full_transcript || bundle.utterances?.length)} sourceOpen={sourceOpen} onToggleSource={() => { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen((value) => !value); }}
     onDownloadTranscript={downloadTranscript}
@@ -630,6 +694,7 @@ function ThreadsViewerContent() {
   />;
   const header = <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)} />;
   if (viewMode === "discussion") return <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
+    {sourceNotice}
     {header}
     {toolbar}
     <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
@@ -645,7 +710,7 @@ function ThreadsViewerContent() {
   </div>;
   if (compactViewer && viewMode === "cards") {
     return (
-      <div ref={viewerRoot} className="flex h-[100dvh] min-h-0 flex-col">{header}{toolbar}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
+      <div ref={viewerRoot} className="flex h-[100dvh] min-h-0 flex-col">{sourceNotice}{header}{toolbar}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
         readingPath={mobileReadingPath}
@@ -655,10 +720,11 @@ function ThreadsViewerContent() {
         onDeckStateChange={setMobileDeckState}
         onDownloadTranscript={downloadTranscript}
         onOpenLibrary={openLibrary}
-        onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
+        onRefreshFromDrive={refreshFromDrive}
         onOpenAnother={openAnother}
         onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);setViewMode("graph");}}
         onRenameSpeaker={renameSpeaker}
+        namesStayInView={namesStayInView}
       /></div></div>
     );
   }
@@ -667,6 +733,7 @@ function ThreadsViewerContent() {
   const nodeDetailsVisible = Boolean(selectedNodeData) && (!narrowViewer || !sourceOpen);
   return (
     <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+      {sourceNotice}
       {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
         <ThreadsViewerHeader
           bundle={bundle}
@@ -683,6 +750,7 @@ function ThreadsViewerContent() {
         {sourceOpen && renderSourcePanel(selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode)))}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         <MinimalGraph
+          diagnosticsEnabled={!privateMode && !ephemeral}
           graphData={flatNodes}
           speakerDisplayNames={speakerDisplayNames}
           navigationState={graphNavigation}
@@ -695,7 +763,7 @@ function ThreadsViewerContent() {
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {
-            if (typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
+            if (!privateMode && !ephemeral && typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
               console.log("[ThreadsViewer] onVisibleLevelChange", { mode: view?.mode, level: view?.level, label: view?.label, ribbonLevel: view?.mode === "semantic" ? view.level : null });
             }
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
@@ -798,3 +866,6 @@ function ThreadsViewerContent() {
     </div>
   );
 }
+
+ThreadsViewer.propTypes = { privateBundle: PropTypes.object, onPrivateClose: PropTypes.func };
+ThreadsViewerContent.propTypes = ThreadsViewer.propTypes;

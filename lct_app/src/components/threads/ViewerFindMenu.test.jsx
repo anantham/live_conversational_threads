@@ -8,6 +8,7 @@ import ViewerFindMenu from "./ViewerFindMenu";
 // - Semantic progress, cancellation, close cleanup, errors, retry, and result selection remain understandable.
 // - Startup and measured model bytes are distinct; cancelled workers cannot fail a retry.
 // - An unreadable worker response offers recovery while text matches remain usable.
+// - With meaning search off (private conversations), text matches still work and no worker or model download starts.
 let container;
 let root;
 let workers;
@@ -63,6 +64,16 @@ afterEach(() => {
 });
 
 describe("ViewerFindMenu", () => {
+  it("keeps text search but never starts on-device search when meaning search is off", () => {
+    renderFind({ meaningSearch: false });
+    type(openFind(), "launch");
+    submit();
+    expect(workers).toHaveLength(0);
+    expect([...container.querySelectorAll("button")].some(button => button.textContent.includes("meaning"))).toBe(false);
+    expect(container.textContent).toContain("Meaning search is off for private conversations");
+    expect(container.textContent).toContain("Text matches · 2");
+  });
+
   it("reports worker startup separately from measured model loading", () => {
     renderFind();
     type(openFind(), "launch");

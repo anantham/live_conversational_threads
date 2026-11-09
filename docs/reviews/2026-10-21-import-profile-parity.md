@@ -1,0 +1,17 @@
+# Import profile menu parity
+
+Product commit aa14b98f8ad0674f1e245c048da4d7fb98bac575. Existing user choice: Profile inside More. Root integration owner in existing codex/lct-inference-choice checkout. Actual hosted mobile import showed duplicate floating Sign in and More/Profile. Source route group omitted import; adding exact /import-audio and /import-audio/ reuses the existing collapsed/menu/focus behavior. All authentication, identity, provider, data, session and logout code remains unchanged.
+
+Four new route/session cases fail before the one-line production fix;37account tests pass afterward,45focused/threefiles pass, complete1176/1176 in131files/9.85seconds at19:10:23IST and Site frontend/Workerbuild pass. Existing test was parameterized for both401/200 and both import slashes; no expectation removed. Broader550line test suite split is recorded in TECH_DEBT. Production panel261lines, no monolith refactor.
+
+Independent Google Gemini3.8FlashLow via existing AGY subscription, fresh conversation5e7f85dd-6e46-4bf7-ac0a-48cc6665802d,16.726seconds, one turn, SUCCESS/PASS/findings[]. Packet57887bytes/SHA256d44a7f5ad1013348e652f74521bf394d6e432b9efd7eb8c224ddf1c7f44e65a2; complete changed component/test/intent and bounded source context. All hashes match exact reviewed source. Inspected/scanned source and synthetic fixtures only; no credentials/private data/audio/transcripts/runtime logs. Read-only/no-tool critique, standing review authority, no new provider/purchase.
+
+Actual Chrome local preview uses explicit guest/offline fixtures and no upstream API or POST support. It proves hidden default account card, More/Profile opens, Close hides and focus returns to More, no horizontal overflow at354CSSpx (390physical override with existing110percent localhost zoom). Preview is layout evidence only, not authenticated/provider proof. No sign-in/logout/reset or file processing clicked. Preview tab closed, viewport restored. Existing live custom-host import tab retained. Native publication/live verification follow and are recorded separately. No recovery, paid generation or Meet bot is authorized by this UI change.
+
+## Served and accepted UI
+
+Same existing public Site55, nativeb63ba90397f051d8ab9e464f8fc4a0ddb73b06cb, deploymentappgdep_6ad8c1ffe4bc819199d6c10dafb9e1b3 succeeded2026-10-21T13:46:04.069591UTC/env64 unchanged. Official native helper owns push/build/archive; all351curatedfiles equal reviewedexport, nativeonlyonecomponentchanged. Exact task remoteSHA verified. No migration/environment/provider/data-policy change.
+
+Actual Chrome custom-host /import-audio reload serves index-DrLgMcGx.js.390CSSpx inner/document widths equal390/390; account panel hidden and zero standalone account buttons. More->Profile opens the actual guest panel, Close hides it and returns focus to More. No login/reset/logout or processing activated. Screenshot /private/tmp/lct-import-profile-live-mobile-20261021.png. Viewport restored, live tab834466874 retained. Dedicated offline QAserver PID27242/cwd/private/tmp/127.0.0.1:52010 verified and stopped; owned execution exits143, no otherprocess changed.
+
+The original13attemptrows remain byte-for-byte unchanged after both releases; no model request, reserved recovery or bot. Real audio-to-threads acceptance still awaits the exact earlier H1 request. UI parity is accepted independently and does not manufacture generation capacity or satisfy that provider check.

@@ -1,0 +1,9 @@
+{
+  "services": {
+    "worker": {
+      "command": ["celery", "-A", "attendee", "worker", "-l", "INFO", "--concurrency", "2"],
+      "environment": {"ATTENDEE_LOG_LEVEL": "INFO", "MASK_TRANSCRIPT_IN_LOGS": "true"},
+      "volumes": ["../../google_meet_ui_repaired.py:/attendee/bots/google_meet_bot_adapter/google_meet_ui_methods.py:ro"]
+    }
+  }
+}

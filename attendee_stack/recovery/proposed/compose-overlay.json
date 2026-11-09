@@ -1,0 +1,9 @@
+{
+  "services": {
+    "worker": {
+      "security_opt": [
+        "seccomp=../chrome-namespace-profile.json"
+      ]
+    }
+  }
+}
