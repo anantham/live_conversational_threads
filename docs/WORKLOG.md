@@ -1,3 +1,11 @@
+## 2026-11-09 11:38 IST — Carry the PR #218 review's viewer bug notes onto main
+
+- #218 is superseded by #238 (Codex's Sites-to-main consolidation, merged 2026-11-09). Its code changes are on main already or replaced by #238's design: hooks order, the names-stay-in-view caption and the MinimalGraph diagnostics mock are present. #238 keeps browser history in private mode but stores only an opaque {owner, cursor} marker, so #218's "no history in private mode" fix is not carried.
+- What #218 held that main lacked: the ISSUES.md entry for five pre-existing viewer bugs found by its Gemini review, and the review receipt. This change re-checks each bug against main `19c9e89e` and carries both over. Four are still present as written; the `#discussion=` one is partly addressed by #238.
+- Files: `ISSUES.md` (new 2026-11-09 entry under `# ISSUES`; "Last updated" bumped), `docs/reviews/2026-11-03-pr218-merge-resolution-agy.md` (copied from #218's `3d77b3bf` with a superseded note), this WORKLOG entry. Docs only; no code or tests change.
+- Independent check: Gemini via Antigravity (`gemini-4-argon-high`, self-reported "Gemini 4 Argon (High)") read the entry against the seven cited files from main. Packet: CLAIMS + brief + those files, code only, scanned; manifest SHA256 `05ad1d1c28b54218…`; packet unchanged after the run. Verdict ACCURATE WITH CORRECTIONS: all five bugs hold. Accepted and folded in: cards toggle is inert for YouTube maps too; the generatedMapId case also evicts the map and leaves the viewer in ephemeral mode; the #discussion= case adds an opaque back/forward step; the scroll listener also misses completed refreshes (no `sessionKey` dependency); record-key and missing-lookup precision for `?src=`. Rejected: re-importing a local file overwriting renames, which is an explicit user action.
+- Next: once this lands, #218 can be closed as superseded. Each bug can then be fixed as its own small PR, red-first.
+
 ## 2026-11-05 16:40 IST — Merge origin/main (ecad4002) into codex/lct-inference-choice (a354a33b)
 
 Executes docs/plans/2026-11-03-main-consolidation.md (intent: tests/intent/main-consolidation.md). True merge, no squash/rebase/force. 9 textual conflicts, all resolved by keeping both sides' behaviour:
