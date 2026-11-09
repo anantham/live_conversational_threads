@@ -150,7 +150,29 @@ Actual Google sign-in fails400/origin_mismatch for the cloud Site origin. Owner 
 
 # ISSUES
 
-Last updated: 2026-11-04
+Last updated: 2026-11-05
+
+## 2026-11-05 - Asus supervisor runs an uncommitted branch copy; SSH recovery path untested (OPEN, NON-BLOCKING)
+
+- The Asus backend's supervisor (`\IndraSupervisor` task) runs
+  `start_all.py` from the TemporalCoordination checkout at
+  `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination`, which is on
+  branch `codex/runtime-contention-option-b` (HEAD `bcee9b400`, 2026-09-14)
+  with uncommitted edits to `grimoire/IndrasNet/scripts/start_all.py` (2,081
+  lines, mtime 2026-10-17). The Mac has separate clones (TemporalCoordination
+  is excluded from Syncthing) whose copies differ. Impact: production
+  supervision depends on code that exists only on the Asus disk; a checkout,
+  reset or branch switch there silently changes how the LCT backend is
+  restarted. Owner: the TemporalCoordination lane, not this repo. Next step:
+  get those edits committed and pushed, or the checkout back on a pushed branch.
+- The two limits documented in AGENTS.md (a failed `lct_backend` startup is not
+  retried; 5 exits without a 5-minute quiet gap end restarts) hold in the Asus
+  copy. The same copy has a request-file route (`logs\RESTART_REQUESTED`
+  containing `lct_backend`) that resets the crash count or starts a dead
+  backend with retries. It has not been exercised live. Next step: try it
+  during a planned restart and record the result.
+- Corrects ISSUES/WORKLOG 2026-11-04 and PR #230, which called the Mac copy
+  "synced" from the Asus.
 
 ## 2026-11-04 - Asus backend restart docs are stale; CI does not run production Python (OPEN, NON-BLOCKING)
 

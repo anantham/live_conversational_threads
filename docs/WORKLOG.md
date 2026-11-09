@@ -111,6 +111,44 @@ Implemented direct Gemini (AI Studio) and OpenRouter selection with per-recipien
 
 # WORKLOG
 
+## 2026-11-05 11:54 IST — Test the RESTART_REQUESTED route on the Asus backend
+
+- Owner-approved live test, run as a detached script on the Asus
+  (`logs/restart_request_test.ps1`, log `logs/restart_request_test_20261105_115343.log`)
+  because the tailnet link kept dropping. The script aborts before writing if
+  `/api/version` does not answer, an import ran in the last 10 minutes, or the
+  pre-flight import fails.
+- First run (11:29) aborted at its first check: `/api/version` did not answer within
+  5 s. `start_all.log` shows `web_server` and `lct_backend` probes timing out at the
+  same moments 11:28-11:30, i.e. the whole machine stalling [correlation]. Nothing was
+  written.
+- Second run (11:53, 20 s timeout): no import activity, pre-flight import OK, request
+  file (`lct_backend`, ASCII, no BOM) picked up in 2.1 s; `start_all.log`: "clean
+  restart requested ... restarting immediately ... Started (port 43181)", no `CRASH:`
+  line. `/api/version` pid 21568 → 40916 after 19.3 s, same SHA `1cca862b`, clean,
+  canonical Python. AGENTS.md now prefers this route for restarts; the down-backend
+  (takeover) path remains untested.
+
+## 2026-11-05 11:40 IST — Verify the Asus supervisor against the Asus copy
+
+- Read-only check over SSH. Task Scheduler task `\IndraSupervisor` (user
+  `adity`, RunLevel Limited, logon + daily triggers, RestartCount 5) runs
+  `anaconda3\python.exe -u scripts/start_all.py --autostart` in
+  `TemporalCoordination\grimoire\IndrasNet`. Supervisor pid 7140 started
+  2026-11-05 09:34 IST (the Asus rebooted); it started the backend at 09:38
+  (`/api/version`: `1cca862b`, clean, canonical Python).
+- The Asus `start_all.py` (2,081 lines, branch
+  `codex/runtime-contention-option-b`, uncommitted edits) differs from every Mac
+  copy. Earlier docs called the Mac copy "synced"; TemporalCoordination is in
+  the Syncthing ignore list, so the Mac copies are separate clones. Both limits
+  in AGENTS.md hold in the Asus copy (lines ~1862-1950; the `lct_backend`
+  config comment itself says a failed startup is never retried).
+- Found a request-file route (`_process_restart_flag_admitted`): writing
+  `lct_backend` to `IndrasNet\logs\RESTART_REQUESTED` reloads an owned backend
+  with counters reset, or starts a dead one and retries via `_defer_restart`.
+  AGENTS.md now documents it as untested and names the task and
+  `start_all.log`. Logged in ISSUES 2026-11-05.
+
 ## 2026-11-04 18:40 IST — Rewrite the Asus backend restart runbook in AGENTS.md
 
 - Addresses ISSUES 2026-11-04 "Asus backend restart docs are stale". The
