@@ -32,7 +32,7 @@ function SearchProgress({ status, count, onCancel }) {
 }
 SearchProgress.propTypes = { status: PropTypes.object.isRequired, count: PropTypes.number.isRequired, onCancel: PropTypes.func.isRequired };
 
-export default function ViewerFindMenu({ groups, onSelect, documents = EMPTY, onResult }) {
+export default function ViewerFindMenu({ groups, onSelect, documents = EMPTY, onResult, meaningSearch = true }) {
   const menu = useRef(null);
   const input = useRef(null);
   const [query, setQuery] = useState('');
@@ -58,14 +58,16 @@ export default function ViewerFindMenu({ groups, onSelect, documents = EMPTY, on
         <label htmlFor="conversation-search" className="font-medium text-slate-800">Search the conversation</label>
         <button type="button" onClick={close} aria-label="Close Find" className={`${control} flex items-center gap-1 text-slate-600`}><X aria-hidden="true" className="h-4 w-4" />Close</button>
       </div>
-      <form onSubmit={event => { event.preventDefault(); setMeaningQuery(query); semantic.search(query); }}>
+      <form onSubmit={event => { event.preventDefault(); if (!meaningSearch) return; setMeaningQuery(query); semantic.search(query); }}>
         <input ref={input} id="conversation-search" type="search" value={query} onChange={event => setQuery(event.target.value)}
           placeholder="Search ideas and exact words…" className="min-h-11 w-full rounded border border-slate-300 px-3 text-sm text-slate-800 outline-none focus:border-amber-700" />
         <div className="mt-2 flex items-center justify-between gap-2">
           <p className="text-xs leading-5 text-slate-600">Text matches appear immediately.</p>
-          <button type="submit" disabled={query.trim().length < 2 || busy || !documents.length} className={`${control} shrink-0 bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50`}>{semantic.status.stage === 'error' ? 'Retry meaning search' : 'Search by meaning'}</button>
+          {meaningSearch && <button type="submit" disabled={query.trim().length < 2 || busy || !documents.length} className={`${control} shrink-0 bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50`}>{semantic.status.stage === 'error' ? 'Retry meaning search' : 'Search by meaning'}</button>}
         </div>
-        <p className="mt-1 text-xs leading-5 text-slate-500">Meaning search stays on this device. The first use downloads a search model.</p>
+        {meaningSearch
+          ? <p className="mt-1 text-xs leading-5 text-slate-500">Meaning search stays on this device. The first use downloads a search model.</p>
+          : <p className="mt-1 text-xs leading-5 text-slate-500">Meaning search is off for private conversations, so nothing is downloaded.</p>}
       </form>
       <SearchProgress status={semantic.status} count={documents.length} onCancel={semantic.cancel} />
       {semantic.status.stage === 'error' && <p role="alert" className="my-3 text-xs leading-5 text-amber-800">{semantic.status.message} You can keep using text search.</p>}
@@ -95,4 +97,5 @@ ViewerFindMenu.propTypes = {
   onSelect: PropTypes.func.isRequired,
   documents: PropTypes.array,
   onResult: PropTypes.func,
+  meaningSearch: PropTypes.bool,
 };

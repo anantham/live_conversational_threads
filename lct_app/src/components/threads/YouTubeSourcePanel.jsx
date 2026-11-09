@@ -35,7 +35,7 @@ function loadPlayerApi(signal) {
   });
 }
 
-export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, namesStayInView = false, seekRequest, onSeekHandled, onNavigatePassage, onClose }) {
+export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, namesStayInView = false, seekRequest, onSeekHandled, onNavigatePassage, recordTimings = true, onClose }) {
   const media = selectYouTubeRef(bundle);
   const videoId = media?.video_id;
   const videoLabel = media?.label || "Conversation recording";
@@ -145,7 +145,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       settled = true;
       window.clearInterval(elapsedTimer);
       window.clearTimeout(readinessTimer);
-      recordSourceLoadTiming({ outcome, retries: loadAttempt, apiMs: apiMs ?? null, elapsedMs: performance.now() - started });
+      if (recordTimings) recordSourceLoadTiming({ outcome, retries: loadAttempt, apiMs: apiMs ?? null, elapsedMs: performance.now() - started });
     };
     const fail = message => {
       if (canceled || failed) return;
@@ -197,7 +197,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       });
     }).catch((e) => { if (!canceled) fail(e.message); });
     return () => { canceled = true; finish("cancelled"); controller.abort(); window.clearInterval(clock); player.current = null; instance?.destroy(); };
-  }, [videoId, videoLabel, loadAttempt]);
+  }, [videoId, videoLabel, loadAttempt, recordTimings]);
 
   if (!media) {
     const unsupported = (bundle.media_refs || []).some((ref) => ref?.provider === "youtube" && !validYouTubeRef(ref));
@@ -258,4 +258,4 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   );
 }
 
-YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onNavigatePassage: PropTypes.func, onClose: PropTypes.func };
+YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onNavigatePassage: PropTypes.func, recordTimings: PropTypes.bool, onClose: PropTypes.func };

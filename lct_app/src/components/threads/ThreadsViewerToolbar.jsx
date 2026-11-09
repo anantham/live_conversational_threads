@@ -34,7 +34,7 @@ export function ViewerModeButton({ viewMode, modes, onViewModeChange }) {
 ViewerModeButton.propTypes = { viewMode: PropTypes.string.isRequired, modes: PropTypes.arrayOf(PropTypes.string).isRequired, onViewModeChange: PropTypes.func.isRequired };
 
 export default function ThreadsViewerToolbar({
-  viewMode, modes, onViewModeChange, graphToolsRef, graphTierRef, findGroups, onFindNode, searchDocuments, onSearchResult,
+  viewMode, modes, onViewModeChange, graphToolsRef, graphTierRef, findGroups, onFindNode, searchDocuments, onSearchResult, meaningSearch = true,
   history,
   sourceAvailable, sourceOpen, onToggleSource,
   onDownloadTranscript, onEnterFocus, onOpenLibrary, onOpenAnother, onRefreshFromDrive,
@@ -47,7 +47,7 @@ export default function ThreadsViewerToolbar({
         <TooltipButton aria-label="Back" tooltip={`Back through your exploration history. Return to the previous node, thread or view you visited. Alt + Left.${!history.canBack ? " No earlier exploration yet." : ""}`} disabled={!history.canBack} onClick={history.goBack} className={`${historyButtonClass} rounded-l border-r border-slate-200`}><ArrowLeft aria-hidden="true" className="shrink-0" size={18} /></TooltipButton>
         <TooltipButton aria-label="Forward" tooltip={`Forward through your exploration history. Return to a view you left with Back. Alt + Right.${!history.canForward ? " No later exploration to return to." : ""}`} disabled={!history.canForward} onClick={history.goForward} className={`${historyButtonClass} rounded-r`}><ArrowRight aria-hidden="true" className="shrink-0" size={18} /></TooltipButton>
       </nav>}
-      <ViewerFindMenu groups={findGroups} onSelect={onFindNode} documents={searchDocuments} onResult={onSearchResult} />
+      <ViewerFindMenu groups={findGroups} onSelect={onFindNode} documents={searchDocuments} onResult={onSearchResult} meaningSearch={meaningSearch} />
       <div ref={graphToolsRef} className="flex min-w-0 items-center gap-1" />
       <ViewerModeButton viewMode={viewMode} modes={modes} onViewModeChange={onViewModeChange} />
     </div>
@@ -100,4 +100,5 @@ ThreadsViewerToolbar.propTypes = {
   cardSettings: PropTypes.node,
   libraryStatus: PropTypes.object,
   coverage: PropTypes.object,
+  meaningSearch: PropTypes.bool,
 };

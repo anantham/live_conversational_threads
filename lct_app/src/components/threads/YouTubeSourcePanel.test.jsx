@@ -8,6 +8,7 @@ import YouTubeSourcePanel from "./YouTubeSourcePanel";
 // - Speaker names appear beside timestamped context, save by stable speaker ID, and export the reviewed bundle.
 // - Transcript passages size and scroll automatically without a height slider; YouTube fallback stays visible.
 // - Video and transcript disclosures remain independent; unmount stops polling.
+// - Load timings go to local storage only when the caller allows it (never for private conversations).
 // - Ready embeds use native controls; blocked/stalled embeds explain failure and preserve retry position.
 let container, root, options, player, time, playerState;
 const utterances = [
@@ -248,4 +249,12 @@ it("reports a passage jump for history without issuing a duplicate local seek",a
  expect(player.cueVideoById).not.toHaveBeenCalled();
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} onNavigatePassage={navigate} seekRequest={{seconds:20}}/>));
  expect(time).toBe(20); expect(player.cueVideoById).toHaveBeenCalledOnce();
+});
+it.each([[true,1],[false,0]])("stores source load timing only when recordTimings=%s",async(recordTimings,expected)=>{
+ localStorage.clear();
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} recordTimings={recordTimings}/>));
+ act(()=>options.events.onReady());
+ act(()=>root.unmount()); root=createRoot(container);
+ expect(JSON.parse(localStorage.getItem("threads.source-load-timing.v1")||"[]")).toHaveLength(expected);
+ localStorage.clear();
 });

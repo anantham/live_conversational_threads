@@ -68,6 +68,19 @@ it("reads bundled exact discussion, hides share-link controls and keeps speaker 
   expect(localStorage.length).toBe(0); expect(window.location.href).toBe(originalUrl); expect(fetch).not.toHaveBeenCalled();
 });
 
+it("offers text search only: no on-device model download and no stored search timings", async () => {
+  const Worker = vi.fn(); vi.stubGlobal("Worker", Worker);
+  await mount();
+  await act(async () => host.querySelector("summary").click());
+  const input = host.querySelector("input[type=search]");
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "synthetic"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => input.closest("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(Worker).not.toHaveBeenCalled();
+  expect([...host.querySelectorAll("button")].some(button => button.textContent.includes("meaning"))).toBe(false);
+  expect(host.textContent).toContain("Meaning search is off for private conversations");
+  expect(localStorage.length).toBe(0); expect(fetch).not.toHaveBeenCalled();
+});
+
 it.each(["Library", "Open another file", "Close private conversation"])("returns %s to the private list without creating another route/history entry", async label => {
   const originalUrl = window.location.href;
   await mount(); await click(label);

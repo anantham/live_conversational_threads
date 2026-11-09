@@ -680,11 +680,11 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
   const renderSourcePanel = (node) => sourceTextSelection || !selectYouTubeRef(bundle)
     ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
-    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} onClose={() => setSourceOpen(false)} />;
+    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} recordTimings={!privateMode} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
-    graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult}
+    graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult} meaningSearch={!privateMode}
     history={history}
     sourceAvailable={Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube") || bundle.full_transcript || bundle.utterances?.length)} sourceOpen={sourceOpen} onToggleSource={() => { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen((value) => !value); }}
     onDownloadTranscript={downloadTranscript}
