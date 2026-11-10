@@ -27,8 +27,16 @@ it.each(['runtime.wasm', 'future-model.bin', 'app.js'])('refuses one byte over t
   expect((await stat(path)).size).toBe(26214401);
 });
 
-it('rejects linked assets instead of publishing files outside the build', async () => {
+it('rejects linked assets instead of publishing files outside the build', async ctx => {
   await asset('assets/real.bin', 1);
-  await symlink(join(root, 'assets', 'real.bin'), join(root, 'assets', 'linked.bin'));
+  try {
+    await symlink(join(root, 'assets', 'real.bin'), join(root, 'assets', 'linked.bin'));
+  } catch (error) {
+    // Windows only lets a process create symlinks with SeCreateSymbolicLinkPrivilege (an
+    // elevated shell or Developer Mode). Without it this scenario cannot be built at all,
+    // so report a visible skip. Anything else, and EPERM on any other OS, is a real failure.
+    if (error.code !== 'EPERM' || process.platform !== 'win32') throw error;
+    ctx.skip('Windows denied symlink creation (needs elevation or Developer Mode)');
+  }
   await expect(assertSiteAssetLimits(root)).rejects.toThrow('symbolic link');
 });
