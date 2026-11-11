@@ -35,6 +35,11 @@ scrape_configs:
     scrape_timeout: 12s
     static_configs:
       - targets: ["127.0.0.1:9109"]
+  - job_name: indras-reach
+    # Asus reachability + crash ledger (TemporalCoordination scripts/reach_sampler.py).
+    # A tiny process of its own, so it keeps answering when web_server is wedged.
+    static_configs:
+      - targets: ["127.0.0.1:9110"]
   - job_name: tempo
     static_configs:
       - targets: ["127.0.0.1:3200"]

@@ -135,3 +135,94 @@ groups:
         annotations:
           summary: "Host process thread count is above the evidence threshold"
           description: "Observed processes exceeded 12,000 threads for ten minutes, compared with a measured baseline near 8,400. Compare by process_executable_name and process_pid; this threshold is diagnostic, not a capacity target."
+
+  - name: asus-reachability
+    interval: 30s
+    rules:
+      - alert: AsusReachSamplerDown
+        expr: up{job="indras-reach"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          domain: reachability
+        annotations:
+          summary: "The Asus reachability sampler stopped answering"
+          description: "Prometheus could not scrape 127.0.0.1:9110 for three minutes. Check the IndrasReachSampler scheduled task and logs/reach_sampler.log in the IndrasNet checkout; until it is back there is no record of whether the machine can be reached."
+
+      - alert: AsusReachSamplerStale
+        expr: time() - indras_reach_sample_timestamp_seconds > 180
+        for: 2m
+        labels:
+          severity: critical
+          domain: reachability
+        annotations:
+          summary: "The Asus reachability sampler is up but has stopped producing samples"
+          description: "The endpoint answers but its latest sample is older than three minutes (a timestamp of 0 means it never produced one). A probe is probably hung; read logs/reach_sampler.log."
+
+      - alert: AsusNetworkDown
+        expr: indras_reach_state{state=~"internet_down|lan_down|no_link"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          domain: reachability
+        annotations:
+          summary: "The Asus has had no working network for five minutes ({{ $labels.state }})"
+          description: "Measured from the Asus itself, so this can only fire while the box and Prometheus are running; a power cut that takes the router and the laptop's charger together will not alert. Read indras_reach_reason and indras_reach_ac_online: AC loss with the router down is the power-cut case, a saturated uplink is the self-inflicted one."
+
+      - alert: AsusNetworkDegraded
+        expr: indras_reach_state{state="degraded"} == 1
+        for: 15m
+        labels:
+          severity: warning
+          domain: reachability
+        annotations:
+          summary: "The Asus network has been degraded for 15 minutes"
+          description: "Router loss or latency, a slow internet connect, or a saturated uplink. SSH and RustDesk stall in this state even though the machine is up. See indras_reach_reason for which."
+
+      - alert: AsusUplinkSaturated
+        expr: count_over_time(indras_reach_reason{reason="uplink_saturated"}[30m]) >= 60
+        labels:
+          severity: warning
+          domain: reachability
+        annotations:
+          summary: "The Asus has saturated its own Wi-Fi uplink for most of the last 30 minutes"
+          description: "Upload filled at least a third of the Wi-Fi link rate for roughly 15 of the last 30 minutes. On 2026-11-05 a 13-hour upload did this and left the machine fully reachable only 25 percent of the time. Check which process is uploading (GoogleDriveFS was the suspect) before blaming the router."
+
+      - alert: AsusRemoteAccessServiceDown
+        expr: indras_reach_service_running == 0
+        for: 5m
+        labels:
+          severity: critical
+          domain: reachability
+        annotations:
+          summary: "{{ $labels.service }} is not running on the Asus"
+          description: "sshd, RustDesk and Tailscale are how the box is reached remotely. Start the Windows service; if it keeps stopping, read its event log."
+
+      - alert: AsusTailscaleNotRunning
+        expr: indras_reach_tailscale_running == 0
+        for: 3m
+        labels:
+          severity: critical
+          domain: reachability
+        annotations:
+          summary: "Tailscale is not in the Running state on the Asus"
+          description: "The service may be up while the backend is stopped or logged out, in which case the tailnet cannot reach this machine. Run tailscale status."
+
+      - alert: AsusUncleanRestart
+        expr: increase(indras_crash_ledger_records_total{kind=~"bugcheck|forced_power_off|sleep_transition_failure|power_loss_or_hard_hang"}[1h]) > 0
+        labels:
+          severity: critical
+          domain: reachability
+        annotations:
+          summary: "The Asus restarted without shutting down cleanly in the last hour ({{ $labels.kind }})"
+          description: "Recorded by crash_watch.py in logs/crash_ledger.jsonl with the bugcheck code, dump path and the sampler's last reading before the crash. Repeated different bugcheck codes point at hardware (RAM, CPU, heat) more than one driver."
+
+      - alert: AsusCrashWatchStale
+        expr: time() - indras_crash_watch_last_run_timestamp_seconds > 7200
+        for: 10m
+        labels:
+          severity: warning
+          domain: reachability
+        annotations:
+          summary: "crash_watch.py has not completed a pass in over two hours"
+          description: "It should run hourly. The System log keeps only about four days, so every hour it does not run risks an unrecorded crash. Check the IndrasCrashWatch scheduled task."

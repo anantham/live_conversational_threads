@@ -6,6 +6,11 @@ This stack implements ADR-067 with standard components:
   host, and samples every process at a bounded cadence;
 - Prometheus stores metrics for 14 days or 4 GB, whichever limit is reached;
 - Prometheus also scrapes IndrasNet's existing `/metrics/` endpoint;
+- Prometheus also scrapes the Asus reachability sampler (`indras-reach`, port 9110, from
+  TemporalCoordination's `scripts/reach_sampler.py`): router, internet and tailnet loss and
+  round trip, uplink use, Wi-Fi, AC state, sshd/RustDesk/Tailscale state, and the crash
+  ledger. The `asus-reachability` alert group covers it. These alerts are evaluated on the
+  Asus itself, so they cannot report that the Asus is down;
 - Tempo stores traces for 7 days;
 - Grafana provides local drill-down while IndrasNet remains the summary view.
 
