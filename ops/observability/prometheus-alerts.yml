@@ -160,33 +160,40 @@ groups:
           description: "The endpoint answers but its latest sample is older than three minutes (a timestamp of 0 means it never produced one). A probe is probably hung; read logs/reach_sampler.log."
 
       - alert: AsusNetworkDown
-        expr: indras_reach_state{state=~"internet_down|lan_down|no_link"} == 1
+        expr: |
+          indras_reach_state{state=~"internet_down|lan_down|no_link"} == 1
+          unless on() (sum_over_time(indras_reach_throughput_mbps{nic="Wi-Fi",direction="up"}[5m]) / on() count_over_time(indras_reach_state{state="ok"}[5m])) > 2
         for: 5m
         labels:
           severity: critical
           domain: reachability
         annotations:
           summary: "The Asus has had no working network for five minutes ({{ $labels.state }})"
-          description: "Measured from the Asus itself, so this can only fire while the box and Prometheus are running; a power cut that takes the router and the laptop's charger together will not alert. Read indras_reach_reason and indras_reach_ac_online: AC loss with the router down is the power-cut case, a saturated uplink is the self-inflicted one."
+          description: "Measured from the Asus itself, so this can only fire while the box and Prometheus are running. Not raised while this machine uploads more than 2 Mbit/s on average: then its own upload is the cause and AsusUploadChokingNetwork fires instead. Read indras_reach_reason and indras_reach_ac_online: AC off with the router silent is a power cut; router fine but internet failing is the ISP."
 
-      - alert: AsusNetworkDegraded
-        expr: indras_reach_state{state="degraded"} == 1
-        for: 15m
+      - alert: AsusNetworkUnreliable
+        expr: |
+          max without (state) (avg_over_time(indras_reach_state{state="ok"}[15m])) < 0.5
+          unless on() (sum_over_time(indras_reach_throughput_mbps{nic="Wi-Fi",direction="up"}[15m]) / on() count_over_time(indras_reach_state{state="ok"}[15m])) > 2
+        for: 5m
         labels:
           severity: warning
           domain: reachability
         annotations:
-          summary: "The Asus network has been degraded for 15 minutes"
-          description: "Router loss or latency, a slow internet connect, or a saturated uplink. SSH and RustDesk stall in this state even though the machine is up. See indras_reach_reason for which."
+          summary: "The Asus network has been OK less than half of the last 15 minutes"
+          description: "Counts every not-OK verdict, so a network flapping between degraded and down still fires (no per-state for: can catch that). Not raised while this machine uploads more than 2 Mbit/s on average; AsusUploadChokingNetwork covers that. See the mix with avg_over_time(indras_reach_state[15m]) and the cause in indras_reach_reason."
 
-      - alert: AsusUplinkSaturated
-        expr: count_over_time(indras_reach_reason{reason="uplink_saturated"}[30m]) >= 60
+      - alert: AsusUploadChokingNetwork
+        expr: |
+          max without (state) (avg_over_time(indras_reach_state{state="ok"}[15m])) < 0.5
+          and on() (sum_over_time(indras_reach_throughput_mbps{nic="Wi-Fi",direction="up"}[15m]) / on() count_over_time(indras_reach_state{state="ok"}[15m])) > 2
+        for: 5m
         labels:
           severity: warning
           domain: reachability
         annotations:
-          summary: "The Asus has saturated its own Wi-Fi uplink for most of the last 30 minutes"
-          description: "Upload filled at least a third of the Wi-Fi link rate for roughly 15 of the last 30 minutes. On 2026-11-05 a 13-hour upload did this and left the machine fully reachable only 25 percent of the time. Check which process is uploading (GoogleDriveFS was the suspect) before blaming the router."
+          summary: "The Asus is choking its own Wi-Fi with uploads"
+          description: "The network was OK less than half of the last 15 minutes while this machine uploaded more than 2 Mbit/s on average. Measured 2026-11-11 to 11-13: about 4 Mbit/s nonstop (roughly 49 GB in 42 hours; GoogleDriveFS held the most internet connections) left it fully reachable only 35% of the time, with router pings and internet connects timing out behind the upload. Pause or rate-limit the upload before blaming the router."
 
       - alert: AsusRemoteAccessServiceDown
         expr: indras_reach_service_running == 0
