@@ -233,3 +233,51 @@ groups:
         annotations:
           summary: "crash_watch.py has not completed a pass in over two hours"
           description: "It should run hourly. The System log keeps only about four days, so every hour it does not run risks an unrecorded crash. Check the IndrasCrashWatch scheduled task."
+
+  - name: asus-machine-health
+    rules:
+      - alert: AsusMemoryCommitHigh
+        expr: indras_sys_commit_used_ratio > 0.95
+        for: 10m
+        labels:
+          severity: warning
+          domain: machine
+        annotations:
+          summary: "The Asus has used over 95% of its memory commit limit for 10 minutes"
+          description: "Commit is RAM plus page file. When it runs out, programs fail to allocate and crash even if RAM looks free. In the 13.5 days before this rule it happened 6 times, the longest for 103 minutes on 2026-11-01. sys_health.jsonl names the biggest processes (lately Beeper, Discord, Windows Terminal and the IndrasNet web server). The current level is indras_sys_commit_used_ratio."
+      - alert: AsusMemoryCommitExhausted
+        expr: indras_sys_commit_used_ratio > 0.98
+        for: 2m
+        labels:
+          severity: critical
+          domain: machine
+        annotations:
+          summary: "The Asus is about to run out of memory (commit over 98%)"
+          description: "Allocations are failing or about to. Expect apps to crash and the machine to freeze: on 2026-11-07 it froze for 3 minutes at 96.8%. Close something large now. AsusMemoryCommitHigh fires alongside it once this lasts 10 minutes."
+      - alert: AsusDiskLow
+        expr: indras_sys_disk_free_bytes < 10737418240
+        for: 10m
+        labels:
+          severity: warning
+          domain: machine
+        annotations:
+          summary: "Drive {{ $labels.drive }} on the Asus has under 10 GB free"
+          description: "On C: a full disk also stops the page file growing, which turns memory pressure into crashes. C: was under 10 GB 4 times in the 13.5 days before this rule, once for 5.5 hours on 2026-11-03. Free space is indras_sys_disk_free_bytes."
+      - alert: AsusDiskCritical
+        expr: indras_sys_disk_free_bytes < 5368709120
+        for: 5m
+        labels:
+          severity: critical
+          domain: machine
+        annotations:
+          summary: "Drive {{ $labels.drive }} on the Asus has under 5 GB free"
+          description: "Writes and updates are about to fail, and on C: so is page-file growth. C: went below 5 GB twice in the 13.5 days before this rule (2.3 GB on 2026-11-11). Free space now, before the next memory spike. AsusDiskLow fires alongside it once this lasts 10 minutes."
+      - alert: AsusMachineMetricsMissing
+        expr: (absent(indras_sys_commit_used_ratio) or on() absent(indras_sys_disk_free_bytes{drive="C:"})) and on() up{job="indras-reach"} == 1
+        for: 10m
+        labels:
+          severity: warning
+          domain: machine
+        annotations:
+          summary: "The reach sampler is running but not reporting memory or C: disk space"
+          description: "Its memory or disk probe is failing (see logs/reach_sampler.log), or a sampler older than these metrics is running. Until this clears the memory and disk alerts cannot fire."
