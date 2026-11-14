@@ -216,14 +216,14 @@ groups:
           description: "tailscale status answered and the backend is stopped or logged out, so the tailnet cannot reach this machine. Run tailscale status. When the status command does not answer at all, AsusTailscaleStatusUnavailable fires instead."
 
       - alert: AsusTailscaleStatusUnavailable
-        expr: indras_reach_tailscale_status_ok == 0 and on() indras_reach_state{state="tailnet_down"} == 1
+        expr: indras_reach_tailscale_status_ok == 0 and on() indras_reach_tailnet_down == 1
         for: 5m
         labels:
           severity: critical
           domain: reachability
         annotations:
           summary: "Tailscale on the Asus is not answering, and the tailnet peer did not reply either"
-          description: "The tailscale CLI got no answer from the local tailscaled, and no ping to the tailnet peer got through in the same samples, so remote access over the tailnet is probably broken. Not raised while a tailnet ping still answers (the sampler then calls the state ok). Check the Tailscale service and tailscale status."
+          description: "The tailscale CLI got no answer from the local tailscaled, and no ping to the tailnet peer got through in the same samples, so remote access over the tailnet is probably broken. Keyed on indras_reach_tailnet_down, which the sampler sets whatever the network verdict, so a degraded network cannot hide it. Not raised while a tailnet ping still answers. Check the Tailscale service and tailscale status."
 
       - alert: AsusReachProbesFailing
         expr: indras_reach_probe_ok{probe!="tailscale"} == 0
