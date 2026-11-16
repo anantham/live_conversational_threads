@@ -195,6 +195,16 @@ groups:
           summary: "The Asus is choking its own Wi-Fi with uploads"
           description: "The network was OK less than half of the last 15 minutes while this machine uploaded more than 2 Mbit/s on average. Measured 2026-11-11 to 11-13: about 4 Mbit/s nonstop (roughly 49 GB in 42 hours; GoogleDriveFS held the most internet connections) left it fully reachable only 35% of the time, with router pings and internet connects timing out behind the upload. Pause or rate-limit the upload before blaming the router."
 
+      - alert: AsusDriveUploadUncapped
+        expr: indras_drive_upload_cap_active_kbps != on() indras_drive_upload_cap_configured_kbps and on() indras_drive_running == 1
+        for: 5m
+        labels:
+          severity: warning
+          domain: reachability
+        annotations:
+          summary: "Google Drive on the Asus is not applying its configured upload cap"
+          description: "The running Drive's own log shows a different cap (0 = none) from the one configured in BandwidthTxKBPS. On 2026-11-14 a Drive restart came up uncapped and its ~10 Mbit/s uploads degraded the network for most of two days. Check that nothing is pending, restart Drive with launch.bat from its install folder, then confirm drive_fs.txt logs 'Upload speed throttled'."
+
       - alert: AsusRemoteAccessServiceDown
         expr: indras_reach_service_running == 0
         for: 5m
