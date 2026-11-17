@@ -315,3 +315,42 @@ groups:
         annotations:
           summary: "The reach sampler is running but not reporting memory or C: disk space"
           description: "Its memory or disk probe is failing (see logs/reach_sampler.log), or a sampler older than these metrics is running. Until this clears the memory and disk alerts cannot fire."
+
+  - name: indrasnet-voice
+    rules:
+      - alert: IndrasVoiceNoteGivenUp
+        expr: indras_voice_given_up_24h > 0
+        for: 1m
+        labels:
+          severity: critical
+          domain: voice
+        annotations:
+          summary: "A live voice note was given up without its text"
+          description: "IndrasNet stopped trying to turn a voice note into text in the last 24 hours (reprocessing_queue status exhausted or failed). The audio is kept on disk. Between 2026-10-17 and 11-14, 21 notes were lost this way and nobody noticed for a month. Find them with the live_voice jobs in reprocessing_queue and redo voice-to-text on the M5."
+      - alert: IndrasVoiceNoteWaitingTooLong
+        expr: indras_voice_waiting_oldest_age_seconds > 7200
+        for: 10m
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "A voice note has waited over 2 hours for its text"
+          description: "The oldest live voice note still queued or in progress is over two hours old. Usually the M5 voice-to-text service is down or saturated (check its /health), so the note is waiting rather than lost."
+      - alert: IndrasVoiceDeliveryFailing
+        expr: indras_voice_delivery_failed_24h > 0
+        for: 1m
+        labels:
+          severity: critical
+          domain: voice
+        annotations:
+          summary: "A voice note's text could not be delivered"
+          description: "A voice-text delivery attempt failed in the last 24 hours (voice_delivery_events 'failed'). Until 2026-11-14 deliveries went to a deleted Telegram chat and every one failed silently. Check that the voice delivery chat setting in IndrasNet points at a chat that exists."
+      - alert: IndrasVoiceMetricsMissing
+        expr: indras_telemetry_source_ok{source="voice"} == 0
+        for: 15m
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "The telemetry exporter cannot read voice-note health"
+          description: "Until this clears, a given-up or undelivered voice note cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet database."
