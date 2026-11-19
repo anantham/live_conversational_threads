@@ -354,3 +354,32 @@ groups:
         annotations:
           summary: "The telemetry exporter cannot read voice-note health"
           description: "Until this clears, a given-up or undelivered voice note cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet database."
+  - name: indrasnet-web-health
+    rules:
+      - alert: IndrasWebLoopFreezing
+        expr: indras_web_loop_freezes_1h > 10
+        for: 15m
+        labels:
+          severity: warning
+          domain: indrasnet
+        annotations:
+          summary: "The IndrasNet web server is freezing repeatedly"
+          description: "The web server's event loop froze (watchdog dump, 8 s or longer) more than 10 times in the last hour. While frozen it answers nothing: the UI, agents and health checks all stall, and three failed health checks make the supervisor force-restart it. On 2026-11-18 it froze 292 times in 24 hours unnoticed. Read the newest dumps in IndrasNet logs/loop_freeze_tracebacks.log; the top IndrasNet frame on the loop thread is the blocking call."
+      - alert: IndrasAgentWritesRejected
+        expr: max by (log) (indras_agent_auth_rejections_1h) > 0
+        for: 15m
+        labels:
+          severity: warning
+          domain: indrasnet
+        annotations:
+          summary: "An IndrasNet agent's writes are being refused by the web server"
+          description: "Lines in IndrasNet logs/{{ $labels.log }}.log show 403 SERVICE_TOKEN_INVALID: the agent sends writes to the web server without a valid service token, so the web server drops them. This silently broke prayer triggers until 2026-11-11 and Beeper source registration all of 2026-11-18. The fix is for the agent to use core.auth.web_client.local_web_auth_headers."
+      - alert: IndrasLogSignalsMissing
+        expr: indras_telemetry_source_ok{source="log_signals"} == 0
+        for: 15m
+        labels:
+          severity: warning
+          domain: indrasnet
+        annotations:
+          summary: "The telemetry exporter cannot read IndrasNet logs"
+          description: "Until this clears, web-server freezes and refused agent writes cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet logs directory."
