@@ -56,17 +56,6 @@ some cross-file test-pollution failures (`sys.modules` stubbing collisions betwe
 Individual files and directories run green. If a failure looks unrelated to your change,
 re-run that test file alone before assuming you broke it.
 
-### Pre-push hook
-
-`bash scripts/install_git_hooks.sh` installs `.git/hooks/pre-push` (git does not track
-hooks; worktrees share the main checkout's). It runs `scripts/ci_local.sh`, which reads
-the refs being pushed and runs only the checks those paths need: vitest for `lct_app/`,
-the backend unit suite for `lct_python_backend/`, `promtool` plus the observability
-contract tests for `ops/observability/`. Any other path, and any push whose changed
-paths cannot be determined, runs every check. Each check prints whether it ran or was
-skipped and why. `bash scripts/ci_local.sh --plan` shows the decisions without running
-anything; `bash scripts/test_ci_local_gating.sh` tests the gating itself.
-
 ## Making changes
 
 1. **Check the ADRs first.** If your change touches an architectural decision, the

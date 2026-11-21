@@ -1,5 +1,0 @@
-# Shell scripts keep LF endings in every checkout: the pre-push hook runs
-# scripts/ci_local.sh, and a bash that does not strip carriage returns (WSL
-# bash started from PowerShell) fails at "set -euo pipefail" (ISSUES.md,
-# 2026-10-04).
-*.sh text eol=lf
