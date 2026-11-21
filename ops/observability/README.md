@@ -98,6 +98,28 @@ growth. The CPU rule uses the measured two-minute incident window rather than
 waiting ten minutes. Threshold alerts are diagnostic evidence, not capacity
 targets: correlate them before tuning timeouts, queue sizes, or worker limits.
 
+## Deploy alert rules
+
+Rules merged to `main` are not live until this checkout has them and Prometheus
+has loaded them. From the checkout Prometheus reads:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File ops\observability\deploy_alert_rules.ps1 -WhatIf
+    powershell -NoProfile -ExecutionPolicy Bypass -File ops\observability\deploy_alert_rules.ps1
+
+The script refuses a locally modified `prometheus-alerts.yml`, a branch other
+than `main`, and anything that is not a fast-forward. It validates the incoming
+files with `promtool` before the checkout changes, then makes Prometheus load
+them and verifies at Prometheus (`/api/v1/rules`, `/metrics`) that exactly the
+alert rules in the file are loaded, that the configuration was loaded after the
+files last changed, and that every rule group evaluated with health `ok`.
+
+Prometheus runs without `--web.enable-lifecycle`, so loading is the `Restart`
+action for the Prometheus component (a scrape gap, and every pending `for:`
+clock starts again). The script switches to `POST /-/reload` by itself if
+Prometheus is ever started with that flag. `-WhatIf` checks the preconditions,
+validates the files on disk and prints what would happen; `-VerifyOnly` runs
+the receiver check alone. Neither changes anything.
+
 ## Manual fallback
 
 Run from the repository root:
