@@ -270,7 +270,11 @@ function Get-ReceiverState {
 }
 
 function Assert-LoadedAtReceiver {
-    param([object]$Expected, [DateTimeOffset]$EvaluatedAfter, [int]$TimeoutSeconds)
+    # -AfterLoad: Prometheus was just asked to load. For a moment it can still report the
+    # previous load (old timestamp, old rule names), so a mismatch is retried until the
+    # deadline instead of failing on the first look. Without it (verify-only) nothing is
+    # changing, so the first mismatch is the answer.
+    param([object]$Expected, [DateTimeOffset]$EvaluatedAfter, [int]$TimeoutSeconds, [switch]$AfterLoad)
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastError = $null
@@ -284,10 +288,10 @@ function Assert-LoadedAtReceiver {
             $state = $null
             $lastError = $_.Exception.Message
         }
-        if ($state -and $state.Problems.Count -gt 0) {
+        if ($state -and $state.Problems.Count -gt 0 -and -not $AfterLoad) {
             break
         }
-        if ($state -and $state.Pending.Count -eq 0) {
+        if ($state -and $state.Problems.Count -eq 0 -and $state.Pending.Count -eq 0) {
             break
         }
         if ((Get-Date) -ge $deadline) {
@@ -487,7 +491,7 @@ try {
         Write-Step "DRYRUN" "nothing was fetched, merged or loaded"
         exit 0
     }
-    Assert-LoadedAtReceiver -Expected $expected -EvaluatedAfter $loadRequestedAt -TimeoutSeconds $VerifyTimeoutSeconds
+    Assert-LoadedAtReceiver -Expected $expected -EvaluatedAfter $loadRequestedAt -TimeoutSeconds $VerifyTimeoutSeconds -AfterLoad
     exit 0
 } catch {
     Write-Host ""
