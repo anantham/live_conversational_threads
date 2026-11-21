@@ -354,6 +354,35 @@ groups:
         annotations:
           summary: "The telemetry exporter cannot read voice-note health"
           description: "Until this clears, a given-up or undelivered voice note cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet database."
+  - name: indrasnet-voice-canary
+    rules:
+      - alert: IndrasVoiceCanaryFailed
+        expr: indras_canary_voice_last_ok == 0
+        for: 5m
+        labels:
+          severity: critical
+          domain: voice
+        annotations:
+          summary: "The daily voice canary did not arrive"
+          description: "IndrasNet sends itself one synthetic voice note a day and checks that its text is delivered to the owner's chat. The last run did not deliver, so real voice notes are probably not arriving either. Read IndrasNet logs/voice_canary.status.json: 'outcome' says whether it was given up, timed out, delivered the wrong text, or could not be injected, and 'detail' carries the pipeline's own error."
+      - alert: IndrasVoiceCanaryNotRunning
+        expr: time() - indras_canary_voice_last_run_timestamp_seconds > 93600
+        for: 10m
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "The voice canary has not run for over a day"
+          description: "No canary run has started in the last 26 hours, so a broken voice path would go unnoticed. Check the IndrasVoiceCanary scheduled task and IndrasNet logs/voice_canary.log."
+      - alert: IndrasVoiceCanaryMetricsMissing
+        expr: indras_telemetry_source_ok{source="voice_canary"} == 0
+        for: 26h
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "The telemetry exporter cannot read the voice canary's result"
+          description: "The canary has never written a result, or its status file is unreadable. Install the task with IndrasNet scripts/install_voice_canary_task.ps1, or check logs/voice_canary.status.json."
   - name: indrasnet-web-health
     rules:
       - alert: IndrasWebLoopFreezing
