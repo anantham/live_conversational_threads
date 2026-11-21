@@ -214,7 +214,7 @@ function Get-ReceiverState {
         $problems.Add("Prometheus reports that its last configuration load FAILED (prometheus_config_last_reload_successful = 0).")
     }
     if ($load.LoadedAt -lt $newestWrite) {
-        $problems.Add(("Prometheus last loaded its configuration at {0:o}, before the files on disk changed ({1:o}). It is not running the current rules." -f $load.LoadedAt.ToLocalTime(), $newestWrite.ToLocalTime()))
+        $problems.Add(("Prometheus last loaded its configuration at {0:o}, before the files on disk changed ({1:o}). It is not running the current rules." -f $load.LoadedAt.LocalDateTime, $newestWrite.LocalDateTime))
     }
 
     $groups = @((Invoke-RestMethod -Uri "$PrometheusUrl/api/v1/rules" -TimeoutSec 20).data.groups)
@@ -256,7 +256,7 @@ function Get-ReceiverState {
             Alerts = @($rules | Where-Object { $_.type -eq "alerting" }).Count
             Recording = @($rules | Where-Object { $_.type -eq "recording" }).Count
             Health = (@($rules | ForEach-Object { [string]$_.health } | Sort-Object -Unique) -join ",")
-            LastEvaluation = $(if ($lastEvaluation.Year -le 1) { "never" } else { $lastEvaluation.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") })
+            LastEvaluation = $(if ($lastEvaluation.Year -le 1) { "never" } else { $lastEvaluation.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss") })
         }
     }
 
@@ -318,7 +318,7 @@ function Assert-LoadedAtReceiver {
         }
         throw "VERIFICATION FAILED: not every rule group evaluated with health ok within $TimeoutSeconds seconds."
     }
-    Write-Step "VERIFIED" ("Prometheus holds {0} alert rules from {1} (file: {2}); configuration loaded {3:yyyy-MM-dd HH:mm:ss}; all {4} group(s) evaluated with health ok." -f $state.LoadedAlertCount, $RulesFile, $Expected.AlertNames.Count, $state.ConfigLoadedAt.ToLocalTime(), $state.Rows.Count)
+    Write-Step "VERIFIED" ("Prometheus holds {0} alert rules from {1} (file: {2}); configuration loaded {3:yyyy-MM-dd HH:mm:ss}; all {4} group(s) evaluated with health ok." -f $state.LoadedAlertCount, $RulesFile, $Expected.AlertNames.Count, $state.ConfigLoadedAt.LocalDateTime, $state.Rows.Count)
 }
 
 function Test-IncomingFiles {
@@ -449,7 +449,7 @@ try {
         $load = Get-PrometheusConfigLoad
         $newestWrite = Get-NewestSourceWrite
         $stale = ($load.LoadedAt -lt $newestWrite) -or (-not $load.Successful)
-        $staleText = "Prometheus loaded its configuration {0:yyyy-MM-dd HH:mm:ss}; files on disk last changed {1:yyyy-MM-dd HH:mm:ss}" -f $load.LoadedAt.ToLocalTime(), $newestWrite.ToLocalTime()
+        $staleText = "Prometheus loaded its configuration {0:yyyy-MM-dd HH:mm:ss}; files on disk last changed {1:yyyy-MM-dd HH:mm:ss}" -f $load.LoadedAt.LocalDateTime, $newestWrite.LocalDateTime
     }
     $needsLoad = $ForceLoad -or $stale -or ($changedByMerge.Count -gt 0) -or $wouldChange
     if ($prometheusUp -and $lifecycle) {
