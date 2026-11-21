@@ -1,3 +1,10 @@
+# Severity is decided by COST, and the alert sender acts on it:
+#   critical  the owner's data is being lost or is about to be, or the machine or the
+#             alert path itself is down. Sent at once, and again when it clears.
+#   warning   degraded, self-healing or diagnostic. Listed in the daily digest only.
+# A summary should name the CAUSE where a metric can supply it (the biggest processes,
+# the paging rate, why a voice note was given up), because the summary is the part
+# that reaches the phone.
 groups:
   - name: native-observability
     interval: 15s
@@ -44,11 +51,11 @@ groups:
       - alert: IndrasNetErrorPersistenceLoss
         expr: sum(increase(error_persistence_events_total{job="indrasnet",outcome=~"dropped|write_failed|unavailable|abandoned"}[5m])) > 0
         labels:
-          severity: critical
+          severity: warning
           domain: error-persistence
         annotations:
           summary: "IndrasNet lost at least one structured error record"
-          description: "A bounded-writer terminal loss outcome occurred in the last five minutes. Use the outcome and kind labels to distinguish pressure, DB failure, lifecycle loss, or shutdown abandonment."
+          description: "A bounded-writer terminal loss outcome occurred in the last five minutes. Use the outcome and kind labels to distinguish pressure, DB failure, lifecycle loss, or shutdown abandonment. Warning, not critical: what is lost is the structured copy of an error that is still in the text logs. In the 7 days to 2026-11-21 all 95 losses were write_failed on a locked database, so look at what else is firing (memory spikes, the web server freezing) before this."
 
       - alert: IndrasNetErrorQueuePressure
         expr: max_over_time(error_persistence_queue_depth{job="indrasnet"}[5m]) > 128
@@ -277,7 +284,7 @@ groups:
           severity: warning
           domain: machine
         annotations:
-          summary: "The Asus has used over 95% of its memory commit limit for 10 minutes"
+          summary: "The Asus has used over 95% of its memory commit limit for 10 minutes.{{ with query \"topk(3, indras_sys_process_commit_bytes)\" }} Biggest:{{ range . }} {{ .Labels.name }} {{ .Value | humanize1024 }}B;{{ end }}{{ end }}"
           description: "Commit is RAM plus page file. When it runs out, programs fail to allocate and crash even if RAM looks free. In the 13.5 days before this rule it happened 6 times, the longest for 103 minutes on 2026-11-01. sys_health.jsonl names the biggest processes (lately Beeper, Discord, Windows Terminal and the IndrasNet web server). The current level is indras_sys_commit_used_ratio."
       - alert: AsusMemoryCommitExhausted
         expr: indras_sys_commit_used_ratio > 0.98
@@ -286,7 +293,7 @@ groups:
           severity: critical
           domain: machine
         annotations:
-          summary: "The Asus is about to run out of memory (commit over 98%)"
+          summary: "The Asus is about to run out of memory (commit over 98%).{{ with query \"topk(3, indras_sys_process_commit_bytes)\" }} Biggest:{{ range . }} {{ .Labels.name }} {{ .Value | humanize1024 }}B;{{ end }}{{ end }}"
           description: "Allocations are failing or about to. Expect apps to crash and the machine to freeze: on 2026-11-07 it froze for 3 minutes at 96.8%. Close something large now. AsusMemoryCommitHigh fires alongside it once this lasts 10 minutes."
       - alert: AsusDiskLow
         expr: indras_sys_disk_free_bytes < 10737418240
@@ -306,15 +313,41 @@ groups:
         annotations:
           summary: "Drive {{ $labels.drive }} on the Asus has under 5 GB free"
           description: "Writes and updates are about to fail, and on C: so is page-file growth. C: went below 5 GB twice in the 13.5 days before this rule (2.3 GB on 2026-11-11). Free space now, before the next memory spike. AsusDiskLow fires alongside it once this lasts 10 minutes."
+      - alert: AsusMemorySpikes
+        expr: count_over_time((indras_sys_commit_used_ratio > 0.93)[1h:1m]) >= 3
+        labels:
+          severity: warning
+          domain: machine
+        annotations:
+          summary: "The Asus hit over 93% of its memory commit limit {{ $value }} times in the last hour.{{ with query \"topk(3, indras_sys_process_commit_bytes)\" }} Biggest:{{ range . }} {{ .Labels.name }} {{ .Value | humanize1024 }}B;{{ end }}{{ end }}{{ with query \"indras_sys_agent_processes > 0\" }} Running:{{ range . }} {{ .Value }} {{ .Labels.kind }};{{ end }}{{ end }}"
+          description: "Short memory-exhaustion spikes, which AsusMemoryCommitHigh (over 95% for 10 minutes) cannot see. On 2026-11-21, the day voice notes were given up on a locked database and the web server kept freezing, the half-hourly commit peak was 93-96% in 14 of 39 half-hours while the median stayed at 81-85% and free RAM dipped to 0.1-0.6 GB; after a 14 GB terminal window was closed the peak fell to 65%. The processes named are the biggest NOW, which may not be what spiked: logs/reach.jsonl keeps the per-sample process list (the processes field) for the minute it happened. Whether these spikes caused that day's failures is likely but not proven."
+      - alert: AsusMemoryStarved
+        expr: indras_sys_ram_available_bytes < 1073741824 and on() indras_sys_paging_pages_per_second{direction="in"} > 2000
+        for: 3m
+        labels:
+          severity: warning
+          domain: machine
+        annotations:
+          summary: "Under 1 GB of RAM is free and the Asus is reading {{ with query \"indras_sys_paging_pages_per_second{direction='in'}\" }}{{ range . }}{{ .Value | printf \"%.0f\" }}{{ end }}{{ end }} pages a second from disk.{{ with query \"topk(3, indras_sys_process_commit_bytes)\" }} Biggest:{{ range . }} {{ .Labels.name }} {{ .Value | humanize1024 }}B;{{ end }}{{ end }}{{ with query \"indras_sys_agent_processes > 0\" }} Running:{{ range . }} {{ .Value }} {{ .Labels.kind }};{{ end }}{{ end }}"
+          description: "The hard-fault rate alone is NOT a sign of trouble here: a healthy day reads 5,000-6,000 pages a second because Beeper and Python read their database files through mapped memory (measured 2026-11-21 with 7 GB free). Only together with exhausted RAM does it mean programs are waiting on memory being read back from disk. This rule has never been seen to fire: it is a warning until indras_sys_paging_pages_per_second has a week of history to set it from."
+      - alert: AsusAgentLoadHigh
+        expr: sum(indras_sys_agent_commit_bytes) / on() indras_sys_commit_limit_bytes > 0.15
+        for: 30m
+        labels:
+          severity: warning
+          domain: machine
+        annotations:
+          summary: "Agents and test runs hold {{ $value | humanizePercentage }} of the memory this machine can commit.{{ with query \"indras_sys_agent_processes > 0\" }} Running:{{ range . }} {{ .Value }} {{ .Labels.kind }};{{ end }}{{ end }}"
+          description: "Counts claude, codex, pytest and vitest processes (indras_sys_agent_processes) and the memory they hold (indras_sys_agent_commit_bytes). Production shares this machine with them, and waves of agents and test runs coincided with its memory spikes on 2026-11-20/21. Python processes that an agent started for anything other than pytest are not counted, so the true share is higher."
       - alert: AsusMachineMetricsMissing
-        expr: (absent(indras_sys_commit_used_ratio) or on() absent(indras_sys_disk_free_bytes{drive="C:"})) and on() up{job="indras-reach"} == 1
+        expr: (absent(indras_sys_commit_used_ratio) or on() absent(indras_sys_disk_free_bytes{drive="C:"}) or on() absent(indras_sys_paging_pages_per_second) or on() absent(indras_sys_agent_processes)) and on() up{job="indras-reach"} == 1
         for: 10m
         labels:
           severity: warning
           domain: machine
         annotations:
-          summary: "The reach sampler is running but not reporting memory or C: disk space"
-          description: "Its memory or disk probe is failing (see logs/reach_sampler.log), or a sampler older than these metrics is running. Until this clears the memory and disk alerts cannot fire."
+          summary: "The reach sampler is running but not reporting memory, paging, process load or C: disk space"
+          description: "One of its machine probes is failing (see logs/reach_sampler.log and indras_reach_probe_ok), or a sampler older than these metrics is running. Until this clears the memory and disk alerts cannot fire, and memory alerts cannot name the biggest processes."
 
   - name: indrasnet-voice
     rules:
@@ -325,7 +358,7 @@ groups:
           severity: critical
           domain: voice
         annotations:
-          summary: "A live voice note was given up without its text"
+          summary: "A live voice note was given up without its text.{{ with query \"indras_voice_given_up_by_reason{window='24h'} > 0\" }} Why:{{ range . }} {{ .Labels.reason }} x{{ .Value }};{{ end }}{{ end }}"
           description: "IndrasNet stopped trying to turn a voice note into text in the last 24 hours (reprocessing_queue status exhausted or failed). The audio is kept on disk. Between 2026-10-17 and 11-14, 21 notes were lost this way and nobody noticed for a month. Find them with the live_voice jobs in reprocessing_queue and redo voice-to-text on the M5."
       - alert: IndrasVoiceNoteWaitingTooLong
         expr: indras_voice_waiting_oldest_age_seconds > 7200
@@ -354,6 +387,35 @@ groups:
         annotations:
           summary: "The telemetry exporter cannot read voice-note health"
           description: "Until this clears, a given-up or undelivered voice note cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet database."
+  - name: indrasnet-voice-canary
+    rules:
+      - alert: IndrasVoiceCanaryFailed
+        expr: indras_canary_voice_last_ok == 0
+        for: 5m
+        labels:
+          severity: critical
+          domain: voice
+        annotations:
+          summary: "The daily voice canary did not arrive"
+          description: "IndrasNet sends itself one synthetic voice note a day and checks that its text is delivered to the owner's chat. The last run did not deliver, so real voice notes are probably not arriving either. Read IndrasNet logs/voice_canary.status.json: 'outcome' says whether it was given up, timed out, delivered the wrong text, or could not be injected, and 'detail' carries the pipeline's own error."
+      - alert: IndrasVoiceCanaryNotRunning
+        expr: time() - indras_canary_voice_last_run_timestamp_seconds > 93600
+        for: 10m
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "The voice canary has not run for over a day"
+          description: "No canary run has started in the last 26 hours, so a broken voice path would go unnoticed. Check the IndrasVoiceCanary scheduled task and IndrasNet logs/voice_canary.log."
+      - alert: IndrasVoiceCanaryMetricsMissing
+        expr: indras_telemetry_source_ok{source="voice_canary"} == 0
+        for: 26h
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "The telemetry exporter cannot read the voice canary's result"
+          description: "The canary has never written a result, or its status file is unreadable. Install the task with IndrasNet scripts/install_voice_canary_task.ps1, or check logs/voice_canary.status.json."
   - name: indrasnet-web-health
     rules:
       - alert: IndrasWebLoopFreezing
@@ -363,7 +425,7 @@ groups:
           severity: warning
           domain: indrasnet
         annotations:
-          summary: "The IndrasNet web server is freezing repeatedly"
+          summary: "The IndrasNet web server is freezing repeatedly ({{ $value }} times in the last hour).{{ with query \"indras_sys_ram_available_bytes\" }}{{ range . }} RAM free: {{ .Value | humanize1024 }}B.{{ end }}{{ end }}{{ with query \"max_over_time(indras_sys_commit_used_ratio[1h])\" }}{{ range . }} Commit peak in the last hour: {{ .Value | humanizePercentage }}.{{ end }}{{ end }}"
           description: "The web server's event loop froze (watchdog dump, 8 s or longer) more than 10 times in the last hour. While frozen it answers nothing: the UI, agents and health checks all stall, and three failed health checks make the supervisor force-restart it. On 2026-11-18 it froze 292 times in 24 hours unnoticed. Read the newest dumps in IndrasNet logs/loop_freeze_tracebacks.log; the top IndrasNet frame on the loop thread is the blocking call."
       - alert: IndrasAgentWritesRejected
         expr: max by (log) (indras_agent_auth_rejections_1h) > 0
@@ -374,12 +436,50 @@ groups:
         annotations:
           summary: "An IndrasNet agent's writes are being refused by the web server"
           description: "Lines in IndrasNet logs/{{ $labels.log }}.log show 403 SERVICE_TOKEN_INVALID: the agent sends writes to the web server without a valid service token, so the web server drops them. This silently broke prayer triggers until 2026-11-11 and Beeper source registration all of 2026-11-18. The fix is for the agent to use core.auth.web_client.local_web_auth_headers."
+      - alert: IndrasLogLineRepeating
+        expr: indras_log_repeats_1h > 200
+        for: 6h
+        labels:
+          severity: warning
+          domain: indrasnet
+        annotations:
+          summary: "A {{ $labels.level }} line in {{ $labels.log }}.log from {{ $labels.logger }} has repeated over 200 times an hour for 6 hours (id {{ $labels.id }})"
+          description: "Found by counting, not by anyone predicting it: every other alert here was written after its incident, while one warning repeated every minute for a month unread. The line itself is in IndrasNet logs/log_repeats.json under this id (it stays on the machine because log lines can carry names). Either fix what it reports or lower its level if it is expected."
       - alert: IndrasLogSignalsMissing
-        expr: indras_telemetry_source_ok{source="log_signals"} == 0
+        expr: indras_telemetry_source_ok{source=~"log_signals|log_repeats"} == 0
         for: 15m
         labels:
           severity: warning
           domain: indrasnet
         annotations:
-          summary: "The telemetry exporter cannot read IndrasNet logs"
-          description: "Until this clears, web-server freezes and refused agent writes cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet logs directory."
+          summary: "The telemetry exporter cannot read IndrasNet logs ({{ $labels.source }})"
+          description: "Until this clears, web-server freezes, refused agent writes and repeating log lines cannot raise an alert. Check the IndrasTelemetryExporter task and that it can read the IndrasNet logs directory."
+  - name: outside-watch-and-m5
+    rules:
+      - alert: OutsideWatcherUnreachable
+        expr: indras_m5_watch_up == 0 or on() (absent(indras_m5_watch_up) and on() up{job="indrasnet-telemetry"} == 1)
+        for: 30m
+        labels:
+          severity: warning
+          domain: outside-watch
+        annotations:
+          summary: "The outside watcher on the M5 has not answered for 30 minutes"
+          description: "Everything that watches the Asus runs on the Asus, so a freeze or an outage here silences its own alerts. The watcher on the M5 (IndrasNet scripts/ops/m5/asus_watch.py, port 5097) is the only thing that would notice. While it is unreachable nobody is told if this machine goes down. Usually the M5 is asleep or off; if it is awake, check the com.aditya.asus-watch LaunchAgent and the macOS firewall. This also fires when the watcher was never installed or the telemetry exporter is older than this metric."
+      - alert: OutsideWatcherNotReceivingBeats
+        expr: indras_m5_watch_beat_age_seconds > 900
+        for: 10m
+        labels:
+          severity: warning
+          domain: outside-watch
+        annotations:
+          summary: "The M5 watcher answers, but has not received this machine's beat for {{ $value | humanizeDuration }}"
+          description: "The alert sender posts a beat to the M5 after every run (every 2 minutes). The M5 is reachable from here yet is not getting them, so the IndrasAlertNotifier task is not running, is failing before it sends, or its ALERT_BEAT_URLS points somewhere else. Read IndrasNet logs/alert_notifier.log."
+      - alert: M5BusyWhileVoiceWaits
+        expr: indras_voice_waiting > 0 and on() indras_m5_ci_jobs_running > 0
+        for: 30m
+        labels:
+          severity: warning
+          domain: voice
+        annotations:
+          summary: "Voice notes are waiting while the M5 runs CI jobs{{ with query \"indras_m5_load1\" }}{{ range . }} (M5 load {{ .Value | printf \"%.1f\" }}){{ end }}{{ end }}"
+          description: "The M5 does voice-to-text and also hosts both CI runners. On 2026-11-21 it turned a 10-minute note into text in 14 minutes, about 1x realtime instead of the usual 28x or more, and nothing recorded why. This says when the two coincide: {{ $value }} note(s) waiting, with indras_m5_ci_jobs_running and indras_m5_load1 as the evidence."
