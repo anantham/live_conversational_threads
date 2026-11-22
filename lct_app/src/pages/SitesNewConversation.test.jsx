@@ -4,14 +4,22 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../components/recording/ConversationServiceStatus.jsx', () => ({ default: () => <div aria-label="Service status" /> }));
-const fixture = vi.hoisted(() => ({ sessions: [], restored: null }));
+const fixture = vi.hoisted(() => ({ sessions: [], restored: null, waitingForMic: false }));
 vi.mock('../services/cloud/localConversationStore.js', () => ({ readLocalConversation: async () => fixture.restored, saveLocalConversation: async () => {} }));
 vi.mock('../components/MinimalGraph.jsx', () => ({ default: ({ graphData }) => <div aria-label="Rendered graph">{graphData.map(n => <span key={n.id}>{n.node_name}</span>)}</div> }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
   constructor(callbacks) { this.callbacks = callbacks; fixture.sessions.push(this); this.cancelled = false; }
-  async start(options) { this.options = options; this.callbacks.onStage({ stage: 'recording', message: options.transcribe ? 'Recording and transcribing.' : 'Recording locally.', startedAt: Date.now() }); }
+  async start(options) {
+    this.options = options;
+    this.callbacks.onStage(fixture.waitingForMic
+      ? { stage: 'microphone', message: 'Waiting for microphone access.', startedAt: Date.now() }
+      : { stage: 'recording', message: options.transcribe ? 'Recording and transcribing.' : 'Recording locally.', startedAt: Date.now() });
+  }
   async stop() { this.callbacks.onAudio({ blob: new Blob(['synthetic audio'], { type: 'audio/webm' }), mimeType: 'audio/webm', complete: true }); this.callbacks.onStage({ stage: 'stopped', message: 'Recording complete.', startedAt: Date.now() }); }
-  cancel() { this.cancelled = true; }
+  cancel() {
+    this.cancelled = true;
+    if (fixture.waitingForMic) this.callbacks.onStage({ stage: 'cancelled', message: 'Recording canceled.', startedAt: Date.now() });
+  }
 } }));
 import SitesNewConversation from './SitesNewConversation.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
@@ -29,7 +37,7 @@ function generated(source) {
 }
 function LocationProbe() { return <output data-testid="location">{JSON.stringify(useLocation().state)}</output>; }
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; fixture.restored = null; transcribe = false; privateUploads = false; generation = false;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; fixture.restored = null; fixture.waitingForMic = false; transcribe = false; privateUploads = false; generation = false;
   localStorage.clear(); createURL = vi.fn(() => 'blob:synthetic-audio'); revokeURL = vi.fn();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn(function () { this.open = true; }) });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: vi.fn(function () { this.open = false; }) });
@@ -272,6 +280,46 @@ describe('Sites recording page', () => {
     await click('Cancel session'); expect(fixture.sessions[0].cancelled).toBe(true);
   });
 
+  it('allows leaving after cancelling microphone setup before any work exists', async () => {
+    fixture.waitingForMic = true;
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await mount(true);
+    await record();
+    await click('Cancel session');
+    expect(container.textContent).toContain('Recording canceled.');
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+
+    await act(async () => container.querySelector('[aria-label="Back to home"]').click());
+    expect(confirm).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe('/');
+  });
+
+  it.each(['audio', 'transcript'])('still protects unsaved %s after capture has ended', async content => {
+    localStorage.setItem('lct.conversation_retention.v1', 'ephemeral');
+    transcribe = content === 'transcript';
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await mount(true);
+    if (content === 'transcript') {
+      await record('Record and transcribe');
+      await deliverTranscript();
+      await failWithoutAudio();
+      expect(transcriptJSON().full_transcript).toBe('Hello there. Again.');
+    } else {
+      await record();
+      await click('Stop recording');
+      expect(container.querySelector('audio')).toBeTruthy();
+    }
+
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await act(async () => container.querySelector('[aria-label="Back to home"]').click());
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Unsaved copies will be lost.'));
+    expect(window.location.pathname).toBe('/new');
+  });
+
   it('works with blocked browser storage and cancels a pending dialog on navigation', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Storage blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage blocked'); });
@@ -316,6 +364,31 @@ describe('Sites recording page', () => {
     expect(options.body).toBeInstanceOf(File); expect(options.body.size).toBe(new Blob(['synthetic audio']).size);
     expect(options.body.type).toBe('audio/webm');
     expect(container.textContent).toContain('Audio saved to your private cloud files');
+  });
+
+  it('keeps live transcription available when private storage setup fails', async () => {
+    transcribe = true;
+    fetch.mockImplementation(async path => path === '/api/cloud/files/status'
+      ? jsonResponse({ error: 'Storage unavailable' }, 503)
+      : jsonResponse({ enabled: true, configured: true, max_session_seconds: 300 }));
+    await mount();
+    expect(transcriptionSwitch().checked).toBe(true);
+    expect(button('Start session').disabled).toBe(false);
+    await record('Record and transcribe');
+    expect(fixture.sessions[0].options.transcribe).toBe(true);
+  });
+
+  it('keeps private saving available when the transcription check times out', async () => {
+    vi.useFakeTimers();
+    privateUploads = true;
+    const normal = fetch.getMockImplementation();
+    fetch.mockImplementation((path, options) => path === '/api/cloud/soniox/status'
+      ? new Promise(() => {}) : normal(path, options));
+    await mount();
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    await record();
+    await click('Stop recording');
+    expect(button('Save audio privately').disabled).toBe(false);
   });
 
   it('makes stalled setup elapsed/cancellable and allows a successful explicit retry', async () => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
+import { importWait } from '../services/cloud/audioImportFile.js';
 import { getRecordingMapStatus, generateRecordingMap } from '../services/cloud/openRouterClient.js';
 import { readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { useConversationArchive } from './useConversationArchive.js';
@@ -16,26 +17,41 @@ export function useAudioImport() {
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
   const [mapStopSignal, setMapStopSignal] = useState(null);
-  const mapStop = useRef(null), liveMapClaimed = useRef(false);
+  const mapStop = useRef(null), liveMapClaimed = useRef(false), setup = useRef(null);
   const claimLiveMap = useCallback(() => { liveMapClaimed.current = true; }, []);
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
   const check = useCallback(async () => {
+    setup.current?.abort();
+    const controller = new AbortController();
+    setup.current = controller;
     setLoading(true);
-    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch('/api/cloud/soniox/status', { signal: controller.signal, credentials: 'same-origin', cache: 'no-store' });
-      const value = await response.json();
-      if (!response.ok || typeof value.enabled !== 'boolean' || !Number.isInteger(value.max_session_seconds) ||
-          value.max_session_seconds < 15 || value.max_session_seconds > 900) throw new Error('Transcription setup is unavailable.');
-      if (alive.current) { setCapability(value); setSetupError(''); }
-    } catch { if (alive.current) { setCapability(null); setSetupError('Transcription setup could not be checked. Your file has not been sent.'); } }
-    finally { clearTimeout(timeout); if (alive.current) setLoading(false); }
+      const value = await importWait((async () => {
+        const response = await fetch('/api/cloud/soniox/status', { signal: controller.signal, credentials: 'same-origin', cache: 'no-store' });
+        const status = await response.json();
+        if (!response.ok || typeof status?.enabled !== 'boolean' || !Number.isInteger(status.max_session_seconds) ||
+            status.max_session_seconds < 15 || status.max_session_seconds > 900) throw new Error('Transcription setup is unavailable.');
+        return status;
+      })(), controller.signal);
+      if (alive.current && setup.current === controller) { setCapability(value); setSetupError(''); }
+    } catch {
+      if (alive.current && setup.current === controller) {
+        setCapability(null);
+        setSetupError('Transcription setup could not be checked. Your file has not been sent.');
+      }
+    } finally {
+      controller.abort();
+      if (setup.current === controller) {
+        setup.current = null;
+        if (alive.current) setLoading(false);
+      }
+    }
   }, []);
   useEffect(() => {
     alive.current = true; void check();
-    return () => { alive.current = false; epoch.current++; current.current?.cancel(); mapStop.current?.abort(); };
+    return () => { alive.current = false; setup.current?.abort(); epoch.current++; current.current?.cancel(); mapStop.current?.abort(); };
   }, [check]);
   useEffect(() => {
     if (!localId || recording) return;

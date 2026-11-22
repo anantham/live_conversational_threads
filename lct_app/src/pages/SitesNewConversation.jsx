@@ -75,18 +75,26 @@ export default function SitesNewConversation() {
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15_000);
     const started = Date.now(); let outcome = 'error';
     try {
-      const results = await abortable(controller.signal, () => Promise.all(['/api/cloud/soniox/status', '/api/cloud/files/status'].map(async path => {
-        const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-        if (!response.ok) throw new Error('Recording setup is unavailable. Local audio recording is still available; retry setup for cloud features.');
-        const value = await response.json();
-        if (!value || typeof value.enabled !== 'boolean') throw new Error('Recording setup returned an unreadable response. Retry setup for cloud features.');
-        return value;
-      })));
-      outcome = 'success';
-      if (alive.current && setupRequest.current === controller && !controller.signal.aborted) setCapabilities({ transcription: results[0], storage: results[1] });
-    } catch (failure) {
-      outcome = controller.signal.aborted ? timedOut ? 'timeout' : 'cancelled' : 'error';
-      if (alive.current && setupRequest.current === controller) setError(controller.signal.aborted ? 'Setup stopped or timed out. Local recording is still available; retry setup for transcription and private saving.' : failure.message);
+      const [transcription, storage] = await Promise.allSettled(
+        ['/api/cloud/soniox/status', '/api/cloud/files/status'].map(path => abortable(controller.signal, async () => {
+          const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+          if (!response.ok) throw new Error('Recording setup is unavailable. Local audio recording is still available; retry setup for cloud features.');
+          const value = await response.json();
+          if (!value || typeof value.enabled !== 'boolean') throw new Error('Recording setup returned an unreadable response. Retry setup for cloud features.');
+          return value;
+        })),
+      );
+      const failed = [transcription, storage].find(result => result.status === 'rejected');
+      outcome = controller.signal.aborted ? timedOut ? 'timeout' : 'cancelled' : failed ? 'error' : 'success';
+      if (alive.current && setupRequest.current === controller) {
+        if (outcome !== 'cancelled') {
+          setCapabilities({
+            transcription: transcription.status === 'fulfilled' ? transcription.value : null,
+            storage: storage.status === 'fulfilled' ? storage.value : null,
+          });
+        }
+        if (failed) setError(controller.signal.aborted ? 'Setup stopped or timed out. Local recording is still available; retry setup for transcription and private saving.' : failed.reason.message);
+      }
     } finally {
       window.clearTimeout(timeout);
       recordRecordingTiming('setup', 'setup', started, outcome);
@@ -176,15 +184,17 @@ export default function SitesNewConversation() {
     catch { return { error: 'The transcript file could not be prepared within its size or data limits. Your final text is still available to copy on this page.' }; }
   }, [ready, recording, transcript.finalTokens, complete]);
   const showTranscript = Boolean(recording?.transcribe);
+  const hasContent = Boolean(audio || map || transcript.finalTokens.length || transcript.partialTokens.length);
+  const warnBeforeLeaving = active || (hasContent && archive.status.state !== 'saved');
   useEffect(() => {
-    if ((!recording && !audio && !map) || (!active && archive.status.state === 'saved')) return;
+    if (!warnBeforeLeaving) return;
     const protect = event => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
-  }, [recording, audio, map, active, archive.status.state]);
+  }, [warnBeforeLeaving]);
   function guardNavigation(event) {
     const link = event.target.closest?.('a[href]');
-    if ((!active && archive.status.state === 'saved') || !link || link.hasAttribute('download') || link.target === '_blank' || (!recording && !map)) return;
+    if (!warnBeforeLeaving || !link || link.hasAttribute('download') || link.target === '_blank') return;
     if (!window.confirm('Leave this conversation? Download or save your audio, transcript and map first. Unsaved copies will be lost.')) event.preventDefault();
   }
   return <main onClickCapture={guardNavigation} className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#fdfdfb] font-sans text-slate-800">

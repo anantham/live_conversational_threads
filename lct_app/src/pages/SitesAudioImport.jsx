@@ -26,14 +26,16 @@ export default function SitesAudioImport() {
     try { return { ...createRecordingTranscript(source), source }; }
     catch { return { error: 'The transcript file could not be prepared. Your audio and words are preserved.' }; }
   }, [recording, transcript, activity?.stage]);
+  const hasContent = Boolean(audio || map || transcript.finalTokens.length || transcript.partialTokens.length);
+  const warnBeforeLeaving = busy || generating || privateFiles.saving || (hasContent && archive.status.state !== 'saved');
   useEffect(() => {
-    if ((!recording || archive.status.state === 'saved') && !busy && !generating && !privateFiles.saving) return;
+    if (!warnBeforeLeaving) return;
     const protect = event => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
-  }, [recording, archive.status.state, busy, generating, privateFiles.saving]);
+  }, [warnBeforeLeaving]);
   function guardNavigation(event) {
-    if ((!busy && !generating && !privateFiles.saving && archive.status.state === 'saved') || !recording) return;
+    if (!warnBeforeLeaving) return;
     const link = event.target.closest?.('a[href]');
     if (link && !link.hasAttribute('download') && !window.confirm('Leave this import? Processing will stop. Download unsaved files before leaving.')) event.preventDefault();
   }

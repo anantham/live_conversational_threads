@@ -19,6 +19,9 @@ export class CloudConversationSession {
     this.callbacks.onStage?.({ ...value, elapsedOffsetMs: this.usedMs });
   }
   async start(options) {
+    if (!['idle', 'stopped', 'cancelled', 'error'].includes(this.state)) {
+      throw new Error('Conversation already started. Use Resume if it is paused.');
+    }
     this.options = options;
     return this.beginSegment();
   }
