@@ -176,15 +176,17 @@ export default function SitesNewConversation() {
     catch { return { error: 'The transcript file could not be prepared within its size or data limits. Your final text is still available to copy on this page.' }; }
   }, [ready, recording, transcript.finalTokens, complete]);
   const showTranscript = Boolean(recording?.transcribe);
+  const hasContent = Boolean(audio || map || transcript.finalTokens.length || transcript.partialTokens.length);
+  const warnBeforeLeaving = active || (hasContent && archive.status.state !== 'saved');
   useEffect(() => {
-    if ((!recording && !audio && !map) || (!active && archive.status.state === 'saved')) return;
+    if (!warnBeforeLeaving) return;
     const protect = event => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
-  }, [recording, audio, map, active, archive.status.state]);
+  }, [warnBeforeLeaving]);
   function guardNavigation(event) {
     const link = event.target.closest?.('a[href]');
-    if ((!active && archive.status.state === 'saved') || !link || link.hasAttribute('download') || link.target === '_blank' || (!recording && !map)) return;
+    if (!warnBeforeLeaving || !link || link.hasAttribute('download') || link.target === '_blank') return;
     if (!window.confirm('Leave this conversation? Download or save your audio, transcript and map first. Unsaved copies will be lost.')) event.preventDefault();
   }
   return <main onClickCapture={guardNavigation} className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#fdfdfb] font-sans text-slate-800">

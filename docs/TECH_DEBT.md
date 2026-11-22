@@ -524,3 +524,11 @@ Official native source tracks a node_modules link into the task checkout. Callin
 27 October 2026: SitesAudioImport.test.jsx grows258→324lines with three live-import/cancellation regressions. Its fixture currently supports import, private saving and live maps; a future fixture-module extraction and separate live-import suite would improve concern separation. Production hook/page/map controls remain117/99/130lines and need no decomposition for this slice. No refactor included.
 
 The27October review adjudication adds two public completion-race regressions to SitesAudioImport.test.jsx (358lines); the earlier fixture/suite decomposition candidate remains deferred. No additional production refactor or code change after3327405.
+
+## 2026-11-22 — Hosted recording journey fixtures
+
+`SitesNewConversation.test.jsx` now has 754 lines across recording, navigation,
+retention, private saving, and map generation. A future test-only split can move
+capture and navigation journeys away from map generation while sharing the
+synthetic recorder and router fixtures. This guard repair reuses the existing
+public journey suite.
