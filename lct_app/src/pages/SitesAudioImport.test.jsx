@@ -14,6 +14,11 @@ const transcript = { finalText: 'Gardens need water.', partialText: '', partialT
 vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: class {
   constructor(callbacks) { this.callbacks = callbacks; fixture.sessions.push(this); }
   async start({ file }) {
+    if (fixture.holdDecode) {
+      this.callbacks.onStage({ stage: 'preparing', message: 'Opening audio.' });
+      await new Promise(resolve => { fixture.finishDecode = resolve; });
+      if (this.cancelled) throw new DOMException('Aborted', 'AbortError');
+    }
     this.callbacks.onStage({ stage: 'transcribing', message: 'Transcribing your audio.' });
     const mimeType = file.name.endsWith('m4a') ? 'audio/mp4' : file.name.endsWith('wav') ? 'audio/wav' : 'audio/mpeg';
     const blob = file.slice(0, file.size, mimeType);
@@ -26,7 +31,7 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
     this.callbacks.onTranscript(words); this.callbacks.onStage({ stage: 'stopped', message: 'Transcript ready.' });
     return words;
   }
-  cancel() { this.cancelled = true; this.callbacks.onStage({ stage: 'cancelled', message: 'Import stopped.' }); }
+  cancel() { this.cancelled = true; this.callbacks.onStage({ stage: 'cancelled', message: 'Import stopped.' }); fixture.finishDecode?.(); }
 } }));
 import SitesAudioImport from './SitesAudioImport.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
@@ -52,7 +57,7 @@ beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   fixture.sessions = []; fixture.writes = []; fixture.restored = null; fixture.fail = false;
   fixture.signedIn = false; fixture.uploads = []; fixture.holdUpload = false; fixture.badReceipt = false;
-  fixture.sessionHTML = false; fixture.storagePatch = {}; fixture.uploadStatus = 201;
+  fixture.holdDecode = false; fixture.finishDecode = null; fixture.sessionHTML = false; fixture.storagePatch = {}; fixture.uploadStatus = 201;
   finishUpload = null; fixture.holdTranscript = false; fixture.liveTranscript = null; fixture.finishTranscript = null; fixture.mapFailure = false;
   posts = []; holdMap = false; finishMap = null; localStorage.clear();
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:synthetic-import'; static revokeObjectURL() {} });
@@ -103,6 +108,41 @@ async function permit() { await act(async () => container.querySelector('form in
 async function flushArchive() { await act(async () => new Promise(resolve => setTimeout(resolve, 250))); }
 
 describe('cloud audio import page', () => {
+  it('recovers from stalled transcription setup and ignores a late first response', async () => {
+    vi.useFakeTimers();
+    let resolveStatus;
+    const first = new Promise(resolve => { resolveStatus = resolve; });
+    const normal = fetch.getMockImplementation();
+    let checks = 0;
+    fetch.mockImplementation((path, options) => path === '/api/cloud/soniox/status' && ++checks === 1
+      ? first : normal(path, options));
+    await mount();
+    expect(container.textContent).toContain('Checking transcription setup');
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    await click('Check setup again');
+    await choose(); await permit();
+    expect(container.querySelector('button[type=submit]').disabled).toBe(false);
+    await act(async () => resolveStatus(response({ enabled: false, max_session_seconds: 300 })));
+    expect(container.querySelector('button[type=submit]').disabled).toBe(false);
+    expect(posts).toHaveLength(0);
+  });
+
+  it('protects an active import and allows departure after an empty cancellation', async () => {
+    fixture.holdDecode = true;
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await mount(); await choose(); await permit();
+    await act(async () => container.querySelector('button[type=submit]').click());
+    const activeUnload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(activeUnload);
+    expect(activeUnload.defaultPrevented).toBe(true);
+    await click('Stop processing');
+    const settledUnload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(settledUnload);
+    expect(settledUnload.defaultPrevented).toBe(false);
+    await act(async () => container.querySelector('[aria-label="Back to home"]').click());
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it('lets a signed-in user explicitly save original audio, exact transcript and map without automatic cloud writes', async () => {
     fixture.signedIn = true;
     await mount(savedImport());
