@@ -27,6 +27,50 @@ function setup() {
 const snapshot = text => ({ finalTokens: [{ text, speaker: '1', startMs: 100, endMs: 500 }], partialTokens: [], finalText: text, partialText: '' });
 afterEach(() => vi.useRealTimers());
 describe('cloud conversation continuity', () => {
+  it.each(['starting', 'recording'])('rejects repeated Start while %s and keeps the first segment cancellable', async phase => {
+    vi.useFakeTimers();
+    const f = setup();
+    const options = { transcribe: true, maxSessionSeconds: 60 };
+    const first = f.session.start(options);
+    if (phase === 'recording') await first;
+
+    try {
+      await expect(f.session.start(options)).rejects.toThrow('Conversation already started. Use Resume if it is paused.');
+      await first;
+      expect(f.tracks).toHaveLength(1);
+      expect(f.recorders).toHaveLength(1);
+      expect(f.requestSession).toHaveBeenCalledOnce();
+      expect(f.recorders[0].state).toBe('recording');
+    } finally {
+      f.session.cancel();
+    }
+
+    expect(f.recorders[0].state).toBe('inactive');
+    expect(f.tracks[0].stop).toHaveBeenCalledOnce();
+    expect(f.connections[0].cancel).toHaveBeenCalledOnce();
+    expect(f.onStage.mock.lastCall[0].stage).toBe('cancelled');
+  });
+
+  it('keeps the paused conversation available for Resume after an attempted Start', async () => {
+    const f = setup();
+    const options = { transcribe: true, maxSessionSeconds: 60 };
+    await f.session.start(options);
+    try {
+      f.connections[0].callbacks.onTranscript(snapshot('Keep the first segment.'));
+      await f.session.pause();
+      await expect(f.session.start({ ...options, transcribe: false })).rejects.toThrow('Use Resume');
+      expect(f.requestSession).toHaveBeenCalledOnce();
+      await f.session.resume();
+      expect(f.requestSession).toHaveBeenCalledTimes(2);
+      f.connections[1].callbacks.onTranscript(snapshot('Continue here.'));
+      expect(f.onTranscript.mock.lastCall[0].finalText).toBe('Keep the first segment.\nContinue here.');
+      await f.session.stop();
+      expect(f.onAudio.mock.lastCall[0].segments).toHaveLength(2);
+    } finally {
+      f.session.cancel();
+    }
+  });
+
   it('pauses the real recorder/stream, resumes with fresh authorization, preserves exact segments and ignores stale callbacks', async () => {
     vi.useFakeTimers(); const f = setup();
     await f.session.start({ transcribe: true, maxSessionSeconds: 60 });
