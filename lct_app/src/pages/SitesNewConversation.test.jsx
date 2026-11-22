@@ -366,6 +366,31 @@ describe('Sites recording page', () => {
     expect(container.textContent).toContain('Audio saved to your private cloud files');
   });
 
+  it('keeps live transcription available when private storage setup fails', async () => {
+    transcribe = true;
+    fetch.mockImplementation(async path => path === '/api/cloud/files/status'
+      ? jsonResponse({ error: 'Storage unavailable' }, 503)
+      : jsonResponse({ enabled: true, configured: true, max_session_seconds: 300 }));
+    await mount();
+    expect(transcriptionSwitch().checked).toBe(true);
+    expect(button('Start session').disabled).toBe(false);
+    await record('Record and transcribe');
+    expect(fixture.sessions[0].options.transcribe).toBe(true);
+  });
+
+  it('keeps private saving available when the transcription check times out', async () => {
+    vi.useFakeTimers();
+    privateUploads = true;
+    const normal = fetch.getMockImplementation();
+    fetch.mockImplementation((path, options) => path === '/api/cloud/soniox/status'
+      ? new Promise(() => {}) : normal(path, options));
+    await mount();
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    await record();
+    await click('Stop recording');
+    expect(button('Save audio privately').disabled).toBe(false);
+  });
+
   it('makes stalled setup elapsed/cancellable and allows a successful explicit retry', async () => {
     vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
     await mount();

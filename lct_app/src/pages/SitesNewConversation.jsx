@@ -75,18 +75,26 @@ export default function SitesNewConversation() {
     const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15_000);
     const started = Date.now(); let outcome = 'error';
     try {
-      const results = await abortable(controller.signal, () => Promise.all(['/api/cloud/soniox/status', '/api/cloud/files/status'].map(async path => {
-        const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-        if (!response.ok) throw new Error('Recording setup is unavailable. Local audio recording is still available; retry setup for cloud features.');
-        const value = await response.json();
-        if (!value || typeof value.enabled !== 'boolean') throw new Error('Recording setup returned an unreadable response. Retry setup for cloud features.');
-        return value;
-      })));
-      outcome = 'success';
-      if (alive.current && setupRequest.current === controller && !controller.signal.aborted) setCapabilities({ transcription: results[0], storage: results[1] });
-    } catch (failure) {
-      outcome = controller.signal.aborted ? timedOut ? 'timeout' : 'cancelled' : 'error';
-      if (alive.current && setupRequest.current === controller) setError(controller.signal.aborted ? 'Setup stopped or timed out. Local recording is still available; retry setup for transcription and private saving.' : failure.message);
+      const [transcription, storage] = await Promise.allSettled(
+        ['/api/cloud/soniox/status', '/api/cloud/files/status'].map(path => abortable(controller.signal, async () => {
+          const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+          if (!response.ok) throw new Error('Recording setup is unavailable. Local audio recording is still available; retry setup for cloud features.');
+          const value = await response.json();
+          if (!value || typeof value.enabled !== 'boolean') throw new Error('Recording setup returned an unreadable response. Retry setup for cloud features.');
+          return value;
+        })),
+      );
+      const failed = [transcription, storage].find(result => result.status === 'rejected');
+      outcome = controller.signal.aborted ? timedOut ? 'timeout' : 'cancelled' : failed ? 'error' : 'success';
+      if (alive.current && setupRequest.current === controller) {
+        if (outcome !== 'cancelled') {
+          setCapabilities({
+            transcription: transcription.status === 'fulfilled' ? transcription.value : null,
+            storage: storage.status === 'fulfilled' ? storage.value : null,
+          });
+        }
+        if (failed) setError(controller.signal.aborted ? 'Setup stopped or timed out. Local recording is still available; retry setup for transcription and private saving.' : failed.reason.message);
+      }
     } finally {
       window.clearTimeout(timeout);
       recordRecordingTiming('setup', 'setup', started, outcome);
