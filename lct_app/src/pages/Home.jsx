@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video, Cloud } from "lucide-react";
+import { Mic, FolderOpen, FileAudio, FileText, Bookmark, BarChart3, Settings, Video } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
@@ -87,7 +87,7 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/public" : "/browse")}
+          onClick={() => navigate("/browse")}
           className="flex flex-col items-center gap-2 group"
         >
           <span className="w-14 h-14 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
@@ -99,7 +99,19 @@ export default function Home() {
 
       {/* Secondary actions */}
       <div className="relative flex items-center gap-5">
-        {import.meta.env.VITE_SITES_MODE === "true" && <button type="button" onClick={() => navigate("/private-files")} className="flex flex-col items-center gap-1.5 group"><span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition"><Cloud size={16} /></span><span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Private files</span></button>}
+        {import.meta.env.VITE_SITES_MODE === "true" && (
+          <button
+            type="button"
+            onClick={() => navigate("/import-transcript")}
+            className="flex flex-col items-center gap-1.5 group"
+            title="Import a Google Meet Gemini Notes PDF or transcript file"
+          >
+            <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
+              <FileText size={16} />
+            </span>
+            <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Import transcript</span>
+          </button>
+        )}
         {/* Sites imports use their own local-first file journey; legacy uses /new. */}
         <button
           type="button"

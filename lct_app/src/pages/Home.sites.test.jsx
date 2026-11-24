@@ -26,7 +26,7 @@ for (const sites of [true, false]) it(`opens the appropriate Browse destination 
   vi.stubEnv("VITE_SITES_MODE", String(sites));
   await act(async () => root.render(<Home />));
   await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Browse").click());
-  expect(navigate).toHaveBeenCalledWith(sites ? "/public" : "/browse");
+  expect(navigate).toHaveBeenCalledWith("/browse");
 });
 
 // UX review 2026-11-05: the Site shows no door that does nothing, and every working door is drawn alike.
@@ -35,5 +35,7 @@ for (const sites of [true, false]) it(`shows Bookmarks only where it is a pendin
   await act(async () => root.render(<Home />));
   const labels = [...host.querySelectorAll("button")].map(button => button.textContent);
   expect(labels.includes("Bookmarks")).toBe(!sites);
+  expect(labels.includes("Import transcript")).toBe(sites);
+  expect(labels.includes("Private files")).toBe(false);
   expect(labels).toEqual(expect.arrayContaining(["Import audio", "Costs", "Settings"]));
 });

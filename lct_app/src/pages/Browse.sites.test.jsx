@@ -57,6 +57,9 @@ describe("Browse Sites access", () => {
     expect(container.textContent).toContain("Open .threads file");
     expect(container.textContent).toContain("Local file");
     expect(container.textContent).toContain("Device draft");
+    expect(container.textContent).toContain("On this device");
+    expect(container.textContent).toContain("Private cloud");
+    expect(container.textContent).toContain("Public library");
     expect(container.textContent).toContain("Files opened here stay in this browser.");
     expect(container.textContent).not.toContain("Owner audio library");
     expect(container.textContent).not.toContain("Server history");
