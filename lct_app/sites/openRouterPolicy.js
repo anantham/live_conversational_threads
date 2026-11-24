@@ -84,11 +84,14 @@ function fallbackModels(value, primary) {
   return valid && new Set(list).size === list.length ? list : null;
 }
 
-export function openRouterPolicy(env) {
+export function openRouterPolicy(env, { optionalProvider = false } = {}) {
   const modelValue = text(env.LCT_OPENROUTER_MODEL, 160);
   const model = modelValue && MODEL_ID.test(modelValue) ? modelValue : null;
   const fallbacks = fallbackModels(env.LCT_OPENROUTER_FALLBACK_MODELS, model);
-  const provider = text(env.LCT_OPENROUTER_PROVIDER, 160);
+  const rawProvider = env.LCT_OPENROUTER_PROVIDER;
+  const provider = optionalProvider && (rawProvider === undefined || rawProvider === '')
+    ? null : text(rawProvider, 160);
+  const providerValid = optionalProvider ? (rawProvider === undefined || rawProvider === '' || Boolean(provider)) : Boolean(provider);
   const dataCollection = ['allow', 'deny'].includes(env.LCT_OPENROUTER_DATA_COLLECTION) ? env.LCT_OPENROUTER_DATA_COLLECTION : null;
   const audience = ['public', 'authenticated'].includes(env.LCT_OPENROUTER_AUDIENCE) ? env.LCT_OPENROUTER_AUDIENCE : null;
   const maxRequests = integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200);
@@ -96,7 +99,7 @@ export function openRouterPolicy(env) {
   const maxTokens = integer(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS, 8192);
   const longTokens = longMaxTokens(env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS, maxTokens);
   const key = text(env.OPENROUTER_API_KEY_2 ?? env.OPENROUTER_API_KEY, 4096);
-  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && windowMs !== false
+  const configured = Boolean(model && fallbacks && providerValid && dataCollection && audience && maxRequests && windowMs !== false
     && maxTokens && longTokens && key && env.DB?.prepare);
   return { configured, model, fallbackModels: fallbacks || [], models: model && fallbacks ? [model, ...fallbacks] : [],
     provider, dataCollection, audience, maxRequests, windowMs: windowMs || null, windowValid: windowMs !== false,
@@ -155,10 +158,11 @@ export function personalMapPolicy(route, env) {
   const { backend, key, model, provider } = route;
   if (env.LCT_PERSONAL_PROVIDERS_ENABLED !== 'true' || !validPersonalKey(key) || !Object.hasOwn(mapPolicies, backend)) return null;
   if (backend === 'openrouter') {
-    if (typeof provider !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/i.test(provider)) return null;
+    const cleanProvider = typeof provider === 'string' ? provider.trim() : '';
+    if (cleanProvider && !/^[a-z0-9][a-z0-9-]{0,79}$/i.test(cleanProvider)) return null;
     return openRouterPolicy({ ...env, OPENROUTER_API_KEY_2: key, LCT_OPENROUTER_MODEL: model,
-      LCT_OPENROUTER_PROVIDER: provider, LCT_OPENROUTER_DATA_COLLECTION: 'deny', LCT_OPENROUTER_FALLBACK_MODELS: '',
-      LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true' });
+      LCT_OPENROUTER_PROVIDER: cleanProvider, LCT_OPENROUTER_DATA_COLLECTION: 'deny', LCT_OPENROUTER_FALLBACK_MODELS: '',
+      LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true' }, { optionalProvider: true });
   }
   const prefix = backend.toUpperCase();
   return mapPolicies[backend]({ ...env, [prefix + '_API_KEY']: key, ['LCT_' + prefix + '_MODEL']: model,

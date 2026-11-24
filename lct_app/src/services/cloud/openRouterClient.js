@@ -127,9 +127,16 @@ function recordingMapResult(source, payload) {
 
 export function configuredMapRoutes(runtime) {
   const { preferences, keys } = runtime;
-  return preferences.map.map(backend => keys[backend]
-    ? { backend, key: keys[backend], model: preferences.models[backend],
-      ...(backend === 'openrouter' ? { provider: preferences.openrouterProvider } : {}) }
+  const chain = Array.isArray(preferences.mapChain) && preferences.mapChain.length
+    ? preferences.mapChain
+    : (preferences.map || ['openrouter']).map(backend => ({
+        backend,
+        model: preferences.models?.[backend] || '',
+        ...(backend === 'openrouter' && preferences.openrouterProvider ? { provider: preferences.openrouterProvider } : {}),
+      }));
+  return chain.map(({ backend, model, provider }) => keys[backend]
+    ? { backend, key: keys[backend], model: model || preferences.models?.[backend] || '',
+      ...(backend === 'openrouter' && provider ? { provider } : {}) }
     : { backend });
 }
 
@@ -138,8 +145,8 @@ export async function getOrderedMapStatus(signal, routes) {
   if (!response.ok) throw unreadable();
   const value = await readJSON(response, signal, 8192);
   if (typeof value.available !== 'boolean' || typeof value.personal !== 'boolean' || !value.providers) throw unreadable();
-  const ready = routes.filter(({ backend, key, model, provider }) => key
-    ? value.personal && model && (backend !== 'openrouter' || provider)
+  const ready = routes.filter(({ backend, key, model }) => key
+    ? value.personal && model
     : value.providers[backend]?.enabled);
   const models = routes.flatMap(({ backend, key, model, provider }) => {
     if (key && model) return [`${MAP_PROVIDERS[backend].name} · ${model}${provider ? ' · ' + provider : ''}`];

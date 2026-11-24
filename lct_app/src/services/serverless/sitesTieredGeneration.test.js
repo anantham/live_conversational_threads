@@ -251,18 +251,46 @@ describe('ordered settings generation', () => {
     expect(count()).toBe(0);
   });
 
-  it('checks only provider metadata for a personal key', async () => {
+  it('checks only provider metadata for a personal key and returns available models', async () => {
     env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
-    fetch.mockResolvedValueOnce(Response.json({ type: 'model', id: 'claude-test' }));
+    fetch.mockResolvedValueOnce(Response.json({ data: [{ type: 'model', id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5' }] }));
     const response = await worker.fetch(new Request(SITE + '/api/cloud/providers/check', {
       method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-key-check': 'check-v1' },
-      body: JSON.stringify({ backend: 'anthropic', key: 'personal-key', model: 'claude-test' }),
+      body: JSON.stringify({ backend: 'anthropic', key: 'personal-key' }),
     }), env);
     expect(response.status).toBe(200);
-    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models/claude-test',
+    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models?limit=100',
       expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'personal-key' }), redirect: 'manual' }));
     expect(fetch.mock.calls[0][1].body).toBeUndefined();
-    expect(await response.text()).not.toContain('personal-key');
+    const text = await response.text();
+    expect(text).not.toContain('personal-key');
+    expect(JSON.parse(text).models).toEqual([{ id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' }]);
     expect(count()).toBe(0);
+  });
+
+  it('supports multiple ordered models from the same provider and optional OpenRouter upstream slug', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    const routes = [
+      { backend: 'openrouter', key: 'or-personal-key', model: 'anthropic/claude-sonnet-4.5' },
+      { backend: 'anthropic', key: 'ant-bad-key', model: 'claude-sonnet-4-5-20250929' },
+      { backend: 'openrouter', key: 'or-personal-key', model: 'google/gemini-2.5-pro' },
+    ];
+    fetch
+      .mockResolvedValueOnce(new Response('not found', { status: 404 }))
+      .mockResolvedValueOnce(new Response('bad key', { status: 401 }));
+    const response = await worker.fetch(orderedRequest(routes), env);
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({ backend: 'openrouter', model: 'google/gemini-2.5-pro' });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'https://openrouter.ai/api/v1/chat/completions',
+      'https://api.anthropic.com/v1/messages',
+      'https://openrouter.ai/api/v1/chat/completions',
+    ]);
+    const thirdBody = JSON.parse(fetch.mock.calls[2][1].body);
+    expect(thirdBody.model).toBe('google/gemini-2.5-pro');
+    expect(thirdBody.provider.only).toBeUndefined();
+    expect(thirdBody.provider.data_collection).toBe('deny');
+    expect(count()).toBe(1);
   });
 });

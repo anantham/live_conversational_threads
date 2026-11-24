@@ -6,10 +6,12 @@ import { normalizeProviderPreferences, readProviderPreferences, saveProviderPref
 export default function SitesRuntimeProvider({ children }) {
   const [preferences, setPreferences] = useState(readProviderPreferences);
   const [keys, setKeys] = useState({});
+  const [catalogs, setCatalogs] = useState({});
   const [storageError, setStorageError] = useState('');
   const runtime = useMemo(() => ({
     preferences,
     keys,
+    catalogs,
     storageError,
     save(patch) {
       const next = normalizeProviderPreferences({ ...preferences, ...patch });
@@ -17,8 +19,14 @@ export default function SitesRuntimeProvider({ children }) {
       catch { setStorageError('Browser storage is unavailable. Changes apply until you close or reload this tab.'); }
       setPreferences(next);
     },
-    setKey(id, key) { setKeys(previous => ({ ...previous, [id]: key })); },
-  }), [preferences, keys, storageError]);
+    setKey(id, key) {
+      setKeys(previous => ({ ...previous, [id]: key }));
+      if (!key) setCatalogs(previous => ({ ...previous, [id]: [] }));
+    },
+    setCatalog(id, models) {
+      setCatalogs(previous => ({ ...previous, [id]: Array.isArray(models) ? models : [] }));
+    },
+  }), [preferences, keys, catalogs, storageError]);
   return <SitesRuntimeContext.Provider value={runtime}>{children}</SitesRuntimeContext.Provider>;
 }
 

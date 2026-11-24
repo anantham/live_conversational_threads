@@ -26,7 +26,9 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
   const routeSelection = routes || backend;
   const status = checkedStatus?.selection === routeSelection ? checkedStatus.data : null;
   const consent = consentedBackend === routeSelection;
-  const recipients = routes?.map(({ backend }) => MAP_PROVIDERS[backend].recipient).join(', ') ?? MAP_PROVIDERS[backend].recipient;
+  const recipients = routes
+    ? [...new Set(routes.map(({ backend }) => MAP_PROVIDERS[backend].recipient))].join(', ')
+    : MAP_PROVIDERS[backend].recipient;
   const [result, setResult] = useState(null), [error, setError] = useState(''), [url, setURL] = useState('');
   const { run, cancel, activity, elapsed } = useCloudTask('recording-map');
   const alive = useRef(true), currentSource = useRef(source), statusEpoch = useRef(0);
@@ -113,7 +115,7 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
     <h2 className="text-lg font-medium">AI map</h2>
     <p className="mt-3 max-w-[65ch] text-sm leading-6 text-slate-600">Turn finalized words into a map linked to their source. {source.complete ? 'The recording is complete.' : 'This is a partial transcript; unfinished words are excluded.'} {retention === 'local' ? 'The map saves in this browser; it is never published automatically.' : 'Generation does not save or publish it.'}</p>
     {routes ? <div className="mt-3 text-sm leading-6 text-slate-600">
-      <p>{routes.map(({ backend }) => MAP_PROVIDERS[backend].name).join(' → ')}</p>
+      <p>{routes.map(({ backend, model }) => model ? `${MAP_PROVIDERS[backend].name} (${model})` : MAP_PROVIDERS[backend].name).join(' → ')}</p>
       <Link className="underline underline-offset-4" to="/settings/runtime">Manage provider order and keys</Link>
     </div> : <>
     <label className="mt-4 block text-sm font-medium" htmlFor="map-inference-backend">AI provider</label>

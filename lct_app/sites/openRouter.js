@@ -102,15 +102,20 @@ function generationWires(policy, source, maxTokens, guidance) {
   const wire = buildOpenRouterGenerationRequest({ source, model: gemini ? `google/${model}` : model, maxTokens, guidance });
   if (gemini) return [{ model, max_tokens: wire.max_tokens, stream: false,
     messages: wire.messages, response_format: wire.response_format }];
-  const provider = { ...wire.provider, only: [policy.provider], data_collection: policy.dataCollection };
+  const provider = { ...wire.provider, ...(policy.provider ? { only: [policy.provider] } : {}), data_collection: policy.dataCollection };
   return policy.models.map(model => ({ ...wire, model, provider }));
 }
 
 function orderedPolicies(routes, env) {
-  if (!Array.isArray(routes) || !routes.length || routes.length > 3
-    || routes.some(route => !route || !Object.hasOwn(mapPolicies, route.backend))
-    || new Set(routes.map(route => route.backend)).size !== routes.length) {
+  if (!Array.isArray(routes) || !routes.length || routes.length > 6
+    || routes.some(route => !route || !Object.hasOwn(mapPolicies, route.backend))) {
     throw new OpenRouterError(400, 'routes', 'Select valid providers in Intelligence settings.');
+  }
+  const seen = new Set();
+  for (const route of routes) {
+    const signature = `${route.backend}|${route.model || ''}|${route.provider || ''}|${Object.hasOwn(route, 'key') ? 'p' : 's'}`;
+    if (seen.has(signature)) throw new OpenRouterError(400, 'routes', 'Remove duplicate models in Intelligence settings.');
+    seen.add(signature);
   }
   return routes.flatMap(route => {
     if (Object.hasOwn(route, 'key')) {
@@ -180,9 +185,11 @@ async function generate(request, env, defaultPolicy) {
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
   const { artifact, backend, model, repair } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
-    let skippedPolicy = null;
+    const failedAuthKeys = new Set();
+    let lastRefusal = null;
     for (const [index, { policy, body }] of wires.entries()) {
-      if (policy === skippedPolicy) continue;
+      const authKey = `${policy.backend}:${policy.key}`;
+      if (failedAuthKeys.has(authKey)) continue;
       const anthropic = policy.backend === 'anthropic';
       const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
       const response = await fetch(policy.endpoint, { method: 'POST',
@@ -190,25 +197,25 @@ async function generate(request, env, defaultPolicy) {
         body: JSON.stringify(body), signal, redirect: 'manual' });
       if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
       if (response.status !== 200) {
-        const next = wires[index + 1];
+        const remaining = wires.slice(index + 1);
+        const authRefused = response.status === 401 || response.status === 403;
+        if (authRefused) failedAuthKeys.add(authKey);
+        const nextRunnable = remaining.find(item => !failedAuthKeys.has(`${item.policy.backend}:${item.policy.key}`));
+        const sameBackend = nextRunnable?.policy.backend === policy.backend;
         const modelFallback = policy.backend === 'openrouter' && ROUTE_UNAVAILABLE.has(response.status);
         const providerFallback = ordered && [401, 403, 404, 429].includes(response.status);
         await logProviderRefusal(env, response, signal, policy.backend);
         void response.body?.cancel().catch(() => {});
-        if (next && ((next.policy === policy && modelFallback) || (next.policy !== policy && providerFallback))) {
-          if (next.policy === policy) logModelFallback(response.status, index);
-          continue;
-        }
-        // If a credential or permission failed, skip remaining models on that same route.
-        if (providerFallback && next?.policy === policy && wires.slice(index + 1).some(route => route.policy !== policy)) {
-          skippedPolicy = policy;
+        lastRefusal = new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation (HTTP ${response.status}: ${refusalReason(response.status)}). The attempt remains counted. Check provider availability and allowance before retrying.`,
+          { upstream_status: response.status });
+        if (nextRunnable && ((sameBackend && (modelFallback || providerFallback)) || (!sameBackend && providerFallback))) {
+          if (nextRunnable.policy === policy && modelFallback) logModelFallback(response.status, index);
           continue;
         }
         if (!ordered && modelFallback && wires.length > 1) {
           throw new OpenRouterError(502, 'no_model_route', 'No approved model currently has a route through the selected provider. The attempt remains counted; no map was saved.');
         }
-        throw new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation (HTTP ${response.status}: ${refusalReason(response.status)}). The attempt remains counted. Check provider availability and allowance before retrying.`,
-          { upstream_status: response.status });
+        throw lastRefusal;
       }
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
       try {
@@ -220,6 +227,7 @@ async function generate(request, env, defaultPolicy) {
         throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`);
       }
     }
+    throw lastRefusal || new OpenRouterError(502, 'provider_refused', 'No configured provider could finish generation. The attempt remains counted.');
   });
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
   const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
