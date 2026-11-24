@@ -200,3 +200,69 @@ describe('direct Anthropic admission and health', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ordered settings generation', () => {
+  const orderedRequest = (routes, init = {}) => new Request(SITE + '/api/cloud/map/generate', {
+    method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1', ...init.headers },
+    body: JSON.stringify({ source, routes, guidance: 'Follow changes of mind.' }),
+  });
+  const count = () => sqlite.prepare('SELECT COUNT(*) AS total FROM lct_openrouter_attempts').get().total;
+
+  it('uses a consented fallback on a definitive key refusal under one shared admission', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    const routes = [{ backend: 'anthropic', key: 'personal-test-key', model: 'claude-test-personal' }, { backend: 'gemini' }];
+    fetch.mockResolvedValueOnce(new Response('private refusal details', { status: 401 }));
+    const response = await worker.fetch(orderedRequest(routes), env);
+    const payload = await response.json();
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({ backend: 'gemini', model: env.LCT_GEMINI_MODEL, artifact: { full_transcript: source.finalTokens[0].text } });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['https://api.anthropic.com/v1/messages', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions']);
+    expect(fetch.mock.calls[0][1].headers['x-api-key']).toBe('personal-test-key');
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ model: 'claude-test-personal', system: expect.stringContaining('Follow changes of mind.') });
+    expect(JSON.parse(fetch.mock.calls[1][1].body).messages[0].content).toContain('Follow changes of mind.');
+    expect(JSON.stringify(payload)).not.toMatch(/personal-test-key|private refusal details/);
+    expect(count()).toBe(1);
+  });
+
+  it.each([500, 529])('stops the whole order after uncertain HTTP %d', async status => {
+    fetch.mockResolvedValueOnce(new Response('unknown outcome', { status }));
+    const response = await worker.fetch(orderedRequest([{ backend: 'anthropic' }, { backend: 'gemini' }]), env);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: 'provider_refused', upstream_status: status });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(count()).toBe(1);
+  });
+
+  it('does not send to another recipient after an OpenRouter 503', async () => {
+    fetch.mockResolvedValueOnce(new Response('unavailable', { status: 503 }));
+    const response = await worker.fetch(orderedRequest([{ backend: 'openrouter' }, { backend: 'gemini' }]), env);
+    expect(response.status).toBe(502);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(count()).toBe(1);
+  });
+
+  it('never substitutes the Site secret when a personal route is incomplete or disabled', async () => {
+    const routes = [{ backend: 'anthropic', key: 'personal-key', model: 'claude-test' }];
+    expect((await worker.fetch(orderedRequest(routes), env)).status).toBe(503);
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    expect((await worker.fetch(orderedRequest([{ backend: 'anthropic', key: 'personal-key' }]), env)).status).toBe(503);
+    expect((await worker.fetch(orderedRequest(routes, { headers: { 'x-lct-map-consent': '' } }), env)).status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(count()).toBe(0);
+  });
+
+  it('checks only provider metadata for a personal key', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    fetch.mockResolvedValueOnce(Response.json({ type: 'model', id: 'claude-test' }));
+    const response = await worker.fetch(new Request(SITE + '/api/cloud/providers/check', {
+      method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-key-check': 'check-v1' },
+      body: JSON.stringify({ backend: 'anthropic', key: 'personal-key', model: 'claude-test' }),
+    }), env);
+    expect(response.status).toBe(200);
+    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models/claude-test',
+      expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'personal-key' }), redirect: 'manual' }));
+    expect(fetch.mock.calls[0][1].body).toBeUndefined();
+    expect(await response.text()).not.toContain('personal-key');
+    expect(count()).toBe(0);
+  });
+});

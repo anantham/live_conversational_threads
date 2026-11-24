@@ -5,8 +5,8 @@ export function anthropicHeaders(key) {
   return { 'x-api-key': key, 'anthropic-version': '2026-10-21' };
 }
 
-export function buildAnthropicGenerationRequest({ source, model, maxTokens }) {
-  const [system, user] = buildRecordingGenerationMessages(source, maxTokens);
+export function buildAnthropicGenerationRequest({ source, model, maxTokens, guidance }) {
+  const [system, user] = buildRecordingGenerationMessages(source, maxTokens, guidance);
   return { model, max_tokens: maxTokens, stream: false, system: system.content, messages: [user],
     output_config: { format: { type: 'json_schema', schema: ANTHROPIC_GENERATION_GRAPH_SCHEMA } } };
 }

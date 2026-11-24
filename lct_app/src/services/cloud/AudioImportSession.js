@@ -65,6 +65,7 @@ export class AudioImportSession {
     } catch (error) {
       if (generation !== this.generation) throw cancelledImport();
       const cause = this.failure || error;
+      if (this.state === 'preparing' && !this.abort.signal.aborted) cause.canTryNext = true;
       this.stage(this.abort.signal.aborted && !this.failure ? 'cancelled' : 'error',
         this.abort.signal.aborted && !this.failure ? 'Import stopped. Your original audio and confirmed words are preserved.' : cause.message);
       throw cause;

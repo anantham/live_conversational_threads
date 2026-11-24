@@ -33,6 +33,7 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
   }
   cancel() { this.cancelled = true; this.callbacks.onStage({ stage: 'cancelled', message: 'Import stopped.' }); fixture.finishDecode?.(); }
 } }));
+import { SitesRuntimeContext } from '../contexts/SitesRuntimeContext';
 import SitesAudioImport from './SitesAudioImport.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
 let root, container, posts, holdMap, finishMap, finishUpload;
@@ -92,8 +93,10 @@ afterEach(async () => {
 });
 const button = name => [...container.querySelectorAll('button')].find(value => (value.getAttribute('aria-label') || value.textContent) === name);
 const click = async name => { await act(async () => button(name).click()); };
-async function mount(path = '/import-audio') {
-  await act(async () => root.render(<MemoryRouter initialEntries={[path]}><SitesAudioImport /></MemoryRouter>));
+async function mount(path = '/import-audio', runtime = null) {
+  await act(async () => root.render(<MemoryRouter initialEntries={[path]}><SitesRuntimeContext.Provider value={runtime}>
+    <SitesAudioImport />
+  </SitesRuntimeContext.Provider></MemoryRouter>));
 }
 async function choose(name = 'garden.mp3') {
   const file = new File(['original synthetic audio'], name);
@@ -397,4 +400,38 @@ it('uses the existing automatic cadence to catch up with the completed transcrip
   expect(fixture.writes.at(-1).snapshot.map.transcription_complete).toBe(true);
   expect(fixture.writes.at(-1).snapshot.map.full_transcript).toBe(fixture.liveTranscript.finalText);
   await act(async () => vi.advanceTimersByTimeAsync(90000)); expect(posts).toHaveLength(2);
+});
+
+
+it.each([401, 502])('honors the speech provider order after OpenAI HTTP %i and passes Settings guidance to the map', async status => {
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === 'https://api.openai.com/v1/audio/transcriptions') return new Response('do not expose this', { status });
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    if (path === '/api/cloud/map/generate') {
+      const input = JSON.parse(options.body);
+      posts.push(input);
+      return response({ request_id: '00000000-0000-4000-8000-000000000001', backend: 'anthropic',
+        model: 'claude-test', artifact: mapped(input.source) });
+    }
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['openai', 'soniox'], map: ['anthropic'],
+    models: { anthropic: 'claude-test' }, guidance: 'Surface changes of mind.' },
+    keys: { openai: 'synthetic-audio-key', anthropic: 'synthetic-map-key' } });
+  expect(container.textContent).toContain('OpenAI → Soniox');
+  await choose(); await permit(); await click('Create transcript & threads');
+  expect(fetch.mock.calls.filter(([path]) => path === 'https://api.openai.com/v1/audio/transcriptions'), container.textContent).toHaveLength(1);
+  if (status === 401) {
+    expect(fixture.sessions).toHaveLength(1);
+    expect(posts).toEqual([expect.objectContaining({
+      routes: [{ backend: 'anthropic', key: 'synthetic-map-key', model: 'claude-test' }],
+      guidance: 'Surface changes of mind.',
+    })]);
+  } else {
+    expect(fixture.sessions).toHaveLength(0);
+    expect(posts).toHaveLength(0);
+    expect(container.textContent).toContain('OpenAI did not complete transcription (HTTP 502).');
+    expect(container.textContent).not.toContain('do not expose this');
+  }
 });

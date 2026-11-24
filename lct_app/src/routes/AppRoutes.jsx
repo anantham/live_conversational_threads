@@ -28,6 +28,8 @@ import DebateReport from "../pages/DebateReport";
 import DebateShared from "../pages/DebateShared";
 import CostDashboard from "../pages/CostDashboard";
 import Bookmarks from "../pages/Bookmarks";
+import SitesProviderSettings from '../components/settings/SitesProviderSettings';
+import SitesMapPrompts from '../components/settings/SitesMapPrompts';
 import PromptLibraryPage from "../pages/settings/PromptLibraryPage";
 import RuntimeSettingsPage from "../pages/settings/RuntimeSettingsPage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
@@ -75,8 +77,8 @@ export default function AppRoutes() {
       <Route path="/bookmarks" element={<Bookmarks />} />
       <Route path="/settings" element={<SettingsLayout />}>
         <Route index element={<Navigate replace to="runtime" />} />
-        <Route path="runtime" element={<RuntimeSettingsPage />} />
-        <Route path="prompts" element={<PromptLibraryPage />} />
+        <Route path="runtime" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesProviderSettings /> : <RuntimeSettingsPage />} />
+        <Route path="prompts" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesMapPrompts /> : <PromptLibraryPage />} />
       </Route>
     </Routes>
   );

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
 import { importWait } from '../services/cloud/audioImportFile.js';
-import { getRecordingMapStatus, generateRecordingMap } from '../services/cloud/openRouterClient.js';
+import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
+import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
+import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
+import { getRecordingMapStatus, generateRecordingMap, configuredMapRoutes, getOrderedMapStatus, generateOrderedRecordingMap } from '../services/cloud/openRouterClient.js';
 import { readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { useConversationArchive } from './useConversationArchive.js';
 import { useCloudTask } from './useCloudTask.js';
@@ -10,7 +13,8 @@ const empty = () => ({ finalText: '', partialText: '', finalTokens: [], partialT
 
 export function useAudioImport() {
   const archive = useConversationArchive(), location = useLocation(), navigate = useNavigate();
-  const [file, setFile] = useState(null), [consent, setConsent] = useState(false), [backend, setBackend] = useState('openrouter');
+  const runtime = useSitesRuntime();
+  const [file, setFile] = useState(null), [consentSelection, setConsentSelection] = useState(null), [backend, setBackend] = useState('openrouter');
   const [recording, setRecording] = useState(null), [audio, setAudio] = useState(null), [transcript, setTranscript] = useState(empty);
   const [map, setMap] = useState(null), [activity, setActivity] = useState(null), [error, setError] = useState('');
   const [setupError, setSetupError] = useState('');
@@ -22,6 +26,14 @@ export function useAudioImport() {
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
+  const speechProviders = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
+    ? runtime.keys.soniox ? capability?.personal_enabled : capability?.enabled
+    : runtime.keys.openai) : capability?.enabled ? ['soniox'] : [];
+  const speechSelection = speechProviders.join(',');
+  const consent = consentSelection?.routes === (runtime || backend) && consentSelection.speech === speechSelection;
+  const setConsent = value => setConsentSelection(value ? { routes: runtime || backend, speech: speechSelection } : null);
+  const mapRoutes = runtime ? configuredMapRoutes(runtime) : null;
+
   const check = useCallback(async () => {
     setup.current?.abort();
     const controller = new AbortController();
@@ -78,7 +90,7 @@ export function useAudioImport() {
   }, [busy]);
   const mapReady = useCallback(bundle => { setMap(bundle); archive.update({ map: bundle }); }, [archive.update]);
   async function start() {
-    if (running.current || !file || !consent || busy || loading || !capability?.enabled) return;
+    if (running.current || !file || !consent || busy || loading || !speechProviders.length) return;
     running.current = true;
     const id = globalThis.crypto?.randomUUID?.();
     if (!id) { running.current = false; setError('This browser cannot create a conversation identifier. No file was sent.'); return; }
@@ -91,17 +103,32 @@ export function useAudioImport() {
     archive.begin(next, next.retention);
     navigate(next.retention === 'local' ? '/import-audio?local=' + id : '/import-audio', { replace: true });
     const valid = () => alive.current && epoch.current === generation;
-    const session = new AudioImportSession({
+    let audioKept = false;
+    const callbacks = {
       onStage: value => { if (valid()) { setActivity(value); archive.update({ stage: value.stage }); } },
-      onAudio: value => { if (valid()) {
+      onAudio: value => { if (valid() && !audioKept) {
+        audioKept = true;
         setAudio(value); archive.append({ segment: 1, index: 0, mimeType: value.mimeType, blob: value.blob });
         archive.update({ segments: [{ number: 1, mimeType: value.mimeType, complete: true, bytes: value.blob.size }] });
       } },
       onTranscript: value => { if (valid()) { setTranscript(value); archive.update({ transcript: value }); } },
-    });
-    current.current = session;
+    };
     try {
-      const words = await session.start({ file, maxSessionSeconds: capability.max_session_seconds });
+      let words;
+      for (const [index, provider] of speechProviders.entries()) {
+        const key = runtime?.keys[provider];
+        const session = provider === 'openai'
+          ? new OpenAIFileSession({ ...callbacks, key })
+          : new AudioImportSession({ ...callbacks,
+            ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+        current.current = session;
+        try {
+          words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
+          break;
+        } catch (error) {
+          if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) throw error;
+        }
+      }
       if (!valid()) return;
       archive.update({ stage: 'stopped' });
       // One owner: an explicit live attempt must never gain an implicit final retry.
@@ -112,9 +139,10 @@ export function useAudioImport() {
       const source = { recordingId: id, startedAt: next.startedAt, finalTokens: words.finalTokens, complete: true };
       setActivity({ stage: 'mapping', message: 'Creating threads from your transcript.' });
       const response = await task.run('generate', async signal => {
-        const status = await getRecordingMapStatus(signal, backend);
+        const status = mapRoutes ? await getOrderedMapStatus(signal, mapRoutes) : await getRecordingMapStatus(signal, backend);
         if (!status.enabled || !status.available) throw new Error('Your transcript is ready. Threads are unavailable within the current shared limits; no generation request was sent.');
-        return generateRecordingMap(source, signal, backend);
+        return mapRoutes ? generateOrderedRecordingMap(source, signal, mapRoutes, runtime.preferences.guidance)
+          : generateRecordingMap(source, signal, backend);
       });
       if (!valid()) return;
       if (response.data) mapReady(response.data.bundle);
@@ -129,5 +157,5 @@ export function useAudioImport() {
   }
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
   return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
-    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || setupError, capability, check, start, cancel };
+    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }

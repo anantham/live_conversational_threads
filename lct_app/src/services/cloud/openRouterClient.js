@@ -67,15 +67,17 @@ async function request(path, signal, body, backend) {
     ...(body ? { headers: { 'Content-Type': 'application/json', [`X-LCT-${MAP_PROVIDERS[backend].name}-Consent`]: 'generate-v1' }, body } : {}),
   });
   const payload = await readJSON(response, signal, body ? 2 * 1024 * 1024 + 1024 : 8192);
-  if (!response.ok) {
-    const code = response.status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
-    const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status) : '';
-    const error = new Error(code ? generationFailures[code] + detail : messages[response.status] || uncertain);
-    error.status = response.status;
-    if (code) error.code = code;
-    throw error;
-  }
+  if (!response.ok) throw failure(response.status, payload);
   return payload;
+}
+
+function failure(status, payload) {
+  const code = status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
+  const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status) : '';
+  const error = new Error(code ? generationFailures[code] + detail : messages[status] || uncertain);
+  error.status = status;
+  if (code) error.code = code;
+  return error;
 }
 
 export async function getRecordingMapStatus(signal, backend = 'openrouter') {
@@ -103,6 +105,10 @@ export async function generateRecordingMap(source, signal, backend = 'openrouter
   const body = JSON.stringify({ source });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
   const payload = await request('/generate', signal, body, backend);
+  return recordingMapResult(source, payload);
+}
+
+function recordingMapResult(source, payload) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.request_id)) throw unreadable();
   const artifact = payload.artifact;
   let result;
@@ -116,4 +122,42 @@ export async function generateRecordingMap(source, signal, backend = 'openrouter
     }
   } catch { throw unreadable(); }
   return result;
+}
+
+
+export function configuredMapRoutes(runtime) {
+  const { preferences, keys } = runtime;
+  return preferences.map.map(backend => keys[backend]
+    ? { backend, key: keys[backend], model: preferences.models[backend],
+      ...(backend === 'openrouter' ? { provider: preferences.openrouterProvider } : {}) }
+    : { backend });
+}
+
+export async function getOrderedMapStatus(signal, routes) {
+  const response = await fetch('/api/cloud/map/status', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal });
+  if (!response.ok) throw unreadable();
+  const value = await readJSON(response, signal, 8192);
+  if (typeof value.available !== 'boolean' || typeof value.personal !== 'boolean' || !value.providers) throw unreadable();
+  const ready = routes.filter(({ backend, key, model, provider }) => key
+    ? value.personal && model && (backend !== 'openrouter' || provider)
+    : value.providers[backend]?.enabled);
+  const models = routes.flatMap(({ backend, key, model, provider }) => {
+    if (key && model) return [`${MAP_PROVIDERS[backend].name} · ${model}${provider ? ' · ' + provider : ''}`];
+    const info = value.providers[backend];
+    return info?.model ? [describeModelRoute(info)] : [];
+  });
+  return { enabled: Boolean(ready.length), available: Boolean(ready.length && value.available), audience: value.audience, models };
+}
+
+export async function generateOrderedRecordingMap(source, signal, routes, guidance) {
+  createRecordingTranscript(source);
+  const body = JSON.stringify({ source, routes, guidance });
+  if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
+  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
+  const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
+  if (!response.ok) throw failure(response.status, payload);
+  if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
+  return { ...recordingMapResult(source, payload), backend: payload.backend, model: payload.model };
 }

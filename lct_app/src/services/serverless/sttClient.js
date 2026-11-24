@@ -35,7 +35,7 @@ const OPENAI_MAX_UPLOAD_BYTES = 25_000_000;
  * @param {File|Blob} fileOrBlob - The audio file
  * @returns {Promise<Object>} Diarized transcript object
  */
-export async function transcribeAudio(apiKey, fileOrBlob) {
+export async function transcribeAudio(apiKey, fileOrBlob, { signal, redactErrors = false } = {}) {
   const authHeaders = serverlessAuthHeaders(apiKey);
   if (!authHeaders) throw new NeedsKeyError();
 
@@ -54,7 +54,7 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
     res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
-      body: formData,
+      body: formData, signal, redirect: 'error',
     });
   } else {
     // Trial -> raw audio body through the proxy; metadata rides query params
@@ -88,9 +88,17 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
   }
   if (usingByok && res.status === 401) {
     // The user's own key was rejected by OpenAI — re-open the key gate.
-    throw new NeedsKeyError('OpenAI rejected this API key. Check or replace it.');
+    const error = new NeedsKeyError('OpenAI rejected this API key. Check or replace it.');
+    error.canTryNext = true;
+    throw error;
   }
   if (!res.ok) {
+    if (redactErrors) {
+      void res.body?.cancel().catch(() => {});
+      const error = new Error(`OpenAI did not complete transcription (HTTP ${res.status}).`);
+      error.canTryNext = [403, 404, 429].includes(res.status);
+      throw error;
+    }
     const errorText = await res.text().catch(() => '');
     throw new Error(`Transcription failed (${res.status}): ${errorText}`);
   }

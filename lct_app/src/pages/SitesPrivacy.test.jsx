@@ -33,7 +33,7 @@ describe("Sites privacy disclosure", () => {
     expect(container.textContent).toContain("downloaded by anyone");
     expect(container.textContent).toContain("Google Gemini through Google AI Studio");
     expect(container.textContent).toContain("Claude through Anthropic");
-    expect(container.textContent).toContain("does not automatically switch providers or retry");
+    expect(container.textContent).toContain("in the selected order");
     expect(container.textContent).toContain("does not store the Google identity token");
     expect(container.querySelector('a[href="mailto:aditya@repub.live"]')).not.toBeNull();
   });

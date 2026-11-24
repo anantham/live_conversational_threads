@@ -532,3 +532,7 @@ has 399. Both mix navigation, retention, private saving, and map generation.
 A future test-only split can separate capture and navigation journeys from map
 generation while sharing synthetic media, router, and capability fixtures.
 The request ownership repairs keep coverage on the public pages.
+
+## 2026-11-24 — Hosted map generation and provider settings
+
+`lct_app/sites/openRouter.js` now handles route parsing, admission, dispatch and diagnostics for direct and ordered generation. If another transport or admission lane is added, extract the shared admission and provider dispatch into distinct modules. The current handlers share a single admission and deadline. The two new audio fallback cases in `SitesAudioImport.test.jsx` also fit the existing proposal to split capture and map journeys while sharing fixture setup.

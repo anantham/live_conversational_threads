@@ -217,3 +217,20 @@ describe('Soniox issuer Worker API with real generated SQLite schema', () => {
     expect(sqlite.prepare('SELECT lease_until FROM lct_soniox_sessions').get()).toEqual({ lease_until: null });
   });
 });
+
+it('uses a personal Soniox key only when enabled and shares the mint ledger', async () => {
+  const headers = { 'x-lct-personal-soniox-key': 'synthetic-personal-soniox' };
+  expect((await worker.fetch(req('/session', { headers }), env)).status).toBe(503);
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  env.LCT_SONIOX_ENABLED = 'false';
+  expect(await (await worker.fetch(req('/status', { method: 'GET' }), env)).json()).toMatchObject({
+    enabled: false, personal_enabled: true,
+  });
+  const response = await worker.fetch(req('/session', { headers }), env);
+  expect(response.status).toBe(201);
+  expect(await response.text()).not.toContain('synthetic-personal-soniox');
+  expect(requests[0].options.headers.Authorization).toBe('Bearer synthetic-personal-soniox');
+  expect(reserveCount()).toBe(1);
+  expect((await worker.fetch(req('/session', { headers }), env)).status).toBe(429);
+  expect(requests).toHaveLength(1);
+});

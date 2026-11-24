@@ -26,13 +26,17 @@ async function readSessionResponse(response, signal) {
   } finally { signal.removeEventListener('abort', abort); void reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-export async function requestTranscriptionSession({ signal }) {
+export async function requestTranscriptionSession({ signal, key }) {
   const response = await fetch('/api/cloud/soniox/session', {
-    method: 'POST', credentials: 'same-origin', headers: { 'X-LCT-Soniox-Consent': 'transcribe-v1' }, signal,
+    method: 'POST', credentials: 'same-origin', headers: { 'X-LCT-Soniox-Consent': 'transcribe-v1', ...(key ? { 'X-LCT-Personal-Soniox-Key': key } : {}) }, signal,
   });
   if (!response.ok) {
-    void response.body?.cancel().catch(() => {});
-    throw error(response.status === 401 ? 'requires ChatGPT sign-in for this transcription test.' : 'authorization failed; check shared session limits and provider availability before retrying.');
+    const raw = await readSessionResponse(response, signal).catch(() => '');
+    let code;
+    try { code = JSON.parse(raw)?.code; } catch { /* A malformed refusal cannot authorize fallback. */ }
+    const failure = error(response.status === 401 ? 'requires sign-in for this transcription test.' : 'authorization failed; check shared session limits and provider availability before retrying.');
+    if (['transcription_inactive', 'session_limit', 'sign_in', 'provider_refused'].includes(code)) failure.canTryNext = true;
+    throw failure;
   }
   const raw = await readSessionResponse(response, signal);
   try { return JSON.parse(raw); }

@@ -41,7 +41,9 @@ export class CloudConversationSession {
       startMs: token.startMs == null ? null : token.startMs + offset,
       endMs: token.endMs == null ? null : token.endMs + offset,
     }));
+    const { requestSession, ...options } = this.options;
     const next = new this.SessionClass({
+      ...(requestSession ? { requestSession } : {}),
       onStage: value => {
         if (epoch !== this.epoch) return;
         if (value.stage === 'recording') this.captureStarted = Date.now();
@@ -70,7 +72,7 @@ export class CloudConversationSession {
       onFailure: failure => { if (epoch === this.epoch) this.callbacks.onFailure?.(failure); },
     });
     this.current = next;
-    await next.start({ ...this.options, maxSessionSeconds: remaining });
+    await next.start({ ...options, maxSessionSeconds: remaining });
   }
   emitAudio() {
     if (!this.segments.length) return;

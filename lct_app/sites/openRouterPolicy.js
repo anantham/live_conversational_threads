@@ -1,4 +1,5 @@
 import { createRecordingTranscript } from '../src/services/cloud/recordingTranscript.js';
+import { validPersonalKey } from '../src/services/cloud/sitesProviderPreferences.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 
 export class OpenRouterError extends Error {
@@ -145,4 +146,21 @@ export function anthropicPolicy(env) {
     backend: 'anthropic', label: 'Anthropic', provider: 'Anthropic', dataCollection: null,
     endpoint: 'https://api.anthropic.com/v1/messages', consentHeader: 'x-lct-anthropic-consent',
     enabled: configured && env.LCT_ANTHROPIC_ENABLED === 'true' && env.LCT_ANTHROPIC_PROJECT_BUDGET_CONFIRMED === 'true' };
+}
+
+
+export const mapPolicies = { openrouter: openRouterPolicy, gemini: geminiPolicy, anthropic: anthropicPolicy };
+
+export function personalMapPolicy(route, env) {
+  const { backend, key, model, provider } = route;
+  if (env.LCT_PERSONAL_PROVIDERS_ENABLED !== 'true' || !validPersonalKey(key) || !Object.hasOwn(mapPolicies, backend)) return null;
+  if (backend === 'openrouter') {
+    if (typeof provider !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/i.test(provider)) return null;
+    return openRouterPolicy({ ...env, OPENROUTER_API_KEY_2: key, LCT_OPENROUTER_MODEL: model,
+      LCT_OPENROUTER_PROVIDER: provider, LCT_OPENROUTER_DATA_COLLECTION: 'deny', LCT_OPENROUTER_FALLBACK_MODELS: '',
+      LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true' });
+  }
+  const prefix = backend.toUpperCase();
+  return mapPolicies[backend]({ ...env, [prefix + '_API_KEY']: key, ['LCT_' + prefix + '_MODEL']: model,
+    ['LCT_' + prefix + '_ENABLED']: 'true', ['LCT_' + prefix + '_PROJECT_BUDGET_CONFIRMED']: 'true' });
 }

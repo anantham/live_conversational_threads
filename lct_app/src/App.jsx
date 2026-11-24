@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
+import SitesRuntimeProvider from "./contexts/SitesRuntimeProvider";
 import { ByokProvider } from "./contexts/ByokContext.jsx";
 import { UploadProvider } from "./contexts/UploadContext";
 import UploadToast from "./components/upload/UploadToast";
@@ -147,7 +148,7 @@ export default function App() {
       <DataProviderContext.Provider value={activeDataProvider}>
         <ByokProvider>
           <UploadProvider>
-            <AppRoutes />
+            {sitesMode ? <SitesRuntimeProvider><AppRoutes /></SitesRuntimeProvider> : <AppRoutes />}
             {sitesMode && <Routes>
               <Route path="/private-files" element={null} />
               <Route path="/privacy" element={null} />
