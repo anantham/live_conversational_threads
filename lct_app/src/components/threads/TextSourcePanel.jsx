@@ -2,16 +2,33 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import SourceSpeakerEditor from "./SourceSpeakerEditor";
 import { validYouTubeRef } from "../../services/youtubeMedia";
+import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../../services/mediaSeek";
 import { buildSpeakerDisplayNames, speakerDisplayName, transcriptSpeakerLabels } from "../../services/speakerDisplay";
+
+function tierSummary(bundle) {
+  const nodes = Array.isArray(bundle?.graph_data) ? bundle.graph_data : [];
+  const counts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+  for (const node of nodes) {
+    if (counts[node?.semantic_level] != null) counts[node.semantic_level]++;
+  }
+  const labels = [[5, "arcs"], [4, "themes"], [3, "topics"], [2, "ideas"], [1, "chunks"]];
+  return labels.filter(([lvl]) => counts[lvl] > 0).map(([lvl, label]) => `${counts[lvl]} ${label}`).join(" · ");
+}
 
 export default function TextSourcePanel({ bundle, selection = null, compact = false, onClose, onRenameSpeaker, namesStayInView = false, sectionMode, onSectionChange }) {
   const transcript = typeof bundle.full_transcript === "string" ? bundle.full_transcript : "";
   const utterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
+  const referenceNotes = bundle.meeting_metadata?.reference_notes || null;
+  const hasGeminiNotes = Boolean(referenceNotes && (referenceNotes.summary || referenceNotes.quick_notes || referenceNotes.next_steps));
+  const driveMediaRef = useMemo(() => {
+    const selected = selectMediaRef(bundle.media_refs);
+    return selected?.provider === "google_drive" ? selected : null;
+  }, [bundle.media_refs]);
   const speakerNames = useMemo(() => buildSpeakerDisplayNames(bundle), [bundle]);
   const displayLabels = useMemo(() => transcriptSpeakerLabels(transcript, speakerNames), [transcript, speakerNames]);
   const unsupportedRecording = (bundle.media_refs || []).some(ref => ref?.provider === "youtube" && !validYouTubeRef(ref));
   const [localMode, setLocalMode] = useState(() => selection?.kind === "utterance" || !transcript ? "utterances" : "transcript");
-  const mode = !transcript ? "utterances" : sectionMode || localMode;
+  const mode = !transcript && localMode !== "gemini" ? "utterances" : sectionMode || localMode;
   const setMode = (next) => { if (onSectionChange) onSectionChange(next); else setLocalMode(next); };
   const selectedRef = useRef(null);
   useEffect(() => {
@@ -55,23 +72,60 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
       <button type="button" onClick={onClose} className="min-h-11 rounded px-2 text-slate-600 hover:bg-slate-100">Hide source</button>
     </div>
     {unsupportedRecording && <p role="status" className="mb-2 shrink-0 text-amber-800">YouTube source unavailable. The recording link or timing information could not be verified. You can still read the transcript below.</p>}
-    {transcript && utterances.length > 0 && <div role="group" aria-label="Text source section" className="mb-2 flex gap-2">
-      <button type="button" aria-pressed={mode === "transcript"} onClick={() => setMode("transcript")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Full transcript</button>
-      <button type="button" aria-pressed={mode === "utterances"} onClick={() => setMode("utterances")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Passages</button>
+    {((transcript && utterances.length > 0) || hasGeminiNotes) && <div role="group" aria-label="Text source section" className="mb-2 flex flex-wrap gap-1.5">
+      {transcript && <button type="button" aria-pressed={mode === "transcript"} onClick={() => setMode("transcript")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Full transcript</button>}
+      {utterances.length > 0 && <button type="button" aria-pressed={mode === "utterances"} onClick={() => setMode("utterances")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Passages</button>}
+      {hasGeminiNotes && <button type="button" aria-pressed={mode === "gemini"} onClick={() => setMode("gemini")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Compare Gemini</button>}
     </div>}
-    {onRenameSpeaker && <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} namesStayInView={namesStayInView} /></div>}
+    {onRenameSpeaker && mode !== "gemini" && <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} namesStayInView={namesStayInView} /></div>}
     <div data-viewer-scroll="text-source" aria-label="Original source passages" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-100 bg-stone-50 p-2 leading-5">
       {mode === "transcript" && transcript && <pre className="whitespace-pre-wrap break-words font-sans">{renderedTranscript}</pre>}
       {mode === "utterances" && utterances.map((row) => {
         const selected = selection?.kind === "utterance" && String(row.id) === String(selection.utteranceId);
+        const offset = mediaOffsetLabel(row.timestamp_start);
+        const driveUrl = driveMediaRef ? buildMediaSeekUrl(driveMediaRef, row.timestamp_start) : null;
         return <div key={row.id} ref={selected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} className={`mb-2 rounded border-l-2 p-2 ${selected ? "border-amber-500 bg-amber-50" : "border-transparent bg-white"}`}>
-          <span className="font-medium text-slate-700">{row.speaker_id ? speakerDisplayName(speakerNames, row.speaker_id) : row.speaker_name || row.speaker_display || "Source passage"}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium text-slate-700">{row.speaker_id ? speakerDisplayName(speakerNames, row.speaker_id) : row.speaker_name || row.speaker_display || "Source passage"}</span>
+            {driveUrl && offset && (
+              <a href={driveUrl} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900">
+                Drive {offset} ↗
+              </a>
+            )}
+          </div>
           <p className="mt-1 whitespace-pre-wrap break-words">{row.text}</p>
         </div>;
       })}
-      {!transcript && !utterances.length && <p>No transcript text is available in this artifact.</p>}
+      {mode === "gemini" && hasGeminiNotes && (
+        <div className="space-y-3 p-1">
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800">Threads map (this view)</p>
+            {tierSummary(bundle) && <p className="mt-1 text-[11px] font-medium text-slate-700">{tierSummary(bundle)}</p>}
+            {bundle.executive_summary && <p className="mt-1.5 whitespace-pre-line text-slate-700">{bundle.executive_summary}</p>}
+          </div>
+          {referenceNotes.summary && (
+            <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Gemini summary (baseline)</p>
+              <p className="mt-1 whitespace-pre-line text-slate-700">{referenceNotes.summary}</p>
+            </div>
+          )}
+          {referenceNotes.next_steps && (
+            <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Gemini next steps</p>
+              <p className="mt-1 whitespace-pre-line text-slate-700">{referenceNotes.next_steps}</p>
+            </div>
+          )}
+          {referenceNotes.quick_notes && (
+            <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Gemini quick notes</p>
+              <p className="mt-1 whitespace-pre-line text-slate-700">{referenceNotes.quick_notes}</p>
+            </div>
+          )}
+        </div>
+      )}
+      {!transcript && !utterances.length && mode !== "gemini" && <p>No transcript text is available in this artifact.</p>}
     </div>
   </aside>;
 }
 
-TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances"]), onSectionChange: PropTypes.func };
+TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances", "gemini"]), onSectionChange: PropTypes.func };

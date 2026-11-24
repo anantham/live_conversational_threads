@@ -26,6 +26,18 @@ export function formatClock(ms) {
   return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
 
+export function canonicalDriveMediaRef(recordingUrl) {
+  if (typeof recordingUrl !== 'string') return null;
+  const match = recordingUrl.match(/^https:\/\/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)\/view/);
+  if (!match) return null;
+  return {
+    provider: 'google_drive',
+    file_id: match[1],
+    view_url: `https://drive.google.com/file/d/${match[1]}/view`,
+    label: 'Meet recording',
+  };
+}
+
 export function driveTimestampUrl(recordingUrl, ms) {
   if (!recordingUrl) return null;
   try {
@@ -264,7 +276,13 @@ function buildResult({ filename, title, startedAt, turns, durationMs, links, ref
     calendar_event_url: links.calendarEventUrl,
     reference_notes: referenceNotes,
   };
-  const initialBundle = { ...scaffold.bundle, meeting_metadata: meetingMetadata };
+  const driveRef = canonicalDriveMediaRef(links.recordingUrl);
+  const mediaRefs = driveRef ? [driveRef] : [];
+  const initialBundle = {
+    ...scaffold.bundle,
+    ...(mediaRefs.length ? { media_refs: mediaRefs } : {}),
+    meeting_metadata: meetingMetadata,
+  };
   const initialJson = JSON.stringify(initialBundle, null, 2);
 
   return {
@@ -277,6 +295,7 @@ function buildResult({ filename, title, startedAt, turns, durationMs, links, ref
     source,
     transcript: transcript.document,
     ...links,
+    mediaRefs,
     referenceNotes,
     sourceFormat,
     meetingMetadata,

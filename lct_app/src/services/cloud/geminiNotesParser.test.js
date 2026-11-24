@@ -71,6 +71,12 @@ describe('geminiNotesParser', () => {
     expect(result.referenceNotes.quick_notes).toContain('Quick summary bullet one.');
     expect(result.referenceNotes.quick_notes).not.toContain('Please rate the new Quick notes tab');
     expect(result.initialBundle.meeting_metadata.invited_emails).toEqual(['alice@example.com', 'bob@example.com']);
+    expect(result.initialBundle.media_refs).toEqual([{
+      provider: 'google_drive',
+      file_id: 'FILE123',
+      view_url: 'https://drive.google.com/file/d/FILE123/view',
+      label: 'Meet recording',
+    }]);
     expect(result.initialBundle.utterances).toHaveLength(3);
   });
 

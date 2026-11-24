@@ -544,3 +544,7 @@ The request ownership repairs keep coverage on the public pages.
 ### 2026-11-24 — Hosted provider settings component
 
 `lct_app/src/components/settings/SitesProviderSettings.jsx` is 339 lines and combines key editing and diagnostics with speech and map ordering. The IndexedDB and metadata request logic live outside the component. If credential management grows, extract the shared key form and its feedback into a dedicated component.
+
+### 2026-11-25 — Windowed transcript import panel
+
+`lct_app/src/pages/SitesTranscriptImport.jsx` combines local file intake, transcript preview and windowed generation state. If the import flow grows, extract `MultiWindowPipelinePanel` and its readiness and cancellation handling into a focused component. The window splitting and artifact assembly already run independently in `longTranscriptPipeline.js`.

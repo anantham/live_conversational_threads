@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { readThreadsFile } from '../threadsArtifact.js';
+import { runLongTranscriptPipeline } from '../cloud/longTranscriptPipeline.js';
 
 const SITE = 'https://synthetic-tiered.example.chatgpt.site';
 const source = { recordingId: 'synthetic-import', startedAt: Date.UTC(2026, 9, 21), complete: true,
@@ -297,6 +298,47 @@ describe('ordered settings generation', () => {
     expect(thirdBody.provider.data_collection).toBe('deny');
     expect(count()).toBe(1);
   });
+});
+
+it('builds one source-linked map across seven transcript windows through the public Claude route', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  env.LCT_OPENROUTER_MAX_REQUESTS = '10';
+  const startedAt = source.startedAt;
+  const turns = Array.from({ length: 56 }, (_, index) => ({
+    text: (index ? '\n' : '') + `Window test turn ${index + 1}.`,
+    speaker: index % 2 ? 'S2' : 'S1',
+    startMs: index * 100_000,
+    endMs: (index + 1) * 100_000,
+  }));
+  const orderedSource = { recordingId: 'seven-window-import', startedAt, complete: true, finalTokens: turns };
+  const routes = [{ backend: 'anthropic', key: 'synthetic-personal-key', model: 'claude-synthetic' }];
+  const dispatched = [];
+  vi.spyOn(Date, 'now').mockImplementation(() => startedAt + dispatched.length * 10_500);
+  fetch.mockImplementation(async (url, options) => {
+    if (url === '/api/cloud/map/generate') {
+      dispatched.push(JSON.parse(options.body).source.recordingId);
+      return worker.fetch(new Request(SITE + url, { ...options, headers: { ...options.headers, origin: SITE } }), env);
+    }
+    expect(url).toBe('https://api.anthropic.com/v1/messages');
+    const wire = JSON.parse(options.body);
+    expect(wire.model).toBe('claude-synthetic');
+    const node = wire.output_config.format.schema.properties.nodes.items;
+    expect(node.type).toBe('object');
+    expect(node.properties.thread_id.anyOf.map(branch => branch.type)).toEqual(['string', 'null']);
+    return Response.json(anthropicReply());
+  });
+
+  const result = await runLongTranscriptPipeline({ source: orderedSource, routes, intervalMs: 0 });
+  expect(result.windowCount).toBe(7);
+  expect(result.bundle.full_transcript).toBe(turns.map(turn => turn.text).join(''));
+  expect(result.bundle.graph_data).toHaveLength(14);
+  expect(result.bundle.graph_data.find(node => node.id === 'w7-1:garden')).toMatchObject({
+    parent_id: 'w7-2:garden', memberships: [{ parent_id: 'w7-2:garden', role: 'primary' }],
+  });
+  expect(result.bundle.graph_data.filter(node => node.semantic_level === 1).map(node => node.source_ref.utterance_ids[0]))
+    .toEqual(['utterance-0001', 'utterance-0010', 'utterance-0019', 'utterance-0028', 'utterance-0037', 'utterance-0046', 'utterance-0055']);
+  expect(dispatched).toEqual(Array.from({ length: 7 }, (_, index) => `seven-window-import-w${index + 1}`));
+  expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_openrouter_attempts WHERE completed_at IS NOT NULL').get().n).toBe(7);
 });
 
 describe('Claude schema diagnostic', () => {
