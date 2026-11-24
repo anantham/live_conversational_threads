@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { useSitesRuntime } from '../../contexts/SitesRuntimeContext';
-import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient';
+import { MAP_PROVIDERS, runClaudeDiagnostic } from '../../services/cloud/openRouterClient';
 import { CURATED_MAP_MODELS, MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId, validPersonalKey } from '../../services/cloud/sitesProviderPreferences';
 
 const speechGroup = {
@@ -25,7 +25,7 @@ function modelsForProvider(backend, catalogs) {
 }
 
 function ProviderKeyForm({ backend, name, speech = false }) {
-  const { keys, catalogs, setKey, setCatalog } = useSitesRuntime();
+  const { keys, catalogs, preferences, setKey, setCatalog } = useSitesRuntime();
   const [draft, setDraft] = useState('');
   const [feedback, setFeedback] = useState('');
   const [checking, setChecking] = useState(false);
@@ -45,6 +45,15 @@ function ProviderKeyForm({ backend, name, speech = false }) {
       if (response.ok && Array.isArray(result.models) && result.models.length) setCatalog?.(backend, result.models);
       setFeedback(response.ok ? result.message : result.error);
     } catch { setFeedback('The connection check could not finish.'); }
+    finally { setChecking(false); }
+  }
+
+  const diagnosticModel = preferences.mapChain.find(entry => entry.backend === 'anthropic' && entry.model)?.model || 'claude-sonnet-5-5';
+  async function diagnose() {
+    setChecking(true);
+    setFeedback('Claude is testing the schemas on a short synthetic conversation…');
+    try { setFeedback(await runClaudeDiagnostic(key, diagnosticModel, AbortSignal.timeout(125_000))); }
+    catch (error) { setFeedback(error.message || 'The Claude diagnostic could not finish.'); }
     finally { setChecking(false); }
   }
 
@@ -70,6 +79,10 @@ function ProviderKeyForm({ backend, name, speech = false }) {
           Remove key
         </button>}
       </div>
+      {backend === 'anthropic' && key && <div className="space-y-2">
+        <button type="button" className={button} disabled={checking} onClick={() => void diagnose()}>Test Claude map generation</button>
+        <p className="text-sm text-slate-600">Uses {diagnosticModel} and three invented turns. Up to two requests are billed to your Anthropic account.</p>
+      </div>}
       {feedback && <p role="status" className="text-sm text-slate-600">{feedback}</p>}
     </div>
   </details>;

@@ -3280,3 +3280,7 @@ Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received
 ## 2026-11-24 — Node 26 Web Storage shadows jsdom storage in Sites tests
 
 The existing public recording test fails in setup on Node 26.0.0 because `localStorage` is undefined without a Node storage file. The same test on `main` passes with `NODE_OPTIONS=--no-experimental-webstorage`, which lets jsdom supply its browser storage. The Sites CI workflow uses Node 24. This affects local test execution and does not block the Anthropic change. Use Node 24 for CI parity or the Node 26 flag for local runs.
+
+## 2026-11-24 — Anthropic rejected the first long-transcript map window
+
+The local preview received an upstream HTTP 400 on the first window and stopped before producing a map. The previous error response retained the HTTP status and discarded provider diagnostics, so the exact rejection remains unknown. Claude diagnostics now captures a bounded reason and validated Anthropic request ID. A live synthetic check with the same model and the user's personal key remains the next step. It blocks confirming the Claude path and does not block local transcript reading.

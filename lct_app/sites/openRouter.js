@@ -4,6 +4,7 @@ import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, anthro
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 import { mapStructure } from '../src/services/cloud/mapStructure.js';
+import { anthropicRefusalDetails, anthropicRequestId, CLAUDE_DIAGNOSTIC_SOURCE, runMinimalClaudeProbe } from './anthropicDiagnostics.js';
 import { anthropicHeaders, buildAnthropicGenerationRequest, recordingThreadsFromAnthropicResponse } from './anthropic.js';
 
 const PREFIXES = {
@@ -127,12 +128,12 @@ function orderedPolicies(routes, env) {
   });
 }
 
-async function generate(request, env, defaultPolicy) {
+async function generate(request, env, defaultPolicy, diagnostic = false) {
   const ordered = !defaultPolicy;
-  const consentHeader = ordered ? 'x-lct-map-consent' : defaultPolicy.consentHeader;
+  const consentHeader = diagnostic ? 'x-lct-claude-diagnostic' : ordered ? 'x-lct-map-consent' : defaultPolicy.consentHeader;
   const recipient = ordered ? 'the listed AI providers' : CONSENT_RECIPIENTS[defaultPolicy.backend];
   if (request.headers.get('origin') !== new URL(request.url).origin
-    || request.headers.get(consentHeader) !== 'generate-v1') {
+    || request.headers.get(consentHeader) !== (diagnostic ? 'test-v1' : 'generate-v1')) {
     throw new OpenRouterError(403, 'consent', `Confirm permission on this Site to send the transcript to ${recipient}.`);
   }
   if (defaultPolicy && !defaultPolicy.enabled) throw new OpenRouterError(503, 'generation_inactive', 'Generation is waiting for confirmed provider setup and spending limits. No provider request was made.');
@@ -143,7 +144,12 @@ async function generate(request, env, defaultPolicy) {
   if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     throw new OpenRouterError(415, 'content_type', 'Send recording source as JSON. No attempt was requested.');
   }
-  const input = await openRouterWait(request.signal, MAP_INPUT_WINDOW_MS, signal => readOpenRouterJSON(request, signal, 512 * 1024));
+  const payload = await openRouterWait(request.signal, MAP_INPUT_WINDOW_MS,
+    signal => readOpenRouterJSON(request, signal, diagnostic ? 2048 : 512 * 1024));
+  if (diagnostic && (!payload || Object.keys(payload).some(key => key !== 'key' && key !== 'model'))) {
+    throw new OpenRouterError(400, 'diagnostic_input', 'The Claude diagnostic accepts only a model and personal key.');
+  }
+  const input = diagnostic ? { source: CLAUDE_DIAGNOSTIC_SOURCE, routes: [{ backend: 'anthropic', key: payload.key, model: payload.model }] } : payload;
   const policies = ordered ? orderedPolicies(input?.routes, env) : [defaultPolicy];
   const policy = policies[0];
   if (!policy) throw new OpenRouterError(503, 'generation_inactive', 'None of the selected AI providers is configured. No provider request was made.');
@@ -156,7 +162,7 @@ async function generate(request, env, defaultPolicy) {
   }
   let wires, maxTokens;
   try {
-    maxTokens = outputCapFor(policy, input?.source);
+    maxTokens = diagnostic ? policy.longMaxTokens : outputCapFor(policy, input?.source);
     const guidance = ordered ? input.guidance : undefined;
     wires = policies.flatMap(policy => generationWires(policy, input.source, maxTokens, guidance).map(body => ({ policy, body })));
   } catch { throw new OpenRouterError(400, 'source', 'The recording source or prompt guidance is invalid or too large. No attempt was requested.'); }
@@ -184,7 +190,8 @@ async function generate(request, env, defaultPolicy) {
   }
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
-  const { artifact, backend, model, repair } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
+  const { artifact, backend, model, repair, minimalId, mapId } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
+    const minimalId = diagnostic ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
     let lastRefusal = null;
     for (const [index, { policy, body }] of wires.entries()) {
@@ -204,10 +211,11 @@ async function generate(request, env, defaultPolicy) {
         const sameBackend = nextRunnable?.policy.backend === policy.backend;
         const modelFallback = policy.backend === 'openrouter' && ROUTE_UNAVAILABLE.has(response.status);
         const providerFallback = ordered && [401, 403, 404, 429].includes(response.status);
-        await logProviderRefusal(env, response, signal, policy.backend);
+        const details = anthropic ? await anthropicRefusalDetails(response, signal) : { upstream_status: response.status };
+        if (!anthropic) await logProviderRefusal(env, response, signal, policy.backend);
         void response.body?.cancel().catch(() => {});
         lastRefusal = new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation (HTTP ${response.status}: ${refusalReason(response.status)}). The attempt remains counted. Check provider availability and allowance before retrying.`,
-          { upstream_status: response.status });
+          { ...details, ...(diagnostic ? { diagnostic_stage: 'map', minimal_request_id: minimalId } : {}) });
         if (nextRunnable && ((sameBackend && (modelFallback || providerFallback)) || (!sameBackend && providerFallback))) {
           if (nextRunnable.policy === policy && modelFallback) logModelFallback(response.status, index);
           continue;
@@ -221,10 +229,12 @@ async function generate(request, env, defaultPolicy) {
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
         const { bundle, referenceRepair } = readCompletion({ source: input.source, response: completion });
-        return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair };
+        return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair, minimalId,
+          ...(diagnostic ? { mapId: anthropicRequestId(response) } : {}) };
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
-        throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`);
+        throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`,
+          diagnostic ? { diagnostic_stage: 'map', minimal_request_id: minimalId, upstream_request_id: anthropicRequestId(response) } : undefined);
       }
     }
     throw lastRefusal || new OpenRouterError(502, 'provider_refused', 'No configured provider could finish generation. The attempt remains counted.');
@@ -232,6 +242,8 @@ async function generate(request, env, defaultPolicy) {
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
   const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
   if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
+  if (diagnostic) return openRouterJSON(200, { diagnostic: 'passed', model,
+    minimal_request_id: minimalId, map_request_id: mapId });
   logReferenceRepair(repair, backend);
   logEvidenceMismatch(artifact, backend);
   return openRouterJSON(200, { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}) });
@@ -251,6 +263,7 @@ async function handleMapSettings(request, env, path) {
       providers: Object.fromEntries(policies.map(([id, policy]) => [id, { enabled: policy.enabled, model: policy.model,
         provider: policy.provider, fallback_models: policy.fallbackModels }])) });
   }
+  if (path === '/api/cloud/map/claude-diagnostic' && request.method === 'POST') return await generate(request, env, undefined, true);
   if (path === '/api/cloud/map/generate' && request.method === 'POST') return await generate(request, env);
   throw new OpenRouterError(404, 'route', 'This map endpoint does not exist.');
 }

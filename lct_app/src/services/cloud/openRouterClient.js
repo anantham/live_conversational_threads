@@ -27,6 +27,20 @@ function refusalDetail(status) {
   if (status === 429) return ' The provider is rate-limiting requests.';
   return status >= 500 ? ` The provider had an internal error (HTTP ${status}).` : ` The provider rejected the request (HTTP ${status}).`;
 }
+const anthropicRefusals = {
+  anthropic_spend_limit: 'Anthropic reported a workspace spend or credit limit.',
+  anthropic_schema: 'Anthropic rejected the structured-output schema.',
+  anthropic_token_limit: 'Anthropic rejected a token or context limit in the request.',
+  anthropic_invalid_request: 'Anthropic rejected the request parameters.',
+};
+const diagnosticRequestId = value => typeof value === 'string' && /^req_[A-Za-z0-9]{8,100}$/.test(value) ? value : null;
+
+function providerDiagnosticDetail(payload) {
+  const reason = Object.hasOwn(anthropicRefusals, payload.upstream_reason) ? anthropicRefusals[payload.upstream_reason] : '';
+  const id = diagnosticRequestId(payload.upstream_request_id);
+  return (reason ? ' ' + reason : '') + (id ? ' Anthropic request ID ' + id + '.' : '');
+}
+
 function unreadable() { return new Error(`Generation returned an unreadable or oversized response. ${uncertain}`); }
 
 async function readJSON(response, signal, limit) {
@@ -74,7 +88,7 @@ async function request(path, signal, body, backend) {
 function failure(status, payload) {
   const code = status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
   const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status) : '';
-  const error = new Error(code ? generationFailures[code] + detail : messages[status] || uncertain);
+  const error = new Error(code ? generationFailures[code] + detail + providerDiagnosticDetail(payload) : messages[status] || uncertain);
   error.status = status;
   if (code) error.code = code;
   return error;
@@ -167,4 +181,28 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
   if (!response.ok) throw failure(response.status, payload);
   if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
   return { ...recordingMapResult(source, payload), backend: payload.backend, model: payload.model };
+}
+
+
+export async function runClaudeDiagnostic(key, model, signal) {
+  const response = await fetch('/api/cloud/map/claude-diagnostic', { method: 'POST', credentials: 'same-origin',
+    cache: 'no-store', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Claude-Diagnostic': 'test-v1' },
+    body: JSON.stringify({ key, model }),
+  });
+  const payload = await readJSON(response, signal, 8192);
+  if (!response.ok) {
+    const minimal = diagnosticRequestId(payload.minimal_request_id);
+    const stage = payload.diagnostic_stage === 'minimal' ? 'The minimal schema test failed.'
+      : payload.diagnostic_stage === 'map' ? 'Claude accepted the minimal schema. The map test failed.' : '';
+    if (stage) throw new Error(stage + refusalDetail(payload.upstream_status) + providerDiagnosticDetail(payload)
+      + (minimal ? ' Minimal test request ID ' + minimal + '.' : ''));
+    if (response.status === 503 && payload.code === 'generation_inactive') {
+      throw new Error('The Claude route is unavailable. Check your personal key and model settings.');
+    }
+    throw failure(response.status, payload);
+  }
+  if (payload.diagnostic !== 'passed' || payload.model !== model) throw unreadable();
+  const ids = [diagnosticRequestId(payload.minimal_request_id), diagnosticRequestId(payload.map_request_id)].filter(Boolean);
+  return 'Claude accepted both schemas and LCT validated the synthetic map.' + (ids.length ? ' Anthropic request IDs ' + ids.join(', ') + '.' : '');
 }

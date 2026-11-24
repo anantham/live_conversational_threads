@@ -294,3 +294,85 @@ describe('ordered settings generation', () => {
     expect(count()).toBe(1);
   });
 });
+
+describe('Claude schema diagnostic', () => {
+  const model = 'claude-sonnet-5-5';
+  const key = 'synthetic-diagnostic-key';
+  const id1 = 'req_011SyntheticFirst';
+  const id2 = 'req_011SyntheticSecond';
+  const diagnostic = (body = { key, model }, consent = 'test-v1') => new Request(SITE + '/api/cloud/map/claude-diagnostic', {
+    method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-claude-diagnostic': consent },
+    body: JSON.stringify(body),
+  });
+  const rows = () => sqlite.prepare('SELECT max_output_tokens, completed_at FROM lct_openrouter_attempts').all();
+
+  it('compares both schemas on identical synthetic text, with the normal long map cap and one admission', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS = '12000';
+    fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn',
+      content: [{ type: 'text', text: '{"status":"ready"}' }] }, { headers: { 'request-id': id1 } }));
+    fetch.mockResolvedValueOnce(Response.json(anthropicReply(), { headers: { 'request-id': id2 } }));
+    const response = await worker.fetch(diagnostic(), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ diagnostic: 'passed', model, minimal_request_id: id1, map_request_id: id2 });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(Array(2).fill('https://api.anthropic.com/v1/messages'));
+    const [minimal, full] = fetch.mock.calls.map(([, options]) => {
+      expect(options.headers['x-api-key']).toBe(key);
+      return JSON.parse(options.body);
+    });
+    expect(minimal.model).toBe(model);
+    expect(full.model).toBe(model);
+    expect(minimal.max_tokens).toBeLessThan(full.max_tokens);
+    expect(full.max_tokens).toBe(12_000);
+    expect(minimal.messages).toEqual(full.messages);
+    expect(JSON.parse(full.messages[0].content).utterances).toHaveLength(3);
+    expect(minimal.output_config.format.schema.properties).toHaveProperty('status');
+    expect(full.output_config.format.schema.properties).toHaveProperty('nodes');
+    expect(rows()).toEqual([{ max_output_tokens: 12_000, completed_at: expect.any(Number) }]);
+  });
+
+  it('distinguishes a schema failure from a successful minimal check without returning raw text', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn' }, { headers: { 'request-id': id1 } }));
+    fetch.mockResolvedValueOnce(Response.json({ error: { type: 'invalid_request_error',
+      message: 'Schema is too complex for compilation. Other unsafe details.' }, request_id: id2 }, { status: 400 }));
+    const response = await worker.fetch(diagnostic(), env);
+    expect(response.status).toBe(502);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ diagnostic_stage: 'map', upstream_status: 400,
+      upstream_reason: 'anthropic_schema', upstream_request_id: id2, minimal_request_id: id1 });
+    expect(JSON.stringify(payload)).not.toContain('unsafe details');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(rows()).toEqual([{ max_output_tokens: 8192, completed_at: null }]);
+  });
+
+  it('stops after a minimal spend-limit rejection and refuses user transcript input', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    expect((await worker.fetch(diagnostic({ key, model, source }), env)).status).toBe(400);
+    expect((await worker.fetch(diagnostic({ key, model }, 'generate-v1'), env)).status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(rows()).toHaveLength(0);
+    fetch.mockResolvedValueOnce(Response.json({ error: { type: 'invalid_request_error',
+      message: 'Workspace spend limit reached.' }, request_id: 'unsafe secret' }, { status: 400 }));
+    const response = await worker.fetch(diagnostic(), env);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ diagnostic_stage: 'minimal', upstream_reason: 'anthropic_spend_limit' });
+    expect(payload).not.toHaveProperty('upstream_request_id');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('adds safe Anthropic refusal details to an ordinary map without trying a second recipient', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    fetch.mockResolvedValueOnce(Response.json({ error: { type: 'invalid_request_error',
+      message: 'Bad output_config.format for this schema' } }, { status: 400, headers: { 'request-id': id1 } }));
+    const req = new Request(SITE + '/api/cloud/map/generate', {
+      method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1' },
+      body: JSON.stringify({ source, routes: [{ backend: 'anthropic', key, model }, { backend: 'gemini' }] }),
+    });
+    const response = await worker.fetch(req, env);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ upstream_reason: 'anthropic_schema', upstream_request_id: id1 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(rows()).toHaveLength(1);
+  });
+});

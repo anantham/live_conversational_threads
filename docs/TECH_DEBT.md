@@ -536,3 +536,7 @@ The request ownership repairs keep coverage on the public pages.
 ## 2026-11-24 — Hosted map generation and provider settings
 
 `lct_app/sites/openRouter.js` now handles route parsing, admission, dispatch and diagnostics for direct and ordered generation. If another transport or admission lane is added, extract the shared admission and provider dispatch into distinct modules. The current handlers share a single admission and deadline. The two new audio fallback cases in `SitesAudioImport.test.jsx` also fit the existing proposal to split capture and map journeys while sharing fixture setup.
+
+### 2026-11-24 — Claude diagnostic coverage
+
+`lct_app/sites/openRouter.js` now reaches roughly 300 lines. The Claude-specific wire check and error sanitization live in `anthropicDiagnostics.js`, while both paths use the same admission and dispatch. If this route grows again, extract admission and the transport loop. `sitesTieredGeneration.test.js` also mixes direct, ordered, and diagnostic behavior. When adding more diagnostic cases, extract the shared in-memory D1 and map fixtures and move diagnostics into its own test file.
