@@ -2,8 +2,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 
-/** Native button semantics with hoverable, dismissible keyboard help. */
-export default function TooltipButton({ tooltip, placement = "bottom", align = "start", disabled = false, children, onClick, style, ...buttonProps }) {
+/** Native button or link semantics with hoverable, dismissible keyboard help. */
+export default function TooltipButton({ as: Control = "button", tooltip, compact = false, placement = "bottom", align = "start", disabled = false, children, onClick, style, ...controlProps }) {
   const id = useId();
   const trigger = useRef(null);
   const bubble = useRef(null);
@@ -28,7 +28,8 @@ export default function TooltipButton({ tooltip, placement = "bottom", align = "
       if (!trigger.current || !bubble.current) return;
       const target = trigger.current.getBoundingClientRect();
       const hint = bubble.current.getBoundingClientRect();
-      const left = Math.max(8, Math.min(align === "end" ? target.right - hint.width : target.left, window.innerWidth - hint.width - 8));
+      const offsets = { start: 0, center: (target.width - hint.width) / 2, end: target.width - hint.width };
+      const left = Math.max(8, Math.min(target.left + offsets[align], window.innerWidth - hint.width - 8));
       const above = target.top - hint.height - 6;
       const below = target.bottom + 6;
       const preferred = placement === "top" ? above : below;
@@ -56,27 +57,32 @@ export default function TooltipButton({ tooltip, placement = "bottom", align = "
     };
   }, [open, placement, align, tooltip]);
 
-  const description = [buttonProps["aria-describedby"], id].filter(Boolean).join(" ");
+  const description = [controlProps["aria-describedby"], tooltip === controlProps["aria-label"] ? null : id].filter(Boolean).join(" ");
+  const nativeButtonProps = Control === "button" ? { type: controlProps.type || "button", disabled } : {};
   return <>
     <span ref={trigger} className="inline-flex shrink-0" role={disabled ? "group" : undefined}
-      tabIndex={disabled ? 0 : undefined} aria-label={disabled ? `${buttonProps["aria-label"] || "Navigation"} (unavailable)` : undefined}
-      aria-disabled={disabled || undefined} aria-describedby={disabled ? description : undefined}
+      tabIndex={disabled ? 0 : undefined} aria-label={disabled ? `${controlProps["aria-label"] || "Navigation"} (unavailable)` : undefined}
+      aria-disabled={disabled || undefined} aria-describedby={disabled ? description || undefined : undefined}
       onMouseEnter={show} onMouseLeave={leave} onFocus={show} onBlur={hide}>
-      <button {...buttonProps} type={buttonProps.type || "button"} disabled={disabled} aria-describedby={description}
+      <Control {...controlProps} {...nativeButtonProps} aria-describedby={description || undefined}
         style={{ ...style, ...(disabled ? { pointerEvents: "none" } : {}) }}
-        onClick={(event) => { hide(); onClick?.(event); }}>{children}</button>
+        onClick={(event) => { hide(); onClick?.(event); }}>{children}</Control>
     </span>
     {open && createPortal(<span ref={bubble} id={id} role="tooltip"
-      className="fixed z-[100] w-[min(18rem,calc(100vw-1rem))] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-md"
+      className={compact
+        ? "fixed z-[100] w-max max-w-[calc(100vw-1rem)] rounded-lg bg-slate-900 px-3 py-2 text-sm leading-snug text-white shadow-md"
+        : "fixed z-[100] w-[min(18rem,calc(100vw-1rem))] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-relaxed text-slate-700 shadow-md"}
       style={{ left: position?.left ?? 8, top: position?.top ?? 8, visibility: position ? "visible" : "hidden" }}
       onMouseEnter={show} onMouseLeave={leave}>{tooltip}</span>, document.body)}
   </>;
 }
 
 TooltipButton.propTypes = {
+  as: PropTypes.elementType,
   tooltip: PropTypes.string.isRequired,
+  compact: PropTypes.bool,
   placement: PropTypes.oneOf(["top", "bottom"]),
-  align: PropTypes.oneOf(["start", "end"]),
+  align: PropTypes.oneOf(["start", "center", "end"]),
   disabled: PropTypes.bool,
   children: PropTypes.node,
   onClick: PropTypes.func,
