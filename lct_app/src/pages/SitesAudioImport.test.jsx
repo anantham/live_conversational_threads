@@ -74,7 +74,7 @@ beforeEach(() => {
       if (fixture.holdUpload) return new Promise(resolve => { finishUpload = () => resolve(receipt); });
       return fixture.badReceipt ? response({ file: { state: 'staging' } }, 201) : receipt;
     }
-    const backend = url.includes('/gemini/') ? 'gemini' : 'openrouter';
+    const backend = url.split('/')[3];
     if (url.endsWith('/status')) return response({ backend, enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'synthetic-model', provider: 'synthetic-provider' });
     if (url.endsWith('/generate')) {
       const source = JSON.parse(options.body).source; posts.push({ url, source, signal: options.signal });
@@ -253,15 +253,16 @@ describe('cloud audio import page', () => {
     expect(container.textContent).not.toContain('Save audio privately');
     expect(fetch.mock.calls.filter(([url, options]) => /cloud\/files|public/.test(url) && options?.method === 'POST')).toHaveLength(0);
   });
-  it('honors Gemini selection and ephemeral mode without conversation writes', async () => {
+  it.each([['gemini', 'Google Gemini through Google AI Studio'], ['anthropic', 'Anthropic (Claude)']])('honors %s selection and ephemeral mode without conversation writes', async (backend, recipient) => {
     localStorage.setItem('lct.conversation_retention.v1', 'ephemeral');
     await mount(); await choose('garden.m4a');
     await permit();
-    await act(async () => { const select = container.querySelector('#import-provider'); select.value = 'gemini'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { const select = container.querySelector('#import-provider'); select.value = backend; select.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(container.querySelector('form input[type=checkbox]').checked).toBe(false);
+    expect(container.textContent).toContain('Soniox for transcription and its transcript to ' + recipient);
     expect(button('Create transcript & threads').disabled).toBe(true);
     await permit(); await click('Create transcript & threads'); await flushArchive();
-    expect(posts).toHaveLength(1); expect(posts[0].url).toBe('/api/cloud/gemini/generate'); expect(fixture.writes).toHaveLength(0);
+    expect(posts).toHaveLength(1); expect(posts[0].url).toBe(`/api/cloud/${backend}/generate`); expect(fixture.writes).toHaveLength(0);
     await click('Files & export'); expect(container.querySelector('a[download$=".m4a"]')).toBeTruthy();
   });
   it('preserves the original file on provider refusal and never requests a map or retries automatically', async () => {

@@ -1,11 +1,17 @@
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
 import { resolveIdentity } from './auth.js';
-import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, readOpenRouterAdmission, admissionCutoffs, outputCapFor } from './openRouterPolicy.js';
+import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, anthropicPolicy, readOpenRouterAdmission, admissionCutoffs, outputCapFor } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 import { mapStructure } from '../src/services/cloud/mapStructure.js';
+import { anthropicHeaders, buildAnthropicGenerationRequest, recordingThreadsFromAnthropicResponse } from './anthropic.js';
 
-const PREFIXES = { '/api/cloud/openrouter': openRouterPolicy, '/api/cloud/gemini': geminiPolicy };
+const PREFIXES = {
+  '/api/cloud/openrouter': openRouterPolicy,
+  '/api/cloud/gemini': geminiPolicy,
+  '/api/cloud/anthropic': anthropicPolicy,
+};
+const CONSENT_RECIPIENTS = { openrouter: 'OpenRouter and the selected model provider', gemini: 'Gemini (Google AI Studio)', anthropic: 'Anthropic (Claude)' };
 const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_finish', 'choice_message',
   'choice_refusal', 'choice_tools_empty', 'choice_tools_present', 'choice_content', 'content_size', 'content_json',
   'required_shape', 'graph_shape', 'metadata', 'node_shape', 'node_evidence', 'node_excerpt', 'node_speaker',
@@ -47,8 +53,9 @@ function logModelFallback(upstreamStatus, index) {
 export function logReferenceRepair(repair, backend = 'openrouter') {
   if (!repair) return;
   try {
-    console.warn(backend === 'gemini' ? '[gemini] repaired generated references' : '[openrouter] repaired generated references',
-      { code: 'reference_repair', operation: repair.operation, affix: repair.affix, references: repair.references });
+    console.warn(`[${backend}] repaired generated references`,
+      { code: 'reference_repair', operation: repair.operation,
+        ...(backend === 'anthropic' ? {} : { affix: repair.affix }), references: repair.references });
   } catch { /* Diagnostics must not change the generation result. */ }
 }
 
@@ -59,8 +66,7 @@ export function logEvidenceMismatch(artifact, backend = 'openrouter') {
   try {
     const { evidenceMismatches, mismatchesByChildLevel } = mapStructure(artifact);
     if (!evidenceMismatches) return;
-    console.warn(backend === 'gemini' ? '[gemini] generated map files children outside their parent\'s evidence'
-      : '[openrouter] generated map files children outside their parent\'s evidence',
+    console.warn(`[${backend}] generated map files children outside their parent's evidence`,
     { code: 'evidence_mismatch', mismatches: evidenceMismatches, byChildLevel: mismatchesByChildLevel });
   } catch { /* Diagnostics must not change the generation result. */ }
 }
@@ -75,7 +81,7 @@ async function logProviderRefusal(env, response, signal, backend) {
     if (PROVIDER_STATUSES.has(envelope?.error?.status)) providerStatus = envelope.error.status;
   } catch { /* Missing, oversized and non-JSON error bodies remain content-free. */ }
   try {
-    console.error(backend === 'gemini' ? '[gemini] provider refused' : '[openrouter] provider refused',
+    console.error(`[${backend}] provider refused`,
       { code: 'provider_refused', upstreamStatus: response.status, providerStatus });
   } catch { /* Diagnostics must not change admission or the public refusal. */ }
 }
@@ -84,7 +90,7 @@ export function logOpenRouterFailure(env, code, validationStage, validationRule,
   if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
   try {
     const stage = VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown';
-    console.error(backend === 'gemini' ? '[gemini] generation failed' : '[openrouter] generation failed', { code, validationStage: stage,
+    console.error(`[${backend}] generation failed`, { code, validationStage: stage,
       ...(stage === 'hierarchy' ? { validationRule: HIERARCHY_RULES.has(validationRule) ? validationRule : 'unknown' } : {}) });
   } catch { /* Diagnostics must never replace the public result or release an attempt. */ }
 }
@@ -92,7 +98,7 @@ export function logOpenRouterFailure(env, code, validationStage, validationRule,
 async function generate(request, env, policy) {
   if (request.headers.get('origin') !== new URL(request.url).origin
     || request.headers.get(policy.consentHeader) !== 'generate-v1') {
-    throw new OpenRouterError(403, 'consent', `Confirm permission on this Site to send the transcript to ${policy.label}${policy.backend === 'openrouter' ? ' and the selected model provider' : ' (Google AI Studio)'}.`);
+    throw new OpenRouterError(403, 'consent', `Confirm permission on this Site to send the transcript to ${CONSENT_RECIPIENTS[policy.backend]}.`);
   }
   if (!policy.enabled) throw new OpenRouterError(503, 'generation_inactive', 'Generation is waiting for confirmed provider setup and spending limits. No provider request was made.');
   if (policy.audience === 'authenticated' && !await resolveIdentity(request, env)) {
@@ -104,21 +110,26 @@ async function generate(request, env, policy) {
   }
   const input = await openRouterWait(request.signal, MAP_INPUT_WINDOW_MS, signal => readOpenRouterJSON(request, signal, 512 * 1024));
   // The output cap follows the validated transcript's length (live cap up to 5 minutes).
-  let wire, maxTokens;
+  const anthropic = policy.backend === 'anthropic';
+  let wires, maxTokens;
   try {
     maxTokens = outputCapFor(policy, input?.source);
-    wire = buildOpenRouterGenerationRequest({ source: input?.source, model: policy.backend === 'gemini' ? `google/${policy.model}` : policy.model, maxTokens });
-  }
-  catch { throw new OpenRouterError(400, 'source', 'The recording source is invalid or too large. No attempt was requested.'); }
-  if (policy.backend === 'gemini') {
-    // Explicit compatibility contract; future OpenRouter fields cannot leak into this route.
-    wire = { model: policy.model, max_tokens: wire.max_tokens, stream: false,
-      messages: wire.messages, response_format: wire.response_format };
-  }
-  else wire.provider = { ...wire.provider, only: [policy.provider], data_collection: policy.dataCollection };
-  // One complete request per approved model. Only `model` differs, so every fallback carries the
-  // same provider pin and data policy; OpenRouter's `models` array is not relied on for that.
-  const wires = policy.backend === 'gemini' ? [wire] : policy.models.map(model => ({ ...wire, model }));
+    if (anthropic) {
+      wires = [buildAnthropicGenerationRequest({ source: input.source, model: policy.model, maxTokens })];
+    } else {
+      const gemini = policy.backend === 'gemini';
+      const wire = buildOpenRouterGenerationRequest({ source: input.source, model: gemini ? `google/${policy.model}` : policy.model, maxTokens });
+      if (gemini) {
+        // Explicit compatibility contract; future OpenRouter fields cannot leak into this route.
+        wires = [{ model: policy.model, max_tokens: wire.max_tokens, stream: false,
+          messages: wire.messages, response_format: wire.response_format }];
+      } else {
+        // Only the model changes across approved OpenRouter fallbacks.
+        const provider = { ...wire.provider, only: [policy.provider], data_collection: policy.dataCollection };
+        wires = policy.models.map(model => ({ ...wire, model, provider }));
+      }
+    }
+  } catch { throw new OpenRouterError(400, 'source', 'The recording source is invalid or too large. No attempt was requested.'); }
   if (wires.some(body => new TextEncoder().encode(JSON.stringify(body)).byteLength > 512 * 1024)) {
     throw new OpenRouterError(400, 'source', 'The generation request is too large. No attempt was requested.');
   }
@@ -143,10 +154,11 @@ async function generate(request, env, policy) {
   }
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
+  const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
   const { artifact, model, repair } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
     for (const [index, body] of wires.entries()) {
       const response = await fetch(policy.endpoint, { method: 'POST',
-        headers: { Authorization: `Bearer ${policy.key}`, 'Content-Type': 'application/json' },
+        headers: { ...authentication, 'Content-Type': 'application/json' },
         // Edge fetch supports manual; the exact-200 gate below refuses redirects.
         body: JSON.stringify(body), signal, redirect: 'manual' });
       if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
@@ -163,7 +175,8 @@ async function generate(request, env, policy) {
       }
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
       try {
-        const { bundle, referenceRepair } = recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion });
+        const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
+        const { bundle, referenceRepair } = readCompletion({ source: input.source, response: completion });
         return { artifact: bundle, model: body.model, repair: referenceRepair };
       }
       catch (error) {
@@ -205,7 +218,7 @@ export async function handleOpenRouter(request, env) {
     return await generate(request, env, policy);
   } catch (error) {
     if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code, ...error.details });
-    logOpenRouterFailure(env, 'generation_failed', undefined, undefined, prefix.endsWith('/gemini') ? 'gemini' : 'openrouter');
+    logOpenRouterFailure(env, 'generation_failed', undefined, undefined, prefix.split('/').at(-1));
     return openRouterJSON(503, { error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved. Check admission storage and provider setup before retrying.', code: 'generation_failed' });
   }
 }

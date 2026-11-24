@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Mic, Sparkles } from 'lucide-react';
+import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient.js';
 
 const accountBalanceText = {
   available: 'Account balance checked: credit available.',
@@ -65,7 +66,7 @@ function ServiceIndicator({ service, label, Icon, evidence }) {
       <p className="font-medium text-slate-800">{label}: {headline}</p>
       <p>{summary}</p>
       {current && <details className="mt-2 text-slate-500"><summary className="cursor-pointer">Details</summary>
-        <p>{service === 'soniox' ? 'Soniox' : service === 'gemini' ? 'Gemini' : 'OpenRouter'} check: {current.detail}</p>
+        <p>{service === 'soniox' ? 'Soniox' : MAP_PROVIDERS[service].name} check: {current.detail}</p>
         {Number.isFinite(current.latency_ms) && <p>API check: {current.latency_ms} ms</p>}
         <p>Checked {new Date(current.checked_at).toLocaleTimeString()}</p>
         {current.allowance === 'key_available' && <p>Key allowance available.</p>}

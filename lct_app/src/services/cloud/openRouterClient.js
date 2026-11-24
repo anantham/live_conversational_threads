@@ -2,7 +2,11 @@ import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { validateThreadsArtifact } from '../threadsArtifact.js';
 
-const BACKENDS = new Set(['openrouter', 'gemini']);
+export const MAP_PROVIDERS = {
+  openrouter: { option: 'OpenRouter', name: 'OpenRouter', recipient: 'OpenRouter and the selected model provider' },
+  gemini: { option: 'Gemini · Google AI Studio', name: 'Gemini', recipient: 'Google Gemini through Google AI Studio' },
+  anthropic: { option: 'Claude · Anthropic', name: 'Anthropic', recipient: 'Anthropic (Claude)' },
+};
 const uncertain = 'No new map is available. The attempt may remain counted; check setup and allowance before retrying.';
 const generationFailures = {
   provider_refused: 'The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.',
@@ -57,10 +61,10 @@ async function readJSON(response, signal, limit) {
 }
 
 async function request(path, signal, body, backend) {
-  if (!BACKENDS.has(backend)) throw new Error('Select Gemini or OpenRouter before generation.');
+  if (!Object.hasOwn(MAP_PROVIDERS, backend)) throw new Error('Select a supported AI provider before generation.');
   const response = await fetch(`/api/cloud/${backend}${path}`,  { method: body ? 'POST' : 'GET',
     credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    ...(body ? { headers: { 'Content-Type': 'application/json', [backend === 'gemini' ? 'X-LCT-Gemini-Consent' : 'X-LCT-OpenRouter-Consent']: 'generate-v1' }, body } : {}),
+    ...(body ? { headers: { 'Content-Type': 'application/json', [`X-LCT-${MAP_PROVIDERS[backend].name}-Consent`]: 'generate-v1' }, body } : {}),
   });
   const payload = await readJSON(response, signal, body ? 2 * 1024 * 1024 + 1024 : 8192);
   if (!response.ok) {

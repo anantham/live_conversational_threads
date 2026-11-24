@@ -1,3 +1,4 @@
+import { MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { useAudioImport } from '../hooks/useAudioImport.js';
@@ -59,9 +60,9 @@ export default function SitesAudioImport() {
           <p className="text-xs text-slate-500">Up to 20 MiB and {capability ? Math.floor(capability.max_session_seconds / 60) + ' minutes' : 'the configured session limit'}. Keep this tab open while processing.</p>
           <label className="block text-sm" htmlFor="import-provider">AI provider for threads</label>
           <select id="import-provider" value={flow.backend} disabled={busy} onChange={event => { flow.setBackend(event.target.value); flow.setConsent(false); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">
-            <option value="openrouter">OpenRouter</option><option value="gemini">Gemini · Google AI Studio</option>
+            {Object.entries(MAP_PROVIDERS).map(([value, provider]) => <option key={value} value={value}>{provider.option}</option>)}
           </select>
-          <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={flow.consent} onChange={event => flow.setConsent(event.target.checked)} />I have permission to send this audio to Soniox for transcription and its transcript to {flow.backend === 'gemini' ? 'Google Gemini through Google AI Studio' : 'OpenRouter and the selected model provider'} to create threads.</label>
+          <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={flow.consent} onChange={event => flow.setConsent(event.target.checked)} />I have permission to send this audio to Soniox for transcription and its transcript to {MAP_PROVIDERS[flow.backend].recipient} to create threads.</label>
           <p className="text-xs leading-5 text-slate-500">{archive.preference === 'local' ? 'Audio, transcript and threads save in this browser. Nothing is published automatically.' : 'Ephemeral mode: download your files before closing this tab.'}</p>
           <button type="submit" className={button + ' bg-slate-900 text-white'} disabled={!flow.file || !flow.consent || flow.loading || !capability?.enabled || busy}><Upload size={17} aria-hidden="true" />Create transcript &amp; threads</button>
           {!flow.loading && !capability?.enabled && <p className="text-sm text-slate-600">Transcription is currently unavailable. Your file has not been sent.</p>}

@@ -12,7 +12,7 @@ function reference(allowedLevels) {
     properties: { semantic_level: { type: 'integer', enum: allowedLevels }, id: string } };
 }
 
-function node(level) {
+function node(level, enforceEmptyArcParents = true) {
   const higher = levels.filter(value => value > level);
   const parent = higher.length ? reference(higher) : null;
   return {
@@ -29,7 +29,7 @@ function node(level) {
       },
       parent_id: parent ? { anyOf: [parent, { type: 'null' }] } : { type: 'null' },
       secondary_parent_ids: parent ? { type: 'array', items: parent }
-        : { type: 'array', items: reference(levels), maxItems: 0 },
+        : { type: 'array', items: reference(levels), ...(enforceEmptyArcParents ? { maxItems: 0 } : {}) },
       thread_id: { type: ['string', 'null'] },
     },
   };
@@ -58,7 +58,7 @@ export const GENERATION_GRAPH_SCHEMA = {
   required: ['nodes', 'edges', 'metadata', 'conversation_threads', 'hierarchy_format'],
   properties: {
     hierarchy_format: { type: 'string', enum: [GENERATION_HIERARCHY_FORMAT] },
-    nodes: { type: 'array', items: { anyOf: levels.map(node) } },
+    nodes: { type: 'array', items: { anyOf: levels.map(level => node(level)) } },
     edges: { type: 'array', items: edge },
     metadata: {
       type: 'object', additionalProperties: false,
@@ -66,5 +66,14 @@ export const GENERATION_GRAPH_SCHEMA = {
       properties: { conversation_title: string, executive_summary: string },
     },
     conversation_threads: { type: 'array', items: thread },
+  },
+};
+
+// Claude's JSON Schema subset omits maxItems. The graph validator enforces arc parents.
+export const ANTHROPIC_GENERATION_GRAPH_SCHEMA = {
+  ...GENERATION_GRAPH_SCHEMA,
+  properties: {
+    ...GENERATION_GRAPH_SCHEMA.properties,
+    nodes: { type: 'array', items: { anyOf: levels.map(level => node(level, false)) } },
   },
 };

@@ -10,7 +10,7 @@ const requiredFiles = [
   'sites/storage-packaging.mjs', 'sites/storage.js', 'sites/storagePolicy.js', 'sites/storageRecovery.js',
   'sites/publicThreads.js', 'sites/publicThreadsPolicy.js',
   'sites/soniox.js', 'sites/sonioxPolicy.js', 'sites/serviceHealth.js',
-  'sites/openRouter.js', 'sites/openRouterPolicy.js', 'sites/openRouterIO.js',
+  'sites/openRouter.js', 'sites/openRouterPolicy.js', 'sites/openRouterIO.js', 'sites/anthropic.js',
   'sites/auth.js', 'sites/authPolicy.js',
   'sites/meetings.js', 'sites/meetingPolicy.js', 'sites/meetingGuests.js',
   'sites/hostedAttendee.js', 'sites/hostedTrial.js',

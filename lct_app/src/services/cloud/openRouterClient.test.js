@@ -68,7 +68,7 @@ it('rejects readiness for a different backend before disclosing or generating so
   fetch.mockResolvedValue(response({ backend: 'openrouter', enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'google/model', provider: 'Google' }));
   await expect(getRecordingMapStatus(undefined, 'gemini')).rejects.toThrow('unreadable');
   expect(fetch.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
-  await expect(getRecordingMapStatus(undefined, 'unknown')).rejects.toThrow('Select Gemini');
+  await expect(getRecordingMapStatus(undefined, 'unknown')).rejects.toThrow('Select a supported AI provider');
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 

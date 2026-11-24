@@ -118,7 +118,7 @@ export async function readOpenRouterAdmission(env, policy, now = Date.now()) {
   return { attempts: row.attempts, unresolved: row.unresolved, latest: row.latest };
 }
 
-// Both backends intentionally share the original admission ledger and limits.
+// All map backends intentionally share the original admission ledger and limits.
 // Changing the recipient must never create a second quota or release a holder.
 export function geminiPolicy(env) {
   const shared = openRouterPolicy(env);
@@ -132,4 +132,17 @@ export function geminiPolicy(env) {
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     consentHeader: 'x-lct-gemini-consent',
     enabled: configured && env.LCT_GEMINI_ENABLED === 'true' && env.LCT_GEMINI_PROJECT_BUDGET_CONFIRMED === 'true' };
+}
+
+export function anthropicPolicy(env) {
+  const shared = openRouterPolicy(env);
+  const modelValue = text(env.LCT_ANTHROPIC_MODEL, MAX_MODEL_ID);
+  const model = modelValue && /^claude-[A-Za-z0-9][A-Za-z0-9._-]*$/.test(modelValue) ? modelValue : null;
+  const key = text(env.ANTHROPIC_API_KEY, 4096);
+  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.windowValid
+    && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
+  return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
+    backend: 'anthropic', label: 'Anthropic', provider: 'Anthropic', dataCollection: null,
+    endpoint: 'https://api.anthropic.com/v1/messages', consentHeader: 'x-lct-anthropic-consent',
+    enabled: configured && env.LCT_ANTHROPIC_ENABLED === 'true' && env.LCT_ANTHROPIC_PROJECT_BUDGET_CONFIRMED === 'true' };
 }

@@ -45,9 +45,9 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = createURL; static revokeObjectURL = revokeURL; });
   window.history.replaceState(null, '', '/new?autostart=true');
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } }); vi.stubGlobal('MediaRecorder', class {});
-  vi.stubGlobal('fetch', vi.fn(async (path, options) => ['/api/cloud/openrouter/status', '/api/cloud/gemini/status'].includes(path) ? jsonResponse({ backend: path.includes('/gemini/') ? 'gemini' : 'openrouter', enabled: generation, available: generation,
+  vi.stubGlobal('fetch', vi.fn(async (path, options) => ['/api/cloud/openrouter/status', '/api/cloud/gemini/status', '/api/cloud/anthropic/status'].includes(path) ? jsonResponse({ backend: path.split('/')[3], enabled: generation, available: generation,
     configured: generation, schema_ready: generation, audience: 'public', model: 'fixture/model', provider: 'Fixture provider' })
-    : ['/api/cloud/openrouter/generate', '/api/cloud/gemini/generate'].includes(path) ? jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(JSON.parse(options.body).source).bundle })
+    : ['/api/cloud/openrouter/generate', '/api/cloud/gemini/generate', '/api/cloud/anthropic/generate'].includes(path) ? jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(JSON.parse(options.body).source).bundle })
     : new Response(JSON.stringify(path.includes('soniox')
     ? { enabled: transcribe, audience: 'public', max_session_seconds: 300 }
     : { enabled: true, configured: true, synthetic_only: !privateUploads }), { status: 200 })));
@@ -556,19 +556,20 @@ describe('Sites recording page', () => {
   async function permitMap() { await act(async () => container.querySelector('[aria-label="Conversation map"] input').click()); }
   const generationCalls = () => fetch.mock.calls.filter(call => call[0] === '/api/cloud/openrouter/generate');
 
-  it('requires new consent after choosing Gemini and sends only to the selected backend', async () => {
+  it.each([['gemini', 'Gemini', 'Google Gemini through Google AI Studio'],
+    ['anthropic', 'Anthropic', 'Anthropic (Claude)']])('requires new consent after choosing %s and sends only to that backend', async (backend, header, recipient) => {
     await readyMap(); await permitMap();
     const selector = container.querySelector('#map-inference-backend');
     expect(selector.value).toBe('openrouter');
-    await act(async () => { selector.value = 'gemini'; selector.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { selector.value = backend; selector.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(container.querySelector('[aria-label="Conversation map"] input').checked).toBe(false);
     expect(button('Generate conversation map').disabled).toBe(true);
-    expect(container.textContent).toContain('Google Gemini through Google AI Studio');
+    expect(container.textContent).toContain(recipient);
     expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     await permitMap(); await click('Generate conversation map');
     const posts = fetch.mock.calls.filter(([, options]) => options?.method === 'POST');
-    expect(posts).toHaveLength(1); expect(posts[0][0]).toBe('/api/cloud/gemini/generate');
-    expect(posts[0][1].headers).toEqual({ 'Content-Type': 'application/json', 'X-LCT-Gemini-Consent': 'generate-v1' });
+    expect(posts).toHaveLength(1); expect(posts[0][0]).toBe(`/api/cloud/${backend}/generate`);
+    expect(posts[0][1].headers).toEqual({ 'Content-Type': 'application/json', [`X-LCT-${header}-Consent`]: 'generate-v1' });
     expect(container.querySelector('#recording-map-json')).toBeTruthy();
   });
 
