@@ -180,6 +180,30 @@ describe('direct Anthropic admission and health', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('tells the browser a truncated Claude map hit the output cap, without completion text', async () => {
+    const truncated = { ...anthropicReply('max_tokens'), usage: { input_tokens: 9100, output_tokens: 8192 } };
+    truncated.content[1].text = '{"nodes":[{"id":"private-truncated-' ;
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify(truncated), { status: 200,
+      headers: { 'content-type': 'application/json', 'request-id': 'req_011SyntheticTruncated' } }));
+    const response = await worker.fetch(request('anthropic'), env), body = await response.json();
+    expect(response.status).toBe(502);
+    expect(body).toEqual({ code: 'invalid_completion',
+      error: 'Anthropic did not return a complete source-linked map. The attempt remains counted; no map was saved.',
+      validation_stage: 'choice_finish', stop_reason: 'max_tokens', output_tokens: 8192, max_output_tokens: 8192,
+      upstream_request_id: 'req_011SyntheticTruncated' });
+    expect(JSON.stringify(body)).not.toMatch(/private-truncated|Synthetic internal reasoning|synthetic-anthropic-key/);
+    expect(attempts()).toEqual([{ completed_at: null, max_output_tokens: 8192 }]);
+  });
+
+  it('names the hierarchy rule when a complete Claude map breaks a tier rule', async () => {
+    responseGraph.nodes[0].parent_id.semantic_level = 1;
+    fetch.mockResolvedValueOnce(Response.json({ ...anthropicReply(), usage: { output_tokens: 640 } }));
+    const body = await (await worker.fetch(request('anthropic'), env)).json();
+    expect(body).toMatchObject({ code: 'invalid_completion', validation_stage: 'hierarchy', stop_reason: 'end_turn', output_tokens: 640 });
+    expect(typeof body.validation_rule).toBe('string');
+    expect(JSON.stringify(body)).not.toMatch(/Synthetic garden|Water and care/);
+  });
+
   it('rejects unexpected output blocks and does not act on tool requests', async () => {
     fetch.mockResolvedValueOnce(Response.json(anthropicReply('end_turn', [{ type: 'tool_use', name: 'unapproved' }])));
     const response = await worker.fetch(request('anthropic'), env);

@@ -85,9 +85,29 @@ async function request(path, signal, body, backend) {
   return payload;
 }
 
+const STAGE_LABELS = /^[a-z_]{1,40}$/;
+const tokenCount = value => Number.isSafeInteger(value) && value >= 0 ? value.toLocaleString('en-US') : null;
+
+// Fixed copy from the Worker's allow-listed labels and integers; never model text.
+export function invalidCompletionDetail(payload) {
+  const outputTokens = tokenCount(payload.output_tokens), cap = tokenCount(payload.max_output_tokens);
+  if (payload.stop_reason === 'max_tokens') {
+    return ` The response was cut off at the output limit${outputTokens && cap ? ` (${outputTokens} of ${cap} tokens)` : ''}, so the map JSON was incomplete.`;
+  }
+  if (payload.stop_reason === 'refusal') return ' The model declined to answer.';
+  const stage = typeof payload.validation_stage === 'string' && STAGE_LABELS.test(payload.validation_stage) ? payload.validation_stage : null;
+  if (!stage) return '';
+  const rule = stage === 'hierarchy' && typeof payload.validation_rule === 'string' && STAGE_LABELS.test(payload.validation_rule)
+    ? `/${payload.validation_rule}` : '';
+  const stop = typeof payload.stop_reason === 'string' && STAGE_LABELS.test(payload.stop_reason) && payload.stop_reason !== 'end_turn'
+    ? `, stop reason ${payload.stop_reason}` : '';
+  return ` Validation failed at ${stage}${rule}${stop}${outputTokens ? ` after ${outputTokens} output tokens` : ''}.`;
+}
+
 function failure(status, payload) {
   const code = status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
-  const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status) : '';
+  const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status)
+    : code === 'invalid_completion' ? invalidCompletionDetail(payload) : '';
   const error = new Error(code ? generationFailures[code] + detail + providerDiagnosticDetail(payload) : messages[status] || uncertain);
   error.status = status;
   if (code) error.code = code;

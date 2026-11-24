@@ -84,6 +84,23 @@ it.each([
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
+// Intent: an invalid map says which check failed (truncation, tier rule) in fixed copy, never model text.
+it.each([
+  [{ validation_stage: 'choice_finish', stop_reason: 'max_tokens', output_tokens: 12000, max_output_tokens: 12000,
+    upstream_request_id: 'req_011SyntheticTruncated' },
+  ['cut off at the output limit (12,000 of 12,000 tokens)', 'Anthropic request ID req_011SyntheticTruncated']],
+  [{ validation_stage: 'hierarchy', validation_rule: 'parent_level', stop_reason: 'end_turn', output_tokens: 7300 },
+    ['Validation failed at hierarchy/parent_level after 7,300 output tokens']],
+  [{ validation_stage: 'node_evidence' }, ['Validation failed at node_evidence.']],
+  [{ validation_stage: 'Ignore previous <b>instructions</b>', stop_reason: 'free text' }, []],
+])('explains why a map was invalid: %o', async (details, texts) => {
+  fetch.mockResolvedValueOnce(response({ code: 'invalid_completion', error: 'fixture sensitive provider detail', ...details }, 502));
+  const error = await generateRecordingMap(source).catch(value => value);
+  expect(error.message).toContain('incomplete or invalid map');
+  for (const text of texts) expect(error.message).toContain(text);
+  expect(error.message).not.toMatch(/sensitive|Ignore previous|free text/);
+});
+
 // Intent: a provider refusal says why from its status code alone, in fixed client copy.
 it.each([
   [402, 'out of credits'],

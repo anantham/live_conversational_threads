@@ -87,13 +87,40 @@ async function logProviderRefusal(env, response, signal, backend) {
   } catch { /* Diagnostics must not change admission or the public refusal. */ }
 }
 
+// Fixed labels only: stage and rule names come from allow-lists, never from the completion.
+function sanitizedValidation(validationStage, validationRule) {
+  const stage = VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown';
+  return { stage, ...(stage === 'hierarchy' ? { rule: HIERARCHY_RULES.has(validationRule) ? validationRule : 'unknown' } : {}) };
+}
+
 export function logOpenRouterFailure(env, code, validationStage, validationRule, backend = 'openrouter') {
   if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
   try {
-    const stage = VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown';
-    console.error(`[${backend}] generation failed`, { code, validationStage: stage,
-      ...(stage === 'hierarchy' ? { validationRule: HIERARCHY_RULES.has(validationRule) ? validationRule : 'unknown' } : {}) });
+    const { stage, rule } = sanitizedValidation(validationStage, validationRule);
+    console.error(`[${backend}] generation failed`, { code, validationStage: stage, ...(rule ? { validationRule: rule } : {}) });
   } catch { /* Diagnostics must never replace the public result or release an attempt. */ }
+}
+
+const ANTHROPIC_STOP_REASONS = new Set(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use', 'pause_turn',
+  'refusal', 'model_context_window_exceeded']);
+
+/**
+ * Content-free details for a rejected completion, returned to the browser so a failed
+ * window says why it failed (for example output truncated at the token cap) instead of
+ * a generic refusal. Only allow-listed labels, integers and the provider request ID.
+ */
+export function invalidCompletionDetails(error, { anthropic, completion, response, maxTokens }) {
+  const { stage, rule } = sanitizedValidation(error?.validationStage, error?.validationRule);
+  const details = { validation_stage: stage, ...(rule ? { validation_rule: rule } : {}) };
+  if (!anthropic) return details;
+  const stopReason = completion?.stop_reason;
+  const outputTokens = completion?.usage?.output_tokens;
+  const requestId = anthropicRequestId(response);
+  return { ...details,
+    ...(ANTHROPIC_STOP_REASONS.has(stopReason) ? { stop_reason: stopReason } : {}),
+    ...(Number.isSafeInteger(outputTokens) && outputTokens >= 0 ? { output_tokens: outputTokens } : {}),
+    ...(Number.isSafeInteger(maxTokens) ? { max_output_tokens: maxTokens } : {}),
+    ...(requestId ? { upstream_request_id: requestId } : {}) };
 }
 
 function generationWires(policy, source, maxTokens, guidance) {
@@ -235,7 +262,8 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
         throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`,
-          diagnostic ? { diagnostic_stage: 'map', minimal_request_id: minimalId, upstream_request_id: anthropicRequestId(response) } : undefined);
+          { ...invalidCompletionDetails(error, { anthropic, completion, response, maxTokens }),
+            ...(diagnostic ? { diagnostic_stage: 'map', minimal_request_id: minimalId } : {}) });
       }
     }
     throw lastRefusal || new OpenRouterError(502, 'provider_refused', 'No configured provider could finish generation. The attempt remains counted.');
