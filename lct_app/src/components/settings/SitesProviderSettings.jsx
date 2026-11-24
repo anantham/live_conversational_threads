@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { useSitesRuntime } from '../../contexts/SitesRuntimeContext';
 import ProviderKeyForm from './ProviderKeyForm';
 import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient';
+import { ANTHROPIC_PRICING_URL, anthropicModelPriceLabel } from '../../services/cloud/anthropicModelPrices';
 import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId } from '../../services/cloud/sitesProviderPreferences';
 
 const speechGroup = {
@@ -16,6 +17,12 @@ const CUSTOM_MODEL = '__custom__';
 
 function modelsForProvider(backend, catalogs) {
   return catalogs[backend] || [];
+}
+
+function modelOptionLabel(backend, { id, label }) {
+  const price = backend === 'anthropic' ? anthropicModelPriceLabel(id) : '';
+  if (price) return `${label} · ${price}`;
+  return label === id ? id : `${label} (${id})`;
 }
 
 function SpeechOrder() {
@@ -123,7 +130,7 @@ function FallbackRow({ entry, index, total, onUpdate, onMove, onRemove }) {
         <select className={input} aria-label={`${rankLabel} model`} value={entry.model || ''} onChange={event => handleModelSelect(event.target.value)}>
           <option value="">Site default</option>
           {!inList && entry.model && <option value={entry.model}>{entry.model} (saved ID)</option>}
-          {options.map(item => <option key={item.id} value={item.id}>{item.label === item.id ? item.id : `${item.label} (${item.id})`}</option>)}
+          {options.map(item => <option key={item.id} value={item.id}>{modelOptionLabel(entry.backend, item)}</option>)}
           <option value={CUSTOM_MODEL}>Custom model ID…</option>
         </select>
       </label>}
@@ -216,6 +223,12 @@ function IntelligenceSettings() {
         <h4 className="text-sm font-semibold text-slate-800">Model fallback order</h4>
         <button type="button" className={button} disabled={chain.length >= MAX_MAP_ROUTES} onClick={addEntry}>+ Add model</button>
       </div>
+      {chain.some(entry => entry.backend === 'anthropic') && (
+        <p className="text-xs text-slate-600">
+          Claude base rates in USD per million tokens. Haiku 5.5 uses the higher rate above 100,000 input tokens.{' '}
+          <a className="underline underline-offset-2" href={ANTHROPIC_PRICING_URL} target="_blank" rel="noreferrer">Anthropic pricing</a>
+        </p>
+      )}
       <ol className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white px-4">
         {chain.map((entry, index) => <FallbackRow
           key={`${index}-${entry.backend}-${entry.model}`}

@@ -145,6 +145,30 @@ it('refreshes an expired saved catalog in the background and retains it if the p
   expect(saved.entries.anthropic.modelsFetchedAt).toBe(now + 75 * 60 * 1000);
 });
 
+it('shows published Claude token rates alongside model names while saving the same model IDs', async () => {
+  fetch.mockResolvedValueOnce(Response.json({ models: [
+    { id: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
+    { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+    { id: 'claude-unlisted', label: 'Unlisted Claude' },
+  ] }));
+  await mount();
+  await saveKey('Anthropic', 'synthetic-claude-key');
+  await choose(providerSelect('First choice'), 'anthropic');
+  const select = modelSelect('First choice');
+  expect([...select.options].map(option => option.textContent)).toEqual([
+    'Site default',
+    'Claude Opus 5.5 · $4 in / $20 out',
+    'Claude Haiku 5.5 · $0.10–$0.50 in / $0.50–$2.50 out',
+    'Claude Haiku 4.5 · $1 in / $5 out',
+    'Unlisted Claude (claude-unlisted)',
+    'Custom model ID…',
+  ]);
+  expect(container.textContent).toContain('USD per million tokens');
+  await choose(select, 'claude-haiku-4-5-20251001');
+  expect(readProviderPreferences().mapChain[0].model).toBe('claude-haiku-4-5-20251001');
+});
+
 it('edits and restores the map prompt without contacting the legacy prompt service', async () => {
   await mount('/prompts');
   expect(container.textContent).toContain('Conversation map prompt');
