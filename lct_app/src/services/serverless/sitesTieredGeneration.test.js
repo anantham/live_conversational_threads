@@ -264,12 +264,27 @@ describe('ordered settings generation', () => {
       body: JSON.stringify({ backend: 'anthropic', key: 'personal-key' }),
     }), env);
     expect(response.status).toBe(200);
-    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models?limit=100&lifecycle=active',
+    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models?limit=100',
       expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'personal-key' }), redirect: 'manual' }));
     expect(fetch.mock.calls[0][1].body).toBeUndefined();
     const text = await response.text();
     expect(text).not.toContain('personal-key');
     expect(JSON.parse(text).models).toEqual([{ id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' }]);
+    expect(count()).toBe(0);
+  });
+
+  it('returns a safe Anthropic model-list refusal and request ID without blaming the key for HTTP 400', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    fetch.mockResolvedValueOnce(Response.json({ error: { message: 'Private provider error body.' } },
+      { status: 400, headers: { 'request-id': 'req_modelcheck123' } }));
+    const response = await worker.fetch(new Request(SITE + '/api/cloud/providers/check', {
+      method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-key-check': 'check-v1' },
+      body: JSON.stringify({ backend: 'anthropic', key: 'personal-key' }),
+    }), env);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: 'The provider’s model check returned HTTP 400. Anthropic request ID req_modelcheck123.',
+    });
     expect(count()).toBe(0);
   });
 

@@ -21,3 +21,7 @@ Test with synthetic transcripts, synthetic credentials and intercepted provider 
 The user asked to keep personal keys and model lists between visits. Save the key encrypted in IndexedDB on the current browser profile and origin. Keep a per-record, nonextractable Web Crypto key in the same store so the app can reopen the credential. This protects against casual plaintext exposure in storage. Application code on the same origin can still use the credential. There is no server-side credential persistence.
 
 Intelligence requests provider model metadata on save and on explicit refresh. The last successful catalog stays available on reload. Remove clears both the credential and its catalog. A provider catalog response can update only the credential revision that initiated it. Model selections and fallback order remain separate preferences so they can be reused when a key is replaced.
+
+## Amendment — 2026-11-25
+
+Intelligence catalogs have a 24-hour freshness window. Providers checks for a missing or expired list when the screen opens or becomes visible, and rechecks every 15 minutes while the screen stays open. A refusal keeps the previous catalog and selected model. Save and remove still operate on the local credential. The refresh icon allows an immediate metadata check. Schema probes are developer diagnostics and have no action on the Settings screen.

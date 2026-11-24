@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { useSitesRuntime } from '../../contexts/SitesRuntimeContext';
-import { MAP_PROVIDERS, runClaudeDiagnostic } from '../../services/cloud/openRouterClient';
-import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId, validPersonalKey } from '../../services/cloud/sitesProviderPreferences';
+import ProviderKeyForm from './ProviderKeyForm';
+import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient';
+import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId } from '../../services/cloud/sitesProviderPreferences';
 
 const speechGroup = {
   title: 'Speech-to-text',
@@ -16,95 +17,6 @@ const CUSTOM_MODEL = '__custom__';
 function modelsForProvider(backend, catalogs) {
   return catalogs[backend] || [];
 }
-
-function ProviderKeyForm({ backend, name, speech = false }) {
-  const { keys, catalogs, preferences, credentialsReady, setKey, refreshProvider } = useSitesRuntime();
-  const [draft, setDraft] = useState('');
-  const [feedback, setFeedback] = useState('');
-  const [checking, setChecking] = useState(false);
-  const key = keys[backend] || '';
-  const loadedCount = catalogs[backend]?.length || 0;
-
-  async function check() {
-    setChecking(true);
-    setFeedback('');
-    try { setFeedback(await refreshProvider(backend)); }
-    catch (error) { setFeedback(error.message || 'The connection check could not finish.'); }
-    finally { setChecking(false); }
-  }
-
-  async function saveKey() {
-    setChecking(true);
-    setFeedback('');
-    try {
-      await setKey(backend, draft.trim());
-      setDraft('');
-    } catch {
-      setFeedback('The key could not be saved in this browser.');
-      setChecking(false);
-      return;
-    }
-    setFeedback(speech ? 'Key saved in this browser.' : 'Key saved. Loading models…');
-    if (speech) { setChecking(false); return; }
-    try {
-      setFeedback('Key saved. ' + await refreshProvider(backend));
-    } catch (error) {
-      setFeedback('Key saved. ' + (error.message || 'The model list could not be loaded.'));
-    } finally { setChecking(false); }
-  }
-
-  async function removeKey() {
-    setChecking(true);
-    setFeedback('');
-    try {
-      await setKey(backend, '');
-      setFeedback('Personal key and cached models removed.');
-    } catch { setFeedback('The saved key could not be removed. Try again.'); }
-    finally { setChecking(false); }
-  }
-
-  const diagnosticModel = preferences.mapChain.find(entry => entry.backend === 'anthropic' && entry.model)?.model || 'claude-sonnet-5-5';
-  async function diagnose(mode) {
-    setChecking(true);
-    setFeedback('Claude is testing the schemas on a short synthetic conversation…');
-    try { setFeedback(await runClaudeDiagnostic(key, diagnosticModel, AbortSignal.timeout(125_000), mode)); }
-    catch (error) { setFeedback(error.message || 'The Claude diagnostic could not finish.'); }
-    finally { setChecking(false); }
-  }
-
-  return <details className="border-t border-slate-100 pt-2">
-    <summary className="min-h-10 cursor-pointer py-2 text-sm font-medium text-slate-700">
-      {key ? `Personal key saved in this browser${loadedCount ? ` · ${loadedCount} ${loadedCount === 1 ? 'model' : 'models'} loaded` : ''}` : backend === 'openai' ? 'Add a personal key' : 'Configure a personal key'}
-    </summary>
-    <div className="grid gap-3 pb-2 pt-2">
-      <label className="grid gap-1 text-sm">{name} API key
-        <input className={input} type="password" autoComplete="new-password" value={draft} maxLength={512}
-          placeholder={key ? 'Enter a replacement key' : 'Enter your API key'} onChange={event => setDraft(event.target.value)} />
-      </label>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={button} disabled={!credentialsReady || checking || !validPersonalKey(draft.trim())}
-          onClick={() => void saveKey()}>
-          Save key
-        </button>
-        <button type="button" className={button} disabled={!key || checking} onClick={() => void check()}>
-          {speech ? 'Test connection' : 'Refresh models'}
-        </button>
-        {key && <button type="button" className={button} disabled={checking} onClick={() => void removeKey()}>
-          Remove key
-        </button>}
-      </div>
-      {backend === 'anthropic' && key && <div className="space-y-2">
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={button} disabled={checking} onClick={() => void diagnose('map')}>Test Claude map schema</button>
-          <button type="button" className={button} disabled={checking} onClick={() => void diagnose()}>Compare both schemas</button>
-        </div>
-        <p className="text-sm text-slate-600">Uses {diagnosticModel} and three invented turns. The map test sends one billable request. The comparison sends up to two.</p>
-      </div>}
-      {feedback && <p role="status" className="text-sm text-slate-600">{feedback}</p>}
-    </div>
-  </details>;
-}
-ProviderKeyForm.propTypes = { backend: PropTypes.string.isRequired, name: PropTypes.string.isRequired, speech: PropTypes.bool };
 
 function SpeechOrder() {
   const { preferences, save, keys } = useSitesRuntime();
@@ -222,7 +134,7 @@ function FallbackRow({ entry, index, total, onUpdate, onMove, onRemove }) {
       </label>}
     </div>
     {entry.model && !hasKey && <p className="text-xs text-amber-800">Add a personal {MAP_PROVIDERS[entry.backend].name} key above to use a specific model; without one, this step uses Site configuration.</p>}
-    {!entry.model && hasKey && <p className="text-xs text-amber-800">{options.length ? 'Select a model to use your personal key.' : 'Refresh models above or enter a custom model ID.'}</p>}
+    {!entry.model && hasKey && <p className="text-xs text-amber-800">{options.length ? 'Select a model to use your personal key.' : 'Enter a custom model ID if your model is unavailable.'}</p>}
   </li>;
 }
 FallbackRow.propTypes = {

@@ -60,7 +60,8 @@ export async function readSavedProviderCredentials() {
     const bytes = await crypto.subtle.decrypt(encryption(record.iv, record.id), record.wrappingKey, record.ciphertext);
     const key = decode.decode(bytes);
     if (!validPersonalKey(key) || typeof record.revision !== 'string') throw storageError();
-    return [record.id, { key, revision: record.revision, models: normalizeModels(record.models) }];
+    const modelsFetchedAt = Number.isSafeInteger(record.modelsFetchedAt) ? record.modelsFetchedAt : 0;
+    return [record.id, { key, revision: record.revision, models: normalizeModels(record.models), modelsFetchedAt }];
   }));
   return { entries: Object.fromEntries(decoded.flatMap(item => item.status === 'fulfilled' ? [item.value] : [])),
     unreadable: decoded.some(item => item.status === 'rejected') };
@@ -86,7 +87,7 @@ export async function writeSavedProviderModels(id, revision, models) {
     request.onsuccess = () => {
       const record = request.result;
       if (record?.revision !== revision) return;
-      records.put({ ...record, models: normalizeModels(models) });
+      records.put({ ...record, models: normalizeModels(models), modelsFetchedAt: Date.now() });
       updated = true;
     };
     return () => updated;

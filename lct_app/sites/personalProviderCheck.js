@@ -1,4 +1,5 @@
 import { anthropicHeaders } from './anthropic.js';
+import { anthropicRequestId } from './anthropicDiagnostics.js';
 import { resolveIdentity } from './auth.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { openRouterJSON } from './openRouterPolicy.js';
@@ -14,7 +15,7 @@ function target(route) {
   if (!validPersonalKey(key)) return null;
   if (backend === 'soniox') return ['https://api.soniox.com/v1/models', bearer(key)];
   if (backend === 'openai') return ['https://api.openai.com/v1/models/gpt-4o-transcribe-diarize', bearer(key)];
-  if (backend === 'anthropic') return ['https://api.anthropic.com/v1/models?limit=100&lifecycle=active', anthropicHeaders(key)];
+  if (backend === 'anthropic') return ['https://api.anthropic.com/v1/models?limit=100', anthropicHeaders(key)];
   if (backend === 'gemini') return ['https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { 'x-goog-api-key': key }];
   if (backend === 'openrouter') return ['https://openrouter.ai/api/v1/key', bearer(key)];
   return null;
@@ -91,12 +92,19 @@ export async function handlePersonalProviderCheck(request, env) {
       const response = await fetch(url, { headers, signal, redirect: 'manual' });
       if (response.status !== 200) {
         void response.body?.cancel().catch(() => {});
-        return openRouterJSON(502, { error: `The provider’s metadata check returned HTTP ${response.status}. Check the key and permissions.` });
+        const requestId = route.backend === 'anthropic' ? anthropicRequestId(response) : null;
+        const hint = [401, 403].includes(response.status) ? ' Check the key and its permissions.' : '';
+        return openRouterJSON(502, {
+          error: `The provider’s model check returned HTTP ${response.status}.${hint}${requestId ? ` Anthropic request ID ${requestId}.` : ''}`,
+        });
       }
       const metadata = await readOpenRouterJSON(response, signal, 512 * 1024, true);
       if (!acceptedMetadata(route, metadata)) return openRouterJSON(502, { error: 'The provider returned unreadable model or key metadata.' });
       let models = ['anthropic', 'gemini'].includes(route.backend) ? extractModels(route.backend, metadata) : null;
-      if (route.backend === 'openrouter') models = await fetchOpenRouterModels(route.key, signal);
+      if (route.backend === 'openrouter') {
+        models = await fetchOpenRouterModels(route.key, signal);
+        if (!models) return openRouterJSON(502, { error: 'OpenRouter’s model list could not be loaded.' });
+      }
       return openRouterJSON(200, {
         message: models?.length
           ? `Provider access confirmed. Loaded ${models.length} models. Usage and billing were not tested.`

@@ -11,11 +11,11 @@ import { readProviderPreferences } from '../../services/cloud/sitesProviderPrefe
 const saved = vi.hoisted(() => ({ entries: {}, sequence: 0 }));
 vi.mock('../../services/cloud/sitesProviderCredentialStore', () => ({
   async readSavedProviderCredentials() { return { entries: { ...saved.entries }, unreadable: false }; },
-  async writeSavedProviderKey(id, key) { saved.entries[id] = { key, revision: String(++saved.sequence), models: [] }; },
+  async writeSavedProviderKey(id, key) { saved.entries[id] = { key, revision: String(++saved.sequence), models: [], modelsFetchedAt: 0 }; },
   async deleteSavedProviderKey(id) { delete saved.entries[id]; },
   async writeSavedProviderModels(id, revision, models) {
     if (saved.entries[id]?.revision !== revision) return false;
-    saved.entries[id] = { ...saved.entries[id], models };
+    saved.entries[id] = { ...saved.entries[id], models, modelsFetchedAt: Date.now() };
     return true;
   },
 }));
@@ -34,6 +34,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 async function mount(start = '/providers') {
@@ -66,7 +67,7 @@ async function saveKey(provider, key) {
   const input = field(provider + ' API key');
   await type(input, key);
   const row = input.closest('li');
-  await click([...row.querySelectorAll('button')].find(el => el.textContent === 'Save key'));
+  await click([...row.querySelectorAll('button')].find(el => el.getAttribute('aria-label') === 'Save key'));
   expect(input.value).toBe('');
   return row;
 }
@@ -109,12 +110,39 @@ it('refreshes the catalog without silently changing a saved model and removes th
   const row = await saveKey('Anthropic', 'synthetic-claude-key');
   await choose(providerSelect('First choice'), 'anthropic');
   expect(modelSelect('First choice').value).toBe('claude-sonnet-5');
-  await click([...row.querySelectorAll('button')].find(el => el.textContent === 'Refresh models'));
+  await click([...row.querySelectorAll('button')].find(el => el.getAttribute('aria-label') === 'Refresh models'));
   expect(options(modelSelect('First choice'))).toEqual(['', 'claude-sonnet-5', 'claude-sonnet-5-5', '__custom__']);
   expect(modelSelect('First choice').selectedOptions[0].textContent).toContain('saved ID');
   await click(button('Remove key'));
   expect(container.textContent).toContain('Personal key and cached models removed.');
   expect(options(modelSelect('First choice'))).toEqual(['', 'claude-sonnet-5', '__custom__']);
+});
+
+it('refreshes an expired saved catalog in the background and retains it if the provider refuses', async () => {
+  vi.useFakeTimers();
+  const now = Date.UTC(2026, 10, 25);
+  vi.setSystemTime(now);
+  saved.entries.anthropic = { key: 'synthetic-claude-key', revision: 'existing', modelsFetchedAt: now - 23 * 60 * 60 * 1000,
+    models: [{ id: 'claude-test-cached', label: 'Claude cached' }] };
+  await mount();
+  await choose(providerSelect('First choice'), 'anthropic');
+  expect(fetch).not.toHaveBeenCalled();
+  expect(modelSelect('First choice').value).toBe('claude-test-cached');
+  expect(button('Test Claude map schema')).toBeUndefined();
+  expect(button('Compare both schemas')).toBeUndefined();
+  expect(button('Remove key').textContent).toBe('');
+
+  fetch.mockResolvedValueOnce(Response.json({ error: 'Model service unavailable.' }, { status: 502 }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(60 * 60 * 1000); });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(options(modelSelect('First choice'))).toContain('claude-test-cached');
+  expect(container.textContent).toContain('Model service unavailable.');
+
+  fetch.mockResolvedValueOnce(providerResponse('claude-test-new'));
+  await act(async () => { await vi.advanceTimersByTimeAsync(15 * 60 * 1000); });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(options(modelSelect('First choice'))).toContain('claude-test-new');
+  expect(saved.entries.anthropic.modelsFetchedAt).toBe(now + 75 * 60 * 1000);
 });
 
 it('edits and restores the map prompt without contacting the legacy prompt service', async () => {

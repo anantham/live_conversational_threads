@@ -183,31 +183,3 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
   if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
   return { ...recordingMapResult(source, payload), backend: payload.backend, model: payload.model };
 }
-
-
-export async function runClaudeDiagnostic(key, model, signal, mode) {
-  const response = await fetch('/api/cloud/map/claude-diagnostic', { method: 'POST', credentials: 'same-origin',
-    cache: 'no-store', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', 'X-LCT-Claude-Diagnostic': 'test-v1' },
-    body: JSON.stringify({ key, model, mode }),
-  });
-  const payload = await readJSON(response, signal, 8192);
-  if (!response.ok) {
-    const minimal = diagnosticRequestId(payload.minimal_request_id);
-    const stage = payload.diagnostic_stage === 'minimal' ? 'The minimal schema test failed.'
-      : payload.diagnostic_stage === 'map'
-        ? mode === 'map' ? 'The map test failed.' : 'Claude accepted the minimal schema. The map test failed.'
-        : '';
-    if (stage) throw new Error(stage + refusalDetail(payload.upstream_status) + providerDiagnosticDetail(payload)
-      + (minimal ? ' Minimal test request ID ' + minimal + '.' : ''));
-    if (response.status === 503 && payload.code === 'generation_inactive') {
-      throw new Error('The Claude route is unavailable. Check your personal key and model settings.');
-    }
-    throw failure(response.status, payload);
-  }
-  if (payload.diagnostic !== 'passed' || payload.model !== model) throw unreadable();
-  const ids = [diagnosticRequestId(payload.minimal_request_id), diagnosticRequestId(payload.map_request_id)].filter(Boolean);
-  const passed = mode === 'map' ? 'Claude accepted the map schema and LCT validated the synthetic map.'
-    : 'Claude accepted both schemas and LCT validated the synthetic map.';
-  return passed + (ids.length ? ` Anthropic request ID${ids.length > 1 ? 's' : ''} ${ids.join(', ')}.` : '');
-}

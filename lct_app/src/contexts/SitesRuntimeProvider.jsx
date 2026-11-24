@@ -40,10 +40,32 @@ export default function SitesRuntimeProvider({ children }) {
     };
   }, [reloadCredentials]);
 
+  const refreshProvider = useCallback(async (id, revision) => {
+    const { entries } = await readSavedProviderCredentials();
+    const entry = entries[id];
+    if (!entry || entry.revision !== revision) throw new Error('The saved key changed. Refresh models for the current key.');
+    const response = await fetch('/api/cloud/providers/check', {
+      method: 'POST', credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(9000),
+      headers: { 'Content-Type': 'application/json', 'X-LCT-Key-Check': 'check-v1' },
+      body: JSON.stringify({ backend: id, key: entry.key }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'The connection check could not finish.');
+    if (Array.isArray(result.models)) {
+      if (!await writeSavedProviderModels(id, entry.revision, result.models)) {
+        throw new Error('The saved key changed. Refresh models for the current key.');
+      }
+      channel.current?.postMessage(null);
+      await reloadCredentials();
+    }
+    return result.message;
+  }, [reloadCredentials]);
+
   const runtime = useMemo(() => ({
     preferences,
     keys: Object.fromEntries(Object.entries(entries).map(([id, entry]) => [id, entry.key])),
     catalogs: Object.fromEntries(Object.entries(entries).map(([id, entry]) => [id, entry.models])),
+    catalogRecords: Object.fromEntries(Object.entries(entries).map(([id, entry]) => [id, { revision: entry.revision, fetchedAt: entry.modelsFetchedAt }])),
     credentialsReady,
     storageError,
     credentialError,
@@ -59,27 +81,8 @@ export default function SitesRuntimeProvider({ children }) {
       channel.current?.postMessage(null);
       await reloadCredentials();
     },
-    async refreshProvider(id) {
-      const { entries } = await readSavedProviderCredentials();
-      const entry = entries[id];
-      if (!entry) throw new Error('Save your personal key before loading models.');
-      const response = await fetch('/api/cloud/providers/check', {
-        method: 'POST', credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(9000),
-        headers: { 'Content-Type': 'application/json', 'X-LCT-Key-Check': 'check-v1' },
-        body: JSON.stringify({ backend: id, key: entry.key }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'The connection check could not finish.');
-      if (Array.isArray(result.models)) {
-        if (!await writeSavedProviderModels(id, entry.revision, result.models)) {
-          throw new Error('The saved key changed. Refresh models for the current key.');
-        }
-        channel.current?.postMessage(null);
-        await reloadCredentials();
-      }
-      return result.message;
-    },
-  }), [preferences, entries, credentialsReady, storageError, credentialError, reloadCredentials]);
+    refreshProvider,
+  }), [preferences, entries, credentialsReady, storageError, credentialError, reloadCredentials, refreshProvider]);
 
   return <SitesRuntimeContext.Provider value={runtime}>{children}</SitesRuntimeContext.Provider>;
 }
