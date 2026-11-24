@@ -15,3 +15,9 @@ The Sites prompt editor shows the built-in map prompt and applies user guidance 
 ## Validation and release
 
 Test with synthetic transcripts, synthetic credentials and intercepted provider transport. Validate browser ordering and key lifetime at desktop and mobile widths. A release or a paid hosted pilot requires the applicable host access and operational approval.
+
+## Amendment — 2026-11-24
+
+The user asked to keep personal keys and model lists between visits. Save the key encrypted in IndexedDB on the current browser profile and origin. Keep a per-record, nonextractable Web Crypto key in the same store so the app can reopen the credential. This protects against casual plaintext exposure in storage. Application code on the same origin can still use the credential. There is no server-side credential persistence.
+
+Intelligence requests provider model metadata on save and on explicit refresh. The last successful catalog stays available on reload. Remove clears both the credential and its catalog. A provider catalog response can update only the credential revision that initiated it. Model selections and fallback order remain separate preferences so they can be reused when a key is replaced.

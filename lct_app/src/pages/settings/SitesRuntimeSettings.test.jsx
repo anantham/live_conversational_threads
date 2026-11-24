@@ -8,10 +8,23 @@ import SitesMapPrompts from '../../components/settings/SitesMapPrompts';
 import SitesRuntimeProvider from '../../contexts/SitesRuntimeProvider';
 import { readProviderPreferences } from '../../services/cloud/sitesProviderPreferences';
 
+const saved = vi.hoisted(() => ({ entries: {}, sequence: 0 }));
+vi.mock('../../services/cloud/sitesProviderCredentialStore', () => ({
+  async readSavedProviderCredentials() { return { entries: { ...saved.entries }, unreadable: false }; },
+  async writeSavedProviderKey(id, key) { saved.entries[id] = { key, revision: String(++saved.sequence), models: [] }; },
+  async deleteSavedProviderKey(id) { delete saved.entries[id]; },
+  async writeSavedProviderModels(id, revision, models) {
+    if (saved.entries[id]?.revision !== revision) return false;
+    saved.entries[id] = { ...saved.entries[id], models };
+    return true;
+  },
+}));
+
 let root, container;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   localStorage.clear();
+  saved.entries = {};
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -49,58 +62,59 @@ async function choose(select, value) {
   });
 }
 
-it('manages provider keys separately and allows multiple ordered models from the same provider', async () => {
-  await mount();
-  const input = field('Anthropic API key');
-  await type(input, 'synthetic-tab-key');
+async function saveKey(provider, key) {
+  const input = field(provider + ' API key');
+  await type(input, key);
   const row = input.closest('li');
-  const saveKey = [...row.querySelectorAll('button')].find(el => el.textContent === 'Use for this session');
-  await click(saveKey);
-  expect(container.textContent).toContain('Key saved for this tab.');
+  await click([...row.querySelectorAll('button')].find(el => el.textContent === 'Save key'));
   expect(input.value).toBe('');
-  expect(JSON.stringify(localStorage)).not.toContain('synthetic-tab-key');
+  return row;
+}
 
-  // Build OpenRouter (model A) -> Anthropic (model B) -> OpenRouter (model C)
-  await choose(container.querySelector('select[aria-label="First choice model"]'), 'anthropic/claude-sonnet-4.5');
+const providerResponse = (...ids) => Response.json({
+  message: `Loaded ${ids.length} models.`, models: ids.map(id => ({ id, label: id })),
+});
+const modelSelect = rank => container.querySelector(`select[aria-label="${rank} model"]`);
+const providerSelect = rank => container.querySelector(`select[aria-label="${rank} provider"]`);
+const options = select => [...select.options].map(option => option.value);
+
+it('loads live models on save and restores keys, catalogs and fallback order after remount', async () => {
+  fetch.mockResolvedValueOnce(providerResponse('google/gemini-test', 'anthropic/claude-test'));
+  fetch.mockResolvedValueOnce(providerResponse('claude-sonnet-5-5'));
+  await mount();
+  await saveKey('OpenRouter', 'synthetic-router-key');
+  await saveKey('Anthropic', 'synthetic-claude-key');
+  expect(fetch).toHaveBeenCalledTimes(2);
+
+  await choose(modelSelect('First choice'), 'anthropic/claude-test');
   await click(button('+ Add model'));
-  await choose(container.querySelector('select[aria-label="Fallback 1 provider"]'), 'anthropic');
-  await choose(container.querySelector('select[aria-label="Fallback 1 model"]'), 'claude-sonnet-4-5-20250929');
-  await click(button('+ Add model'));
-  await choose(container.querySelector('select[aria-label="Fallback 2 provider"]'), 'openrouter');
-  await choose(container.querySelector('select[aria-label="Fallback 2 model"]'), 'google/gemini-2.5-pro');
-
-  expect(readProviderPreferences().mapChain).toEqual([
-    { backend: 'openrouter', model: 'anthropic/claude-sonnet-4.5' },
-    { backend: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
-    { backend: 'openrouter', model: 'google/gemini-2.5-pro' },
-  ]);
-
+  await choose(providerSelect('Fallback 1'), 'anthropic');
+  expect(options(modelSelect('Fallback 1'))).toEqual(['', 'claude-sonnet-5-5', '__custom__']);
   await click(button('Move Fallback 1 up'));
-  expect(readProviderPreferences().mapChain[0]).toEqual({ backend: 'anthropic', model: 'claude-sonnet-4-5-20250929' });
 
-  await click(container.querySelector('a[href="/prompts"]'));
-  await click(container.querySelector('a[href="/providers"]'));
-  expect(container.textContent).toContain('Personal key set for this tab');
-  await click(button('Remove key'));
-  expect(container.textContent).toContain('Personal key removed.');
-  expect(fetch).not.toHaveBeenCalled();
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await mount();
+  expect(container.textContent).toContain('Personal key saved in this browser');
+  expect(modelSelect('First choice').value).toBe('claude-sonnet-5-5');
+  expect(options(modelSelect('First choice'))).toEqual(['', 'claude-sonnet-5-5', '__custom__']);
+  expect(JSON.stringify(localStorage)).not.toContain('synthetic-claude-key');
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
 
-it('loads live models into the provider dropdown when testing a personal key', async () => {
-  fetch.mockResolvedValueOnce(Response.json({
-    message: 'Provider access confirmed. Loaded 1 models. Usage and billing were not tested.',
-    models: [{ id: 'claude-sonnet-5-5-live', label: 'Claude Sonnet 5.5 Live' }],
-  }));
+it('refreshes the catalog without silently changing a saved model and removes the cached list with its key', async () => {
+  fetch.mockResolvedValueOnce(providerResponse('claude-sonnet-5'));
+  fetch.mockResolvedValueOnce(providerResponse('claude-sonnet-5-5'));
   await mount();
-  const input = field('Anthropic API key');
-  await type(input, 'synthetic-live-key');
-  const row = input.closest('li');
-  await click([...row.querySelectorAll('button')].find(el => el.textContent === 'Use for this session'));
-  await click([...row.querySelectorAll('button')].find(el => el.textContent === 'Test connection & load models'));
-  expect(container.textContent).toContain('Loaded 1 models');
-  await choose(container.querySelector('select[aria-label="First choice provider"]'), 'anthropic');
-  const options = [...container.querySelector('select[aria-label="First choice model"]').options].map(o => o.value);
-  expect(options).toContain('claude-sonnet-5-5-live');
+  const row = await saveKey('Anthropic', 'synthetic-claude-key');
+  await choose(providerSelect('First choice'), 'anthropic');
+  expect(modelSelect('First choice').value).toBe('claude-sonnet-5');
+  await click([...row.querySelectorAll('button')].find(el => el.textContent === 'Refresh models'));
+  expect(options(modelSelect('First choice'))).toEqual(['', 'claude-sonnet-5', 'claude-sonnet-5-5', '__custom__']);
+  expect(modelSelect('First choice').selectedOptions[0].textContent).toContain('saved ID');
+  await click(button('Remove key'));
+  expect(container.textContent).toContain('Personal key and cached models removed.');
+  expect(options(modelSelect('First choice'))).toEqual(['', 'claude-sonnet-5', '__custom__']);
 });
 
 it('edits and restores the map prompt without contacting the legacy prompt service', async () => {

@@ -140,6 +140,7 @@ function recordingMapResult(source, payload) {
 
 
 export function configuredMapRoutes(runtime) {
+  if (runtime.credentialsReady === false) return [];
   const { preferences, keys } = runtime;
   const chain = Array.isArray(preferences.mapChain) && preferences.mapChain.length
     ? preferences.mapChain

@@ -12,7 +12,7 @@ export default function SitesPrivacy() {
         <header className="mt-7 border-b border-slate-200 pb-7">
           <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Privacy at Threads</h1>
           <p className={paragraph}>This page describes the public Sites preview, including its optional sign-in and cloud features. The separate local and Tailscale app can work differently.</p>
-          <p className="mt-2 text-xs text-slate-600">Updated 16 October 2026</p>
+          <p className="mt-2 text-xs text-slate-600">Updated 24 November 2026</p>
         </header>
 
         <section className={section}>
@@ -38,7 +38,7 @@ export default function SitesPrivacy() {
           <h2 className={heading}>Services and access</h2>
           <p className={paragraph}>Google receives data involved in Google sign-in when you choose it. The Site host and its infrastructure providers necessarily process browser requests and operate the cloud database and object storage. The operator may have infrastructure access to stored data. Private cloud storage is access-controlled for the signed-in owner; it is not end-to-end encrypted from the operator.</p>
           <p className={paragraph}>If you choose the bring-your-own-key AI tools, chat content is sent through the Site’s thin proxy to OpenAI; audio-file transcription with your own key goes from your browser to OpenAI. These are separate from Google sign-in and private file saving. If you choose live transcription, audio streams to Soniox after your permission. Audio-file import can also use OpenAI with your personal key. If you generate a conversation map, finalized words and their utterance IDs go to the provider you select: Google Gemini through Google AI Studio, OpenRouter and its configured model provider, or Claude through Anthropic. If you enable fallbacks, the Site may send your transcript to the providers you approve, in the selected order. For audio imports, your chosen fallback can receive the original audio. A request with an uncertain outcome stops the sequence. For direct Gemini, Google’s API terms and the project’s billing tier determine data use; OpenRouter’s data-collection setting does not apply to direct Google requests. For Claude, Anthropic’s commercial API terms and the workspace settings apply. Provider processing policies and the applicable account settings apply; generation never publishes your transcript or map. The local or ephemeral saving preference applies to generated maps; cloud saving remains a separate action.</p>
-          <p className={paragraph}>Personal keys entered under Providers stay in memory for the current tab. Connection checks send the key to the selected service without sending conversation content. Personal use is billed by the selected provider.</p>
+          <p className={paragraph}>When you save a personal key under Providers, this browser stores it encrypted along with the provider’s model list. Remove key deletes the local key and cached list. Connection checks send the key to the selected service without sending conversation content. Personal use is billed by the selected provider.</p>
         </section>
 
         <section className={section}>

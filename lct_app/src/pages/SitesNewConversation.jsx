@@ -178,7 +178,7 @@ export default function SitesNewConversation() {
   }
 
   const active = ACTIVE.has(activity?.stage);
-  const live = (!runtime || runtime.preferences.speech.includes('soniox')) && (runtime?.keys.soniox
+  const live = runtime?.credentialsReady !== false && (!runtime || runtime.preferences.speech.includes('soniox')) && (runtime?.keys.soniox
     ? capabilities?.transcription?.personal_enabled : capabilities?.transcription?.enabled);
   // A fast check stays silent; only one that runs past two seconds says so.
   const slowSetup = Boolean(setup && elapsed >= 2);

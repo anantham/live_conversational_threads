@@ -26,7 +26,7 @@ export function useAudioImport() {
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
-  const speechProviders = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
+  const speechProviders = runtime?.credentialsReady === false ? [] : runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
     ? runtime.keys.soniox ? capability?.personal_enabled : capability?.enabled
     : runtime.keys.openai) : capability?.enabled ? ['soniox'] : [];
   const speechSelection = speechProviders.join(',');

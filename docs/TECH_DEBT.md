@@ -540,3 +540,7 @@ The request ownership repairs keep coverage on the public pages.
 ### 2026-11-24 — Claude diagnostic coverage
 
 `lct_app/sites/openRouter.js` now reaches roughly 300 lines. The Claude-specific wire check and error sanitization live in `anthropicDiagnostics.js`, while both paths use the same admission and dispatch. If this route grows again, extract admission and the transport loop. `sitesTieredGeneration.test.js` also mixes direct, ordered, and diagnostic behavior. When adding more diagnostic cases, extract the shared in-memory D1 and map fixtures and move diagnostics into its own test file.
+
+### 2026-11-24 — Hosted provider settings component
+
+`lct_app/src/components/settings/SitesProviderSettings.jsx` is 339 lines and combines key editing and diagnostics with speech and map ordering. The IndexedDB and metadata request logic live outside the component. If credential management grows, extract the shared key form and its feedback into a dedicated component.

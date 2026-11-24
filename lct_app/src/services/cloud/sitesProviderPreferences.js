@@ -6,28 +6,6 @@ export const SPEECH_PROVIDERS = {
 };
 export const MAP_GUIDANCE_LIMIT = 3000;
 
-export const CURATED_MAP_MODELS = {
-  anthropic: [
-    { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1' },
-    { id: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet' },
-    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-    { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
-  ],
-  openrouter: [
-    { id: 'anthropic/claude-sonnet-4.5', label: 'Claude Sonnet 4.5' },
-    { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
-    { id: 'openai/gpt-4o', label: 'GPT-4o' },
-  ],
-  gemini: [
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-  ],
-};
-
 const STORAGE_KEY = 'lct.sites.provider-preferences.v1';
 const modelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
 const providerPattern = /^[a-z0-9][a-z0-9-]{0,79}$/i;

@@ -14,7 +14,7 @@ function target(route) {
   if (!validPersonalKey(key)) return null;
   if (backend === 'soniox') return ['https://api.soniox.com/v1/models', bearer(key)];
   if (backend === 'openai') return ['https://api.openai.com/v1/models/gpt-4o-transcribe-diarize', bearer(key)];
-  if (backend === 'anthropic') return ['https://api.anthropic.com/v1/models?limit=100', anthropicHeaders(key)];
+  if (backend === 'anthropic') return ['https://api.anthropic.com/v1/models?limit=100&lifecycle=active', anthropicHeaders(key)];
   if (backend === 'gemini') return ['https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { 'x-goog-api-key': key }];
   if (backend === 'openrouter') return ['https://openrouter.ai/api/v1/key', bearer(key)];
   return null;
@@ -28,7 +28,8 @@ function extractModels(backend, value) {
   if (backend === 'anthropic') {
     if (!Array.isArray(value?.data)) return null;
     return value.data
-      .filter(item => typeof item?.id === 'string' && /^claude-[A-Za-z0-9][A-Za-z0-9._-]{0,152}$/.test(item.id))
+      .filter(item => typeof item?.id === 'string' && /^claude-[A-Za-z0-9][A-Za-z0-9._-]{0,152}$/.test(item.id)
+        && (!item.lifecycle || item.lifecycle === 'active') && item.capabilities?.structured_outputs?.supported !== false)
       .slice(0, MAX_RETURNED_MODELS)
       .map(item => ({ id: item.id, label: sanitizeLabel(item.display_name, item.id) }));
   }
@@ -58,17 +59,17 @@ async function fetchOpenRouterModels(key, signal) {
     const response = await fetch('https://openrouter.ai/api/v1/models', { headers: bearer(key), signal, redirect: 'manual' });
     if (response.status !== 200) {
       void response.body?.cancel().catch(() => {});
-      return [];
+      return null;
     }
     const payload = await readOpenRouterJSON(response, signal, 3 * 1024 * 1024, true);
-    if (!Array.isArray(payload?.data)) return [];
+    if (!Array.isArray(payload?.data)) return null;
     return payload.data
       .filter(item => typeof item?.id === 'string' && item.id.length <= 160 && OPENROUTER_MODEL_ID.test(item.id)
         && Array.isArray(item.supported_parameters) && item.supported_parameters.includes('structured_outputs'))
       .slice(0, MAX_RETURNED_MODELS)
       .map(item => ({ id: item.id, label: sanitizeLabel(item.name, item.id) }));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -94,13 +95,13 @@ export async function handlePersonalProviderCheck(request, env) {
       }
       const metadata = await readOpenRouterJSON(response, signal, 512 * 1024, true);
       if (!acceptedMetadata(route, metadata)) return openRouterJSON(502, { error: 'The provider returned unreadable model or key metadata.' });
-      let models = extractModels(route.backend, metadata) || [];
+      let models = ['anthropic', 'gemini'].includes(route.backend) ? extractModels(route.backend, metadata) : null;
       if (route.backend === 'openrouter') models = await fetchOpenRouterModels(route.key, signal);
       return openRouterJSON(200, {
-        message: models.length
+        message: models?.length
           ? `Provider access confirmed. Loaded ${models.length} models. Usage and billing were not tested.`
           : 'Provider access confirmed. Usage and billing were not tested.',
-        ...(models.length ? { models } : {}),
+        ...(models ? { models } : {}),
       });
     });
   } catch {

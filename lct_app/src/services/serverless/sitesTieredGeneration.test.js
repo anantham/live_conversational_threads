@@ -253,18 +253,22 @@ describe('ordered settings generation', () => {
 
   it('checks only provider metadata for a personal key and returns available models', async () => {
     env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
-    fetch.mockResolvedValueOnce(Response.json({ data: [{ type: 'model', id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5' }] }));
+    fetch.mockResolvedValueOnce(Response.json({ data: [
+      { type: 'model', id: 'claude-sonnet-5-5', display_name: 'Claude Sonnet 5.5', lifecycle: 'active' },
+      { type: 'model', id: 'claude-sonnet-4-5-20250929', display_name: 'Claude Sonnet 4.5', lifecycle: 'deprecated' },
+      { type: 'model', id: 'claude-no-json', capabilities: { structured_outputs: { supported: false } } },
+    ] }));
     const response = await worker.fetch(new Request(SITE + '/api/cloud/providers/check', {
       method: 'POST', headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-key-check': 'check-v1' },
       body: JSON.stringify({ backend: 'anthropic', key: 'personal-key' }),
     }), env);
     expect(response.status).toBe(200);
-    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models?limit=100',
+    expect(fetch).toHaveBeenCalledWith('https://api.anthropic.com/v1/models?limit=100&lifecycle=active',
       expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'personal-key' }), redirect: 'manual' }));
     expect(fetch.mock.calls[0][1].body).toBeUndefined();
     const text = await response.text();
     expect(text).not.toContain('personal-key');
-    expect(JSON.parse(text).models).toEqual([{ id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' }]);
+    expect(JSON.parse(text).models).toEqual([{ id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' }]);
     expect(count()).toBe(0);
   });
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import PropTypes from 'prop-types';
 import { useSitesRuntime } from '../../contexts/SitesRuntimeContext';
 import { MAP_PROVIDERS, runClaudeDiagnostic } from '../../services/cloud/openRouterClient';
-import { CURATED_MAP_MODELS, MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId, validPersonalKey } from '../../services/cloud/sitesProviderPreferences';
+import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId, validPersonalKey } from '../../services/cloud/sitesProviderPreferences';
 
 const speechGroup = {
   title: 'Speech-to-text',
@@ -14,37 +14,52 @@ const button = 'min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-s
 const CUSTOM_MODEL = '__custom__';
 
 function modelsForProvider(backend, catalogs) {
-  const live = Array.isArray(catalogs?.[backend]) ? catalogs[backend] : [];
-  const curated = CURATED_MAP_MODELS[backend] || [];
-  const seen = new Set();
-  return [...live, ...curated].filter(item => {
-    if (!item?.id || seen.has(item.id)) return false;
-    seen.add(item.id);
-    return true;
-  });
+  return catalogs[backend] || [];
 }
 
 function ProviderKeyForm({ backend, name, speech = false }) {
-  const { keys, catalogs, preferences, setKey, setCatalog } = useSitesRuntime();
+  const { keys, catalogs, preferences, credentialsReady, setKey, refreshProvider } = useSitesRuntime();
   const [draft, setDraft] = useState('');
   const [feedback, setFeedback] = useState('');
   const [checking, setChecking] = useState(false);
   const key = keys[backend] || '';
-  const loadedCount = catalogs?.[backend]?.length || 0;
+  const loadedCount = catalogs[backend]?.length || 0;
 
   async function check() {
     setChecking(true);
     setFeedback('');
+    try { setFeedback(await refreshProvider(backend)); }
+    catch (error) { setFeedback(error.message || 'The connection check could not finish.'); }
+    finally { setChecking(false); }
+  }
+
+  async function saveKey() {
+    setChecking(true);
+    setFeedback('');
     try {
-      const response = await fetch('/api/cloud/providers/check', {
-        method: 'POST', credentials: 'same-origin', redirect: 'error', signal: AbortSignal.timeout(9000),
-        headers: { 'Content-Type': 'application/json', 'X-LCT-Key-Check': 'check-v1' },
-        body: JSON.stringify({ backend, key }),
-      });
-      const result = await response.json();
-      if (response.ok && Array.isArray(result.models) && result.models.length) setCatalog?.(backend, result.models);
-      setFeedback(response.ok ? result.message : result.error);
-    } catch { setFeedback('The connection check could not finish.'); }
+      await setKey(backend, draft.trim());
+      setDraft('');
+    } catch {
+      setFeedback('The key could not be saved in this browser.');
+      setChecking(false);
+      return;
+    }
+    setFeedback(speech ? 'Key saved in this browser.' : 'Key saved. Loading models…');
+    if (speech) { setChecking(false); return; }
+    try {
+      setFeedback('Key saved. ' + await refreshProvider(backend));
+    } catch (error) {
+      setFeedback('Key saved. ' + (error.message || 'The model list could not be loaded.'));
+    } finally { setChecking(false); }
+  }
+
+  async function removeKey() {
+    setChecking(true);
+    setFeedback('');
+    try {
+      await setKey(backend, '');
+      setFeedback('Personal key and cached models removed.');
+    } catch { setFeedback('The saved key could not be removed. Try again.'); }
     finally { setChecking(false); }
   }
 
@@ -59,7 +74,7 @@ function ProviderKeyForm({ backend, name, speech = false }) {
 
   return <details className="border-t border-slate-100 pt-2">
     <summary className="min-h-10 cursor-pointer py-2 text-sm font-medium text-slate-700">
-      {key ? `Personal key set for this tab${loadedCount ? ` · ${loadedCount} models loaded` : ''}` : backend === 'openai' ? 'Add a personal key' : 'Configure a personal key'}
+      {key ? `Personal key saved in this browser${loadedCount ? ` · ${loadedCount} ${loadedCount === 1 ? 'model' : 'models'} loaded` : ''}` : backend === 'openai' ? 'Add a personal key' : 'Configure a personal key'}
     </summary>
     <div className="grid gap-3 pb-2 pt-2">
       <label className="grid gap-1 text-sm">{name} API key
@@ -67,15 +82,14 @@ function ProviderKeyForm({ backend, name, speech = false }) {
           placeholder={key ? 'Enter a replacement key' : 'Enter your API key'} onChange={event => setDraft(event.target.value)} />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={button} disabled={checking || !validPersonalKey(draft.trim())}
-          onClick={() => { setKey(backend, draft.trim()); setDraft(''); setFeedback('Key saved for this tab.'); }}>
-          Use for this session
+        <button type="button" className={button} disabled={!credentialsReady || checking || !validPersonalKey(draft.trim())}
+          onClick={() => void saveKey()}>
+          Save key
         </button>
         <button type="button" className={button} disabled={!key || checking} onClick={() => void check()}>
-          {checking ? 'Checking…' : speech ? 'Test connection' : 'Test connection & load models'}
+          {speech ? 'Test connection' : 'Refresh models'}
         </button>
-        {key && <button type="button" className={button} disabled={checking}
-          onClick={() => { setKey(backend, ''); setFeedback('Personal key removed.'); }}>
+        {key && <button type="button" className={button} disabled={checking} onClick={() => void removeKey()}>
           Remove key
         </button>}
       </div>
@@ -187,7 +201,7 @@ function FallbackRow({ entry, index, total, onUpdate, onMove, onRemove }) {
         <label htmlFor={`custom-model-${index}`}>Custom model ID</label>
         <div className="flex gap-2">
           <input id={`custom-model-${index}`} className={input} value={customDraft} maxLength={160}
-            placeholder={entry.backend === 'anthropic' ? 'claude-sonnet-4-5-20250929' : 'Enter model ID'}
+            placeholder="Enter model ID"
             onChange={event => setCustomDraft(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitCustom(); } }} />
           <button type="button" className={button} disabled={!validModelId(customDraft)} onClick={commitCustom}>Set</button>
@@ -196,7 +210,7 @@ function FallbackRow({ entry, index, total, onUpdate, onMove, onRemove }) {
       </div> : <label className="grid gap-1 text-sm">Model
         <select className={input} aria-label={`${rankLabel} model`} value={entry.model || ''} onChange={event => handleModelSelect(event.target.value)}>
           <option value="">Site default</option>
-          {!inList && entry.model && <option value={entry.model}>{entry.model}</option>}
+          {!inList && entry.model && <option value={entry.model}>{entry.model} (saved ID)</option>}
           {options.map(item => <option key={item.id} value={item.id}>{item.label === item.id ? item.id : `${item.label} (${item.id})`}</option>)}
           <option value={CUSTOM_MODEL}>Custom model ID…</option>
         </select>
@@ -208,7 +222,7 @@ function FallbackRow({ entry, index, total, onUpdate, onMove, onRemove }) {
       </label>}
     </div>
     {entry.model && !hasKey && <p className="text-xs text-amber-800">Add a personal {MAP_PROVIDERS[entry.backend].name} key above to use a specific model; without one, this step uses Site configuration.</p>}
-    {!entry.model && hasKey && <p className="text-xs text-amber-800">Select a model from the dropdown to use your personal {MAP_PROVIDERS[entry.backend].name} key.</p>}
+    {!entry.model && hasKey && <p className="text-xs text-amber-800">{options.length ? 'Select a model to use your personal key.' : 'Refresh models above or enter a custom model ID.'}</p>}
   </li>;
 }
 FallbackRow.propTypes = {
@@ -306,16 +320,18 @@ function IntelligenceSettings() {
 }
 
 export default function SitesProviderSettings() {
-  const { storageError } = useSitesRuntime();
+  const { storageError, credentialError, credentialsReady } = useSitesRuntime();
   return <div className="max-w-3xl space-y-7">
     <header>
       <h2 className="text-xl font-semibold text-slate-900">Providers</h2>
-      <p className="mt-1 text-sm leading-6 text-slate-600">Provider order and models are saved in this browser. Personal keys stay in this tab until reload or close.</p>
+      <p className="mt-1 text-sm leading-6 text-slate-600">Keys, model lists, and fallback order are saved in this browser.</p>
     </header>
     <nav aria-label="Provider categories" className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-slate-700">
       <a className="inline-flex min-h-11 items-center underline underline-offset-4" href="#speech-to-text">Speech-to-text</a>
       <a className="inline-flex min-h-11 items-center underline underline-offset-4" href="#intelligence">Intelligence</a>
     </nav>
+    {!credentialsReady && <p role="status" className="text-sm text-slate-600">Loading saved provider keys…</p>}
+    {credentialError && <p role="alert" className="text-sm text-rose-800">{credentialError}</p>}
     {storageError && <p role="alert" className="text-sm text-rose-800">{storageError}</p>}
     <SpeechOrder />
     <IntelligenceSettings />
