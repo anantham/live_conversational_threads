@@ -49,10 +49,10 @@ function ProviderKeyForm({ backend, name, speech = false }) {
   }
 
   const diagnosticModel = preferences.mapChain.find(entry => entry.backend === 'anthropic' && entry.model)?.model || 'claude-sonnet-5-5';
-  async function diagnose() {
+  async function diagnose(mode) {
     setChecking(true);
     setFeedback('Claude is testing the schemas on a short synthetic conversation…');
-    try { setFeedback(await runClaudeDiagnostic(key, diagnosticModel, AbortSignal.timeout(125_000))); }
+    try { setFeedback(await runClaudeDiagnostic(key, diagnosticModel, AbortSignal.timeout(125_000), mode)); }
     catch (error) { setFeedback(error.message || 'The Claude diagnostic could not finish.'); }
     finally { setChecking(false); }
   }
@@ -80,8 +80,11 @@ function ProviderKeyForm({ backend, name, speech = false }) {
         </button>}
       </div>
       {backend === 'anthropic' && key && <div className="space-y-2">
-        <button type="button" className={button} disabled={checking} onClick={() => void diagnose()}>Test Claude map generation</button>
-        <p className="text-sm text-slate-600">Uses {diagnosticModel} and three invented turns. Up to two requests are billed to your Anthropic account.</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={button} disabled={checking} onClick={() => void diagnose('map')}>Test Claude map schema</button>
+          <button type="button" className={button} disabled={checking} onClick={() => void diagnose()}>Compare both schemas</button>
+        </div>
+        <p className="text-sm text-slate-600">Uses {diagnosticModel} and three invented turns. The map test sends one billable request. The comparison sends up to two.</p>
       </div>}
       {feedback && <p role="status" className="text-sm text-slate-600">{feedback}</p>}
     </div>

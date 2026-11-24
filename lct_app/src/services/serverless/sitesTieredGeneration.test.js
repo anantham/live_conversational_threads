@@ -331,6 +331,36 @@ describe('Claude schema diagnostic', () => {
     expect(rows()).toEqual([{ max_output_tokens: 12_000, completed_at: expect.any(Number) }]);
   });
 
+  it('retests only the compact production map schema in map-only mode', async () => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    fetch.mockResolvedValueOnce(Response.json(anthropicReply(), { headers: { 'request-id': id2 } }));
+    const response = await worker.fetch(diagnostic({ key, model, mode: 'map' }), env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ diagnostic: 'passed', model, map_request_id: id2 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const wire = JSON.parse(fetch.mock.calls[0][1].body);
+    const node = wire.output_config.format.schema.properties.nodes.items;
+    expect(node).toMatchObject({ type: 'object', properties: {
+      semantic_level: { enum: [1, 2, 3, 4, 5] },
+      thread_id: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    } });
+    expect(node).not.toHaveProperty('anyOf');
+    expect(rows()).toEqual([{ max_output_tokens: 8192, completed_at: expect.any(Number) }]);
+  });
+
+  it.each([
+    ['a mismatched tier name', graph => { graph.nodes[0].semantic_type = 'arc'; }],
+    ['an unknown source utterance', graph => { graph.nodes[0].source_ref.utterance_ids = ['unknown']; }],
+  ])('still refuses %s through the Claude map route', async (_, invalidate) => {
+    env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+    invalidate(responseGraph);
+    const response = await worker.fetch(diagnostic({ key, model, mode: 'map' }), env);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: 'invalid_completion', diagnostic_stage: 'map' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(rows()).toEqual([{ max_output_tokens: 8192, completed_at: null }]);
+  });
+
   it('distinguishes a schema failure from a successful minimal check without returning raw text', async () => {
     env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
     fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn' }, { headers: { 'request-id': id1 } }));

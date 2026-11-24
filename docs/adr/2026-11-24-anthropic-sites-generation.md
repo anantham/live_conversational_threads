@@ -19,3 +19,14 @@ The existing D1 ledger and limits govern all three providers. Provider changes r
 The same recording and import entry points can use Claude. Adding the secret by itself leaves the route inactive. A model metadata check confirms reported capability and availability. A synthetic hosted generation is still needed to establish live acceptance for the approved model and workspace.
 
 [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create) · [Anthropic structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+
+## 2026-11-24 amendment — Compact Claude schema
+
+A live synthetic control passed and the production schema returned HTTP 400
+(`req_011ChMowDExSu9dPthGPmMbz`). Anthropic's public Python SDK schema transformer
+rejected the previous wire schema at the array-valued `thread_id.type`.
+The Claude schema now represents nullability with explicit `anyOf` and uses a
+single node definition. The existing graph validator enforces tier/type
+pairing, higher-tier parents, and evidence links. The revised wire schema
+passes the public SDK transformer offline. A separate map-only diagnostic
+uses the same production payload and one upstream request.

@@ -12,7 +12,7 @@ function reference(allowedLevels) {
     properties: { semantic_level: { type: 'integer', enum: allowedLevels }, id: string } };
 }
 
-function node(level, enforceEmptyArcParents = true) {
+function node(level) {
   const higher = levels.filter(value => value > level);
   const parent = higher.length ? reference(higher) : null;
   return {
@@ -29,7 +29,7 @@ function node(level, enforceEmptyArcParents = true) {
       },
       parent_id: parent ? { anyOf: [parent, { type: 'null' }] } : { type: 'null' },
       secondary_parent_ids: parent ? { type: 'array', items: parent }
-        : { type: 'array', items: reference(levels), ...(enforceEmptyArcParents ? { maxItems: 0 } : {}) },
+        : { type: 'array', items: reference(levels), maxItems: 0 },
       thread_id: { type: ['string', 'null'] },
     },
   };
@@ -69,11 +69,28 @@ export const GENERATION_GRAPH_SCHEMA = {
   },
 };
 
-// Claude's JSON Schema subset omits maxItems. The graph validator enforces arc parents.
+// Anthropic's SDK transformer expects one type or an explicit anyOf.
+// Use a single node shape so Claude does not compile five copies of the same fields.
+const anthropicNodeBase = node(1);
+const anthropicNode = {
+  ...anthropicNodeBase,
+  properties: {
+    ...anthropicNodeBase.properties,
+    semantic_level: { enum: levels },
+    semantic_type: { enum: types },
+    source_excerpt: { enum: [''] },
+    parent_id: { anyOf: [reference(levels), { type: 'null' }] },
+    secondary_parent_ids: { type: 'array', items: reference(levels) },
+    thread_id: { anyOf: [string, { type: 'null' }] },
+  },
+};
+
+// normalizeTieredGeneration and normalizedGraph enforce tier and evidence rules
+// after decoding, including the no-parent rule for arcs.
 export const ANTHROPIC_GENERATION_GRAPH_SCHEMA = {
   ...GENERATION_GRAPH_SCHEMA,
   properties: {
     ...GENERATION_GRAPH_SCHEMA.properties,
-    nodes: { type: 'array', items: { anyOf: levels.map(level => node(level, false)) } },
+    nodes: { type: 'array', items: anthropicNode },
   },
 };

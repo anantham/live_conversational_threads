@@ -146,8 +146,9 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   }
   const payload = await openRouterWait(request.signal, MAP_INPUT_WINDOW_MS,
     signal => readOpenRouterJSON(request, signal, diagnostic ? 2048 : 512 * 1024));
-  if (diagnostic && (!payload || Object.keys(payload).some(key => key !== 'key' && key !== 'model'))) {
-    throw new OpenRouterError(400, 'diagnostic_input', 'The Claude diagnostic accepts only a model and personal key.');
+  if (diagnostic && (!payload || Object.keys(payload).some(key => !['key', 'model', 'mode'].includes(key))
+    || (payload.mode !== undefined && payload.mode !== 'map'))) {
+    throw new OpenRouterError(400, 'diagnostic_input', 'The Claude diagnostic accepts a model, personal key, and optional map-only mode.');
   }
   const input = diagnostic ? { source: CLAUDE_DIAGNOSTIC_SOURCE, routes: [{ backend: 'anthropic', key: payload.key, model: payload.model }] } : payload;
   const policies = ordered ? orderedPolicies(input?.routes, env) : [defaultPolicy];
@@ -191,7 +192,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
   const { artifact, backend, model, repair, minimalId, mapId } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
-    const minimalId = diagnostic ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
+    const minimalId = diagnostic && payload.mode !== 'map' ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
     let lastRefusal = null;
     for (const [index, { policy, body }] of wires.entries()) {
