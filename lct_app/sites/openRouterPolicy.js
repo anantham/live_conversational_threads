@@ -154,17 +154,22 @@ export function anthropicPolicy(env) {
 
 export const mapPolicies = { openrouter: openRouterPolicy, gemini: geminiPolicy, anthropic: anthropicPolicy };
 
+// The owner's own key and spend (approved 2026-11-25): detail calls may run three at a time, and a
+// refused reply (which stays unresolved until it goes stale) must not lock out the rest of a run.
+// Server-key routes keep their pacing. Lifetime and window attempt limits are unchanged.
+export const PERSONAL_PACING = Object.freeze({ maxConcurrent: 6, admissionIntervalMs: 1_500 });
+
 export function personalMapPolicy(route, env) {
   const { backend, key, model, provider } = route;
   if (env.LCT_PERSONAL_PROVIDERS_ENABLED !== 'true' || !validPersonalKey(key) || !Object.hasOwn(mapPolicies, backend)) return null;
   if (backend === 'openrouter') {
     const cleanProvider = typeof provider === 'string' ? provider.trim() : '';
     if (cleanProvider && !/^[a-z0-9][a-z0-9-]{0,79}$/i.test(cleanProvider)) return null;
-    return openRouterPolicy({ ...env, OPENROUTER_API_KEY_2: key, LCT_OPENROUTER_MODEL: model,
+    return { ...openRouterPolicy({ ...env, OPENROUTER_API_KEY_2: key, LCT_OPENROUTER_MODEL: model,
       LCT_OPENROUTER_PROVIDER: cleanProvider, LCT_OPENROUTER_DATA_COLLECTION: 'deny', LCT_OPENROUTER_FALLBACK_MODELS: '',
-      LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true' }, { optionalProvider: true });
+      LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true' }, { optionalProvider: true }), ...PERSONAL_PACING };
   }
   const prefix = backend.toUpperCase();
-  return mapPolicies[backend]({ ...env, [prefix + '_API_KEY']: key, ['LCT_' + prefix + '_MODEL']: model,
-    ['LCT_' + prefix + '_ENABLED']: 'true', ['LCT_' + prefix + '_PROJECT_BUDGET_CONFIRMED']: 'true' });
+  return { ...mapPolicies[backend]({ ...env, [prefix + '_API_KEY']: key, ['LCT_' + prefix + '_MODEL']: model,
+    ['LCT_' + prefix + '_ENABLED']: 'true', ['LCT_' + prefix + '_PROJECT_BUDGET_CONFIRMED']: 'true' }), ...PERSONAL_PACING };
 }

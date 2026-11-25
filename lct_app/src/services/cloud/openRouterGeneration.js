@@ -3,7 +3,7 @@ import { createRecordingThreads } from './recordingThreads.js';
 import { expandGenerationHierarchy } from './generationHierarchy.js';
 import { deriveParentEvidence } from './parentEvidence.js';
 import { expandTaskGeneration } from './rangeGeneration.js';
-import { DETAIL_FORMAT, DETAIL_PROMPT, DETAIL_SCHEMA, MAX_SEGMENT_TOPICS, SKELETON_FORMAT, SKELETON_PROMPT, SKELETON_SCHEMA, sanitizeGlossary } from './generationTasks.js';
+import { DETAIL_FORMAT, DETAIL_NESTED_FORMAT, DETAIL_PROMPT, MAX_SEGMENT_TOPICS, SKELETON_FORMAT, SKELETON_PROMPT, SKELETON_SCHEMA, detailNestedSchema, sanitizeGlossary } from './generationTasks.js';
 import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { AUDIT_PROMPT, AUDIT_SCHEMA, auditFromGeneratedText, auditMapNodes } from './auditTask.js';
 import { MAP_GUIDANCE_LIMIT } from './sitesProviderPreferences.js';
@@ -66,7 +66,7 @@ export function generationTask(context = {}) {
       || topics.some(t => !object(t) || !IDENTITY(t.id) || typeof t.node_name !== 'string' || t.node_name.length > 300
         || (t.summary != null && (typeof t.summary !== 'string' || t.summary.length > 2000)))
       || new Set(topics.map(t => t.id)).size !== topics.length) throw invalid('detail segment topics are invalid.');
-    return { task, prompt: DETAIL_PROMPT, schema: DETAIL_SCHEMA,
+    return { task, prompt: DETAIL_PROMPT, schema: detailNestedSchema(topics.map(t => t.id)),
       extra: { segment_topics: topics.map(({ id, node_name, summary }) => ({ id, node_name, summary: summary || '' })),
         ...(context.glossary != null ? { glossary: validGlossary(context.glossary) } : {}) } };
   }
@@ -155,6 +155,30 @@ export function recordingThreadsFromOpenRouterResponse({ source, response, conte
 }
 
 /**
+ * Nested detail (ideas holding chunks) → the flat detail shape. Chunk ids are assigned from their idea,
+ * so every chunk's parent exists by construction; an idea's topic_id becomes its typed topic parent.
+ * Malformed shapes are left for the validator to refuse.
+ */
+function flattenNestedDetail(graph) {
+  if (!Array.isArray(graph.ideas) || !Array.isArray(graph.boundary_notes)) return { ...graph, nodes: null };
+  const taken = new Set();
+  const nodes = [];
+  graph.ideas.forEach((idea, i) => {
+    if (!object(idea) || !Array.isArray(idea.chunks)) { nodes.push(null); return; }
+    let id = (typeof idea.id === 'string' && idea.id.trim() ? idea.id.trim() : `idea-${i + 1}`).slice(0, 120);
+    while (taken.has(id)) id = `${id}-${i + 1}`;
+    taken.add(id);
+    nodes.push({ id, semantic_level: 2, semantic_type: 'idea', node_name: idea.node_name, summary: idea.summary ?? '',
+      source_range: null, parent_id: typeof idea.topic_id === 'string' ? { semantic_level: 3, id: idea.topic_id } : null,
+      secondary_parent_ids: [] });
+    idea.chunks.forEach((chunk, k) => nodes.push(object(chunk) ? { id: `${id}~${k + 1}`, semantic_level: 1, semantic_type: 'chunk',
+      node_name: chunk.node_name, summary: chunk.summary ?? '', source_range: chunk.source_range,
+      parent_id: { semantic_level: 2, id }, secondary_parent_ids: [] } : null));
+  });
+  return { hierarchy_format: DETAIL_FORMAT, nodes, edges: [], boundary_notes: graph.boundary_notes };
+}
+
+/**
  * Parse and validate a graph after its provider's completion envelope has passed.
  * `context.task` names the expected reply (map, skeleton or detail); `context.topics` lists a detail
  * segment's skeleton topics. A reply whose declared format does not match its task is rejected.
@@ -167,9 +191,10 @@ export function recordingThreadsFromGeneratedText(source, content, context = {})
   try { graph = JSON.parse(content); }
   catch { throw invalid('the completion is not valid JSON.', 'content_json'); }
   const task = context.task || 'map';
+  if (task === 'detail' && object(graph) && graph.hierarchy_format === DETAIL_NESTED_FORMAT) graph = flattenNestedDetail(graph);
   const expected = { skeleton: SKELETON_FORMAT, detail: DETAIL_FORMAT }[task];
   if (!object(graph) || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)
-    || (expected ? graph.hierarchy_format !== expected : [SKELETON_FORMAT, DETAIL_FORMAT].includes(graph.hierarchy_format))
+    || (expected ? graph.hierarchy_format !== expected : [SKELETON_FORMAT, DETAIL_FORMAT, DETAIL_NESTED_FORMAT].includes(graph.hierarchy_format))
     || (task !== 'detail' && (!object(graph.metadata) || !Array.isArray(graph.conversation_threads)))) {
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }

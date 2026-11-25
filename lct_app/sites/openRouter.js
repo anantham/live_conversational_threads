@@ -143,6 +143,27 @@ function attemptUsage(completion, anthropic, response) {
 // eslint-disable-next-line no-unused-vars -- `started` is dropped on purpose (an internal clock reading)
 const publicAttempt = ({ started, ...attempt }) => attempt;
 
+/**
+ * Local diagnosis only: when the host supplies env.LCT_DEBUG_STRUCTURE_SINK (a function; never set on
+ * a deployed Worker), hand it the STRUCTURE of a refused reply (node ids, levels, parent references,
+ * the segment's topic ids) so a systematic refusal can be understood. Names, summaries and transcript
+ * text are never included.
+ */
+function recordRejectedStructure(env, { completion, anthropic, context, attempt }) {
+  if (typeof env.LCT_DEBUG_STRUCTURE_SINK !== 'function') return;
+  try {
+    const text = anthropic ? completion?.content?.find(block => block?.type === 'text')?.text : completion?.choices?.[0]?.message?.content;
+    const graph = JSON.parse(text);
+    const ref = value => (value && typeof value === 'object' ? { level: value.semantic_level, id: value.id } : value ?? null);
+    env.LCT_DEBUG_STRUCTURE_SINK({ at: new Date().toISOString(), task: attempt.task, stage: attempt.stage, rule: attempt.rule,
+      request_id: attempt.request_id, format: graph?.hierarchy_format,
+      segment_topic_ids: Array.isArray(context?.topics) ? context.topics.map(t => t.id) : undefined,
+      nodes: (Array.isArray(graph?.nodes) ? graph.nodes : []).map(n => ({ id: n?.id, level: n?.semantic_level, type: n?.semantic_type,
+        range: n?.source_range ? [n.source_range.from, n.source_range.to] : null, parent: ref(n?.parent_id),
+        secondary: Array.isArray(n?.secondary_parent_ids) ? n.secondary_parent_ids.map(ref) : undefined })) });
+  } catch { /* Diagnostics never change the result. */ }
+}
+
 const ANTHROPIC_STOP_REASONS = new Set(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use', 'pause_turn',
   'refusal', 'model_context_window_exceeded']);
 
@@ -353,6 +374,9 @@ function extractResponseUsage(completion, anthropic) {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
         const parsed = readCompletion({ source: input.source, response: completion, context });
         settle(attempt, { outcome: 'accepted', ...attemptUsage(completion, anthropic, response) });
+        if (context?.task === 'detail' && parsed.coverage?.chunks === 0) {
+          recordRejectedStructure(env, { completion, anthropic, context, attempt: { ...attempt, stage: 'accepted_without_chunks' } });
+        }
         if (parsed.audit) {
           logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
             findings: parsed.audit.findings.length, droppedRanges: parsed.audit.droppedRanges, unknownNodes: parsed.audit.unknownNodes,
@@ -372,6 +396,7 @@ function extractResponseUsage(completion, anthropic) {
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
         settle(attempt, { outcome: 'rejected', ...sanitizedValidation(error?.validationStage, error?.validationRule), ...attemptUsage(completion, anthropic, response) });
+        recordRejectedStructure(env, { completion, anthropic, context, attempt });
         logProviderCall(env, { ...call, outcome: 'rejected', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           ...sanitizedValidation(error?.validationStage, error?.validationRule),
           ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });

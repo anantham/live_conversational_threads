@@ -1,7 +1,7 @@
 // Test intent: lct_app/tests/intent/glance-detail-generation.md. All source is synthetic.
 import { describe, expect, it, vi } from 'vitest';
 import { recordingThreadsFromGeneratedText } from './openRouterGeneration.js';
-import { expandTopicDetail, runGlanceDetailPipeline } from './glanceDetailPipeline.js';
+import { detailPacing, expandTopicDetail, runGlanceDetailPipeline } from './glanceDetailPipeline.js';
 
 const texts = ['Welcome to the show.', 'I grew up by the sea.', 'Tell me more.', 'Boats every morning.',
   'Now, the budget.', 'It is tight.', 'Back to the sea.', 'Storms, mostly.'];
@@ -199,5 +199,55 @@ describe('glance then detail', () => {
     const again = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 }).catch(e => e);
     expect(again.message).toBe('refused');
     expect(again.partialBundle.graph_data.some(n => n.id === '3:sea')).toBe(true);
+  });
+
+  // Personal-key routes run detail calls three at a time; the map is identical to a sequential run.
+  it('runs at most three detail calls at once and merges the same map as a sequential run', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    expect(detailPacing([{ backend: 'anthropic', key: 'k', model: 'm' }])).toEqual({ intervalMs: 1600, concurrency: 3 });
+    expect(detailPacing([{ backend: 'openrouter' }])).toEqual({ intervalMs: 10500, concurrency: 1 });
+    const inner = fakeModel();
+    let live = 0, peak = 0;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      live += 1; peak = Math.max(peak, live);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      try { return await inner(...args); } finally { live -= 1; }
+    });
+    const parallel = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6 });
+    expect(peak).toBe(3);
+    const sequential = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel(), intervalMs: 0, concurrency: 1, maxSegmentWords: 6 });
+    const shape = b => b.graph_data.map(n => [n.id, n.parent_id ?? null, n.source_ref.utterance_ids.join(',')]);
+    expect(shape(parallel.bundle)).toEqual(shape(sequential.bundle));
+  });
+});
+
+describe('nested detail replies', () => {
+  const segment = { recordingId: 'synthetic-nested', startedAt: Date.UTC(2026, 10, 25), complete: true,
+    finalTokens: ['One.', '\nTwo.', '\nThree.'].map((text, i) => ({ text, speaker: `turn-${i + 1}`, startMs: i * 1000, endMs: i * 1000 + 900 })) };
+  const topics = [{ id: 'sea', node_name: 'The sea', summary: '' }, { id: 'money', node_name: 'Budget', summary: '' }];
+  const nested = ideas => JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], ideas });
+  const chunk = (from, to) => ({ id: 'c', node_name: 'c', summary: '', source_range: { from: u(from), to: u(to) } });
+
+  it('files chunks under their idea and ideas under the chosen topic, by construction', () => {
+    const result = recordingThreadsFromGeneratedText(segment, nested([
+      { id: 'boats', node_name: 'Boats', summary: '', topic_id: 'sea', chunks: [chunk(1, 1), chunk(2, 2)] },
+      { id: 'boats', node_name: 'Costs', summary: '', topic_id: 'money', chunks: [chunk(3, 3)] }]), { task: 'detail', topics });
+    const byId = new Map(result.bundle.graph_data.map(n => [n.id, n]));
+    expect(byId.get('1:boats~2').parent_id).toBe('2:boats');
+    expect(byId.get('2:boats').parent_id).toBe('3:sea');
+    // A repeated idea id is made unique rather than merged.
+    expect(byId.get('1:boats-2~1').parent_id).toBe('2:boats-2');
+    expect(byId.get('2:boats-2').parent_id).toBe('3:money');
+    expect(result.coverage).toMatchObject({ chunks: 3, uncoveredTurns: 0 });
+  });
+
+  it('still refuses an idea under a topic outside the segment, and an idea without chunks', () => {
+    expect(() => recordingThreadsFromGeneratedText(segment, nested([
+      { id: 'x', node_name: 'X', summary: '', topic_id: 'elsewhere', chunks: [chunk(1, 3)] }]), { task: 'detail', topics }))
+      .toThrow(expect.objectContaining({ validationStage: 'hierarchy', validationRule: 'parent_missing' }));
+    const empty = recordingThreadsFromGeneratedText(segment, nested([
+      { id: 'x', node_name: 'X', summary: '', topic_id: 'sea', chunks: [] }]), { task: 'detail', topics });
+    expect(empty.coverage).toMatchObject({ chunks: 0, uncoveredTurns: 3 });
   });
 });

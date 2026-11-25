@@ -585,3 +585,20 @@ it('names an unreachable provider and returns the attempt that was in flight', a
     outcome: 'network_error', error_name: 'TypeError', error_cause: 'ECONNRESET' }] });
   expect(body.error).toMatch(/could not be reached \(TypeError ECONNRESET\)/);
 });
+
+it('sends Claude a per-segment detail schema whose topic ids are exactly the segment topics', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text',
+    text: JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], ideas: [{ id: 'water', node_name: 'Water', summary: '',
+      topic_id: 'garden', chunks: [{ id: 'c', node_name: 'c', summary: '', source_range: { from: 'utterance-0001', to: 'utterance-0001' } }] }] }) }] }));
+  const response = await worker.fetch(new Request(SITE + '/api/cloud/map/generate', { method: 'POST',
+    headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1' },
+    body: JSON.stringify({ source, task: 'detail', topics: [{ id: 'garden', node_name: 'Garden' }, { id: 'tools', node_name: 'Tools' }],
+      routes: [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }] }) }), env);
+  expect(response.status).toBe(200);
+  const wire = JSON.parse(fetch.mock.calls[0][1].body);
+  const idea = wire.output_config.format.schema.properties.ideas.items;
+  expect(idea.properties.topic_id.anyOf[0].enum).toEqual(['garden', 'tools']);
+  expect(idea.properties.chunks.minItems).toBe(1);
+  expect((await response.json()).artifact.graph_data.find(n => n.id === '2:water').parent_id).toBe('3:garden');
+});
