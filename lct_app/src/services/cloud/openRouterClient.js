@@ -193,9 +193,10 @@ export async function getOrderedMapStatus(signal, routes) {
   return { enabled: Boolean(ready.length), available: Boolean(ready.length && value.available), audience: value.audience, models };
 }
 
-export async function generateOrderedRecordingMap(source, signal, routes, guidance) {
+export async function generateOrderedRecordingMap(source, signal, routes, guidance, context = {}) {
   createRecordingTranscript(source);
-  const body = JSON.stringify({ source, routes, guidance });
+  const body = JSON.stringify({ source, routes, guidance, ...(context.task ? { task: context.task } : {}),
+    ...(context.topics ? { topics: context.topics } : {}), ...(context.glossary ? { glossary: context.glossary } : {}) });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
   const response = await fetch('/api/cloud/map/generate', { method: 'POST',
     credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
@@ -203,5 +204,8 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
   const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
   if (!response.ok) throw failure(response.status, payload);
   if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
-  return { ...recordingMapResult(source, payload), backend: payload.backend, model: payload.model };
+  const notes = Array.isArray(payload.boundary_notes) ? payload.boundary_notes : null;
+  return { ...recordingMapResult(source, payload), backend: payload.backend, model: payload.model,
+    ...(notes ? { boundaryNotes: notes, stubTopicIds: Array.isArray(payload.stub_topic_ids) ? payload.stub_topic_ids : [] } : {}),
+    ...(Array.isArray(payload.glossary) ? { glossary: payload.glossary } : {}) };
 }

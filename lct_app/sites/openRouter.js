@@ -137,11 +137,11 @@ export function invalidCompletionDetails(error, { anthropic, completion, respons
     ...(requestId ? { upstream_request_id: requestId } : {}) };
 }
 
-function generationWires(policy, source, maxTokens, guidance) {
+function generationWires(policy, source, maxTokens, guidance, context) {
   const { backend, model } = policy;
-  if (backend === 'anthropic') return [buildAnthropicGenerationRequest({ source, model, maxTokens, guidance })];
+  if (backend === 'anthropic') return [buildAnthropicGenerationRequest({ source, model, maxTokens, guidance, context })];
   const gemini = backend === 'gemini';
-  const wire = buildOpenRouterGenerationRequest({ source, model: gemini ? `google/${model}` : model, maxTokens, guidance });
+  const wire = buildOpenRouterGenerationRequest({ source, model: gemini ? `google/${model}` : model, maxTokens, guidance, context });
   if (gemini) return [{ model, max_tokens: wire.max_tokens, stream: false,
     messages: wire.messages, response_format: wire.response_format }];
   const provider = { ...wire.provider, ...(policy.provider ? { only: [policy.provider] } : {}), data_collection: policy.dataCollection };
@@ -202,11 +202,13 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     }
     await readOpenRouterAdmission(env, policy);
   }
-  let wires, maxTokens;
+  let wires, maxTokens, context;
   try {
     maxTokens = diagnostic ? policy.longMaxTokens : outputCapFor(policy, input?.source);
     const guidance = ordered ? input.guidance : undefined;
-    wires = policies.flatMap(policy => generationWires(policy, input.source, maxTokens, guidance).map(body => ({ policy, body })));
+    // Glance (skeleton) and detail tasks run only on the ordered map route; legacy routes map in one pass.
+    context = ordered && !diagnostic && input.task != null ? { task: input.task, topics: input.topics, glossary: input.glossary } : {};
+    wires = policies.flatMap(policy => generationWires(policy, input.source, maxTokens, guidance, context).map(body => ({ policy, body })));
   } catch { throw new OpenRouterError(400, 'source', 'The recording source or prompt guidance is invalid or too large. No attempt was requested.'); }
   if (wires.some(({ body }) => new TextEncoder().encode(JSON.stringify(body)).byteLength > 512 * 1024)) {
     throw new OpenRouterError(400, 'source', 'The generation request is too large. No attempt was requested.');
@@ -232,7 +234,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   }
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
-  const { artifact, backend, model, repair, minimalId, mapId } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
+  const { artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
     const minimalId = diagnostic && payload.mode !== 'map' ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
     let lastRefusal = null;
@@ -242,7 +244,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       const anthropic = policy.backend === 'anthropic';
       const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
       const callStarted = Date.now();
-      const call = { backend: policy.backend, model: body.model, maxTokens };
+      const call = { backend: policy.backend, model: body.model, maxTokens, task: context?.task ?? 'map' };
       const response = await fetch(policy.endpoint, { method: 'POST',
         headers: { ...authentication, 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal, redirect: 'manual' });
@@ -275,13 +277,13 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
-        const { bundle, referenceRepair, coverage } = readCompletion({ source: input.source, response: completion });
+        const { bundle, referenceRepair, coverage, boundaryNotes, stubTopicIds, glossary } = readCompletion({ source: input.source, response: completion, context });
         logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           nodes: bundle.graph_data.length, coveredTurns: bundle.coverage?.covered_turns, totalTurns: bundle.coverage?.total_turns,
           ...(coverage ? { chunks: coverage.chunks, uncoveredTurns: coverage.uncoveredTurns, gapRuns: coverage.gapRuns,
             overlapTurns: coverage.overlapTurns } : {}),
           ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
-        return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair, minimalId,
+        return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair, minimalId, boundaryNotes, stubTopicIds, glossary,
           ...(diagnostic ? { mapId: anthropicRequestId(response) } : {}) };
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
@@ -302,7 +304,10 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     minimal_request_id: minimalId, map_request_id: mapId });
   logReferenceRepair(repair, backend);
   logEvidenceMismatch(artifact, backend);
-  return openRouterJSON(200, { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}) });
+  return openRouterJSON(200, { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),
+    ...(context?.task ? { task: context.task } : {}),
+    ...(boundaryNotes ? { boundary_notes: boundaryNotes, stub_topic_ids: stubTopicIds } : {}),
+    ...(glossary ? { glossary } : {}) });
 }
 
 async function handleMapSettings(request, env, path) {

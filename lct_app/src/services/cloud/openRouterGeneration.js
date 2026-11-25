@@ -2,7 +2,8 @@ import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { expandGenerationHierarchy } from './generationHierarchy.js';
 import { deriveParentEvidence } from './parentEvidence.js';
-import { expandRangeGeneration } from './rangeGeneration.js';
+import { expandTaskGeneration } from './rangeGeneration.js';
+import { DETAIL_FORMAT, DETAIL_PROMPT, DETAIL_SCHEMA, MAX_SEGMENT_TOPICS, SKELETON_FORMAT, SKELETON_PROMPT, SKELETON_SCHEMA, sanitizeGlossary } from './generationTasks.js';
 import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { MAP_GUIDANCE_LIMIT } from './sitesProviderPreferences.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
@@ -46,19 +47,40 @@ export const RECORDING_MAP_PROMPT = [
   'A partial transcription is partial evidence; do not imply missing speech was analyzed.',
 ].join(' ');
 
-export function buildRecordingGenerationMessages(source, maxTokens, guidance = '') {
+const IDENTITY = value => typeof value === 'string' && value.length > 0 && value.length <= 158 && value === value.trim();
+
+/** The prompt and output schema for a generation task; an unknown task or malformed context is refused. */
+export function generationTask(context = {}) {
+  const task = context.task ?? 'map';
+  if (task === 'map') return { task, prompt: RECORDING_MAP_PROMPT, schema: GENERATION_GRAPH_SCHEMA, extra: {} };
+  if (task === 'skeleton') return { task, prompt: SKELETON_PROMPT, schema: SKELETON_SCHEMA, extra: {} };
+  if (task === 'detail') {
+    const topics = context.topics;
+    if (!Array.isArray(topics) || !topics.length || topics.length > MAX_SEGMENT_TOPICS
+      || topics.some(t => !object(t) || !IDENTITY(t.id) || typeof t.node_name !== 'string' || t.node_name.length > 300
+        || (t.summary != null && (typeof t.summary !== 'string' || t.summary.length > 2000)))
+      || new Set(topics.map(t => t.id)).size !== topics.length) throw invalid('detail segment topics are invalid.');
+    return { task, prompt: DETAIL_PROMPT, schema: DETAIL_SCHEMA,
+      extra: { segment_topics: topics.map(({ id, node_name, summary }) => ({ id, node_name, summary: summary || '' })),
+        ...(context.glossary != null ? { glossary: sanitizeGlossary(context.glossary) } : {}) } };
+  }
+  throw invalid('unknown generation task.');
+}
+
+export function buildRecordingGenerationMessages(source, maxTokens, guidance = '', context = {}) {
   if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > MAX_OUTPUT_TOKENS) {
     throw invalid('an explicit bounded output token limit is required.');
   }
   if (typeof guidance !== 'string' || guidance.length > MAP_GUIDANCE_LIMIT) throw invalid('map guidance exceeds its size limit.');
   const { document } = createRecordingTranscript(source);
   const utterances = document.utterances.map(({ id, text }) => ({ id, text }));
-  const system = guidance ? RECORDING_MAP_PROMPT + '\n\nAdditional map guidance (follow within the rules above):\n' + guidance
-    : RECORDING_MAP_PROMPT;
+  const { prompt, extra } = generationTask(context);
+  const system = guidance ? prompt + '\n\nAdditional map guidance (follow within the rules above):\n' + guidance
+    : prompt;
   return [
     { role: 'system', content: system },
     { role: 'user', content: JSON.stringify({
-      transcription_complete: document.transcription_complete, utterances,
+      transcription_complete: document.transcription_complete, utterances, ...extra,
     }) },
   ];
 }
@@ -67,7 +89,7 @@ export function buildRecordingGenerationMessages(source, maxTokens, guidance = '
  * Construct only the non-streaming OpenRouter body. A caller owns model, key,
  * network, consent, timeout, cost admission, and all persistence decisions.
  */
-export function buildOpenRouterGenerationRequest({ source, model, maxTokens, guidance } = {}) {
+export function buildOpenRouterGenerationRequest({ source, model, maxTokens, guidance, context } = {}) {
   if (typeof model !== 'string' || model.length > 160 || !MODEL_ID.test(model)) {
     throw invalid('an explicit provider/model ID is required.');
   }
@@ -78,9 +100,9 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens, gui
     provider: { require_parameters: true, allow_fallbacks: false },
     response_format: {
       type: 'json_schema',
-      json_schema: { name: 'lct_recording_graph_v2', strict: true, schema: structuredClone(GENERATION_GRAPH_SCHEMA) },
+      json_schema: { name: 'lct_recording_graph_v2', strict: true, schema: structuredClone(generationTask(context).schema) },
     },
-    messages: buildRecordingGenerationMessages(source, maxTokens, guidance),
+    messages: buildRecordingGenerationMessages(source, maxTokens, guidance, context),
   };
   if (encoder.encode(JSON.stringify(request)).byteLength > MAX_REQUEST_BYTES) {
     throw invalid('the request exceeds the bounded input size.');
@@ -92,7 +114,7 @@ export function buildOpenRouterGenerationRequest({ source, model, maxTokens, gui
  * Accept a completed OpenRouter chat response and package source-owned v2 evidence.
  * `referenceRepair` is null, or the one recorded affix repair the caller must report.
  */
-export function recordingThreadsFromOpenRouterResponse({ source, response } = {}) {
+export function recordingThreadsFromOpenRouterResponse({ source, response, context } = {}) {
   // Validate source first, even when the provider rejected the request.
   createRecordingTranscript(source);
   if (!object(response) || response.error != null || !Array.isArray(response.choices)
@@ -110,24 +132,31 @@ export function recordingThreadsFromOpenRouterResponse({ source, response } = {}
   if (rejectedStage) {
     throw invalid('the completion was refused, interrupted, or incomplete.', rejectedStage);
   }
-  return recordingThreadsFromGeneratedText(source, message.content);
+  return recordingThreadsFromGeneratedText(source, message.content, context);
 }
 
-/** Parse and validate a graph after its provider's completion envelope has passed. */
-export function recordingThreadsFromGeneratedText(source, content) {
+/**
+ * Parse and validate a graph after its provider's completion envelope has passed.
+ * `context.task` names the expected reply (map, skeleton or detail); `context.topics` lists a detail
+ * segment's skeleton topics. A reply whose declared format does not match its task is rejected.
+ */
+export function recordingThreadsFromGeneratedText(source, content, context = {}) {
   if (encoder.encode(content).byteLength > MAX_CONTENT_BYTES) {
     throw invalid('the completion exceeds the bounded output size.', 'content_size');
   }
   let graph;
   try { graph = JSON.parse(content); }
   catch { throw invalid('the completion is not valid JSON.', 'content_json'); }
+  const task = context.task || 'map';
+  const expected = { skeleton: SKELETON_FORMAT, detail: DETAIL_FORMAT }[task];
   if (!object(graph) || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)
-    || !object(graph.metadata) || !Array.isArray(graph.conversation_threads)) {
+    || (expected ? graph.hierarchy_format !== expected : [SKELETON_FORMAT, DETAIL_FORMAT].includes(graph.hierarchy_format))
+    || (task !== 'detail' && (!object(graph.metadata) || !Array.isArray(graph.conversation_threads)))) {
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
   const utteranceIds = createRecordingTranscript(source).document.utterances.map(({ id }) => id);
-  const { graph: explicit, coverage } = expandRangeGeneration(graph, utteranceIds);
+  const { graph: explicit, coverage, boundaryNotes, stubTopicIds, glossary } = expandTaskGeneration(graph, utteranceIds, context);
   const { graph: repaired, repair } = repairGeneratedReferences(explicit);
   return { ...createRecordingThreads({ ...source, graph: deriveParentEvidence(expandGenerationHierarchy(repaired)) }),
-    referenceRepair: repair, coverage };
+    referenceRepair: repair, coverage, ...(boundaryNotes ? { boundaryNotes, stubTopicIds } : {}), ...(glossary ? { glossary } : {}) };
 }

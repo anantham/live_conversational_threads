@@ -31,17 +31,27 @@ describe('range-cited generation', () => {
     expect(evidence(bundle, '3:sea')).toEqual([u(2), u(3), u(4), u(7), u(8)]);
     expect(evidence(bundle, '3:money')).toEqual([u(5), u(6)]);
     expect(bundle.conversation_threads[0].steps.map(s => s.evidence_utterance_ids)).toEqual([[u(2)], [u(7), u(8)]]);
-    expect(coverage).toEqual({ totalTurns: 8, chunks: 4, uncoveredTurns: 0, gapRuns: 0, overlapTurns: 0 });
+    expect(coverage).toEqual({ totalTurns: 8, chunks: 4, uncoveredTurns: 0, gapRuns: 0, overlapTurns: 0, higherTierRangesIgnored: 0 });
   });
 
   it('keeps uncovered turns as explicit chunks and counts overlaps instead of hiding them', () => {
     const { bundle, coverage } = recordingThreadsFromGeneratedText(source, reply([
       node(1, 'a', { from: u(1), to: u(3) }, null), node(1, 'b', { from: u(3), to: u(4) }, null),
       node(1, 'c', { from: u(7), to: u(7) }, null)]));
-    expect(coverage).toEqual({ totalTurns: 8, chunks: 3, uncoveredTurns: 3, gapRuns: 2, overlapTurns: 1 });
+    expect(coverage).toEqual({ totalTurns: 8, chunks: 3, uncoveredTurns: 3, gapRuns: 2, overlapTurns: 1, higherTierRangesIgnored: 0 });
     const uncovered = bundle.graph_data.filter(n => n.node_name === 'Uncovered turns');
     expect(uncovered.map(n => n.source_ref.utterance_ids)).toEqual([[u(5), u(6)], [u(8)]]);
-    expect(bundle.coverage.covered_turns).toBe(8);
+    // Placeholders keep the turns visible but are not counted as coverage by the model.
+    expect(bundle.coverage.covered_turns).toBe(5);
+    expect(uncovered.every(n => n.generated_gap === true)).toBe(true);
+  });
+
+  it('ignores and counts a range on a higher tier, so a parent cannot reach across a sibling', () => {
+    const { bundle, coverage } = recordingThreadsFromGeneratedText(source, reply([
+      node(1, 'a', { from: u(1), to: u(4) }, ref(3, 'first')), node(1, 'b', { from: u(5), to: u(8) }, ref(3, 'second')),
+      node(3, 'first', { from: u(1), to: u(8) }), node(3, 'second', null)]));
+    expect(evidence(bundle, '3:first')).toEqual([u(1), u(2), u(3), u(4)]);
+    expect(coverage.higherTierRangesIgnored).toBe(1);
   });
 
   it.each([

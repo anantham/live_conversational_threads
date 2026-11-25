@@ -493,3 +493,34 @@ describe('Claude schema diagnostic', () => {
     expect(rows()).toHaveLength(1);
   });
 });
+
+// Intent: lct_app/tests/intent/glance-detail-generation.md — the tasks run through the ordered Worker route.
+it('runs a skeleton glance through the public Claude route with its own schema, prompt and glossary', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  const skeleton = { hierarchy_format: 'skeleton-ranges-v1', glossary: [{ canonical: 'Kaio', variants: ['Kyle'] }],
+    metadata: { conversation_title: 'Garden', executive_summary: 'Water.' }, edges: [], conversation_threads: [],
+    nodes: [{ id: 'garden', semantic_level: 3, semantic_type: 'topic', node_name: 'Garden', summary: 'Water.', salience: 'core',
+      source_ranges: [{ from: 'utterance-0001', to: 'utterance-0001' }], parent_id: null, secondary_parent_ids: [] }] };
+  fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify(skeleton) }] }));
+  const response = await worker.fetch(new Request(SITE + '/api/cloud/map/generate', { method: 'POST',
+    headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1' },
+    body: JSON.stringify({ source, task: 'skeleton', routes: [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }] }) }), env);
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body).toMatchObject({ task: 'skeleton', glossary: [{ canonical: 'Kaio', variants: ['Kyle'] }] });
+  expect(body.artifact.graph_data).toEqual([expect.objectContaining({ id: '3:garden', salience: 'core',
+    source_ref: { utterance_ids: ['utterance-0001'] } })]);
+  const wire = JSON.parse(fetch.mock.calls[0][1].body);
+  expect(wire.system).toContain('Glance over the whole conversation');
+  expect(wire.output_config.format.schema.properties.nodes.items.properties.semantic_level.enum).toEqual([3, 4, 5]);
+});
+
+it('refuses a detail task without segment topics before any provider call', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  const response = await worker.fetch(new Request(SITE + '/api/cloud/map/generate', { method: 'POST',
+    headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1' },
+    body: JSON.stringify({ source, task: 'detail', routes: [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }] }) }), env);
+  expect(response.status).toBe(400);
+  expect(fetch).not.toHaveBeenCalled();
+});

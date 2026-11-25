@@ -85,6 +85,8 @@ function normalizedGraph(graph, utterances) {
       ...(node.source_excerpt == null ? {} : { source_excerpt: node.source_excerpt }),
       ...(node.thread_id == null ? {} : { thread_id: node.thread_id }),
       ...(node.speaker_id == null ? {} : { speaker_id: node.speaker_id }),
+      ...(['core', 'supporting', 'aside'].includes(node.salience) ? { salience: node.salience } : {}),
+      ...(node.generated_gap === true ? { generated_gap: true } : {}),
       ...(node.parent_id == null ? {} : { parent_id: node.parent_id }),
       ...(node.children_ids == null ? {} : { children_ids: [...node.children_ids] }),
       ...(memberships == null ? {} : { memberships }),
@@ -173,7 +175,8 @@ export function createRecordingThreads({ recordingId, startedAt, finalTokens, co
   // Source validation precedes every read of generated output.
   const { document } = createRecordingTranscript({ recordingId, startedAt, finalTokens, complete });
   const { nodes, edges, conversationThreads } = normalizedGraph(graph, document.utterances);
-  const linked = new Set(nodes.flatMap((node) => node.source_ref.utterance_ids));
+  // Placeholders for uncovered turns keep those turns visible but are not coverage by the model.
+  const linked = new Set(nodes.filter((node) => !node.generated_gap).flatMap((node) => node.source_ref.utterance_ids));
   const covered = linked.size;
   const bundle = {
     format: 'lct.threads', format_version: 2,

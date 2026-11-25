@@ -10,7 +10,7 @@ export const GENERATION_RANGE_FORMAT = 'tiered-ranges-v3';
 export const GENERATION_SEMANTIC_TYPES = Object.freeze(['chunk', 'idea', 'topic', 'theme', 'arc']);
 const types = GENERATION_SEMANTIC_TYPES;
 
-function reference(allowedLevels) {
+export function reference(allowedLevels) {
   return { type: 'object', additionalProperties: false, required: ['semantic_level', 'id'],
     properties: { semantic_level: { type: 'integer', enum: allowedLevels }, id: string } };
 }
@@ -38,7 +38,7 @@ function node(level) {
   };
 }
 
-const edge = {
+export const edge = {
   type: 'object', additionalProperties: false,
   required: ['id', 'from_node_id', 'to_node_id', 'relation_type', 'edge_kind', 'explanation', 'relation_text'],
   properties: {
@@ -56,13 +56,13 @@ const thread = {
   properties: { id: string, title: string, steps: { type: 'array', minItems: 1, items: threadStep } },
 };
 
-const utteranceRange = {
+export const utteranceRange = {
   type: 'object', additionalProperties: false, required: ['from', 'to'],
   properties: { from: string, to: string },
 };
 
-function rangeNode(level) {
-  const higher = levels.filter(value => value > level);
+export function rangeNode(level, parentLevels) {
+  const higher = parentLevels ?? levels.filter(value => value > level);
   const parent = higher.length ? reference(higher) : null;
   return {
     type: 'object', additionalProperties: false,
@@ -78,7 +78,7 @@ function rangeNode(level) {
     },
   };
 }
-const rangeThread = {
+export const rangeThread = {
   type: 'object', additionalProperties: false, required: ['id', 'title', 'steps'],
   properties: { id: string, title: string, steps: { type: 'array', minItems: 1, items: {
     type: 'object', additionalProperties: false, required: ['moment_id', 'evidence'],

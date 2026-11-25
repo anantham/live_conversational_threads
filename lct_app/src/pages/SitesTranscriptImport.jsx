@@ -8,7 +8,8 @@ import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
 import { configuredMapRoutes, getOrderedMapStatus, MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
 import { driveTimestampUrl, formatClock } from '../services/cloud/geminiNotesParser.js';
 import { readTranscriptFile } from '../services/cloud/pdfTranscriptReader.js';
-import { runLongTranscriptPipeline, splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
+import { splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
+import { runGlanceDetailPipeline } from '../services/cloud/glanceDetailPipeline.js';
 import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
 
@@ -25,7 +26,7 @@ function attachMeetingFields(bundle, parsed) {
   };
 }
 
-function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange }) {
+function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const runtime = useSitesRuntime();
   const navigate = useNavigate();
   const routes = useMemo(() => (runtime ? configuredMapRoutes(runtime) : []), [runtime]);
@@ -36,6 +37,7 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
   const [pipelineError, setPipelineError] = useState('');
   const [served, setServed] = useState('');
   const [completedBundle, setCompletedBundle] = useState(null);
+  const [detail, setDetail] = useState('all');
   const abortRef = useRef(null);
   const status = readiness?.routes === routes ? readiness.status : null;
   const statusError = readiness?.routes === routes ? readiness.error : '';
@@ -66,9 +68,10 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
     abortRef.current = controller;
     setRunning(true);
     setPipelineError('');
-    setProgress({ phase: 'starting', windowIndex: 0, totalWindows: windows.length, completedWindows: 0 });
+    setProgress({ phase: 'starting' });
     try {
-      const result = await runLongTranscriptPipeline({
+      const result = await runGlanceDetailPipeline({
+        detail,
         source: parsed.source,
         routes,
         guidance: runtime?.preferences?.guidance || '',
@@ -90,7 +93,7 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
     } catch (cause) {
       setProgress(current => ({ ...current, phase: 'stopped' }));
       if (cause?.name === 'AbortError') {
-        setPipelineError('Pipeline cancelled. Any completed windows are preserved in your partial map.');
+        setPipelineError('Pipeline cancelled. The overview and any detailed topics are preserved in your partial map.');
       } else {
         setPipelineError(cause?.message || 'Multi-tier pipeline did not finish.');
       }
@@ -100,16 +103,32 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
     }
   }
 
+  const percent = !progress ? 0 : progress.phase === 'done' ? 100
+    : progress.totalSegments ? 10 + Math.round(90 * (progress.completedSegments || 0) / progress.totalSegments)
+      : ['skeleton', 'detail'].includes(progress.phase) ? 10 : 0;
+  const progressText = !progress ? '' : {
+    starting: 'Starting…',
+    glance: 'Reading the whole conversation for its overview: topics, themes and arcs…',
+    skeleton: `Overview ready${progress.model ? ` (${progress.model})` : ''}. Preparing detail…`,
+    detail: progress.totalSegments
+      ? `Detailing topic group ${(progress.segmentIndex ?? 0) + 1} of ${progress.totalSegments}: ${(progress.topics || []).slice(0, 3).join(', ')}${(progress.topics || []).length > 3 ? '…' : ''}`
+      : 'Detailing topics…',
+    done: `Map complete${served ? ` via ${served}` : ''}.`,
+    stopped: progress.totalSegments
+      ? `Stopped after ${progress.completedSegments || 0} of ${progress.totalSegments} topic groups. The overview is kept.`
+      : 'Stopped before the overview finished.',
+  }[progress.phase] || '';
+
   return (
     <section aria-label="Multi-tier abstraction pipeline" className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            <Layers size={13} aria-hidden="true" /> Windowed multi-tier pipeline
+            <Layers size={13} aria-hidden="true" /> Overview, then detail
           </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-900">Build 5-tier conversation map ({windows.length} windows)</h2>
+          <h2 className="mt-1 text-lg font-semibold text-slate-900">Build 5-tier conversation map</h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            This transcript spans {formatClock(parsed.durationMs)} ({parsed.wordCount.toLocaleString()} words). To avoid output truncation and preserve fine-grained evidence, we process it in {windows.length} chronological windows (~15 min / ~2,800 words each) and assemble all chunks, ideas, topics, themes, arcs, and threads onto the single canonical transcript.
+            This transcript spans {formatClock(parsed.durationMs)} ({parsed.wordCount.toLocaleString()} words). One overview call reads the whole conversation and names its arcs, themes and topics, including subjects it returns to. Detail calls then fill in ideas and chunks topic by topic, each linked to exact turns.
           </p>
         </div>
       </div>
@@ -126,15 +145,25 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
         </p>
       )}
 
+      <label className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-slate-700">Detail</span>
+        <select className="rounded-md border border-slate-300 bg-white px-2 py-1" value={detail} disabled={running}
+          onChange={event => setDetail(event.target.value)}>
+          <option value="all">All topics</option>
+          <option value="core">Core topics only</option>
+          <option value="none">Overview only</option>
+        </select>
+      </label>
+
       <label className="flex items-start gap-3 text-sm leading-6">
         <input type="checkbox" className="mt-1" checked={consent} disabled={running || !status?.enabled}
           onChange={event => setConsentRoutes(event.target.checked ? routes : null)} />
-        I have permission to send these {parsed.turns.length} transcript turns to {recipients} across {windows.length} windows to build a conversation map.
+        I have permission to send these {parsed.turns.length} transcript turns to {recipients}: the whole transcript once for the overview, then the turns of each topic group for detail.
       </label>
 
       <div className="flex flex-wrap gap-2">
         <button type="button" className={primary} disabled={!consent || !status?.available || running} onClick={() => void startPipeline()}>
-          {running ? `Mapping window ${(progress?.windowIndex ?? 0) + 1} of ${windows.length}…` : completedBundle ? 'Regenerate full map' : `Run ${windows.length}-window pipeline`}
+          {running ? 'Mapping…' : completedBundle ? 'Regenerate map' : 'Build map'}
         </button>
         {running && (
           <button type="button" className={button} onClick={() => abortRef.current?.abort()}>
@@ -150,19 +179,12 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
 
       {progress && (
         <div role="status" className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-700">
-            <span>
-              {progress.phase === 'waiting' && `Pacing before window ${progress.windowIndex + 1} of ${progress.totalWindows} (${formatClock(progress.startMs)}–${formatClock(progress.endMs)})…`}
-              {progress.phase === 'generating' && `Generating multi-tier nodes for window ${progress.windowIndex + 1} of ${progress.totalWindows} (${formatClock(progress.startMs)}–${formatClock(progress.endMs)})…`}
-              {progress.phase === 'window_complete' && `Completed ${progress.completedWindows} of ${progress.totalWindows} windows.`}
-              {progress.phase === 'done' && `Completed all ${progress.totalWindows} windows${served ? ` via ${served}` : ''}.`}
-              {progress.phase === 'starting' && 'Starting multi-tier pipeline…'}
-              {progress.phase === 'stopped' && `Stopped after ${progress.completedWindows} of ${progress.totalWindows} windows.`}
-            </span>
-            <span>{Math.round(((progress.completedWindows || 0) / progress.totalWindows) * 100)}%</span>
+          <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-700">
+            <span>{progressText}</span>
+            <span>{percent}%</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-            <div className="h-full bg-slate-900 transition-all" style={{ width: `${Math.round(((progress.completedWindows || 0) / progress.totalWindows) * 100)}%` }} />
+            <div className="h-full bg-slate-900 transition-all" style={{ width: `${percent}%` }} />
           </div>
         </div>
       )}
@@ -173,7 +195,6 @@ function MultiWindowPipelinePanel({ parsed, windows, onBundleReady, onBusyChange
 }
 MultiWindowPipelinePanel.propTypes = {
   parsed: PropTypes.object.isRequired,
-  windows: PropTypes.array.isRequired,
   onBundleReady: PropTypes.func.isRequired,
   onBusyChange: PropTypes.func,
 };
@@ -403,7 +424,6 @@ export default function SitesTranscriptImport() {
                 <MultiWindowPipelinePanel
                   key={parsed.source.recordingId}
                   parsed={parsed}
-                  windows={windows}
                   onBundleReady={setGeneratedBundle}
                   onBusyChange={setGenerating}
                 />
