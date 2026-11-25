@@ -86,9 +86,18 @@ it("marks every passage of a cited run with a wash, not a side stripe", () => {
     { id: "c", speaker_name: "Bo", text: "Run ends" },
     { id: "d", speaker_name: "Bo", text: "After" },
   ] };
-  act(() => root.render(<TextSourcePanel bundle={bundle} selection={{ kind: "utterance", utteranceId: "b", endUtteranceId: "c" }} onClose={vi.fn()} />));
+  const selection = { kind: "utterance", utteranceId: "b", endUtteranceId: "c" };
+  act(() => root.render(<TextSourcePanel bundle={bundle} selection={selection} onClose={vi.fn()} />));
   const cited = [...host.querySelectorAll('[aria-current="true"]')].map((row) => row.textContent);
   expect(cited).toEqual([expect.stringContaining("Run starts"), expect.stringContaining("Run ends")]);
+  for (const row of host.querySelectorAll('[aria-current="true"]')) expect(row.className).toContain("bg-amber-50");
   expect(host.querySelector(".border-l-2")).toBeNull();
-  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+  // It scrolls the first passage of the run to the top, not the last one.
+  const scroll = HTMLElement.prototype.scrollIntoView;
+  expect(scroll.mock.contexts.at(-1).textContent).toContain("Run starts");
+  expect(scroll.mock.calls.at(-1)[0]).toEqual({ block: "start" });
+  // Re-rendering with a fresh but equal bundle must not scroll again.
+  const calls = scroll.mock.calls.length;
+  act(() => root.render(<TextSourcePanel bundle={{ utterances: [...bundle.utterances] }} selection={selection} onClose={vi.fn()} />));
+  expect(scroll.mock.calls.length).toBe(calls);
 });

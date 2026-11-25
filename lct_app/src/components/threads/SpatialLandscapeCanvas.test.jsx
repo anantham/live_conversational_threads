@@ -136,6 +136,12 @@ describe("SpatialLandscapeCanvas", () => {
     act(() => drill.click());
     expect(host.textContent).toContain("Morning sits");
     expect(host.textContent).not.toContain("Who pays for what.");
+
+    // A leaf has no children: its button opens the passage instead, with the full run.
+    const openPassage = host.querySelector('button[aria-label="Open passage: Morning sits"]');
+    expect(openPassage).not.toBeNull();
+    act(() => openPassage.click());
+    expect(onOpenVisit).toHaveBeenLastCalledWith({ nodeId: "moment-a1", utteranceId: "u3", endUtteranceId: "u4", seconds: 3065 });
   });
 
   it("emits merge and split boundary corrections through the quiet Adjust boundary control", () => {

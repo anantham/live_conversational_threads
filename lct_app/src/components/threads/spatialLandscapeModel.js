@@ -268,26 +268,33 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
   // Upper tiers usually cite no turns of their own; their provenance is the turns
   // their descendants cite. visitsById stays own-citation only (boundary corrections
   // and the timeline act on what a node itself claims); sourceVisitsById is what the
-  // reader is shown and opened to.
-  const descendantIdsMemo = new Map();
-  const citedIdsFor = (id, path = new Set()) => {
-    if (descendantIdsMemo.has(id)) return descendantIdsMemo.get(id);
-    const own = utteranceIdsOf(nodesById.get(id));
-    if (own.length || path.has(id)) return own;
-    path.add(id);
-    const rolled = [...new Set((childrenById.get(id) || []).flatMap((childId) => citedIdsFor(childId, path)))];
-    path.delete(id);
-    descendantIdsMemo.set(id, rolled);
-    return rolled;
+  // reader is shown and opened to. Only ids present in the transcript count as a
+  // citation, so a node whose ids all dangle rolls up from below like an uncited one.
+  // Iterative with a visited set: .threads files are untrusted, so parent links may
+  // form cycles or very deep chains.
+  const resolvedOwnIds = (id) => utteranceIdsOf(nodesById.get(id)).filter((uid) => utteranceIndex.has(uid));
+  const descendantCitations = (rootId) => {
+    const cited = new Set();
+    const visited = new Set([rootId]);
+    const stack = [...(childrenById.get(rootId) || [])];
+    while (stack.length) {
+      const id = stack.pop();
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const own = resolvedOwnIds(id);
+      if (own.length) own.forEach((uid) => cited.add(uid));
+      else stack.push(...(childrenById.get(id) || []));
+    }
+    return [...cited];
   };
   const sourceVisitsById = new Map();
-  for (const [id, node] of nodesById.entries()) {
+  for (const id of nodesById.keys()) {
     const own = visitsById.get(id) || [];
-    if (own.some((visit) => visit.startUtteranceId) || utteranceIdsOf(node).length) {
+    if (resolvedOwnIds(id).length) {
       sourceVisitsById.set(id, own);
       continue;
     }
-    const rolled = computeNodeVisits({ utterance_ids: citedIdsFor(id) }, utterances, utteranceIndex);
+    const rolled = computeNodeVisits({ utterance_ids: descendantCitations(id) }, utterances, utteranceIndex);
     sourceVisitsById.set(id, rolled.length ? rolled : own);
   }
 

@@ -409,7 +409,7 @@ export default function SpatialLandscapeCanvas({
             into a tall header, and the popover + overflow menu sit outside the scroller so it
             cannot clip them. */}
         <div className="relative flex min-w-0 items-center gap-2">
-          <div data-testid="landscape-controls" className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto sm:flex-none">
+          <div data-testid="landscape-controls" className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto sm:flex-initial">
           <div role="group" aria-label="Surface mode" className="inline-flex shrink-0 rounded-full bg-stone-200/70 p-0.5 text-xs">
             <button
               type="button"
@@ -624,7 +624,7 @@ export default function SpatialLandscapeCanvas({
                     )}
 
                     {/* Stable-height detail region revealed on hover/focus without shifting layout */}
-                    <div className={`mt-3 space-y-3 transition-opacity duration-200 ${showDetail ? "opacity-100" : "opacity-0 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"}`}>
+                    <div className={`mt-3 space-y-3 transition-opacity duration-200 ${showDetail ? "opacity-100" : "pointer-events-none opacity-0 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"}`}>
 
                       {hairline && (
                         <div className="space-y-1">

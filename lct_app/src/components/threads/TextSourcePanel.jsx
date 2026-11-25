@@ -45,15 +45,18 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
   }, [selection, transcript]);
   // A cited run spans utteranceId..endUtteranceId in source order; every row in it is marked.
   const citedRows = useMemo(() => {
-    if (selection?.kind !== "utterance") return null;
-    const startIdx = utterances.findIndex((row) => String(row.id) === String(selection.utteranceId));
+    if (selection?.kind !== "utterance" || selection.utteranceId == null) return null;
+    const startIdx = utterances.findIndex((row) => row?.id != null && String(row.id) === String(selection.utteranceId));
     if (startIdx < 0) return null;
-    const endIdx = selection.endUtteranceId == null ? startIdx : utterances.findIndex((row) => String(row.id) === String(selection.endUtteranceId));
+    const endIdx = selection.endUtteranceId == null ? startIdx : utterances.findIndex((row) => row?.id != null && String(row.id) === String(selection.endUtteranceId));
     return { start: startIdx, end: endIdx >= startIdx ? endIdx : startIdx };
   }, [selection, utterances]);
+  // Scroll on a new selection or section change only, never because the bundle re-rendered
+  // (a speaker rename must not yank the reader back to the highlight).
+  const citedStart = citedRows?.start, citedEnd = citedRows?.end, rangeStart = range?.start, rangeEnd = range?.end;
   useEffect(() => {
-    selectedRef.current?.scrollIntoView?.({ block: citedRows && citedRows.end > citedRows.start ? "start" : "center" });
-  }, [mode, range, selection?.utteranceId, citedRows]);
+    selectedRef.current?.scrollIntoView?.({ block: citedEnd > citedStart ? "start" : "center" });
+  }, [mode, selection, rangeStart, rangeEnd, citedStart, citedEnd]);
 
   const renderRaw = (start, end) => {
     if (!range || end <= range.start || start >= range.end) return transcript.slice(start, end);

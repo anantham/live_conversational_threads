@@ -7,7 +7,8 @@ From the 2026-11-25 impeccable critique of the live Site (snapshot `.impeccable/
 - `TextSourcePanel.jsx`: highlights every passage in the cited run (amber wash + hairline ring, no 2px side stripe); Drive links in ink, not amber.
 - `pages/ThreadsViewer.jsx`: passes `endUtteranceId` through to the source selection.
 - Tests: 4 new or changed cases, all RED against 27e83a1c and green after. Full suite 1682/1682 (publicDrive needs local port binding, run outside the sandbox). `vite build` passes in both modes. Browser check on the e2e provenance fixture: desktop with the source panel open, and 375px (header 123px, was about 340px; the first card stays below the header after drilling in).
-- Not done: issues 3 and 5 from the critique; the analysis lenses are still separate chips (they scroll instead of folding into one menu).
+- Independent review: Gemini via Antigravity (`gemini-4-hydrogen-high`, plan mode), code-only packet SHA256 `f6c8075e18eeae45…` (diff + three full files), unchanged after the run. 8 should-fix + 2 nits. Fixed: rollup cycle memo poisoning and deep recursion (now iterative with a visited set), dangling own ids blocking rollup, `sm:flex-none` overflowing the controls beside the source panel at tablet width, invisible detail controls taking clicks (`pointer-events-none` while hidden), scroll firing on unrelated re-renders (primitive deps), stale highlight on a timestamp-only visit, null-id matching, weak test assertions. Not taken: card `onBlur` (pre-existing focus behaviour, out of scope). New tests are RED against bb7ecf07.
+- Not done: issues 3 and 5 from the critique; card columns follow the viewport, not the canvas width, so two columns get cramped beside the source panel at tablet width (needs container queries); the analysis lenses are still separate chips (they scroll instead of folding into one menu).
 
 ## 2026-11-09 11:38 IST — Carry the PR #218 review's viewer bug notes onto main
 

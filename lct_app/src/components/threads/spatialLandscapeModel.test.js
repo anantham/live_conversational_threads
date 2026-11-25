@@ -50,6 +50,24 @@ describe("spatialLandscapeModel", () => {
     expect(landscape.sourceVisitsById.get("cited").map((v) => v.startUtteranceId)).toEqual(["u6"]);
   });
 
+  it("rolls up safely through cycles and past citations that point at missing turns", () => {
+    const nodes = [
+      // a -> b -> a cycle via children_ids; a also has a cited child, b has a dangling-only child.
+      { id: "a", semantic_level: 4, children_ids: ["b", "c"] },
+      { id: "b", semantic_level: 3, children_ids: ["a", "d"] },
+      { id: "c", semantic_level: 1, source_ref: { utterance_ids: ["u1"] } },
+      { id: "d", semantic_level: 2, source_ref: { utterance_ids: ["gone"] }, children_ids: ["e"] },
+      { id: "e", semantic_level: 1, source_ref: { utterance_ids: ["u6"] } },
+    ];
+    const landscape = buildSpatialLandscape(nodes, { utterances });
+    const starts = (id) => landscape.sourceVisitsById.get(id).map((v) => v.startUtteranceId);
+    // d's own ids all dangle, so it rolls up from e instead of blocking it.
+    expect(starts("d")).toEqual(["u6"]);
+    // Every node in the cycle reaches every citation below it, whatever order nodes were visited in.
+    expect(starts("a")).toEqual(["u1", "u6"]);
+    expect(starts("b")).toEqual(["u1", "u6"]);
+  });
+
   it("isolates unfiled lower-level orphans from root Arcs", () => {
     const nodes = [
       { id: "arc-1", semantic_level: 5, node_name: "Arc 1", source_ref: { utterance_ids: ["u1"] } },

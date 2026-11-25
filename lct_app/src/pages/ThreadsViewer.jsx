@@ -830,7 +830,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             onOpenVisit={({ utteranceId, endUtteranceId, seconds }) => {
               if (utteranceId) openSourcePassage({ id: utteranceId, endId: endUtteranceId, seconds });
               else if (validMediaSeconds(seconds) && selectYouTubeRef(bundle)) seekSourcePassage(seconds);
-              else setSourceOpen(true);
+              else { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen(true); }
             }}
             overflowMenu={landscapeOverflow}
           />
