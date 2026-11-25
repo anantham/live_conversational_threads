@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
 import { clearSitesCostEntries, readSitesCostEntries, summarizeSitesCosts } from '../services/cloud/sitesCostStore.js';
+import { clearQualityLedger, readQualityLedger, summarizeQualityLedger } from '../services/cloud/qualityLedgerStore.js';
 
 const RANGES = [
   { id: '1d', label: '24 hours' },
@@ -32,6 +33,7 @@ function providerLabel(id) {
 export default function SitesCostDashboard() {
   const [timeRange, setTimeRange] = useState('7d');
   const [entries, setEntries] = useState(readSitesCostEntries);
+  const [qualityRows, setQualityRows] = useState(readQualityLedger);
   const [siteStatus, setSiteStatus] = useState(null);
 
   useEffect(() => {
@@ -44,10 +46,16 @@ export default function SitesCostDashboard() {
   }, []);
 
   const summary = useMemo(() => summarizeSitesCosts(entries, timeRange), [entries, timeRange]);
+  const quality = useMemo(() => summarizeQualityLedger(qualityRows), [qualityRows]);
 
   function handleClear() {
     clearSitesCostEntries();
     setEntries([]);
+  }
+
+  function handleClearQuality() {
+    clearQualityLedger();
+    setQualityRows([]);
   }
 
   return (
@@ -131,6 +139,43 @@ export default function SitesCostDashboard() {
             </p>
           </div>
         </section>
+
+        {quality.callsTracked > 0 && (
+          <section aria-label="Map quality and audit ledger" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Map quality &amp; audit ledger</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {quality.callsTracked} call{quality.callsTracked === 1 ? '' : 's'} tracked
+                  {quality.avgRecallPct != null ? ` · avg ${quality.avgRecallPct}% audit recall` : ''}
+                  {` · ${quality.totalContradictions} source conflicts · ${quality.totalUserFlags} user flags · ${quality.totalBoundaryCorrections} boundary edits`}
+                </p>
+              </div>
+              <button type="button" onClick={handleClearQuality} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                <Trash2 size={13} aria-hidden="true" /> Clear ledger
+              </button>
+            </div>
+            <ul className="mt-3 divide-y divide-slate-100 text-xs">
+              {quality.rows.slice(0, 15).map(row => (
+                <li key={row.conversationId} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div>
+                    <p className="font-medium text-slate-800">{row.title}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {row.nodeCount} nodes
+                      {row.coveragePct != null ? ` · ${row.coveragePct}% cov` : ''}
+                      {row.models?.length ? ` · ${row.models.join(', ')}` : ''}
+                    </p>
+                  </div>
+                  <div className="tabular-nums text-slate-600">
+                    {row.recallPct != null ? `Recall ${row.recallPct}% (${row.represented}/${row.points}) · ` : ''}
+                    {row.contradictions ? `${row.contradictions} conflicts · ` : ''}
+                    {row.userFlags} flags · {row.boundaryCorrections} edits · {row.reactions} reactions
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {summary.calls === 0 ? (
           <section className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">

@@ -82,9 +82,19 @@ IslandVisits.propTypes = {
   nodeId: PropTypes.string.isRequired,
 };
 
-function LensFindingsPreview({ findings, onOpenVisit, nodeId }) {
+const EXTERNAL_STATUS_STYLES = {
+  supported: "bg-emerald-100 text-emerald-900",
+  contested: "bg-rose-100 text-rose-900",
+  uncertain: "bg-amber-100 text-amber-900",
+};
+
+function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, verifyingClaimId }) {
+  const [confirmingId, setConfirmingId] = useState(null);
   if (!findings?.length) return null;
   const first = findings[0];
+  const claimText = first.note || first.quote?.text || "";
+  const isVerifying = verifyingClaimId === first.id;
+
   return (
     <div className="mt-3 space-y-1.5 border-t border-stone-200/80 pt-2.5 text-xs text-slate-600">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -114,6 +124,62 @@ function LensFindingsPreview({ findings, onOpenVisit, nodeId }) {
           </button>
         </p>
       )}
+
+      {first.externalEvidence && (
+        <div className="mt-2 rounded-lg border border-stone-200 bg-stone-50/80 p-2 text-[11px]">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium capitalize ${EXTERNAL_STATUS_STYLES[first.externalEvidence.status] || "bg-stone-200 text-slate-700"}`}>
+              External: {first.externalEvidence.status}
+            </span>
+            <span className="text-[10px] text-slate-400">Claim checked externally</span>
+          </div>
+          {first.externalEvidence.note && <p className="mt-1 leading-4 text-slate-600">{first.externalEvidence.note}</p>}
+          {Array.isArray(first.externalEvidence.sources) && first.externalEvidence.sources.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+              {first.externalEvidence.sources.map((src) => (
+                <a key={src.url} href={src.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-slate-700 underline underline-offset-2 hover:text-slate-950">
+                  {src.title} ↗
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {first.lens === "claims" && !first.externalEvidence && onVerifyClaim && claimText && (
+        <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+          {confirmingId === first.id ? (
+            <div className="rounded-lg border border-stone-200 bg-white p-2 text-[11px] text-slate-600">
+              <p className="font-medium text-slate-800">Only this claim leaves your browser:</p>
+              <p className="mt-0.5 italic text-slate-500">“{claimText.slice(0, 160)}”</p>
+              <p className="mt-1 text-[10px] text-slate-400">No transcript turns or speaker names are sent.</p>
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <button type="button" onClick={() => setConfirmingId(null)} className="rounded px-2 py-0.5 text-slate-500 hover:bg-stone-100">Cancel</button>
+                <button
+                  type="button"
+                  disabled={isVerifying}
+                  onClick={async () => {
+                    await onVerifyClaim(first.id, claimText);
+                    setConfirmingId(null);
+                  }}
+                  className="rounded bg-slate-900 px-2.5 py-0.5 font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+                >
+                  {isVerifying ? "Checking…" : "Confirm & check"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingId(first.id)}
+              className="text-[11px] text-slate-500 underline decoration-stone-300 underline-offset-2 hover:text-slate-900"
+            >
+              Check externally…
+            </button>
+          )}
+        </div>
+      )}
+
       {findings.length > 1 && (
         <p className="text-[11px] text-slate-400">+{findings.length - 1} more in this branch</p>
       )}
@@ -124,19 +190,25 @@ LensFindingsPreview.propTypes = {
   findings: PropTypes.array,
   onOpenVisit: PropTypes.func,
   nodeId: PropTypes.string.isRequired,
+  onVerifyClaim: PropTypes.func,
+  verifyingClaimId: PropTypes.string,
 };
 
-function BoundaryMenu({ nodeId, siblings, visits, nodesById, onBoundaryCorrection }) {
+function BoundaryMenu({ nodeId, siblings, visits, nodesById, onBoundaryCorrection, onFlagNode }) {
   const detailsRef = useRef(null);
   const otherSiblings = siblings.filter((sid) => sid !== nodeId);
   const myIndex = siblings.indexOf(nodeId);
   const earlierSiblings = myIndex > 0 ? siblings.slice(0, myIndex) : [];
   const splitVisits = visits.slice(1).filter((v) => v.startUtteranceId);
-  if (!otherSiblings.length && !splitVisits.length) return null;
+  if (!otherSiblings.length && !splitVisits.length && !onFlagNode) return null;
 
   const fire = (payload) => {
     if (detailsRef.current) detailsRef.current.open = false;
-    onBoundaryCorrection(payload);
+    onBoundaryCorrection?.(payload);
+  };
+  const fireFlag = (kind) => {
+    if (detailsRef.current) detailsRef.current.open = false;
+    onFlagNode?.(nodeId, kind);
   };
 
   return (
@@ -196,6 +268,15 @@ function BoundaryMenu({ nodeId, siblings, visits, nodesById, onBoundaryCorrectio
             </div>
           </div>
         )}
+        {onFlagNode && (
+          <div className="border-t border-stone-100 pt-2">
+            <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-400">Flag quality issue</p>
+            <div className="flex flex-wrap gap-1">
+              <button type="button" onClick={() => fireFlag("misfiled")} className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] text-slate-700 hover:bg-rose-50 hover:text-rose-800">Flag misfiled</button>
+              <button type="button" onClick={() => fireFlag("irrelevant")} className="rounded-md bg-stone-100 px-2 py-0.5 text-[11px] text-slate-700 hover:bg-rose-50 hover:text-rose-800">Flag irrelevant</button>
+            </div>
+          </div>
+        )}
       </div>
     </details>
   );
@@ -205,7 +286,8 @@ BoundaryMenu.propTypes = {
   siblings: PropTypes.array.isRequired,
   visits: PropTypes.array.isRequired,
   nodesById: PropTypes.object.isRequired,
-  onBoundaryCorrection: PropTypes.func.isRequired,
+  onBoundaryCorrection: PropTypes.func,
+  onFlagNode: PropTypes.func,
 };
 
 export default function SpatialLandscapeCanvas({
@@ -216,11 +298,14 @@ export default function SpatialLandscapeCanvas({
   onOpenVisit,
   onFocusNodeChange,
   onBoundaryCorrection,
+  onFlagNode,
   onAddReaction,
   onRunEpistemic,
   epistemicRunning = false,
   epistemicError = "",
   epistemicProviderLabel = "",
+  onVerifyClaim,
+  verifyingClaimId = null,
   overflowMenu = null,
 }) {
   const landscape = useMemo(
@@ -637,16 +722,23 @@ export default function SpatialLandscapeCanvas({
                       )}
 
                       {lensFindings?.length > 0 && (
-                        <LensFindingsPreview findings={lensFindings} onOpenVisit={onOpenVisit} nodeId={id} />
+                        <LensFindingsPreview
+                          findings={lensFindings}
+                          onOpenVisit={onOpenVisit}
+                          nodeId={id}
+                          onVerifyClaim={onVerifyClaim}
+                          verifyingClaimId={verifyingClaimId}
+                        />
                       )}
 
-                      {onBoundaryCorrection && (
+                      {(onBoundaryCorrection || onFlagNode) && (
                         <BoundaryMenu
                           nodeId={id}
                           siblings={rawSiblingIds}
                           visits={visits}
                           nodesById={landscape.nodesById}
                           onBoundaryCorrection={onBoundaryCorrection}
+                          onFlagNode={onFlagNode}
                         />
                       )}
                     </div>
@@ -716,10 +808,13 @@ SpatialLandscapeCanvas.propTypes = {
   onOpenVisit: PropTypes.func,
   onFocusNodeChange: PropTypes.func,
   onBoundaryCorrection: PropTypes.func,
+  onFlagNode: PropTypes.func,
   onAddReaction: PropTypes.func,
   onRunEpistemic: PropTypes.func,
   epistemicRunning: PropTypes.bool,
   epistemicError: PropTypes.string,
   epistemicProviderLabel: PropTypes.string,
+  onVerifyClaim: PropTypes.func,
+  verifyingClaimId: PropTypes.string,
   overflowMenu: PropTypes.node,
 };

@@ -5,6 +5,8 @@ import {
   formatDurationCompact,
   REACTION_KINDS,
 } from "./conversationTimelineModel";
+import { buildOpenQuestionTrail } from "./openQuestionTrail";
+import { buildSpeakingDynamics } from "./speakingDynamicsModel";
 import { formatVisitClock } from "./spatialLandscapeModel";
 
 const LANE_PALETTE = ["#334155", "#0f766e", "#b45309", "#4f46e5", "#be123c", "#0369a1", "#4d7c0f"];
@@ -26,6 +28,24 @@ export default function ConversationTimelineView({
     () => buildConversationTimeline(nodes, bundle, speakerDisplayNames, granularity),
     [nodes, bundle, speakerDisplayNames, granularity],
   );
+  const questions = useMemo(
+    () => buildOpenQuestionTrail(nodes, bundle, speakerDisplayNames, granularity),
+    [nodes, bundle, speakerDisplayNames, granularity],
+  );
+  const [questionFilter, setQuestionFilter] = useState("all");
+  const visibleQuestions = useMemo(
+    () => (questionFilter === "open" ? questions.filter((q) => q.status === "open_at_end") : questions),
+    [questions, questionFilter],
+  );
+  const dynamics = useMemo(() => {
+    const visitStarts = new Set(timeline.lanes.flatMap((l) => l.visits.map((v) => v.startUtteranceId).filter(Boolean)));
+    return buildSpeakingDynamics(bundle, {
+      approximateTiming: timeline.approximateTiming,
+      speakerDisplayNames,
+      visitStarts,
+    });
+  }, [bundle, timeline.approximateTiming, timeline.lanes, speakerDisplayNames]);
+  const [dynamicsTab, setDynamicsTab] = useState("pace");
   const [selectedLaneId, setSelectedLaneId] = useState(null);
   const [selectedVisitIdx, setSelectedVisitIdx] = useState(0);
 
@@ -253,6 +273,144 @@ export default function ConversationTimelineView({
                 ))}
               </div>
             )}
+          </section>
+        )}
+
+        {/* Open-Question Trail */}
+        {questions.length > 0 && (
+          <section aria-label="Open-question trail" className="rounded-2xl border border-stone-200/80 bg-white/85 p-5 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-slate-900">
+                Question trail <span className="ml-1 font-normal text-slate-400">({questions.length})</span>
+              </h3>
+              <div role="group" aria-label="Filter questions" className="inline-flex rounded-full bg-stone-200/70 p-0.5 text-xs">
+                <button
+                  type="button"
+                  aria-pressed={questionFilter === "all"}
+                  onClick={() => setQuestionFilter("all")}
+                  className={`rounded-full px-2.5 py-0.5 ${questionFilter === "all" ? "bg-white font-medium text-slate-900" : "text-slate-600"}`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={questionFilter === "open"}
+                  onClick={() => setQuestionFilter("open")}
+                  className={`rounded-full px-2.5 py-0.5 ${questionFilter === "open" ? "bg-white font-medium text-slate-900" : "text-slate-600"}`}
+                >
+                  Open at end ({questions.filter((q) => q.status === "open_at_end").length})
+                </button>
+              </div>
+            </div>
+
+            <ol className="mt-3 space-y-2.5">
+              {visibleQuestions.slice(0, 12).map((q) => (
+                <li key={q.id} className="rounded-xl border border-stone-100 bg-stone-50/60 px-3.5 py-2.5 text-xs">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="font-medium text-slate-800">
+                      {q.speaker}
+                      {q.laneTitle ? <span className="font-normal text-slate-400"> · {q.laneTitle}</span> : null}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {q.status === "open_at_end" && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">Open at end</span>
+                      )}
+                      {q.status === "returned" && q.returnVisit && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenVisit?.({ nodeId: q.laneId, utteranceId: q.returnVisit.utteranceId, seconds: q.returnVisit.seconds })}
+                          className="rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-900 hover:bg-emerald-200"
+                        >
+                          Returned {q.returnVisit.label}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpenVisit?.({ nodeId: q.laneId, utteranceId: q.utteranceId, seconds: q.seconds })}
+                        className="font-mono text-slate-500 underline decoration-stone-300 underline-offset-2 hover:text-slate-900"
+                      >
+                        {q.label}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="mt-1 leading-5 text-slate-700">“{q.text.slice(0, 180)}{q.text.length > 180 ? "…" : ""}”</p>
+                  {q.tangents.length > 0 && (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {q.status === "returned" ? "Detoured through: " : "Followed by: "}
+                      <span className="text-slate-600">{q.tangents.join(" → ")}</span>
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {/* Speaking Dynamics (strictly gated to timed audio recordings) */}
+        {dynamics.available && (dynamics.pacePeaks.length > 0 || dynamics.overlaps.length > 0 || dynamics.silences.length > 0) && (
+          <section aria-label="Speaking dynamics" className="rounded-2xl border border-stone-200/80 bg-white/85 p-5 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">Speaking dynamics</h3>
+                {dynamics.baselines.length > 0 && (
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    Baselines: {dynamics.baselines.map((b) => `${b.speaker} ${b.baselineWpm} wpm`).join(" · ")}
+                  </p>
+                )}
+              </div>
+              <div role="group" aria-label="Dynamics view" className="inline-flex rounded-full bg-stone-200/70 p-0.5 text-xs">
+                {[
+                  ["pace", `Pace shifts (${dynamics.pacePeaks.length})`],
+                  ["overlaps", `Overlaps (${dynamics.overlaps.length})`],
+                  ["silences", `Silences (${dynamics.silences.length})`],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={dynamicsTab === id}
+                    onClick={() => setDynamicsTab(id)}
+                    className={`rounded-full px-2.5 py-0.5 ${dynamicsTab === id ? "bg-white font-medium text-slate-900" : "text-slate-600"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <ul className="mt-3 space-y-2 text-xs">
+              {dynamicsTab === "pace" && dynamics.pacePeaks.map((item) => (
+                <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-stone-50/70 px-3 py-2">
+                  <div>
+                    <span className="font-medium text-slate-800">{item.speaker}</span>{" "}
+                    <span className="text-slate-500">{item.wpm} wpm ({item.deltaPct > 0 ? `+${item.deltaPct}%` : `${item.deltaPct}%`} vs baseline)</span>
+                    <p className="mt-0.5 text-slate-600">“{item.excerpt.slice(0, 140)}{item.excerpt.length > 140 ? "…" : ""}”</p>
+                  </div>
+                  <button type="button" onClick={() => onOpenVisit?.({ utteranceId: item.utteranceId, seconds: item.seconds })} className="font-mono text-slate-600 underline underline-offset-2 hover:text-slate-950">{item.label}</button>
+                </li>
+              ))}
+              {dynamicsTab === "overlaps" && dynamics.overlaps.map((item) => (
+                <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-stone-50/70 px-3 py-2">
+                  <div>
+                    <span className="font-medium text-slate-800">{item.incomingSpeaker}</span>{" "}
+                    <span className="text-slate-500">entered during {item.priorSpeaker} ({item.overlapSeconds}s overlap · {item.continuedBy} continued)</span>
+                    <p className="mt-0.5 text-slate-600">“{item.excerpt.slice(0, 140)}{item.excerpt.length > 140 ? "…" : ""}”</p>
+                  </div>
+                  <button type="button" onClick={() => onOpenVisit?.({ utteranceId: item.utteranceId, seconds: item.seconds })} className="font-mono text-slate-600 underline underline-offset-2 hover:text-slate-950">{item.label}</button>
+                </li>
+              ))}
+              {dynamicsTab === "silences" && dynamics.silences.map((item) => (
+                <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-stone-50/70 px-3 py-2">
+                  <div>
+                    <span className="font-medium text-slate-800">{item.gapSeconds}s pause</span>{" "}
+                    <span className="text-slate-500">
+                      → {item.outcome === "new_thread" ? `new thread started by ${item.nextSpeaker}` : item.outcome === "same_continued" ? `${item.nextSpeaker} continued` : `${item.nextSpeaker} answered`}
+                    </span>
+                    <p className="mt-0.5 text-slate-600">“{item.excerpt.slice(0, 140)}{item.excerpt.length > 140 ? "…" : ""}”</p>
+                  </div>
+                  <button type="button" onClick={() => onOpenVisit?.({ utteranceId: item.utteranceId, seconds: item.seconds })} className="font-mono text-slate-600 underline underline-offset-2 hover:text-slate-950">{item.label}</button>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
       </div>
