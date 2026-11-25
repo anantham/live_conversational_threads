@@ -5,6 +5,7 @@ import ProviderKeyForm from './ProviderKeyForm';
 import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient';
 import { ANTHROPIC_PRICING_URL, anthropicModelPriceLabel } from '../../services/cloud/anthropicModelPrices';
 import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId } from '../../services/cloud/sitesProviderPreferences';
+import { DEFAULT_M5_TAILNET_URL, isAllowedTailnetUrl } from '../../services/cloud/m5TailnetFileSession';
 
 const speechGroup = {
   title: 'Speech-to-text',
@@ -60,6 +61,20 @@ function SpeechOrder() {
               <button type="button" className={button} disabled={index >= order.length - 1} onClick={() => move(id, 1)} aria-label={`Move ${name} down`}>Move down</button>
             </div>}
           </div>
+          {id === 'm5_tailnet' && index >= 0 && (
+            <label className="grid gap-1 text-xs text-slate-600">
+              Tailnet endpoint (HTTPS *.ts.net)
+              <input
+                className={input}
+                defaultValue={preferences.m5TailnetUrl || DEFAULT_M5_TAILNET_URL}
+                placeholder={DEFAULT_M5_TAILNET_URL}
+                onBlur={event => {
+                  const val = event.target.value.trim();
+                  if (!val || isAllowedTailnetUrl(val)) save({ m5TailnetUrl: val });
+                }}
+              />
+            </label>
+          )}
           <ProviderKeyForm backend={id} name={name} speech />
         </li>;
       })}

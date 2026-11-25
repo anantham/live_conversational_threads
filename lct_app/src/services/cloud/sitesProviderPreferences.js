@@ -3,6 +3,7 @@ export const MAX_MAP_ROUTES = 6;
 export const SPEECH_PROVIDERS = {
   soniox: { name: 'Soniox', detail: 'Live recording and audio files' },
   openai: { name: 'OpenAI', detail: 'Audio files with speaker labels' },
+  m5_tailnet: { name: 'M5 Tailnet STT', detail: 'Local Mac STT over Tailscale (free, diarized, requires tailnet)' },
 };
 export const MAP_GUIDANCE_LIMIT = 3000;
 
@@ -59,12 +60,15 @@ export function normalizeProviderPreferences(value) {
   }));
   const chainProvider = mapChain.find(entry => entry.backend === 'openrouter' && entry.provider)?.provider || '';
   const openrouterProvider = chainProvider || (typeof value?.openrouterProvider === 'string' && providerPattern.test(value.openrouterProvider) ? value.openrouterProvider : '');
+  const m5TailnetUrl = typeof value?.m5TailnetUrl === 'string' && value.m5TailnetUrl.trim().startsWith('https://') && value.m5TailnetUrl.trim().length <= 300
+    ? value.m5TailnetUrl.trim() : '';
   return {
     speech: normalizeOrder(value?.speech, Object.keys(SPEECH_PROVIDERS), 'soniox'),
     map,
     mapChain,
     models,
     openrouterProvider,
+    m5TailnetUrl,
     guidance: typeof value?.guidance === 'string' ? value.guidance.slice(0, MAP_GUIDANCE_LIMIT) : '',
   };
 }

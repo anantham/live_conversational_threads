@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
 import { importWait } from '../services/cloud/audioImportFile.js';
 import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
+import { M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
+import { readEdgeConfig } from '../components/audio/edgeConfig.js';
 import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
 import { getRecordingMapStatus, generateRecordingMap, configuredMapRoutes, getOrderedMapStatus, generateOrderedRecordingMap } from '../services/cloud/openRouterClient.js';
@@ -26,9 +28,15 @@ export function useAudioImport() {
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
-  const speechProviders = runtime?.credentialsReady === false ? [] : runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
+  const edgeConfig = readEdgeConfig(location.search);
+  const configuredSpeech = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
     ? runtime.keys.soniox ? capability?.personal_enabled : capability?.enabled
-    : runtime.keys.openai) : capability?.enabled ? ['soniox'] : [];
+    : id === 'm5_tailnet' ? true : runtime.keys.openai) : capability?.enabled ? ['soniox'] : [];
+  const speechProviders = runtime?.credentialsReady === false
+    ? []
+    : edgeConfig.enabled && !configuredSpeech.includes('m5_tailnet')
+      ? ['m5_tailnet', ...configuredSpeech]
+      : configuredSpeech;
   const speechSelection = speechProviders.join(',');
   const consent = consentSelection?.routes === (runtime || backend) && consentSelection.speech === speechSelection;
   const setConsent = value => setConsentSelection(value ? { routes: runtime || backend, speech: speechSelection } : null);
@@ -117,10 +125,17 @@ export function useAudioImport() {
       let words;
       for (const [index, provider] of speechProviders.entries()) {
         const key = runtime?.keys[provider];
-        const session = provider === 'openai'
-          ? new OpenAIFileSession({ ...callbacks, key })
-          : new AudioImportSession({ ...callbacks,
-            ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+        const session = provider === 'm5_tailnet'
+          ? new M5TailnetFileSession({
+              ...callbacks,
+              url: runtime?.preferences?.m5TailnetUrl || edgeConfig.url,
+              token: key || edgeConfig.token,
+              diarize: true,
+            })
+          : provider === 'openai'
+            ? new OpenAIFileSession({ ...callbacks, key })
+            : new AudioImportSession({ ...callbacks,
+              ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
         current.current = session;
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
