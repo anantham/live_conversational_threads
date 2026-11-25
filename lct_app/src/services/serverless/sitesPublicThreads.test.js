@@ -174,5 +174,15 @@ describe('Guest public conversation Worker API with real generated SQLite schema
     expect((await publish(crypto.randomUUID(), { body: JSON.stringify(over) })).status).toBe(413);
     expect(PUBLIC_LIMITS.maxArtifactBytes).toBeLessThan(2_000_000); // Cloudflare D1 value limit
   });
+
+  // Review: visibility is checked first and cannot change on republish; empty is not "public".
+  it('refuses an empty visibility and a republish that changes visibility', async () => {
+    expect((await publish(crypto.randomUUID(), { headers: { 'x-lct-public-visibility': '' } })).status).toBe(400);
+    const id = crypto.randomUUID();
+    expect((await publish(id, { headers: { 'x-lct-public-visibility': 'unlisted' } })).status).toBe(201);
+    expect((await publish(id, { headers: { 'x-lct-public-visibility': 'unlisted' } })).status).toBe(200);
+    expect((await publish(id)).status).toBe(409);
+    expect((await publish(id, { headers: { 'x-lct-public-visibility': 'bogus' } })).status).toBe(400);
+  });
 });
 

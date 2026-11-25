@@ -1,7 +1,7 @@
 // @vitest-environment node
 // Test intent: lct_app/tests/intent/publish-link.md. Synthetic data only.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { personalMetadataSummary, publicSafeCopy, publishBundle } from './publicThreads.js';
+import { forgetRemovalKey, personalMetadataSummary, publicSafeCopy, publishBundle, removalKeys, saveRemovalKey } from './publicThreads.js';
 
 const bundle = { format: 'lct.threads', format_version: 2, conversation_title: 'Garden', graph_data: [], edges: [],
   utterances: [{ id: 'utterance-0001', text: 'Water at seven.', speaker_id: 'S1' }],
@@ -42,8 +42,34 @@ describe('publishing a map as a link', () => {
   it('includes personal metadata only when asked', async () => {
     let sent;
     vi.stubGlobal('fetch', vi.fn(async (url, options) => { sent = options.body;
-      return new Response(JSON.stringify({ item: { id: url.split('/').at(-1) } }), { status: 201 }); }));
+      return new Response(JSON.stringify({ item: { id: url.split('/').at(-1), visibility: 'unlisted' } }), { status: 201 }); }));
     await publishBundle(bundle, { includePersonal: true });
     expect(sent).toContain('a@example.com');
   });
+
+  // Review: allowlist, not blocklist.
+  it('drops any field the format does not define, not only the known personal ones', () => {
+    const safe = publicSafeCopy({ ...bundle, participants: ['x@example.com'], owner: 'someone', source_url: 'https://private.example' });
+    expect(Object.keys(safe)).not.toEqual(expect.arrayContaining(['participants']));
+    expect(JSON.stringify(safe)).not.toMatch(/x@example|someone|private\.example/);
+  });
+
+  it('keeps the removal key and link reachable when the outcome is uncertain or unconfirmed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network dropped'); }));
+    const lost = await publishBundle(bundle).catch(e => e);
+    expect(lost).toMatchObject({ uncertain: true, url: expect.stringContaining('/public/') });
+    expect(removalKeys().map(k => k.id)).toContain(lost.capability.id);
+    vi.stubGlobal('fetch', vi.fn(async url => new Response(JSON.stringify({ item: { id: url.split('/').at(-1), visibility: 'public' } }), { status: 201 })));
+    const wrong = await publishBundle(bundle).catch(e => e);
+    expect(wrong.message).toMatch(/did not confirm/);
+    expect(wrong.capability).toBeDefined();
+  });
+
+  it('forgets a removal key once its copy is removed', () => {
+    const capability = { id: '00000000-0000-4000-8000-000000000000', key: 'a'.repeat(64) };
+    saveRemovalKey(capability);
+    forgetRemovalKey(capability.id);
+    expect(removalKeys()).toEqual([]);
+  });
 });
+

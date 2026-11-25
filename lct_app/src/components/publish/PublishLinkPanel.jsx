@@ -1,5 +1,5 @@
 // Test intent: lct_app/tests/intent/publish-link.md
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link2 } from 'lucide-react';
 import { PUBLIC_MAX_BYTES, downloadRemovalKey, personalMetadataSummary, publicSafeCopy, publishBundle } from '../../services/publicThreads.js';
@@ -15,27 +15,37 @@ export default function PublishLinkPanel({ bundle, publish = publishBundle }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null); // null: not tried, true: copied, false: copy failed
+  const [orphan, setOrphan] = useState(null); // a send whose outcome is uncertain: keep its key reachable
+  const inFlight = useRef(false);
+  const linkRef = useRef(null);
+
+  // A changed map (e.g. after an audit decision) needs fresh consent; an earlier link stays shown for its own snapshot.
+  useEffect(() => { setConsent(false); setIncludePersonal(false); setError(''); }, [bundle]);
   const personal = useMemo(() => personalMetadataSummary(bundle), [bundle]);
   const size = useMemo(() => new TextEncoder().encode(JSON.stringify(includePersonal ? bundle : publicSafeCopy(bundle))).byteLength, [bundle, includePersonal]);
   const speakers = useMemo(() => [...new Set((bundle.utterances || []).map(u => u.speaker_id).filter(Boolean))], [bundle]);
   const tooLarge = size > PUBLIC_MAX_BYTES;
   const hasPersonal = personal.emails || personal.links || personal.notes;
 
-  async function start() {
-    setBusy(true); setError('');
-    try {
-      const published = await publish(bundle, { includePersonal, visibility: 'unlisted' });
-      setResult(published);
-      // Some browsers refuse clipboard writes this long after the click; the Copy button remains.
-      try { await navigator.clipboard.writeText(published.url); setCopied(true); } catch { setCopied(false); }
-    }
-    catch (cause) { setError(cause?.message || 'Publishing did not finish. Nothing was linked.'); }
-    finally { setBusy(false); }
+  async function writeLink(url) {
+    try { await navigator.clipboard.writeText(url); setCopied(true); }
+    catch { setCopied(false); linkRef.current?.select(); }
   }
 
-  async function copy() {
-    try { await navigator.clipboard.writeText(result.url); setCopied(true); } catch { setCopied(false); }
+  async function start() {
+    if (inFlight.current) return; // a second click before the first settles never publishes twice
+    inFlight.current = true;
+    setBusy(true); setError(''); setOrphan(null); setCopied(null);
+    try {
+      const published = await publish(bundle, { includePersonal, visibility: 'unlisted' });
+      setResult(published); setConsent(false);
+      // Some browsers refuse clipboard writes this long after the click; the failure is shown.
+      await writeLink(published.url);
+    } catch (cause) {
+      setError(cause?.message || 'Publishing did not finish.');
+      if (cause?.uncertain && cause.capability) setOrphan({ capability: cause.capability, url: cause.url });
+    } finally { inFlight.current = false; setBusy(false); }
   }
 
   return (
@@ -47,16 +57,18 @@ export default function PublishLinkPanel({ bundle, publish = publishBundle }) {
         <div className="space-y-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
           <p>Published as an unlisted link. Anyone with it can open and download this map; it is not listed in the public library.</p>
           <div className="flex flex-wrap items-center gap-2">
-            <input readOnly value={result.url} aria-label="Shareable link" className="min-w-0 flex-1 rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs" />
-            <button type="button" className={button} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy link'}</button>
+            <input ref={linkRef} readOnly value={result.url} aria-label="Shareable link" onFocus={event => event.target.select()} className="min-w-0 flex-1 rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs" />
+            <button type="button" className={button} onClick={() => void writeLink(result.url)}>{copied ? 'Copied' : 'Copy link'}</button>
             <button type="button" className={button} onClick={() => downloadRemovalKey(result.capability)}>Download removal key</button>
           </div>
-          <p className="text-xs">The removal key is saved in this browser; download it too. It is the only way to take this link down.</p>
+          {copied === false && <p role="status" className="text-xs">Could not copy automatically; the link is selected, press Ctrl/⌘+C.</p>}
+          <p className="text-xs">The removal key is saved in this browser; download it too. It is the only way to take this link down (also listed on the Public page).</p>
+          <button type="button" className={button} onClick={() => { setResult(null); setCopied(null); }}>Publish the current map as a new link</button>
         </div>
       ) : (
         <>
           <p className="text-sm leading-6 text-slate-600">
-            Publishes the map and its full transcript ({(bundle.utterances || []).length.toLocaleString('en-US')} turns, the words of {speakers.length ? speakers.join(', ') : 'every speaker'}) as an unlisted link. {kib(size)} of {kib(PUBLIC_MAX_BYTES)} allowed.
+            Publishes the map and its full transcript ({(bundle.utterances || []).length ? `${bundle.utterances.length.toLocaleString('en-US')} turns` : 'all of it'}, the words of {speakers.length ? speakers.join(', ') : 'every speaker'}) as an unlisted link. {kib(size)} of {kib(PUBLIC_MAX_BYTES)} allowed.
           </p>
           {hasPersonal ? (
             <label className="flex items-start gap-3 text-sm leading-6">
@@ -75,6 +87,12 @@ export default function PublishLinkPanel({ bundle, publish = publishBundle }) {
         </>
       )}
       {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
+      {orphan && (
+        <div className="space-y-1 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+          <p>The copy may have been stored even though the reply did not arrive. Its removal key is saved in this browser and listed on the Public page; keep a download too.</p>
+          <button type="button" className={button} onClick={() => downloadRemovalKey(orphan.capability)}>Download removal key</button>
+        </div>
+      )}
     </section>
   );
 }

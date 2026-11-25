@@ -27,4 +27,27 @@ describe('PublishLinkPanel', () => {
     expect(host.querySelector('input[aria-label="Shareable link"]').value).toBe('https://site.example/public/abc');
     expect(host.textContent).toMatch(/not listed in the public library/);
   });
+
+  it('publishes once on a double click, and a changed map needs fresh consent', async () => {
+    let release;
+    const publish = vi.fn(() => new Promise(resolve => { release = resolve; }));
+    act(() => root.render(<PublishLinkPanel bundle={bundle} publish={publish} />));
+    act(() => labelWith('I have permission').querySelector('input').click());
+    await act(async () => { buttonNamed('Publish & copy link').click(); buttonNamed('Publishing…')?.click(); });
+    expect(publish).toHaveBeenCalledTimes(1);
+    await act(async () => { release({ url: 'https://site.example/public/one', capability: { id: 'one', key: 'k' } }); });
+    act(() => buttonNamed('Publish the current map as a new link').click());
+    act(() => root.render(<PublishLinkPanel bundle={{ ...bundle, conversation_title: 'Changed' }} publish={publish} />));
+    expect(labelWith('I have permission').querySelector('input').checked).toBe(false);
+  });
+
+  it('offers the removal key when the outcome of a send is uncertain', async () => {
+    const publish = vi.fn(async () => { throw Object.assign(new Error('network dropped'), { uncertain: true, capability: { id: 'x', key: 'k' }, url: 'https://site.example/public/x' }); });
+    act(() => root.render(<PublishLinkPanel bundle={bundle} publish={publish} />));
+    act(() => labelWith('I have permission').querySelector('input').click());
+    await act(async () => { buttonNamed('Publish & copy link').click(); });
+    expect(host.textContent).toMatch(/may have been stored/);
+    expect(buttonNamed('Download removal key')).toBeDefined();
+  });
 });
+
