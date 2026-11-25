@@ -48,4 +48,26 @@ describe("conversationTimelineModel", () => {
     expect(tl.reactions).toHaveLength(1);
     expect(tl.reactions[0]).toMatchObject({ kind: "energized", author: "Aditya", label: "03:00" });
   });
+
+  it("orders topic lanes by first spoken turn even when the artifact lists them in reverse", () => {
+    const topics = nodes.toReversed().map((node) => ({ ...node, semantic_level: 3 }));
+    const timeline = buildConversationTimeline(topics, { utterances }, {}, "topics");
+
+    expect(timeline.lanes.map((lane) => lane.id)).toEqual(["arc-a", "arc-b", "arc-c"]);
+  });
+
+  it("uses turn positions and labels for reactions on untimed transcripts", () => {
+    const untimed = utterances.map(({ id, text }) => ({ id, text }));
+    const reaction_markers = [
+      { id: "r1", utterance_id: "u3", timestamp_seconds: 180 },
+      { id: "r2", utterance_id: "missing" },
+    ];
+    const timeline = buildConversationTimeline(nodes, { utterances: untimed, reaction_markers });
+
+    expect(timeline.useTurnAxis).toBe(true);
+    expect(timeline.reactions).toMatchObject([
+      { pos: 2, label: "Turn 3" },
+      { pos: 0, label: "Unplaced" },
+    ]);
+  });
 });

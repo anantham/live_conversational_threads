@@ -829,7 +829,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             epistemicProviderLabel={epistemicProviderLabel}
             onOpenVisit={({ utteranceId, seconds }) => {
               if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
-              else if (validMediaSeconds(seconds)) seekSourcePassage(seconds);
+              else if (validMediaSeconds(seconds) && selectYouTubeRef(bundle)) seekSourcePassage(seconds);
               else setSourceOpen(true);
             }}
             overflowMenu={landscapeOverflow}
