@@ -250,6 +250,20 @@ describe('nested detail replies', () => {
       { id: 'x', node_name: 'X', summary: '', topic_id: 'sea', chunks: [] }]), { task: 'detail', topics });
     expect(empty.coverage).toMatchObject({ chunks: 0, uncoveredTurns: 3 });
   });
+
+  // A 429 admission refusal spends nothing, so the segment waits and is requeued instead of stopping the run.
+  it('requeues a detail segment refused at admission and completes the map', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = fakeModel();
+    let refusals = 2;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task === 'detail' && refusals > 0) { refusals -= 1; throw Object.assign(new Error('limit'), { status: 429 }); }
+      return inner(...args);
+    });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, admissionRetryMs: 1 });
+    expect(generate.mock.calls.filter(c => c[4].task === 'detail')).toHaveLength(3);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
 });
 
 // Streamed provider events reach onProgress from inside the parallel detail pool.

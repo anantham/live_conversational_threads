@@ -110,6 +110,8 @@ export function planSegments(bundle, utteranceById, { maxWords = DEFAULT_SEGMENT
 
 /** Record every provider route that wrote part of the map, so an audit can exclude all their families. */
 export const PERSONAL_DETAIL_CONCURRENCY = 3;
+export const MAX_ADMISSION_RETRIES = 5;
+export const ADMISSION_RETRY_MS = 2_000;
 export const PERSONAL_INTERVAL_MS = 1_600;
 
 /**
@@ -238,7 +240,7 @@ export function mergeDetail(source, base, results) {
  * order, so the map is the same whatever order calls finish in.
  */
 async function runSegments({ source, base, segments, routes, guidance, signal, onProgress, generate, intervalMs, utteranceById,
-  waitFirst, concurrency = 1 }) {
+  waitFirst, concurrency = 1, admissionRetryMs = ADMISSION_RETRY_MS }) {
   const queue = segments.map((segment, order) => ({ ...segment, order: String(order).padStart(4, '0') }));
   const results = [];
   const used = [];
@@ -272,6 +274,15 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
         { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}),
           onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segment: segment.label, segmentIndex: finished, totalSegments: total(), completedSegments: finished, topics: segment.topics.map(t => t.node_name), streamEvent }) });
     } catch (error) {
+      // An admission refusal (429) happens before any provider call: nothing was spent, so wait and requeue.
+      if (error?.status === 429 && (segment.admissionRetries || 0) < MAX_ADMISSION_RETRIES) {
+        const tries = (segment.admissionRetries || 0) + 1;
+        activity(onProgress, 'warn', `${name} was not admitted yet (another call was starting); retrying in ${seconds(admissionRetryMs * tries)} (try ${tries} of ${MAX_ADMISSION_RETRIES}).`);
+        log('detail admission retry', { ...details, tries });
+        await sleep(admissionRetryMs * tries, signal);
+        queue.unshift({ ...segment, admissionRetries: tries });
+        return;
+      }
       // A structural refusal is asked once more with the rule named: re-asking, never repairing the reply.
       const retriable = !segment.retryOf && error?.code === 'invalid_completion' && error?.stopReason !== 'max_tokens'
         && ['hierarchy', 'edges', 'threads', 'node_evidence', 'node_shape', 'required_shape'].includes(error?.validationStage);
@@ -334,7 +345,7 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
  */
 export async function runGlanceDetailPipeline({ source, routes, guidance = '', title = '', meetingMetadata = null, mediaRefs = [],
   signal, onProgress, generate = generateOrderedRecordingMap, intervalMs = null, concurrency = null, detail = 'all',
-  maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS }) {
+  maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS, admissionRetryMs = ADMISSION_RETRY_MS }) {
   const utterances = createRecordingTranscript(source).document.utterances;
   const utteranceById = new Map(utterances.map(u => [u.id, u]));
   const totalWords = utterances.reduce((s, u) => s + countWords(u.text), 0);
@@ -369,7 +380,7 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   activity(onProgress, 'info', `Detail plan: ${segments.length} topic group${segments.length === 1 ? '' : 's'} of up to ${number(maxSegmentWords)} words, `
     + `${pace.concurrency > 1 ? `up to ${pace.concurrency} at a time, starts ${seconds(pace.intervalMs)} apart (personal key)` : `one at a time, ${seconds(pace.intervalMs)} apart (provider pacing)`}.`);
   const run = await runSegments({ source, base: skeleton, segments, routes, guidance, signal, onProgress, generate,
-    intervalMs: pace.intervalMs, concurrency: pace.concurrency, utteranceById, waitFirst: true });
+    intervalMs: pace.intervalMs, concurrency: pace.concurrency, admissionRetryMs, utteranceById, waitFirst: true });
   onProgress?.({ phase: 'done', partialBundle: run.bundle, completedSegments: run.segments, totalSegments: run.segments });
   const bundle = withBuilders(run.bundle, run.used);
   return { bundle, json: JSON.stringify(bundle, null, 2), backend: glance.backend, model: glance.model,

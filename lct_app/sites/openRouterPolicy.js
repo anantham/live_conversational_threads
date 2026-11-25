@@ -157,7 +157,8 @@ export const mapPolicies = { openrouter: openRouterPolicy, gemini: geminiPolicy,
 // The owner's own key and spend (approved 2026-11-25): detail calls may run three at a time, and a
 // refused reply (which stays unresolved until it goes stale) must not lock out the rest of a run.
 // Server-key routes keep their pacing. Lifetime and window attempt limits are unchanged.
-export const PERSONAL_PACING = Object.freeze({ maxConcurrent: 6, admissionIntervalMs: 1_500 });
+// The interval is a burst guard only; the client staggers starts 1.6 s apart, leaving margin for upload time.
+export const PERSONAL_PACING = Object.freeze({ maxConcurrent: 6, admissionIntervalMs: 500 });
 
 export function personalMapPolicy(route, env) {
   const { backend, key, model, provider } = route;
