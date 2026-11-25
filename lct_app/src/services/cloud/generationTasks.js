@@ -2,7 +2,7 @@
 // Generation tasks beyond the single-pass map: a whole-conversation glance (skeleton) and a
 // per-segment detail pass. Each task owns its prompt and output schema; translation to the
 // shared .threads graph lives in rangeGeneration.js.
-import { edge, rangeNode, rangeThread, reference, utteranceRange } from './generationSchema.js';
+import { edge, rangeThread, reference, utteranceRange } from './generationSchema.js';
 
 export const SKELETON_FORMAT = 'skeleton-ranges-v1';
 export const DETAIL_FORMAT = 'detail-ranges-v1';
