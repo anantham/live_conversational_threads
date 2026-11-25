@@ -12,6 +12,7 @@ import { driveTimestampUrl, formatClock } from '../services/cloud/geminiNotesPar
 import { readTranscriptFile } from '../services/cloud/pdfTranscriptReader.js';
 import { splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
 import { runGlanceDetailPipeline } from '../services/cloud/glanceDetailPipeline.js';
+import { runEpistemicAnalysis } from '../services/cloud/epistemicPipeline.js';
 import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 import MapAuditPanel from '../components/audit/MapAuditPanel.jsx';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
@@ -198,6 +199,20 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       setCompletedBundle(result.bundle);
       onBundleReady(result.bundle);
       if (result.backend && result.model) setServed(`${MAP_PROVIDERS[result.backend].name} · ${result.model}`);
+      // Quiet background epistemic pass (non-blocking): populates Cruxes, Claims, and Normative lenses.
+      if (detail !== 'none' && !controller.signal.aborted) {
+        appendLog('Running quiet background epistemic pass (cruxes, claims, normative assumptions)…');
+        void runEpistemicAnalysis({ source: parsed.source, bundle: result.bundle, routes, signal: controller.signal })
+          .then(enriched => {
+            setCompletedBundle(enriched.bundle);
+            onBundleReady(enriched.bundle);
+            const { cruxes, factual_claims: claims, normative_assumptions: normative } = enriched.epistemic;
+            appendLog(`✓ Epistemic lenses ready: ${cruxes.length} cruxes · ${claims.length} claims · ${normative.length} normative.`);
+          })
+          .catch(() => {
+            appendLog('Background epistemic pass skipped (map is complete and unaffected).');
+          });
+      }
     } catch (cause) {
       setProgress(current => ({ ...current, phase: 'stopped' }));
       setStreamStats(null);

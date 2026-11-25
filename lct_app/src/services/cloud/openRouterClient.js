@@ -326,3 +326,25 @@ export async function auditRecordingMap(source, signal, route, nodes) {
     droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0,
     attempts: publicAttempts(payload.attempts) };
 }
+
+/**
+ * Quiet background epistemic extraction (cruxes, factual claims, normative assumptions) anchored
+ * to canonical utterance IDs and known map node IDs.
+ */
+export async function extractEpistemicMap(source, signal, routes, nodes) {
+  createRecordingTranscript(source);
+  const body = JSON.stringify({ source, routes, task: 'epistemic', nodes });
+  if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This epistemic analysis request is too large.');
+  const startedAt = Date.now();
+  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
+  const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
+  if (!response.ok) throw failure(response.status, payload);
+  if (payload.task !== 'epistemic' || !payload.epistemic || !routes.some(route => route.backend === payload.backend)) throw unreadable();
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'epistemic', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
+  return { epistemic: payload.epistemic, backend: payload.backend, model: payload.model,
+    ...(payload.usage ? { usage: payload.usage } : {}),
+    droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0,
+    attempts: publicAttempts(payload.attempts) };
+}

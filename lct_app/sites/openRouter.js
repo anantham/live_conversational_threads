@@ -358,6 +358,14 @@ function extractResponseUsage(completion, anthropic) {
             ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
           return { audit: parsed.audit, backend: policy.backend, model: body.model, usage: extractResponseUsage(completion, anthropic) };
         }
+        if (parsed.epistemic) {
+          logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
+            cruxes: parsed.epistemic.cruxes.length, claims: parsed.epistemic.factual_claims.length,
+            normative: parsed.epistemic.normative_assumptions.length, droppedRanges: parsed.epistemic.droppedRanges,
+            unknownNodes: parsed.epistemic.unknownNodes, malformed: parsed.epistemic.malformed,
+            ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
+          return { epistemic: parsed.epistemic, backend: policy.backend, model: body.model, usage: extractResponseUsage(completion, anthropic) };
+        }
         const { bundle, referenceRepair, coverage, boundaryNotes, stubTopicIds, glossary } = parsed;
         logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           nodes: bundle.graph_data.length, coveredTurns: bundle.coverage?.covered_turns, totalTurns: bundle.coverage?.total_turns,
@@ -397,7 +405,7 @@ function extractResponseUsage(completion, anthropic) {
     }
   }
 
-  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, usage }) {
+  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, epistemic, usage }) {
     if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
     const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
     if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
@@ -405,6 +413,11 @@ function extractResponseUsage(completion, anthropic) {
     if (audit) {
       return { request_id: id, task: 'audit', backend, model, attempts: attempts.map(publicAttempt), findings: audit.findings,
         dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed,
+        ...(usage ? { usage } : {}) };
+    }
+    if (epistemic) {
+      return { request_id: id, task: 'epistemic', backend, model, attempts: attempts.map(publicAttempt), epistemic,
+        dropped_ranges: epistemic.droppedRanges, unknown_nodes: epistemic.unknownNodes, malformed: epistemic.malformed,
         ...(usage ? { usage } : {}) };
     }
     logReferenceRepair(repair, backend);

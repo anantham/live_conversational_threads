@@ -6,6 +6,7 @@ import { expandTaskGeneration } from './rangeGeneration.js';
 import { DETAIL_FORMAT, DETAIL_PROMPT, DETAIL_SCHEMA, MAX_SEGMENT_TOPICS, SKELETON_FORMAT, SKELETON_PROMPT, SKELETON_SCHEMA, sanitizeGlossary } from './generationTasks.js';
 import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { AUDIT_PROMPT, AUDIT_SCHEMA, auditFromGeneratedText, auditMapNodes } from './auditTask.js';
+import { EPISTEMIC_PROMPT, EPISTEMIC_SCHEMA, epistemicFromGeneratedText } from './epistemicTask.js';
 import { MAP_GUIDANCE_LIMIT } from './sitesProviderPreferences.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
 
@@ -75,15 +76,22 @@ export function generationTask(context = {}) {
     try { nodes = auditMapNodes(context.nodes); } catch { throw invalid('audit map nodes are invalid.'); }
     return { task, prompt: AUDIT_PROMPT, schema: AUDIT_SCHEMA, extra: { map_nodes: nodes } };
   }
+  if (task === 'epistemic') {
+    let nodes;
+    try { nodes = auditMapNodes(context.nodes); } catch { throw invalid('epistemic map nodes are invalid.'); }
+    return { task, prompt: EPISTEMIC_PROMPT, schema: EPISTEMIC_SCHEMA, extra: { map_nodes: nodes } };
+  }
   throw invalid('unknown generation task.');
 }
 
-/** Route a completed reply's text to the parser for its task: an audit yields findings, not a map. */
+/** Route a completed reply's text to the parser for its task: audit and epistemic yield annotations, not a map. */
 export function readGeneratedText(source, content, context = {}) {
-  if (context.task !== 'audit') return recordingThreadsFromGeneratedText(source, content, context);
+  if (context.task !== 'audit' && context.task !== 'epistemic') return recordingThreadsFromGeneratedText(source, content, context);
   if (encoder.encode(content).byteLength > MAX_CONTENT_BYTES) throw invalid('the completion exceeds the bounded output size.', 'content_size');
   const utteranceIds = createRecordingTranscript(source).document.utterances.map(({ id }) => id);
-  return { audit: auditFromGeneratedText(utteranceIds, content, auditMapNodes(context.nodes).map(node => node.id)) };
+  const nodeIds = auditMapNodes(context.nodes).map(node => node.id);
+  if (context.task === 'epistemic') return { epistemic: epistemicFromGeneratedText(utteranceIds, content, nodeIds) };
+  return { audit: auditFromGeneratedText(utteranceIds, content, nodeIds) };
 }
 
 export function buildRecordingGenerationMessages(source, maxTokens, guidance = '', context = {}) {

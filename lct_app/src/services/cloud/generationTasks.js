@@ -68,7 +68,8 @@ export const DETAIL_SCHEMA = {
   required: ['hierarchy_format', 'nodes', 'edges', 'boundary_notes'],
   properties: {
     hierarchy_format: { type: 'string', enum: [DETAIL_FORMAT] },
-    nodes: { type: 'array', items: { anyOf: [rangeNode(1, [2]), rangeNode(2, [3])] } },
+    // Chunks (1) may file under an idea (2) OR directly under a topic (3) when a wrapper idea would only restate the chunk.
+    nodes: { type: 'array', items: { anyOf: [rangeNode(1, [2, 3]), rangeNode(2, [3])] } },
     edges: { type: 'array', items: edge }, boundary_notes: { type: 'array', items: boundaryNote },
   },
 };
@@ -104,8 +105,8 @@ export const SKELETON_PROMPT = [
   'A topic is a subject the conversation spends time on. Cite it in source_ranges as one or more {"from","to"} utterance ranges; when the conversation returns to a subject later, give the same topic another range rather than a new topic.',
   'Topics should together cover every utterance once, without overlapping ranges, so the skeleton tiles the conversation. Small talk, logistics and asides are topics too: mark them salience aside.',
   'Set salience to core for what the conversation is mainly about, supporting for what serves it, and aside for tangents and small talk.',
-  'Themes group related topics; arcs are the few overarching movements of the whole conversation. Themes and arcs cite no ranges (empty source_ranges): their evidence is derived from their topics.',
-  'File each topic under one theme and each theme under one arc with parent_id; arcs have parent_id null.',
+  'Themes group related topics that share an underlying tension or motif; arcs name an overarching development or shift across the call (for example "From solo funding to shared buy-in"). If a subject simply recurs without developing, a recurring topic is enough. Themes and arcs cite no ranges (empty source_ranges): their evidence is derived from their children.',
+  'Stopping rule: ask "What could the reader find by opening this node that its parent does not already tell them?" If a wrapper theme or arc would only repeat one child over the same turns, omit the wrapper — a topic may file directly under an arc or stay at root with parent_id null; arcs always have parent_id null.',
   'Use edges between topics, themes or arcs for real relations; when the conversation returns to an earlier subject, an edge with edge_kind temporal can record the callback.',
   'Create a few ordered conversation threads when a path through topics is meaningful; each step cites a {"from","to"} range. Use empty arrays when nothing is defensible.',
   'Speech recognition often spells one name, place or term several ways. List those in glossary as {"canonical","variants"} (for example a person whose name appears as two spellings), use the canonical spelling in node names and summaries, and never change the utterance text. Use an empty glossary when there are none.',
@@ -116,7 +117,7 @@ export const DETAIL_PROMPT = [
   'Map the supplied segment of a conversation in fine detail: chunks (1) and ideas (2), filed under the segment topics provided in segment_topics.',
   'Set hierarchy_format to detail-ranges-v1.',
   'A chunk is one coherent moment: a run of consecutive utterances that develop the same point. Cite it as source_range {"from","to"}. Chunks should cover every supplied utterance once, in order, without overlapping. Fold short acknowledgements into a neighbouring chunk.',
-  'An idea groups chunks that make one point. Ideas cite source_range null: their evidence is derived from their chunks. File each chunk under one idea, and each idea under the segment topic its utterances actually discuss, using {"semantic_level":3,"id":<topic id from segment_topics>}.',
+  'An idea groups chunks that synthesize a distinct thought. Ideas cite source_range null: their evidence is derived from their chunks. Stopping rule: ask "What could the reader find by opening this idea that its parent or chunk does not already tell them?" Only create an idea when it adds synthesis across chunks; if a chunk already stands on its own (such as a brief decision or a single-turn consequential reversal), omit the wrapper idea and file the chunk directly under its segment topic with {"semantic_level":3,"id":<topic id from segment_topics>}. Otherwise file each chunk under one idea, and each idea under its segment topic.',
   'Do not force a fit. If content belongs to no supplied topic, give its idea parent_id null and add a boundary note of kind unfiled. If the segment contains a subject the overview missed, add a boundary note of kind missed_topic with its range. If a topic boundary looks wrong, add a boundary note of kind wrong_boundary. Otherwise return an empty boundary_notes array.',
   'Use edges between chunks or ideas only for real relations; otherwise an empty edges array.',
   'When a glossary is supplied, write names in node names and summaries with its canonical spelling.',

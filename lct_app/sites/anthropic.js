@@ -1,9 +1,10 @@
 import { buildRecordingGenerationMessages, readGeneratedText } from '../src/services/cloud/openRouterGeneration.js';
 import { AUDIT_SCHEMA } from '../src/services/cloud/auditTask.js';
+import { EPISTEMIC_SCHEMA } from '../src/services/cloud/epistemicTask.js';
 import { ANTHROPIC_GENERATION_GRAPH_SCHEMA } from '../src/services/cloud/generationSchema.js';
 import { ANTHROPIC_DETAIL_SCHEMA, ANTHROPIC_SKELETON_SCHEMA } from '../src/services/cloud/generationTasks.js';
 
-const ANTHROPIC_SCHEMAS = { map: ANTHROPIC_GENERATION_GRAPH_SCHEMA, skeleton: ANTHROPIC_SKELETON_SCHEMA, detail: ANTHROPIC_DETAIL_SCHEMA, audit: AUDIT_SCHEMA };
+const ANTHROPIC_SCHEMAS = { map: ANTHROPIC_GENERATION_GRAPH_SCHEMA, skeleton: ANTHROPIC_SKELETON_SCHEMA, detail: ANTHROPIC_DETAIL_SCHEMA, audit: AUDIT_SCHEMA, epistemic: EPISTEMIC_SCHEMA };
 
 export function anthropicHeaders(key) {
   return { 'x-api-key': key, 'anthropic-version': '2026-10-21' };
