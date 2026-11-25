@@ -251,3 +251,20 @@ describe('nested detail replies', () => {
     expect(empty.coverage).toMatchObject({ chunks: 0, uncoveredTurns: 3 });
   });
 });
+
+// Streamed provider events reach onProgress from inside the parallel detail pool.
+it('forwards streamed detail events from the parallel pool without breaking the run', async () => {
+  vi.spyOn(console, 'info').mockImplementation(() => {});
+  const inner = fakeModel();
+  const generate = vi.fn(async (...args) => {
+    args[4].onEvent?.({ type: 'delta', output_tokens: 42 });
+    return inner(...args);
+  });
+  const streamed = [];
+  const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6,
+    onProgress: e => { if (e.phase === 'stream' && e.task === 'detail') streamed.push(e); } });
+  expect(streamed.length).toBeGreaterThan(1);
+  expect(streamed.every(e => typeof e.segment === 'string' && Number.isInteger(e.totalSegments))).toBe(true);
+  expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+});
+

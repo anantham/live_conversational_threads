@@ -270,7 +270,7 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
         : guidance;
       result = await generate(segmentSource(source, segment, utteranceById), signal, routes, retryNote,
         { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}),
-          onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), streamEvent }) });
+          onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segment: segment.label, segmentIndex: finished, totalSegments: total(), completedSegments: finished, topics: segment.topics.map(t => t.node_name), streamEvent }) });
     } catch (error) {
       // A structural refusal is asked once more with the rule named: re-asking, never repairing the reply.
       const retriable = !segment.retryOf && error?.code === 'invalid_completion' && error?.stopReason !== 'max_tokens'
