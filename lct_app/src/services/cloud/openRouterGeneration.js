@@ -176,30 +176,43 @@ export function recordingThreadsFromOpenRouterResponse({ source, response, conte
 }
 
 /**
- * Nested detail (ideas holding chunks) → the flat detail shape. Chunk ids are assigned from their idea,
- * so every chunk's parent exists by construction; an idea's topic_id becomes its typed topic parent.
- * Malformed shapes are left for the validator to refuse.
+ * Nested detail (ideas holding chunks, plus chunks filed directly under a topic) → the flat detail shape.
+ * Chunk ids are assigned from their idea, so every chunk's parent exists by construction; an idea's
+ * topic_id becomes its typed topic parent, as does a topic chunk's. Malformed shapes are left for the
+ * validator to refuse.
  */
 function flattenNestedDetail(graph) {
-  // An empty reply, an idea without chunks, or a topic_id that is neither a string nor null is refused
-  // (required_shape), so the segment is re-asked instead of silently mapping nothing.
-  if (!Array.isArray(graph.ideas) || !graph.ideas.length || !Array.isArray(graph.boundary_notes)
+  // An empty reply, an idea without chunks, a topic chunk without a topic, or a topic_id that is neither
+  // a string nor null is refused (required_shape), so the segment is re-asked instead of silently mapping nothing.
+  const topicChunks = graph.topic_chunks === undefined ? [] : graph.topic_chunks;
+  if (!Array.isArray(graph.ideas) || !Array.isArray(topicChunks) || !(graph.ideas.length + topicChunks.length)
+    || !Array.isArray(graph.boundary_notes)
     || graph.ideas.some(idea => !object(idea) || !Array.isArray(idea.chunks) || !idea.chunks.length
-      || (idea.topic_id !== null && typeof idea.topic_id !== 'string'))) return { ...graph, nodes: null };
+      || (idea.topic_id !== null && typeof idea.topic_id !== 'string'))
+    || topicChunks.some(chunk => !object(chunk) || typeof chunk.topic_id !== 'string')) return { ...graph, nodes: null };
   const taken = new Set();
   const nodes = [];
-  graph.ideas.forEach((idea, i) => {
-    if (!object(idea) || !Array.isArray(idea.chunks)) { nodes.push(null); return; }
-    // Room for a collision suffix, the chunk suffix and the merge prefix within the 158-character id limit.
-    let id = (typeof idea.id === 'string' && idea.id.trim() ? idea.id.trim() : `idea-${i + 1}`).slice(0, 100);
+  // Room for a collision suffix, the chunk suffix and the merge prefix within the 158-character id limit.
+  const claim = (raw, fallback, i) => {
+    let id = (typeof raw === 'string' && raw.trim() ? raw.trim() : fallback).slice(0, 100);
     while (taken.has(id)) id = `${id}-${i + 1}`;
     taken.add(id);
+    return id;
+  };
+  graph.ideas.forEach((idea, i) => {
+    const id = claim(idea.id, `idea-${i + 1}`, i);
     nodes.push({ id, semantic_level: 2, semantic_type: 'idea', node_name: idea.node_name, summary: idea.summary ?? '',
       source_range: null, parent_id: typeof idea.topic_id === 'string' ? { semantic_level: 3, id: idea.topic_id } : null,
       secondary_parent_ids: [] });
     idea.chunks.forEach((chunk, k) => nodes.push(object(chunk) ? { id: `${id}~${k + 1}`, semantic_level: 1, semantic_type: 'chunk',
       node_name: chunk.node_name, summary: chunk.summary ?? '', source_range: chunk.source_range,
       parent_id: { semantic_level: 2, id }, secondary_parent_ids: [] } : null));
+  });
+  // Idea chunk ids carry "~", so a topic chunk id without it can never collide with one.
+  topicChunks.forEach((chunk, k) => {
+    const id = claim(typeof chunk.id === 'string' ? chunk.id.replaceAll('~', '-') : '', `topic-chunk-${k + 1}`, k);
+    nodes.push({ id, semantic_level: 1, semantic_type: 'chunk', node_name: chunk.node_name, summary: chunk.summary ?? '',
+      source_range: chunk.source_range, parent_id: { semantic_level: 3, id: chunk.topic_id }, secondary_parent_ids: [] });
   });
   return { hierarchy_format: DETAIL_FORMAT, nodes, edges: [], boundary_notes: graph.boundary_notes };
 }

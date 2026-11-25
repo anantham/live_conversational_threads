@@ -68,17 +68,25 @@ const boundaryNote = {
     range: { anyOf: [utteranceRange, { type: 'null' }] } },
 };
 
-/** The nested detail schema for one segment: idea topics are an enum of that segment's topic ids. */
+/**
+ * The nested detail schema for one segment: idea topics are an enum of that segment's topic ids.
+ * A chunk that already stands on its own may skip the wrapper idea and sit in topic_chunks, filed
+ * directly under its segment topic (the detail stopping rule). source_range precedes topic_id so the
+ * live stream scanner still reads such an object as a chunk.
+ */
 export function detailNestedSchema(topicIds) {
   const chunk = { type: 'object', additionalProperties: false, required: ['id', 'node_name', 'summary', 'source_range'],
     properties: { id: string, node_name: string, summary: string, source_range: utteranceRange } };
+  const topicChunk = { type: 'object', additionalProperties: false, required: ['id', 'node_name', 'summary', 'source_range', 'topic_id'],
+    properties: { ...chunk.properties, topic_id: { type: 'string', enum: [...topicIds] } } };
   const idea = { type: 'object', additionalProperties: false, required: ['id', 'node_name', 'summary', 'topic_id', 'chunks'],
     properties: { id: string, node_name: string, summary: string,
       topic_id: { anyOf: [{ type: 'string', enum: [...topicIds] }, { type: 'null' }] },
       chunks: { type: 'array', minItems: 1, items: chunk } } };
-  return { type: 'object', additionalProperties: false, required: ['hierarchy_format', 'ideas', 'boundary_notes'],
+  return { type: 'object', additionalProperties: false, required: ['hierarchy_format', 'ideas', 'topic_chunks', 'boundary_notes'],
     properties: { hierarchy_format: { type: 'string', enum: [DETAIL_NESTED_FORMAT] },
-      ideas: { type: 'array', minItems: 1, items: idea }, boundary_notes: { type: 'array', items: boundaryNote } } };
+      ideas: { type: 'array', items: idea }, topic_chunks: { type: 'array', items: topicChunk },
+      boundary_notes: { type: 'array', items: boundaryNote } } };
 }
 
 // Claude compiles one node shape best; tiers, parents and ranges are enforced after decoding.
@@ -123,10 +131,11 @@ export const SKELETON_PROMPT = [
 ].join(' ');
 
 export const DETAIL_PROMPT = [
-  'Map the supplied segment of a conversation in fine detail as ideas, each holding the chunks that make it, filed under the segment topics listed in segment_topics.',
+  'Map the supplied segment of a conversation in fine detail as ideas, each holding the chunks that make it, filed under the segment topics listed in segment_topics; a chunk that stands on its own may file directly under its topic in topic_chunks.',
   'Set hierarchy_format to detail-nested-v2.',
-  'A chunk is one coherent moment: a run of consecutive utterances that develop the same point. Give each chunk a source_range {"from","to"} copied exactly from the supplied utterance IDs. Across all ideas, chunks should cover every supplied utterance once, in order, without overlapping. Fold short acknowledgements into a neighbouring chunk, while preserving a short consequential reversal as its own chunk even if it occupies a single turn.',
+  'A chunk is one coherent moment: a run of consecutive utterances that develop the same point. Give each chunk a source_range {"from","to"} copied exactly from the supplied utterance IDs. Across all ideas and topic_chunks, chunks should cover every supplied utterance once, in order, without overlapping. Fold short acknowledgements into a neighbouring chunk, while preserving a short consequential reversal as its own chunk even if it occupies a single turn.',
   'An idea groups one or more chunks that make one point; every idea must contain at least one chunk. Avoid splitting a single cohesive exchange into redundant wrapper ideas. Set each idea topic_id to the segment topic its chunks actually discuss, chosen from segment_topics.',
+  'Stopping rule: ask "What could the reader find by opening this idea that its chunk does not already tell them?" Only create an idea when it adds synthesis across chunks. If a chunk already stands on its own (such as a brief decision or a single-turn consequential reversal), omit the wrapper idea and put the chunk in topic_chunks with topic_id set to its segment topic. Otherwise return an empty topic_chunks array.',
   'Do not force a fit. If content belongs to no supplied topic, set that idea topic_id to null and add a boundary note of kind unfiled. If the segment contains a subject the overview missed, add a boundary note of kind missed_topic with its range. If a topic boundary looks wrong, add a boundary note of kind wrong_boundary. Otherwise return an empty boundary_notes array.',
   'Keep names short (at most eight words) and summaries to one sentence.',
   'When a glossary is supplied, write names in node names and summaries with its canonical spelling.',

@@ -5,6 +5,13 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line react/prop-types -- minimal router stub
 vi.mock('react-router-dom', () => ({ Link: ({ children, to }) => <a href={to}>{children}</a> }));
+const recordQualitySnapshot = vi.fn();
+vi.mock('../../services/cloud/qualityLedgerStore.js', () => ({ recordQualitySnapshot: (...args) => recordQualitySnapshot(...args) }));
+const auditMock = vi.hoisted(() => ({ run: null }));
+vi.mock('../../services/cloud/mapAudit.js', async importOriginal => {
+  const real = await importOriginal();
+  return { ...real, runMapAudit: (...args) => (auditMock.run ? auditMock.run(...args) : real.runMapAudit(...args)) };
+});
 import MapAuditPanel from './MapAuditPanel.jsx';
 import { recordingThreadsFromGeneratedText } from '../../services/cloud/openRouterGeneration.js';
 const source = { recordingId: 'synthetic-panel', startedAt: Date.UTC(2026, 10, 25), complete: true,
@@ -46,5 +53,19 @@ describe('MapAuditPanel', () => {
     view({ routes: [claude, gemini], bundle: audited, onBundleChange });
     act(() => buttonNamed('Accept').click());
     expect(onBundleChange.mock.calls[0][0].audit_signals[0].decision).toBe('accepted');
+  });
+
+  // The audited map is not saved yet; the import page records its quality row when the user saves it.
+  it('passes the audited map on without writing a quality-ledger row for the unsaved map', async () => {
+    const onBundleChange = vi.fn();
+    const audited = { ...built, audit_signals: [] };
+    auditMock.run = vi.fn(async () => audited);
+    view({ routes: [claude, gemini], onBundleChange });
+    act(() => [...host.querySelectorAll('label')].find(l => /I have permission/.test(l.textContent)).querySelector('input').click());
+    await act(async () => { buttonNamed('Run audit').click(); });
+    expect(auditMock.run).toHaveBeenCalledTimes(1);
+    expect(onBundleChange).toHaveBeenCalledWith(audited);
+    expect(recordQualitySnapshot).not.toHaveBeenCalled();
+    auditMock.run = null;
   });
 });

@@ -6,7 +6,6 @@ import { ShieldCheck } from 'lucide-react';
 import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient.js';
 import { formatClock } from '../../services/cloud/geminiNotesParser.js';
 import { auditSummary, chooseAuditRoute, decideSignal, planAuditSpans, runMapAudit } from '../../services/cloud/mapAudit.js';
-import { recordQualitySnapshot } from '../../services/cloud/qualityLedgerStore.js';
 
 const button = 'inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50';
 const primary = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
@@ -37,7 +36,8 @@ export default function MapAuditPanel({ source, bundle, routes, onBundleChange }
     try {
       const audited = await runMapAudit({ source, bundle, route, segments: spans, signal: controller.signal,
         onProgress: event => setProgress(event.phase === 'audit' ? `Auditing span ${event.segmentIndex + 1} of ${event.totalSegments}…` : 'Audit complete.') });
-      recordQualitySnapshot(audited);
+      // No quality-ledger row here: the audited map is not saved yet. Saving it records one (the row is
+      // computed from the map, so the audit signals are kept).
       onBundleChange(audited);
     } catch (cause) {
       setError(cause?.name === 'AbortError' ? 'Audit cancelled. The map is unchanged.' : cause?.message || 'The audit did not finish.');

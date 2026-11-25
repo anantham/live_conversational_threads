@@ -3292,3 +3292,16 @@ The local preview received an upstream HTTP 400 on the first window and stopped 
 - Impact: evidence attached to the wrong turns, silently. The import page now uses `glanceDetailPipeline.js`, which gives each
   turn its own speaker label and asserts the count at merge; the old windowed path remains for other callers.
 - Next: apply the same unique-label + count assertion to `splitSourceIntoWindows`, or retire it. Found by Gemini review (ADR-073).
+
+## 2026-11-25 23:31 IST — Lower-tier findings from the two-day commit review (fix/review-top-tier)
+Found by five read-only reviewers over 9f047a1e..173f8f2c plus main/CI commits; spot-verified where marked [v]. Not fixed yet.
+- Costs undercount: rejected (max_tokens) and fallback calls are billed but recorded as 0 tokens (`openRouterClient.js` records only the accepted call's usage); the "Reported by provider" headline sums only OpenRouter `cost_usd` while Anthropic/Gemini report none. [v]
+- `PublishLinkPanel.test.jsx:36` double-click test cannot fail: both clicks in one `act()`, so "Publishing…" is not rendered yet. [v]
+- Pipeline: `halve()` copies `retryOf`/`admissionRetries` into both halves (wrong re-ask note, lost re-ask) [v]; a topic nested in another topic is dropped from segments, keeps overlapping evidence and is re-detailed; admission retries total 30 s vs a 300 s stale-slot hold; one bad `mergeDetail` drops later successes from partial maps.
+- `mapAudit.js:29` says "uncovered turns first" but slices the first 4 segments in timeline order, so an end-of-call gap is never audited. [v]
+- ADR-073 says higher-tier ranges are "ignored and counted"; the overview path refuses them, and an overview refusal ends the run.
+- Streaming: stream-read errors reported as provider_unreachable; abort turns a partial reply into a spurious rejected attempt; 2 MiB cap counts SSE wire bytes; no cancel() on the server stream.
+- Publish panel shows after a failed run (partial bundle publishable).
+- Tests: credential store (AES-GCM/IndexedDB) fully mocked; `runLongTranscriptPipeline` no longer used by the app but still tested; Privacy page says keys are "encrypted" while the wrapping key sits beside them.
+- Minor: e49764db broke ~4 links inside moved docs; `nightly-stt-e2e.yml` still `ubuntu-latest`; the post-deploy smoke may target the ChatGPT Site rather than the Vercel deploy; usage parsing duplicated in `sites/openRouter.js`; edge validation rules dropped from client messages; key-check endpoint has no rate limit; comments claim the model name stays private on server routes.
+- Environment: under Node 26, 243 frontend test lines fail identically before and after these fixes (Node's global localStorage shadows jsdom's); CI uses Node 24. The main checkout's node_modules lacks pdfjs-dist, so `build:sites` from a worktree symlinked to it fails until `npm ci`.
