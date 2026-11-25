@@ -10995,3 +10995,10 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - Audio import applies a deadline to the setup response and its body, even when the fetch ignores cancellation. Only the current setup request can set capability. Ending an import before it produces content clears the leave warning while active work and unsaved output still receive protection. See `lct_app/src/hooks/useAudioImport.js:25` and `lct_app/src/pages/SitesAudioImport.jsx:30`.
 - The eight new cases reproduced failures before edits. All 1,547 frontend tests across 164 files passed after the fixes. The Sites build passed, and Chrome at 390 px confirmed usable transcription with failing storage and a successful retry after stalled import setup. Scoped lint had no errors and reported existing hook dependency warnings. Test intent is in `lct_app/tests/intent/workflow-request-ownership.md:1`.
 - Includes the earlier duplicate Start and empty recording cancellation repairs. All changes are committed locally on `fix/hosted-recording-guards` from `f49da765`.
+
+## 2026-11-25 — Sites CI runs on main
+
+- `.github/workflows/sites-ci.yml` triggered only on the Codex Sites branches. PR #238 merged those into `main` on 2026-11-09, so the 16 PRs since (#242–#256, including #255's 12 frontend files) reached main without the frontend unit tests, the Sites lint or the Sites build. No other workflow runs them.
+- Change: `main` added to the `pull_request` and `push` triggers. Concurrency now groups PR runs per ref (a newer push cancels the older run) and push runs per commit, so each merge to main keeps its own result instead of a queued run being dropped.
+- Before the change, the same checks run locally on main @ 04b85f67: 1,534/1,534 tests, lint 0 errors (5 warnings), `build:sites` OK. My first local run showed 6 failures only because I had copied `lct_app/` without the repo-root `docs/` those recovery tests read.
+- actionlint OK. Independent review: agy, Gemini 4 Hydrogen (High), packet sha256 `335f6a70…`: no material findings.

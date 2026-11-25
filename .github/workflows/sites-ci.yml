@@ -1,21 +1,24 @@
 name: Sites CI
 
-# Checks for the ChatGPT Sites build, which is production (threads.adityaarpitha.com) and is
-# integrated on the Codex Sites branches. The other workflows only run for `main`, so before this
-# nothing ran the frontend unit tests or the Sites build on these branches.
+# Checks for the ChatGPT Sites build, which is production (threads.adityaarpitha.com). It is the only
+# workflow that runs the frontend unit tests, the Sites lint and the Sites build. The Sites code has
+# lived on `main` since PR #238 (2026-11-09); the Codex Sites branches stay listed in case they are
+# used again. Before `main` was added here, 16 PRs reached main without these checks.
 #
 # No path filters on purpose: the run takes a few minutes, and a path-filtered check that is later
 # made required stays "expected" forever on PRs that do not touch those paths.
 
 on:
   pull_request:
-    branches: [codex/lct-inference-choice, codex/lct-sites-serverless]
+    branches: [main, codex/lct-inference-choice, codex/lct-sites-serverless]
   push:
-    branches: [codex/lct-inference-choice, codex/lct-sites-serverless]
+    branches: [main, codex/lct-inference-choice, codex/lct-sites-serverless]
   workflow_dispatch:
 
 concurrency:
-  group: sites-ci-${{ github.ref }}
+  # A newer push to a PR replaces its older run. Pushes to a branch are grouped per commit, so every
+  # merge to main keeps its own result (a shared group would also drop queued runs, not just cancel).
+  group: sites-ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
