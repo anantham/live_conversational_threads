@@ -266,7 +266,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     const guidance = ordered ? input.guidance : undefined;
     // Glance (skeleton) and detail tasks run only on the ordered map route; legacy routes map in one pass.
     if (input.task != null && (!ordered || diagnostic)) throw new Error('tasks run only on the ordered map route');
-    context = input.task != null ? { task: input.task, topics: input.topics, glossary: input.glossary, nodes: input.nodes } : {};
+    context = input.task != null ? { task: input.task, topics: input.topics, glossary: input.glossary, nodes: input.nodes, claim: input.claim } : {};
     wires = policies.flatMap(policy => generationWires(policy, input.source, maxTokens, guidance, context).map(body => ({ policy, body })));
   } catch { throw new OpenRouterError(400, 'source', 'The recording source or prompt guidance is invalid or too large. No attempt was requested.'); }
   if (wires.some(({ body }) => new TextEncoder().encode(JSON.stringify(body)).byteLength > 512 * 1024)) {
@@ -394,6 +394,12 @@ function extractResponseUsage(completion, anthropic) {
             ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
           return { epistemic: parsed.epistemic, backend: policy.backend, model: body.model, usage: extractResponseUsage(completion, anthropic) };
         }
+        if (parsed.factCheck) {
+          logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
+            status: parsed.factCheck.status, sources: parsed.factCheck.sources.length,
+            ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
+          return { factCheck: parsed.factCheck, backend: policy.backend, model: body.model, usage: extractResponseUsage(completion, anthropic) };
+        }
         const { bundle, referenceRepair, coverage, boundaryNotes, stubTopicIds, glossary } = parsed;
         logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           nodes: bundle.graph_data.length, coveredTurns: bundle.coverage?.covered_turns, totalTurns: bundle.coverage?.total_turns,
@@ -434,7 +440,7 @@ function extractResponseUsage(completion, anthropic) {
     }
   }
 
-  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, epistemic, usage }) {
+  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, epistemic, factCheck, usage }) {
     if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
     const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
     if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
@@ -447,6 +453,10 @@ function extractResponseUsage(completion, anthropic) {
     if (epistemic) {
       return { request_id: id, task: 'epistemic', backend, model, attempts: attempts.map(publicAttempt), epistemic,
         dropped_ranges: epistemic.droppedRanges, unknown_nodes: epistemic.unknownNodes, malformed: epistemic.malformed,
+        ...(usage ? { usage } : {}) };
+    }
+    if (factCheck) {
+      return { request_id: id, task: 'fact_check', backend, model, attempts: attempts.map(publicAttempt), fact_check: factCheck,
         ...(usage ? { usage } : {}) };
     }
     logReferenceRepair(repair, backend);

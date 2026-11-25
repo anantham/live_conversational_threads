@@ -358,3 +358,24 @@ export async function extractEpistemicMap(source, signal, routes, nodes) {
     droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0,
     attempts: publicAttempts(payload.attempts) };
 }
+
+/**
+ * External verification of ONE explicitly-confirmed factual claim.
+ * Sends ONLY the claim text (a minimal empty placeholder source satisfies request shape without
+ * transmitting any transcript turns or speaker names).
+ */
+export async function verifyFactualClaim(claim, signal, routes) {
+  const placeholderSource = { recordingId: 'claim-check', startedAt: Date.now(), complete: true, finalTokens: [{ text: 'claim', speaker: 's' }] };
+  const body = JSON.stringify({ source: placeholderSource, routes, task: 'fact_check', claim });
+  const startedAt = Date.now();
+  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
+  const payload = await readJSON(response, signal, 256 * 1024);
+  if (!response.ok) throw failure(response.status, payload);
+  if (payload.task !== 'fact_check' || !payload.fact_check || !routes.some(route => route.backend === payload.backend)) throw unreadable();
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'fact_check', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
+  return { factCheck: payload.fact_check, backend: payload.backend, model: payload.model,
+    ...(payload.usage ? { usage: payload.usage } : {}),
+    attempts: publicAttempts(payload.attempts) };
+}

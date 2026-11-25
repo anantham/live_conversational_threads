@@ -38,9 +38,11 @@ import {
 import { indexExplicitEdges } from "../services/edgeContract";
 import { readGeneratedMap, releaseGeneratedMap } from "../services/cloud/generatedMapHandoff.js";
 import { applyMergeNodes, applyReturnToThread, applySplitNodeAtVisit, recordBoundaryCorrection } from "../services/cloud/boundaryLearningStore.js";
+import { recordUserFlag } from "../services/cloud/mapAudit.js";
+import { recordQualitySnapshot } from "../services/cloud/qualityLedgerStore.js";
 import { addReactionMarker } from "../components/threads/conversationTimelineModel";
 import { runEpistemicAnalysis } from "../services/cloud/epistemicPipeline.js";
-import { configuredMapRoutes, MAP_PROVIDERS } from "../services/cloud/openRouterClient.js";
+import { configuredMapRoutes, MAP_PROVIDERS, verifyFactualClaim } from "../services/cloud/openRouterClient.js";
 import { useSitesRuntime } from "../contexts/SitesRuntimeContext";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
@@ -83,6 +85,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const sitesRuntime = useSitesRuntime();
   const [epistemicRunning, setEpistemicRunning] = useState(false);
   const [epistemicError, setEpistemicError] = useState("");
+  const [verifyingClaimId, setVerifyingClaimId] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { artifactId, publicId } = useParams();
@@ -555,8 +558,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     setBundle(outcome.bundle);
     if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
     if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
-    // An unsaved map leaves nothing on this device: its node titles are not kept as learned preferences,
-    // which later imports would otherwise send to the map provider.
+    recordQualitySnapshot(outcome.bundle);
+    // An unsaved map's node titles are not kept as learned preferences, which later imports would
+    // otherwise send to the map provider.
     if (ephemeral) { setLibraryStatus({ state: "memory", message: "Boundary updated in this view only · not saved, not learned" }); return; }
     recordBoundaryCorrection(outcome.correction);
     const label = kind === "split"
@@ -572,10 +576,25 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     if (!bundle) return;
     const { bundle: updated } = addReactionMarker(bundle, payload);
     setBundle(updated);
+    if (!privateMode && !publicId) recordQualitySnapshot(updated);
     if (privateMode || publicId || ephemeral) return;
     void rememberThreadsArtifact(updated).then((record) => {
       setLibraryStatus({ state: "saved", message: "Reaction saved on this device", recordId: record.id });
     }).catch(() => {});
+  }, [bundle, privateMode, publicId, ephemeral]);
+
+  const handleFlagNode = useCallback((nodeId, kind) => {
+    if (!bundle) return;
+    try {
+      const updated = recordUserFlag(bundle, nodeId, kind);
+      setBundle(updated);
+      if (!privateMode && !publicId) recordQualitySnapshot(updated);
+      const msg = `Flagged node as ${kind}`;
+      if (privateMode || publicId || ephemeral) { setLibraryStatus({ state: privateMode ? "private" : publicId ? "public" : "memory", message: msg }); return; }
+      void rememberThreadsArtifact(updated).then((record) => {
+        setLibraryStatus({ state: "saved", message: `${msg} · saved on this device`, recordId: record.id });
+      }).catch(() => {});
+    } catch { /* Ignore unknown node/flag. */ }
   }, [bundle, privateMode, publicId, ephemeral]);
 
   const epistemicRoutes = useMemo(() => (sitesRuntime ? configuredMapRoutes(sitesRuntime) : []), [sitesRuntime]);
@@ -620,6 +639,40 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       setEpistemicRunning(false);
     }
   }, [bundle, epistemicRoutes, epistemicRunning, privateMode, publicId, ephemeral]);
+
+  const handleVerifyClaim = useCallback(async (claimId, claimText) => {
+    if (!bundle || !epistemicRoutes.length || verifyingClaimId) return;
+    setVerifyingClaimId(claimId);
+    try {
+      const res = await verifyFactualClaim(claimText, undefined, epistemicRoutes);
+      const external = {
+        ...res.factCheck,
+        claim_sent: claimText,
+        checked_at: new Date().toISOString(),
+        backend: res.backend,
+        model: res.model,
+      };
+      const updated = {
+        ...bundle,
+        epistemic: {
+          ...(bundle.epistemic || {}),
+          factual_claims: (bundle.epistemic?.factual_claims || []).map((c) =>
+            String(c.id) === String(claimId) ? { ...c, external_evidence: external } : c,
+          ),
+        },
+      };
+      setBundle(updated);
+      if (!privateMode && !publicId && !ephemeral) {
+        void rememberThreadsArtifact(updated).then((record) => {
+          setLibraryStatus({ state: "saved", message: "External claim check saved", recordId: record.id });
+        }).catch(() => {});
+      }
+    } catch {
+      setLibraryStatus({ state: "error", message: "External claim check could not finish." });
+    } finally {
+      setVerifyingClaimId(null);
+    }
+  }, [bundle, epistemicRoutes, verifyingClaimId, privateMode, publicId, ephemeral]);
   const openAnother = useCallback(() => {
     if (privateMode) { onPrivateClose(); return; }
     setBundle(null);
@@ -824,11 +877,14 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             speakerColorMap={speakerColorMap}
             onFocusNodeChange={setFocusNode}
             onBoundaryCorrection={handleBoundaryCorrection}
+            onFlagNode={handleFlagNode}
             onAddReaction={handleAddReaction}
             onRunEpistemic={handleRunEpistemic}
             epistemicRunning={epistemicRunning}
             epistemicError={epistemicError}
             epistemicProviderLabel={epistemicProviderLabel}
+            onVerifyClaim={epistemicRoutes.length ? handleVerifyClaim : undefined}
+            verifyingClaimId={verifyingClaimId}
             onOpenVisit={({ utteranceId, seconds }) => {
               if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
               else if (validMediaSeconds(seconds) && selectYouTubeRef(bundle)) seekSourcePassage(seconds);
