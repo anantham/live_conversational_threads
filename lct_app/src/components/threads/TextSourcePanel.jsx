@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import { X } from "lucide-react";
 import SourceSpeakerEditor from "./SourceSpeakerEditor";
 import { validYouTubeRef } from "../../services/youtubeMedia";
 import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../../services/mediaSeek";
@@ -69,7 +70,7 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
   return <aside aria-label="Text source" style={compact ? { maxHeight: "min(60dvh, 60%)" } : undefined} className={`lct-source-panel flex min-h-0 shrink-0 flex-col border-slate-200 bg-white p-3 text-xs text-slate-700 ${compact ? "overflow-y-auto border-b" : "overflow-hidden w-[360px] max-w-[38vw] border-r"}`}>
     <div className="flex shrink-0 items-center justify-between gap-2">
       <h2 className="font-medium text-slate-800">Original source text</h2>
-      <button type="button" onClick={onClose} className="min-h-11 rounded px-2 text-slate-600 hover:bg-slate-100">Hide source</button>
+      <button type="button" onClick={onClose} aria-label="Close source" title="Close source" className="inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-slate-700"><X size={16} aria-hidden="true" /></button>
     </div>
     {unsupportedRecording && <p role="status" className="mb-2 shrink-0 text-amber-800">YouTube source unavailable. The recording link or timing information could not be verified. You can still read the transcript below.</p>}
     {((transcript && utterances.length > 0) || hasGeminiNotes) && <div role="group" aria-label="Text source section" className="mb-2 flex flex-wrap gap-1.5">

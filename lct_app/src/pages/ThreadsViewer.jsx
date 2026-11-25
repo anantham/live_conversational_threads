@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Rows3 } from "lucide-react";
+import { ChevronDown, Rows3 } from "lucide-react";
 import PropTypes from "prop-types";
 
 import { useDataProvider } from "../services/dataProvider";
@@ -13,6 +13,7 @@ import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import ThreadsViewerToolbar from "../components/threads/ThreadsViewerToolbar";
+import SpatialLandscapeCanvas from "../components/threads/SpatialLandscapeCanvas";
 import { buildViewerFindGroups } from "../components/threads/viewerFindModel";
 import { buildConversationSearchDocuments } from "../services/conversationSearch";
 import { buildSpeakerContributions } from "../components/graph/speakerContributions";
@@ -93,7 +94,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const [discussionExpanded, setDiscussionExpanded] = useState([]);
   const [sourcePosition, setSourcePosition] = useState(null);
   const [textSourceMode, setTextSourceMode] = useState("transcript");
-  const [viewMode, setViewMode] = useState(() => !privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+  const [viewMode, setViewMode] = useState(() => !privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "landscape");
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -182,7 +183,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       setSourcePosition(null);
       setTextSourceMode("transcript");
       setSourceSeek(null);
-      setViewMode(!privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+      setViewMode(!privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "landscape");
       setOverviewOpen(false);
       setSourceOpen(false);
       setSourceTextSelection(null);
@@ -682,7 +683,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
     : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} recordTimings={!privateMode} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
-    viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
+    viewMode={renderedViewMode} modes={["landscape", "graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
     graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult} meaningSearch={!privateMode}
     history={history}
@@ -693,6 +694,59 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     cardSettings={<CardDisplaySettings />} libraryStatus={libraryStatus} coverage={bundle.coverage}
   />;
   const header = <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)} />;
+  if (renderedViewMode === "landscape") {
+    const sourceAvailable = Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube") || bundle.full_transcript || bundle.utterances?.length);
+    const landscapeOverflow = (
+      <details className="group relative">
+        <summary aria-label="More options" title="More options" className="inline-flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-stone-200/80 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-slate-700">
+          <ChevronDown size={16} aria-hidden="true" className="transition-transform group-open:rotate-180" />
+          <span className="sr-only">More</span>
+        </summary>
+        <div className="absolute right-0 top-10 z-[70] w-56 rounded-xl border border-stone-200 bg-white p-1.5 text-xs text-slate-700 shadow-lg">
+          <div role="group" aria-label="Conversation view" className="space-y-0.5 border-b border-stone-100 pb-1.5">
+            <button type="button" aria-label="Current view: Landscape. Switch to Graph view." onClick={() => setViewMode("graph")} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Graph view</span></button>
+            <button type="button" onClick={() => setViewMode("discussion")} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Discussion outline</span></button>
+            {compactViewer && <button type="button" onClick={() => setViewMode("cards")} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Cards</span></button>}
+          </div>
+          <div className="space-y-0.5 pt-1.5">
+            {sourceAvailable && <button type="button" onClick={() => { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen((v) => !v); }} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>{sourceOpen ? "Close source" : "Open source"}</span></button>}
+            <button type="button" onClick={downloadTranscript} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Download transcript</span></button>
+            <button type="button" onClick={downloadMap} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Download .threads</span></button>
+            <button type="button" onClick={openLibrary} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Library</span></button>
+            <button type="button" onClick={openAnother} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Open another file</span></button>
+            {refreshFromDrive && <button type="button" onClick={refreshFromDrive} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Refresh from Drive</span></button>}
+          </div>
+          {(bundle.coverage || libraryStatus) && (
+            <div className="mt-1.5 border-t border-stone-100 px-2.5 pt-1.5 text-[11px] text-slate-400">
+              {bundle.coverage?.auditable && <p>{bundle.coverage.covered_turns}/{bundle.coverage.total_turns} turns linked</p>}
+              {libraryStatus?.message && <p>{libraryStatus.message}</p>}
+            </div>
+          )}
+        </div>
+      </details>
+    );
+    return (
+      <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden bg-[#fbfaf7] font-sans">
+        {sourceNotice}
+        <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
+          {sourceOpen && renderSourcePanel(selectedNodeData || focusNode)}
+          <SpatialLandscapeCanvas
+            bundle={bundle}
+            nodes={flatNodes}
+            speakerDisplayNames={speakerDisplayNames}
+            speakerColorMap={speakerColorMap}
+            onFocusNodeChange={setFocusNode}
+            onOpenVisit={({ utteranceId, seconds }) => {
+              if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
+              else if (validMediaSeconds(seconds)) seekSourcePassage(seconds);
+              else setSourceOpen(true);
+            }}
+            overflowMenu={landscapeOverflow}
+          />
+        </div>
+      </div>
+    );
+  }
   if (viewMode === "discussion") return <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
     {sourceNotice}
     {header}

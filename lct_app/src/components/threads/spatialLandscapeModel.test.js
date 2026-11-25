@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import {
+  breadcrumbTrailFor,
+  buildSpatialLandscape,
+  computeNodeVisits,
+  paginateNodes,
+} from "./spatialLandscapeModel";
+
+const utterances = [
+  { id: "u1", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 0, text: "First visit turn one." },
+  { id: "u2", speaker_id: "s2", speaker_name: "Aditya", timestamp_start: 10, text: "First visit turn two." },
+  { id: "u3", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 20, text: "Short 1-turn tangent." },
+  { id: "u4", speaker_id: "s2", speaker_name: "Aditya", timestamp_start: 30, text: "Back to topic immediately." },
+  { id: "u5", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 40, text: "Another uncited turn." },
+  { id: "u6", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 3065, text: "Third visit at 51:05." },
+];
+
+describe("spatialLandscapeModel", () => {
+  it("keeps visit boundaries exact and never merges even a 1-turn uncited gap", () => {
+    const idx = new Map(utterances.map((u, i) => [u.id, i]));
+    const node = {
+      id: "arc-1",
+      semantic_level: 5,
+      node_name: "Co-living",
+      source_ref: { utterance_ids: ["u1", "u2", "u4", "u6"] },
+    };
+    const visits = computeNodeVisits(node, utterances, idx);
+    expect(visits).toHaveLength(3);
+    expect(visits.map((v) => v.label)).toEqual(["00:00", "00:30", "51:05"]);
+    expect(visits.map((v) => v.turnCount)).toEqual([2, 1, 1]);
+    expect(visits[2].startUtteranceId).toBe("u6");
+    expect(visits[2].speaker).toBe("Andre");
+  });
+
+  it("isolates unfiled lower-level orphans from root Arcs", () => {
+    const nodes = [
+      { id: "arc-1", semantic_level: 5, node_name: "Arc 1", source_ref: { utterance_ids: ["u1"] } },
+      { id: "arc-2", semantic_level: 5, node_name: "Arc 2", source_ref: { utterance_ids: ["u2"] } },
+      { id: "idea-11", semantic_level: 2, node_name: "Meditating with people again", source_ref: { utterance_ids: ["u3"] } },
+      { id: "idea-14", semantic_level: 2, node_name: "Other practices", source_ref: { utterance_ids: ["u4"] } },
+    ];
+    const landscape = buildSpatialLandscape(nodes, { utterances });
+    expect(landscape.rootIds).toEqual(["arc-1", "arc-2"]);
+    expect(landscape.unfiledIds).toEqual(["idea-11", "idea-14"]);
+  });
+
+  it("paginates tiers with >3 siblings in strict windows of 3 (1-3 of 5)", () => {
+    const ids = ["t1", "t2", "t3", "t4", "t5"];
+    const p0 = paginateNodes(ids, 0, 3);
+    expect(p0).toMatchObject({ visibleIds: ["t1", "t2", "t3"], start: 1, end: 3, total: 5, hasPrev: false, hasNext: true });
+    const p1 = paginateNodes(ids, 1, 3);
+    expect(p1).toMatchObject({ visibleIds: ["t4", "t5"], start: 4, end: 5, total: 5, hasPrev: true, hasNext: false });
+  });
+
+  it("uses evidence-supported labels for audit contradictions and distinguishes not_analyzed vs none", () => {
+    const nodes = [
+      { id: "arc-1", semantic_level: 5, node_name: "Retreat", source_ref: { utterance_ids: ["u1", "u6"] } },
+      { id: "topic-1", semantic_level: 3, parent_id: "arc-1", node_name: "Arrival dates", source_ref: { utterance_ids: ["u6"] } },
+    ];
+    const bundle = {
+      utterances,
+      audit_signals: [
+        {
+          id: "sig-1",
+          source: "audit",
+          kind: "contradiction",
+          node_id: "topic-1",
+          utterance_ids: ["u6"],
+          note: "Map says both arrive on the 25th; transcript gives two dates.",
+          decision: "pending",
+        },
+      ],
+      epistemic: {
+        cruxes: [],
+      },
+    };
+    const landscape = buildSpatialLandscape(nodes, bundle, { s1: "Andre Vacha" });
+    expect(landscape.lenses.audit.status).toBe("ready");
+    expect(landscape.lenses.audit.count).toBe(1);
+    const rolled = landscape.lenses.audit.rolled.get("arc-1");
+    expect(rolled).toHaveLength(1);
+    expect(rolled[0].label).toBe("Summary conflicts with source");
+    expect(rolled[0].provenance).toBe("map_vs_source");
+    expect(rolled[0].quote).toMatchObject({
+      utteranceId: "u6",
+      speaker: "Andre Vacha",
+      text: "Third visit at 51:05.",
+      label: "51:05",
+    });
+
+    // Explicitly distinguishes analyzed-with-0 ("none") vs unrun ("not_analyzed")
+    expect(landscape.lenses.cruxes.status).toBe("none");
+    expect(landscape.lenses.claims.status).toBe("not_analyzed");
+    expect(landscape.lenses.normative.status).toBe("not_analyzed");
+    expect(breadcrumbTrailFor("topic-1", landscape.nodesById, landscape.parentById).map((n) => n.id)).toEqual(["arc-1", "topic-1"]);
+  });
+});

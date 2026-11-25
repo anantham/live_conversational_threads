@@ -1,13 +1,13 @@
 import { useRef } from "react";
 import PropTypes from "prop-types";
-import { ArrowLeft, ArrowRight, ChevronRight, Download, Focus, FolderOpen, Network, MessageSquare, Layers, FilePlus2, RefreshCw, FileVideo } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Compass, Download, Focus, FolderOpen, Network, MessageSquare, Layers, FilePlus2, RefreshCw, FileVideo } from "lucide-react";
 import ViewerFindMenu from "./ViewerFindMenu";
 import TooltipButton from "../TooltipButton";
 
 const buttonClass = "min-h-11 rounded px-3 text-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700";
 const secondaryButtonClass = `${buttonClass} text-slate-700`;
 const historyButtonClass = "inline-flex h-11 w-11 shrink-0 items-center justify-center p-0 text-slate-700 enabled:hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 disabled:cursor-default disabled:text-slate-500 sm:h-8 sm:w-6";
-const viewIcons = { graph: Network, discussion: MessageSquare, cards: Layers };
+const viewIcons = { landscape: Compass, graph: Network, discussion: MessageSquare, cards: Layers };
 const actionItems = [
   ["Download transcript", "download", Download],
   ["Focus graph", "focus", Focus],
@@ -54,7 +54,7 @@ export default function ThreadsViewerToolbar({
     <div className="flex shrink-0 items-center justify-end gap-1">
       {sourceAvailable && <button type="button" className={`${secondaryButtonClass} flex w-11 items-center justify-center px-0`} aria-label="Source" title={sourceOpen ? "Hide source" : "Show source"} aria-pressed={sourceOpen} onClick={onToggleSource}><FileVideo aria-hidden="true" size={18} /></button>}
       <details key={viewMode} ref={moreMenu} className="group relative">
-        <summary className={`${secondaryButtonClass} flex min-h-11 cursor-pointer list-none items-center gap-2`}><ChevronRight aria-hidden="true" size={16} className="transition-transform group-open:rotate-90" />More</summary>
+        <summary aria-label="More options" title="More options" className={`${secondaryButtonClass} flex min-h-11 w-10 cursor-pointer list-none items-center justify-center px-0`}><ChevronDown aria-hidden="true" size={16} className="transition-transform group-open:rotate-180" /><span className="sr-only">More</span></summary>
         <div className="fixed right-3 top-3 z-[70] max-h-[calc(100dvh-1.5rem)] w-[min(15rem,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
           <div className="flex items-center justify-between px-3 text-xs font-medium text-slate-600">
             <span>More tools</span>
