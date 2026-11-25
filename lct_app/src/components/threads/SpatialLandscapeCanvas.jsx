@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import ConversationTimelineView from "./ConversationTimelineView";
 import {
   breadcrumbTrailFor,
   buildSpatialLandscape,
@@ -214,6 +216,11 @@ export default function SpatialLandscapeCanvas({
   onOpenVisit,
   onFocusNodeChange,
   onBoundaryCorrection,
+  onAddReaction,
+  onRunEpistemic,
+  epistemicRunning = false,
+  epistemicError = "",
+  epistemicProviderLabel = "",
   overflowMenu = null,
 }) {
   const landscape = useMemo(
@@ -222,10 +229,13 @@ export default function SpatialLandscapeCanvas({
   );
 
   // Drill-down path: null = root Arcs, "__unfiled__" = orphan Unfiled view, or a node ID
+  const [surface, setSurface] = useState("map");
   const [parentId, setParentId] = useState(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [hoveredId, setHoveredId] = useState(null);
   const [activeLens, setActiveLens] = useState("all");
+  const [epistemicPromptOpen, setEpistemicPromptOpen] = useState(false);
+  const [epistemicConsent, setEpistemicConsent] = useState(false);
   const touchStartX = useRef(null);
 
   const rawSiblingIds = useMemo(() => {
@@ -386,11 +396,30 @@ export default function SpatialLandscapeCanvas({
         </nav>
 
         <div className="flex items-center gap-2">
-          <div role="group" aria-label="Epistemic lenses" className="flex flex-wrap items-center gap-1 text-xs">
+          <div role="group" aria-label="Surface mode" className="inline-flex rounded-full bg-stone-200/70 p-0.5 text-xs">
+            <button
+              type="button"
+              aria-pressed={surface === "map"}
+              onClick={() => setSurface("map")}
+              className={`rounded-full px-2.5 py-0.5 transition-colors ${surface === "map" ? "bg-white font-medium text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Map
+            </button>
+            <button
+              type="button"
+              aria-pressed={surface === "timeline"}
+              onClick={() => setSurface("timeline")}
+              className={`rounded-full px-2.5 py-0.5 transition-colors ${surface === "timeline" ? "bg-white font-medium text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Timeline
+            </button>
+          </div>
+
+          <div role="group" aria-label="Epistemic lenses" className="relative flex flex-wrap items-center gap-1 text-xs">
             <button
               type="button"
               aria-pressed={activeLens === "all"}
-              onClick={() => { setActiveLens("all"); setPageIndex(0); }}
+              onClick={() => { setActiveLens("all"); setPageIndex(0); setEpistemicPromptOpen(false); }}
               className={`rounded-full px-2.5 py-1 transition-colors ${activeLens === "all" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-stone-200/70 hover:text-slate-900"}`}
             >
               All
@@ -400,25 +429,38 @@ export default function SpatialLandscapeCanvas({
               if (!lens) return null;
               const isReady = lens.status === "ready";
               const isNone = lens.status === "none";
+              const canAnalyze = !isReady && !isNone && lensId !== "audit" && Boolean(onRunEpistemic);
               const statusHint = isReady
                 ? `${lens.label}: ${lens.count} finding${lens.count === 1 ? "" : "s"}`
                 : isNone
                   ? `${lens.label}: analyzed, none found`
-                  : `${lens.label}: not analyzed`;
+                  : canAnalyze
+                    ? `${lens.label}: not analyzed — click to analyze`
+                    : `${lens.label}: not analyzed`;
               return (
                 <button
                   key={lensId}
                   type="button"
-                  disabled={!isReady}
+                  disabled={!isReady && !canAnalyze}
                   aria-pressed={activeLens === lensId}
                   title={statusHint}
-                  onClick={() => { setActiveLens(activeLens === lensId ? "all" : lensId); setPageIndex(0); }}
+                  onClick={() => {
+                    if (isReady) {
+                      setActiveLens(activeLens === lensId ? "all" : lensId);
+                      setPageIndex(0);
+                      setEpistemicPromptOpen(false);
+                    } else if (canAnalyze) {
+                      setEpistemicPromptOpen((v) => !v);
+                    }
+                  }}
                   className={`rounded-full px-2.5 py-1 transition-colors ${
                     activeLens === lensId
                       ? "bg-slate-900 text-white"
                       : isReady
                         ? "text-slate-700 hover:bg-stone-200/70 hover:text-slate-950"
-                        : "cursor-default text-slate-400"
+                        : canAnalyze
+                          ? "cursor-pointer text-slate-400 hover:bg-stone-200/60 hover:text-slate-700"
+                          : "cursor-default text-slate-400"
                   }`}
                 >
                   {lens.label}
@@ -427,11 +469,58 @@ export default function SpatialLandscapeCanvas({
                 </button>
               );
             })}
+
+            {epistemicPromptOpen && onRunEpistemic && (
+              <div className="absolute right-0 top-9 z-[70] w-72 rounded-xl border border-stone-200 bg-white p-3.5 text-xs text-slate-700 shadow-lg">
+                <p className="font-medium text-slate-900">Analyze Cruxes, Claims &amp; Normative assumptions</p>
+                {epistemicProviderLabel ? (
+                  <>
+                    <p className="mt-1 leading-5 text-slate-500">
+                      Runs one pass via {epistemicProviderLabel} and attaches findings directly to this map.
+                    </p>
+                    <label className="mt-2.5 flex items-start gap-2 text-[11px] leading-4 text-slate-600">
+                      <input type="checkbox" className="mt-0.5" checked={epistemicConsent} disabled={epistemicRunning}
+                        onChange={(e) => setEpistemicConsent(e.target.checked)} />
+                      Send this transcript and map nodes to {epistemicProviderLabel}.
+                    </label>
+                    {epistemicError && <p role="alert" className="mt-2 text-[11px] text-rose-700">{epistemicError}</p>}
+                    <div className="mt-3 flex items-center justify-end gap-2">
+                      <button type="button" onClick={() => setEpistemicPromptOpen(false)} className="rounded px-2 py-1 text-slate-500 hover:bg-stone-100">Cancel</button>
+                      <button
+                        type="button"
+                        disabled={!epistemicConsent || epistemicRunning}
+                        onClick={async () => {
+                          const ok = await onRunEpistemic();
+                          if (ok) { setEpistemicPromptOpen(false); setEpistemicConsent(false); }
+                        }}
+                        className="rounded-lg bg-slate-900 px-3 py-1 font-medium text-white hover:bg-slate-800 disabled:opacity-40"
+                      >
+                        {epistemicRunning ? "Analyzing…" : "Analyze now"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-1.5 leading-5 text-slate-500">
+                    Add an API key in <Link to="/settings/runtime" className="underline underline-offset-2 text-slate-800">Settings → Providers</Link> to analyze this map.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           {overflowMenu}
         </div>
       </header>
 
+      {surface === "timeline" ? (
+        <ConversationTimelineView
+          bundle={bundle}
+          nodes={nodes}
+          speakerDisplayNames={speakerDisplayNames}
+          onOpenVisit={onOpenVisit}
+          onAddReaction={onAddReaction}
+        />
+      ) : (
+      <>
       {/* Open-space stage: ≤3 focal typographic islands */}
       <main className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 sm:px-12">
         {page.visibleIds.length === 0 ? (
@@ -610,6 +699,8 @@ export default function SpatialLandscapeCanvas({
           <div className="min-w-[6rem]" />
         </footer>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -622,5 +713,10 @@ SpatialLandscapeCanvas.propTypes = {
   onOpenVisit: PropTypes.func,
   onFocusNodeChange: PropTypes.func,
   onBoundaryCorrection: PropTypes.func,
+  onAddReaction: PropTypes.func,
+  onRunEpistemic: PropTypes.func,
+  epistemicRunning: PropTypes.bool,
+  epistemicError: PropTypes.string,
+  epistemicProviderLabel: PropTypes.string,
   overflowMenu: PropTypes.node,
 };

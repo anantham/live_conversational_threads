@@ -120,4 +120,35 @@ describe("SpatialLandscapeCanvas", () => {
     act(() => splitBtn.click());
     expect(onBoundaryCorrection).toHaveBeenCalledWith({ kind: "split", sourceNodeId: "arc-1", splitUtteranceId: "u3" });
   });
+
+  it("switches to the interleaving Timeline view and supports on-demand epistemic analysis", () => {
+    const onAddReaction = vi.fn();
+    const onRunEpistemic = vi.fn().mockResolvedValue(true);
+    const bundle = { conversation_title: "Andre Catch up", utterances };
+    act(() => {
+      root.render(
+        <SpatialLandscapeCanvas
+          bundle={bundle}
+          nodes={nodes}
+          onAddReaction={onAddReaction}
+          onRunEpistemic={onRunEpistemic}
+          epistemicProviderLabel="Anthropic (claude-sonnet-5-5)"
+        />,
+      );
+    });
+
+    // Click unanalyzed Cruxes pill to open 1-click analyze popover
+    const cruxesBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Cruxes"));
+    expect(cruxesBtn.disabled).toBe(false);
+    act(() => cruxesBtn.click());
+    expect(host.textContent).toContain("Analyze Cruxes, Claims & Normative assumptions");
+
+    // Switch to Timeline surface and mark a reaction
+    const timelineBtn = [...host.querySelectorAll('[aria-label="Surface mode"] button')].find((b) => b.textContent === "Timeline");
+    act(() => timelineBtn.click());
+    expect(host.querySelector('[data-testid="conversation-timeline"]')).not.toBeNull();
+    const energizedBtn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Energized");
+    act(() => energizedBtn.click());
+    expect(onAddReaction).toHaveBeenCalledWith(expect.objectContaining({ kind: "energized", nodeId: "arc-1" }));
+  });
 });

@@ -38,6 +38,10 @@ import {
 import { indexExplicitEdges } from "../services/edgeContract";
 import { readGeneratedMap, releaseGeneratedMap } from "../services/cloud/generatedMapHandoff.js";
 import { applyMergeNodes, applyReturnToThread, applySplitNodeAtVisit, recordBoundaryCorrection } from "../services/cloud/boundaryLearningStore.js";
+import { addReactionMarker } from "../components/threads/conversationTimelineModel";
+import { runEpistemicAnalysis } from "../services/cloud/epistemicPipeline.js";
+import { configuredMapRoutes, MAP_PROVIDERS } from "../services/cloud/openRouterClient.js";
+import { useSitesRuntime } from "../contexts/SitesRuntimeContext";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
@@ -76,6 +80,9 @@ export default function ThreadsViewer({ privateBundle, onPrivateClose }) {
 function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const privateMode = privateBundle !== undefined;
   const dataProvider = useDataProvider();
+  const sitesRuntime = useSitesRuntime();
+  const [epistemicRunning, setEpistemicRunning] = useState(false);
+  const [epistemicError, setEpistemicError] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
   const { artifactId, publicId } = useParams();
@@ -558,6 +565,57 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       setLibraryStatus({ state: "saved", message: label, recordId: record.id });
     }).catch(() => setLibraryStatus({ state: "error", message: `${label} (download to save)` }));
   }, [bundle, privateMode, publicId, ephemeral]);
+
+  const handleAddReaction = useCallback((payload) => {
+    if (!bundle) return;
+    const { bundle: updated } = addReactionMarker(bundle, payload);
+    setBundle(updated);
+    if (privateMode || publicId || ephemeral) return;
+    void rememberThreadsArtifact(updated).then((record) => {
+      setLibraryStatus({ state: "saved", message: "Reaction saved on this device", recordId: record.id });
+    }).catch(() => {});
+  }, [bundle, privateMode, publicId, ephemeral]);
+
+  const epistemicRoutes = useMemo(() => (sitesRuntime ? configuredMapRoutes(sitesRuntime) : []), [sitesRuntime]);
+  const epistemicProviderLabel = useMemo(() => {
+    const first = epistemicRoutes[0];
+    if (!first) return "";
+    const name = MAP_PROVIDERS[first.backend]?.name || first.backend;
+    return first.model ? `${name} (${first.model})` : name;
+  }, [epistemicRoutes]);
+
+  const handleRunEpistemic = useCallback(async () => {
+    if (!bundle || !epistemicRoutes.length || epistemicRunning) return false;
+    setEpistemicRunning(true);
+    setEpistemicError("");
+    try {
+      const utterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
+      const source = {
+        recordingId: String(bundle.conversation_id || "viewer-map").slice(0, 80),
+        startedAt: Date.now(),
+        complete: true,
+        finalTokens: utterances.map((u, idx) => ({
+          text: (idx ? "\n" : "") + String(u.text || "").trim(),
+          speaker: String(u.speaker_display || u.speaker_name || u.speaker_id || "Speaker"),
+          startMs: Number.isFinite(u.timestamp_start) ? Math.round(u.timestamp_start * 1000) : null,
+          endMs: Number.isFinite(u.timestamp_end) ? Math.round(u.timestamp_end * 1000) : null,
+        })),
+      };
+      const enriched = await runEpistemicAnalysis({ source, bundle, routes: epistemicRoutes });
+      setBundle(enriched.bundle);
+      if (!privateMode && !publicId && !ephemeral) {
+        void rememberThreadsArtifact(enriched.bundle).then((record) => {
+          setLibraryStatus({ state: "saved", message: "Epistemic lenses saved on this device", recordId: record.id });
+        }).catch(() => {});
+      }
+      return true;
+    } catch (cause) {
+      setEpistemicError(cause?.message || "Epistemic analysis did not finish.");
+      return false;
+    } finally {
+      setEpistemicRunning(false);
+    }
+  }, [bundle, epistemicRoutes, epistemicRunning, privateMode, publicId, ephemeral]);
   const openAnother = useCallback(() => {
     if (privateMode) { onPrivateClose(); return; }
     setBundle(null);
@@ -762,6 +820,11 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             speakerColorMap={speakerColorMap}
             onFocusNodeChange={setFocusNode}
             onBoundaryCorrection={handleBoundaryCorrection}
+            onAddReaction={handleAddReaction}
+            onRunEpistemic={handleRunEpistemic}
+            epistemicRunning={epistemicRunning}
+            epistemicError={epistemicError}
+            epistemicProviderLabel={epistemicProviderLabel}
             onOpenVisit={({ utteranceId, seconds }) => {
               if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
               else if (validMediaSeconds(seconds)) seekSourcePassage(seconds);
