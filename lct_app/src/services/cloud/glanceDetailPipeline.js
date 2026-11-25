@@ -219,7 +219,18 @@ export function mergeDetail(source, base, results) {
     const dropped = [...before].filter(id => !after.has(id)).length, added = [...after].filter(id => !before.has(id)).length;
     if (dropped || added) signals.push({ source: 'detail', kind: 'boundary_shift', node_id: n.id, turns_dropped: dropped, turns_added: added });
   }
-  const cleaned = derived.map(({ parent_id, memberships, ...n }) => ({ ...n,
+  // The thread timeline groups moments by each chunk's thread_id. Derive it from the threads' own step
+  // evidence: a chunk covering a step's turns joins that thread (first thread in the list wins).
+  const threadOfTurn = new Map();
+  for (const path of base.conversation_threads || []) {
+    for (const step of path.steps || []) for (const id of step.evidence_utterance_ids || []) if (!threadOfTurn.has(id)) threadOfTurn.set(id, path.id);
+  }
+  const withThreads = derived.map(n => {
+    if (n.semantic_level !== 1 || n.thread_id) return n;
+    const thread = n.source_ref.utterance_ids.map(id => threadOfTurn.get(id)).find(Boolean);
+    return thread ? { ...n, thread_id: thread } : n;
+  });
+  const cleaned = withThreads.map(({ parent_id, memberships, ...n }) => ({ ...n,
     ...(parent_id ? { parent_id } : {}), ...(memberships?.length ? { memberships } : {}) }));
   const assembled = createRecordingThreads({ ...source, graph: {
     metadata: { conversation_title: base.conversation_title, executive_summary: base.executive_summary },
@@ -246,6 +257,8 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
   const used = [];
   let merged = base, started = 0, finished = 0, failure = null, lastStart = waitFirst ? Date.now() : 0;
   const total = () => finished + queue.length + inFlight.size;
+  // Inside a finishing call it is already counted in `finished` but still in flight: count it once.
+  const totalAtFinish = () => finished + queue.length + Math.max(0, inFlight.size - 1);
   const inFlight = new Set();
   const nextStart = async () => {
     const wait = lastStart + intervalMs - Date.now();
@@ -312,10 +325,10 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
       notes: result.boundaryNotes?.length || 0, model: result.model });
     const made = result.bundle.graph_data.filter(n => !(result.stubTopicIds || []).includes(n.id.slice(2)));
     const ideas = made.filter(n => n.semantic_level === 2).length, chunks = made.filter(n => n.semantic_level === 1).length;
-    activity(onProgress, 'ok', `${name} done in ${seconds(Date.now() - t0)} (${finished} of ${total()}): ${ideas} ideas, ${chunks} chunks`
+    activity(onProgress, 'ok', `${name} done in ${seconds(Date.now() - t0)} (${finished} of ${totalAtFinish()}): ${ideas} ideas, ${chunks} chunks`
       + `${result.boundaryNotes?.length ? `, ${result.boundaryNotes.length} boundary note${result.boundaryNotes.length === 1 ? '' : 's'} (${result.boundaryNotes.map(x => x.kind).join(', ')})` : ''}.`,
       { attempts: (result.attempts || []).map(describeAttempt) });
-    onProgress?.({ phase: 'detail', segmentIndex: finished, totalSegments: total(), completedSegments: finished, partialBundle: merged,
+    onProgress?.({ phase: 'detail', segmentIndex: finished, totalSegments: totalAtFinish(), completedSegments: finished, partialBundle: merged,
       topics: [], startedAt: Date.now(), inFlight: inFlight.size - 1 });
   }
 

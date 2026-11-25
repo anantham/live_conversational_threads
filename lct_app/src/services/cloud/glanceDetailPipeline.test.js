@@ -80,6 +80,8 @@ describe('glance then detail', () => {
     // The overview is asked for no edges; one sent anyway is ignored (counted in coverage), never used.
     expect(bundle.edges).toEqual([]);
     expect(bundle.coverage).toMatchObject({ total_turns: 8, covered_turns: 8 });
+    // The timeline groups moments by thread_id, derived from the thread's step evidence (turns 7-8).
+    expect(bundle.graph_data.filter(n => n.thread_id === 'return').map(n => n.source_ref.utterance_ids)).toEqual([[u(7)], [u(8)]]);
     expect(JSON.stringify(info.mock.calls)).not.toMatch(/sea|budget|Boats/i);
     // The glossary reaches the detail pass and the saved map; utterance text is untouched.
     expect(bundle.glossary).toEqual([{ canonical: 'Mirela', variants: ['Mirella', 'Mireya'] }]);
@@ -214,8 +216,14 @@ describe('glance then detail', () => {
       await new Promise(resolve => setTimeout(resolve, 5));
       try { return await inner(...args); } finally { live -= 1; }
     });
-    const parallel = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6 });
+    const entries = [];
+    const parallel = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6,
+      onProgress: e => { if (e.phase === 'log') entries.push(e.entry.text); } });
     expect(peak).toBe(3);
+    // The last completion counts every call once: "N of N".
+    const counts = entries.filter(t => /^Detail .* done in /.test(t)).map(t => t.match(/\((\d+) of (\d+)\)/).slice(1).map(Number));
+    expect(counts.at(-1)[0]).toBe(counts.at(-1)[1]);
+    expect(counts.every(([n, total]) => n <= total && total === counts.at(-1)[1])).toBe(true);
     const sequential = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel(), intervalMs: 0, concurrency: 1, maxSegmentWords: 6 });
     const shape = b => b.graph_data.map(n => [n.id, n.parent_id ?? null, n.source_ref.utterance_ids.join(',')]);
     expect(shape(parallel.bundle)).toEqual(shape(sequential.bundle));
