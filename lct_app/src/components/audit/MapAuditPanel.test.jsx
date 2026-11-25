@@ -8,10 +8,10 @@ vi.mock('react-router-dom', () => ({ Link: ({ children, to }) => <a href={to}>{c
 import MapAuditPanel from './MapAuditPanel.jsx';
 import { recordingThreadsFromGeneratedText } from '../../services/cloud/openRouterGeneration.js';
 const source = { recordingId: 'synthetic-panel', startedAt: Date.UTC(2026, 10, 25), complete: true,
-  finalTokens: ['Launch on Telegram.', '\nNo, Signal.'].map((text, i) => ({ text, speaker: i ? 'B' : 'A', startMs: i * 60_000, endMs: i * 60_000 + 50_000 })) };
+  finalTokens: ['Launch on the forum.', '\nNo, email.'].map((text, i) => ({ text, speaker: i ? 'B' : 'A', startMs: i * 60_000, endMs: i * 60_000 + 50_000 })) };
 const { bundle } = recordingThreadsFromGeneratedText(source, JSON.stringify({ hierarchy_format: 'skeleton-ranges-v1', glossary: [],
   metadata: { conversation_title: 'Launch', executive_summary: 'Channel.' }, edges: [], conversation_threads: [],
-  nodes: [{ id: 'channel', semantic_level: 3, semantic_type: 'topic', node_name: 'Channel', summary: 'Telegram.', salience: 'core',
+  nodes: [{ id: 'channel', semantic_level: 3, semantic_type: 'topic', node_name: 'Channel', summary: 'the forum.', salience: 'core',
     source_ranges: [{ from: 'utterance-0001', to: 'utterance-0002' }], parent_id: null, secondary_parent_ids: [] }] }), { task: 'skeleton' });
 const claude = { backend: 'anthropic', model: 'claude-x', key: 'k' };
 const gemini = { backend: 'gemini', model: 'gemini-x', key: 'k' };
@@ -41,7 +41,7 @@ describe('MapAuditPanel', () => {
   it('records accept and dismiss decisions on pending findings', () => {
     const onBundleChange = vi.fn();
     const audited = { ...bundle, audit_signals: [{ id: 'f1', source: 'audit', kind: 'missed', point_kind: 'reversal',
-      note: 'Switched to Signal.', utterance_ids: ['utterance-0002'], decision: 'pending' }] };
+      note: 'Switched to email.', utterance_ids: ['utterance-0002'], decision: 'pending' }] };
     view({ routes: [claude, gemini], bundle: audited, onBundleChange });
     act(() => buttonNamed('Accept').click());
     expect(onBundleChange.mock.calls[0][0].audit_signals[0].decision).toBe('accepted');

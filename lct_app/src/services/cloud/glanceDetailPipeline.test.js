@@ -12,7 +12,7 @@ const source = { recordingId: 'synthetic-glance', startedAt: Date.UTC(2026, 10, 
 const u = n => `utterance-000${n}`;
 const ref = (semantic_level, id) => ({ semantic_level, id });
 const skeletonReply = () => JSON.stringify({ hierarchy_format: 'skeleton-ranges-v1',
-  glossary: [{ canonical: 'Kaio', variants: ['Kyle', 'Kio', 7] }, { canonical: '', variants: ['dropped'] }],
+  glossary: [{ canonical: 'Mirela', variants: ['Mirella', 'Mireya', 7] }, { canonical: '', variants: ['dropped'] }],
   metadata: { conversation_title: 'Sea show', executive_summary: 'A childhood by the sea and a budget.' },
   nodes: [
     { id: 'intro', semantic_level: 3, semantic_type: 'topic', node_name: 'Intro', summary: 'Opening.', salience: 'aside', source_ranges: [{ from: u(1), to: u(1) }], parent_id: ref(4, 'life'), secondary_parent_ids: [] },
@@ -74,7 +74,7 @@ describe('glance then detail', () => {
     expect(bundle.coverage).toMatchObject({ total_turns: 8, covered_turns: 8 });
     expect(JSON.stringify(info.mock.calls)).not.toMatch(/sea|budget|Boats/i);
     // The glossary reaches the detail pass and the saved map; utterance text is untouched.
-    expect(bundle.glossary).toEqual([{ canonical: 'Kaio', variants: ['Kyle', 'Kio'] }]);
+    expect(bundle.glossary).toEqual([{ canonical: 'Mirela', variants: ['Mirella', 'Mireya'] }]);
     expect(generate.mock.calls[1][4].glossary).toEqual(bundle.glossary);
     expect(bundle.utterances.map(x => x.text.trim())).toEqual(texts);
   });

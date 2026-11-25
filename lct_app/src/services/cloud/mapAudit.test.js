@@ -4,13 +4,13 @@ import { auditFromGeneratedText } from './auditTask.js';
 import { auditSummary, chooseAuditRoute, decideSignal, modelFamily, planAuditSpans, recordUserFlag, runMapAudit } from './mapAudit.js';
 import { recordingThreadsFromGeneratedText } from './openRouterGeneration.js';
 
-const texts = ['We will launch on Telegram.', 'Agreed.', 'Actually, no: Signal instead.', 'Budget is ten thousand.'];
+const texts = ['We will launch on the forum.', 'Agreed.', 'Actually, no: email instead.', 'Budget is ten thousand.'];
 const source = { recordingId: 'synthetic-audit', startedAt: Date.UTC(2026, 10, 25), complete: true,
   finalTokens: texts.map((text, i) => ({ text: (i ? '\n' : '') + text, speaker: i % 2 ? 'B' : 'A', startMs: i * 1000, endMs: i * 1000 + 900 })) };
 const u = n => `utterance-000${n}`;
 const { bundle: base } = recordingThreadsFromGeneratedText(source, JSON.stringify({ hierarchy_format: 'skeleton-ranges-v1', glossary: [],
   metadata: { conversation_title: 'Launch', executive_summary: 'Channel and budget.' }, edges: [], conversation_threads: [],
-  nodes: [{ id: 'channel', semantic_level: 3, semantic_type: 'topic', node_name: 'Launch channel', summary: 'They launch on Telegram.', salience: 'core',
+  nodes: [{ id: 'channel', semantic_level: 3, semantic_type: 'topic', node_name: 'Launch channel', summary: 'They launch on the forum.', salience: 'core',
     source_ranges: [{ from: u(1), to: u(3) }], parent_id: null, secondary_parent_ids: [] },
   { id: 'budget', semantic_level: 3, semantic_type: 'topic', node_name: 'Budget', summary: 'Ten thousand.', salience: 'aside',
     source_ranges: [{ from: u(4), to: u(4) }], parent_id: null, secondary_parent_ids: [] }] }), { task: 'skeleton' });
@@ -30,10 +30,10 @@ describe('map audit', () => {
       expect(nodes.map(n => [n.id, n.ranges])).toEqual([['3:channel', [{ from: u(1), to: u(3) }]]]);
       const reply = JSON.stringify({ format: 'audit-v1', entity_splits: [],
         independent_points: [
-          { kind: 'decision', note: 'Launch on Telegram.', range: { from: u(1), to: u(2) }, represented_by: '3:channel' },
-          { kind: 'reversal', note: 'Switched to Signal.', range: { from: u(3), to: u(3) }, represented_by: null },
+          { kind: 'decision', note: 'Launch on the forum.', range: { from: u(1), to: u(2) }, represented_by: '3:channel' },
+          { kind: 'reversal', note: 'Switched to email.', range: { from: u(3), to: u(3) }, represented_by: null },
           { kind: 'claim', note: 'Invented credit.', range: { from: u(2), to: u(2) }, represented_by: '3:not-shown' }],
-        contradictions: [{ node_id: '3:channel', note: 'Final channel was Signal, not Telegram.', range: { from: u(3), to: u(3) } }] });
+        contradictions: [{ node_id: '3:channel', note: 'Final channel was email, not the forum.', range: { from: u(3), to: u(3) } }] });
       const ids = segmentSrc.finalTokens.map((_, i) => u(i + 1));
       const parsed = auditFromGeneratedText(ids, reply, nodes.map(n => n.id));
       expect(parsed.unknownNodes).toBe(1);

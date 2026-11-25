@@ -497,7 +497,7 @@ describe('Claude schema diagnostic', () => {
 // Intent: lct_app/tests/intent/glance-detail-generation.md — the tasks run through the ordered Worker route.
 it('runs a skeleton glance through the public Claude route with its own schema, prompt and glossary', async () => {
   env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
-  const skeleton = { hierarchy_format: 'skeleton-ranges-v1', glossary: [{ canonical: 'Kaio', variants: ['Kyle'] }],
+  const skeleton = { hierarchy_format: 'skeleton-ranges-v1', glossary: [{ canonical: 'Mirela', variants: ['Mirella'] }],
     metadata: { conversation_title: 'Garden', executive_summary: 'Water.' }, edges: [], conversation_threads: [],
     nodes: [{ id: 'garden', semantic_level: 3, semantic_type: 'topic', node_name: 'Garden', summary: 'Water.', salience: 'core',
       source_ranges: [{ from: 'utterance-0001', to: 'utterance-0001' }], parent_id: null, secondary_parent_ids: [] }] };
@@ -508,7 +508,7 @@ it('runs a skeleton glance through the public Claude route with its own schema, 
     body: JSON.stringify({ source, task: 'skeleton', routes: [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }] }) }), env);
   const body = await response.json();
   expect(response.status).toBe(200);
-  expect(body).toMatchObject({ task: 'skeleton', glossary: [{ canonical: 'Kaio', variants: ['Kyle'] }] });
+  expect(body).toMatchObject({ task: 'skeleton', glossary: [{ canonical: 'Mirela', variants: ['Mirella'] }] });
   expect(body.artifact.graph_data).toEqual([expect.objectContaining({ id: '3:garden', salience: 'core',
     source_ref: { utterance_ids: ['utterance-0001'] } })]);
   const wire = JSON.parse(fetch.mock.calls[0][1].body);
