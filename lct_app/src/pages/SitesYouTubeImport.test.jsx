@@ -3,9 +3,9 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const fixture = vi.hoisted(() => ({ writes: [], restored: null }));
+const fixture = vi.hoisted(() => ({ writes: [], restored: null, restoreGate: null }));
 vi.mock('../services/cloud/localConversationStore.js', () => ({
-  readLocalConversation: async () => fixture.restored,
+  readLocalConversation: async () => { if (fixture.restoreGate) await fixture.restoreGate; return fixture.restored; },
   saveLocalConversation: async (snapshot, chunks) => { fixture.writes.push({ snapshot, chunks }); return 'revision-' + fixture.writes.length; },
 }));
 vi.mock('../components/MinimalGraph.jsx', () => ({ default: () => <div aria-label="Rendered graph" /> }));
@@ -21,7 +21,7 @@ const mapped = source => createRecordingThreads({ ...source, graph: { metadata: 
     source_ref: { utterance_ids: ['utterance-0001'] }, source_excerpt: 'Gardens need water.' }], edges: [] } }).bundle;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  fixture.writes = []; fixture.restored = null; calls = []; posts = []; localStorage.clear();
+  fixture.writes = []; fixture.restored = null; fixture.restoreGate = null; calls = []; posts = []; localStorage.clear();
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:synthetic-import'; static revokeObjectURL() {} });
   transcriptStatus = 200; networkDown = false;
   transcriptBody = id => ({ video: { id, title: 'A synthetic podcast', length_seconds: 6 }, caption: { language: 'en', kind: 'auto' }, cues });
@@ -131,6 +131,27 @@ describe('YouTube import page', () => {
   it('does not warn for a short video', async () => {
     await mount(); await paste(`https://youtu.be/${VIDEO}`); await flush();
     expect(container.querySelector('[role=note]')).toBeNull();
+  });
+
+  it('says so, and saves nothing, when the Site returns a video entry with no usable id', async () => {
+    resolveBody = () => response({ kind: 'video', playlist_id: null, title: null, videos: [], truncated: false, selected_video_id: null });
+    await mount(); await paste(`https://youtu.be/${VIDEO}`); await flush();
+    expect(container.querySelector('[role=alert]').textContent).toContain('no valid id');
+    expect(fixture.writes).toEqual([]);
+  });
+
+  it('does not let a slow saved import overwrite an import the user has already made', async () => {
+    const id = '00000000-0000-4000-8000-000000000004';
+    fixture.restored = { id, recording: { id, startedAt: 1000, transcribe: true, retention: 'local', source: 'youtube-import', youtube: { video_id: OTHER, title: 'Old' } },
+      title: 'Old', stage: 'stopped', updatedAt: 1000, map: null, segments: [],
+      transcript: { finalText: 'Old saved words.', partialText: '', partialTokens: [], finalTokens: [{ text: 'Old saved words.', startMs: 0, endMs: 1000 }] } };
+    let release; fixture.restoreGate = new Promise(resolve => { release = resolve; });
+    await mount('/import-youtube?local=' + id);
+    await paste(`https://youtu.be/${VIDEO}`); await flush();
+    expect(container.textContent).toContain('Gardens need water.');
+    release(); await flush();
+    expect(container.textContent).toContain('Gardens need water.');
+    expect(container.textContent).not.toContain('Old saved words.');
   });
 
   it('reopens a saved import from this device without calling YouTube', async () => {

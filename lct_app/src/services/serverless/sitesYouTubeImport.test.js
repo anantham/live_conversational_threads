@@ -32,7 +32,7 @@ beforeEach(() => {
     calls.push({ url: target.href, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null });
     const key = target.pathname.includes('/player') ? 'player' : target.pathname.includes('/browse') ? 'browse'
       : target.pathname.includes('timedtext') ? 'timedtext' : target.pathname.includes('oembed') ? 'oembed' : 'unknown';
-    return routes[key](init.body ? JSON.parse(init.body) : null, target);
+    return routes[key](init.body ? JSON.parse(init.body) : null, target, init);
   }));
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -92,7 +92,7 @@ describe('transcript', () => {
     expect(calls).toEqual([]);
   });
   it('never fetches a caption address that is not a youtube.com timedtext address', async () => {
-    for (const baseUrl of ['https://evil.example/api/timedtext?v=x', 'https://www.youtube.com.evil.example/api/timedtext', 'https://www.youtube.com/other/path', 'http://www.youtube.com/api/timedtext', 'not a url']) {
+    for (const baseUrl of ['https://evil.example/api/timedtext?v=x', 'https://www.youtube.com.evil.example/api/timedtext', 'https://www.youtube.com/other/path', 'http://www.youtube.com/api/timedtext', 'https://user:pw@www.youtube.com/api/timedtext?v=x', 'not a url']) {
       routes.player = () => json(player({ captions: { playerCaptionsTracklistRenderer: { captionTracks: [{ languageCode: 'en', baseUrl }] } } }));
       calls.length = 0;
       const response = await worker.fetch(get(transcriptUrl(VIDEO)), env);
@@ -149,10 +149,13 @@ describe('resolve', () => {
     }
     expect(calls).toEqual([]);
   });
-  it('says a private or removed single video is unavailable', async () => {
-    routes.oembed = () => new Response('nope', { status: 401 });
-    const response = await worker.fetch(get(resolveUrl(`https://youtu.be/${VIDEO}`)), env);
-    expect(response.status).toBe(404);
+  it('still resolves a video whose owner disabled embedding (oEmbed refuses it); the transcript step decides', async () => {
+    for (const status of [400, 401, 403, 404, 500]) {
+      routes.oembed = () => new Response('nope', { status });
+      const response = await worker.fetch(get(resolveUrl(`https://youtu.be/${VIDEO}`)), env);
+      expect(response.status, String(status)).toBe(200);
+      expect((await body(response)).videos).toEqual([{ id: VIDEO, title: null, duration_seconds: null }]);
+    }
   });
   it('lists a playlist across pages, once each, with durations, title and the linked video', async () => {
     const response = await worker.fetch(get(resolveUrl(`https://www.youtube.com/watch?v=${OTHER}&list=${LIST}`)), env);
@@ -176,7 +179,76 @@ describe('resolve', () => {
   });
 });
 
+describe('time and size limits', () => {
+  afterEach(() => vi.useRealTimers());
+  // Headers arrive at once, then the body never finishes; the stream errors only when the request is aborted.
+  const stalled = (init, first = '') => new Response(new ReadableStream({
+    start(controller) { if (first) controller.enqueue(new TextEncoder().encode(first)); init.signal.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError'))); } }), { status: 200 });
+  it('answers 504 when captions send headers and then stall', async () => {
+    vi.useFakeTimers();
+    routes.timedtext = (_body, _target, init) => stalled(init, '<timedtext>');
+    const pending = worker.fetch(get(transcriptUrl(VIDEO)), env);
+    await vi.advanceTimersByTimeAsync(20_001);
+    const response = await pending;
+    expect(response.status).toBe(504);
+    expect((await body(response)).error).toBe('timeout');
+  });
+  it('answers 504 when a playlist page sends headers and then stalls', async () => {
+    vi.useFakeTimers();
+    routes.browse = (_body, _target, init) => stalled(init);
+    const pending = worker.fetch(get(resolveUrl(`https://www.youtube.com/playlist?list=${LIST}`)), env);
+    await vi.advanceTimersByTimeAsync(12_001);
+    expect((await pending).status).toBe(504);
+  });
+  it('answers 408 and stops reading when the visitor cancels mid-body', async () => {
+    const controller = new AbortController();
+    routes.timedtext = (_body, _target, init) => { setTimeout(() => controller.abort(), 5); return stalled(init, '<timedtext>'); };
+    const response = await worker.fetch(get(transcriptUrl(VIDEO), { signal: controller.signal }), env);
+    expect(response.status).toBe(408);
+  });
+  it('refuses a JSON page larger than the cap', async () => {
+    routes.browse = () => new Response('x', { status: 200, headers: { 'content-length': String(7 * 1024 * 1024) } });
+    expect((await worker.fetch(get(resolveUrl(`https://www.youtube.com/playlist?list=${LIST}`)), env)).status).toBe(413);
+  });
+});
+
+describe('long playlists', () => {
+  const ids = (from, to) => Array.from({ length: to - from }, (_, index) => 'v' + String(from + index).padStart(10, '0'));
+  it('says the list was cut when the last page ends with no token but the total passes the cap', async () => {
+    routes.browse = body => body.continuation ? json(page(ids(200, 320).map(id => lockup(id, id, '1:00')))) : json(page(ids(0, 200).map(id => lockup(id, id, '1:00')), 'more'));
+    const result = await body(await worker.fetch(get(resolveUrl(`https://www.youtube.com/playlist?list=${LIST}`)), env));
+    expect(result.videos).toHaveLength(300);
+    expect(result.truncated).toBe(true);
+    expect(result.videos[0].id).toBe('v0000000000');
+  });
+  it('is not truncated at exactly the cap with nothing left', async () => {
+    routes.browse = () => json(page(ids(0, 300).map(id => lockup(id, id, '1:00'))));
+    const result = await body(await worker.fetch(get(resolveUrl(`https://www.youtube.com/playlist?list=${LIST}`)), env));
+    expect([result.videos.length, result.truncated]).toEqual([300, false]);
+  });
+});
+
 describe('extractPlaylistPage', () => {
+  it('reads only the playlist\'s own list, not a sidebar or recommendations beside it', () => {
+    const found = extractPlaylistPage({
+      metadata: { playlistMetadataRenderer: { title: 'Mine' } },
+      contents: { twoColumnBrowseResultsRenderer: { tabs: [{ tabRenderer: { content: { items: [lockup(VIDEO, 'In list', '1:00'), { continuationCommand: { token: 'in-list-token' } }] } } }] } },
+      secondaryContents: { items: [lockup(OTHER, 'Recommended', '2:00'), { continuationCommand: { token: 'recommendation-token' } }] } });
+    expect(found.videos.map(video => video.id)).toEqual([VIDEO]);
+    expect(found.continuation).toBe('in-list-token');
+  });
+  it('reads a continuation response from its actions, the older token form and the page-header title', () => {
+    const found = extractPlaylistPage({ pageHeaderRenderer: { pageTitle: 'Header title' },
+      onResponseReceivedActions: [{ appendContinuationItemsAction: { continuationItems: [lockup(THIRD, 'Next', '3:00'), { nextContinuationData: { continuation: 'legacy-token' } }] } }],
+      contents: { twoColumnBrowseResultsRenderer: { tabs: [] } }, sidebar: lockup(OTHER, 'Not mine', '1:00') });
+    expect(found.videos.map(video => video.id)).toEqual([THIRD]);
+    expect(found.continuation).toBe('legacy-token');
+    expect(found.title).toBe('Header title');
+  });
+  it('fails loudly rather than silently dropping the rest when a page is implausibly large', () => {
+    const flat = Array.from({ length: 400_001 }, () => ({}));
+    expect(() => extractPlaylistPage({ items: flat })).toThrow(expect.objectContaining({ code: 'upstream_failed' }));
+  });
   it('reads the older renderer, skips unplayable entries, and ignores non-video lockups', () => {
     const found = extractPlaylistPage({ a: [{ playlistVideoRenderer: { videoId: VIDEO, title: { runs: [{ text: 'Old ' }, { text: 'style' }] }, lengthSeconds: '90' } },
       { playlistVideoRenderer: { videoId: OTHER, isPlayable: false, title: { simpleText: 'Hidden' } } },

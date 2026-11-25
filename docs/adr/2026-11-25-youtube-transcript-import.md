@@ -17,7 +17,8 @@ had YouTube playback (`youtubeMedia.js`) and audio file import, but no way to tu
    pages / 300 videos) and one video's existing captions (innertube `player`, then the caption track).
    It stores nothing and spends nothing.
 2. Captions only. A human-written English track is preferred, then automatic English, then any written
-   track. Videos without captions, private and age-restricted videos, and live streams are refused with a
+   track, then the first track in any language (so a video with only, say, German automatic captions imports
+   those). Videos without captions, private and age-restricted videos, and live streams are refused with a
    plain message. Audio is never downloaded.
 3. One video becomes one conversation. A playlist is a list to choose from, not a batch, because the app's
    working view is one conversation and each map costs a counted provider request.
@@ -25,7 +26,10 @@ had YouTube playback (`youtubeMedia.js`) and audio file import, but no way to tu
    AI map and gives the existing consent. Videos over about 20 minutes show a warning, because map
    generation is measured only to that length (`docs/reviews/2026-11-03-long-input-envelope.md`).
 5. Access follows the generation audience: public when `LCT_OPENROUTER_AUDIENCE=public`, otherwise
-   sign-in. A custom request header proves the call comes from the Site.
+   sign-in. A custom request header makes a cross-site browser call preflight, which the Worker never
+   approves; it does not stop a script that sets the header itself. On a public Site anyone can therefore
+   drive the route, and heavy use could get the Worker's address refused by YouTube for everyone. That is
+   accepted for now; per-address rate limiting at the edge is the remedy if it happens.
 
 ## Positions considered
 
@@ -41,8 +45,13 @@ had YouTube playback (`youtubeMedia.js`) and audio file import, but no way to tu
   five videos of the owner's playlist. YouTube often refuses datacenter addresses (`LOGIN_REQUIRED`). The
   Worker reports that as `youtube_blocked` with an honest message. Whether the hosted Site is affected can
   only be known after publication. If it is, the fallback is the separate service above.
-- Innertube is undocumented and changes. The playlist reader accepts both the current and legacy shapes;
-  a change would surface as "playlist unavailable", not as wrong data.
+- Innertube is undocumented and changes. The playlist reader accepts both the current and legacy shapes and
+  reads only the playlist's own list, but a change could still yield a short or empty list ("playlist
+  unavailable") or, if YouTube moves the list elsewhere, the wrong videos. The page shows titles and
+  durations so a wrong list is visible. A page larger than the reader allows fails loudly.
+- A playlist is read up to 300 videos / four pages. A video linked from beyond that cut is not offered; its
+  own link imports it directly. Each YouTube call has its own deadline (12 s browse, 20 s captions), so a
+  four-page playlist can take up to about a minute in the worst case.
 - Automatic captions have no speakers and no punctuation; the map and viewer treat them as one speaker.
 
 ## Consequences

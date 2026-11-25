@@ -34,7 +34,9 @@ function failure(error, stage) {
   return json(STATUS[code] || 502, { error: code, message: known ? error.message : 'YouTube could not be reached. Nothing was imported; try again shortly.' });
 }
 
-async function upstream(url, init, parent, ms, stage) {
+// `consume` reads the body inside the same deadline and abort wiring as the request itself, so a response
+// that sends headers and then stalls is cut off by the timeout instead of hanging.
+async function upstream(url, init, parent, ms, stage, consume) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   parent?.addEventListener('abort', abort, { once: true });
@@ -43,7 +45,7 @@ async function upstream(url, init, parent, ms, stage) {
   try {
     const response = await fetch(url, { ...init, signal: controller.signal, redirect: 'manual' });
     if (response.status >= 300 && response.status < 400) throw new YouTubeImportError('upstream_failed', 'YouTube redirected the request. Nothing was imported.');
-    return response;
+    return consume ? await consume(response) : response;
   } catch (error) {
     if (error instanceof YouTubeImportError) throw error;
     if (parent?.aborted) throw new YouTubeImportError('cancelled', 'The import was cancelled.');
@@ -71,12 +73,14 @@ async function readCapped(response, limit) {
 }
 
 async function innertube(path, body, ua, parent, stage) {
-  const response = await upstream(`${HOST}/youtubei/v1/${path}?prettyPrint=false`, {
+  return upstream(`${HOST}/youtubei/v1/${path}?prettyPrint=false`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': ua, 'Accept-Language': 'en' }, body: JSON.stringify(body),
-  }, parent, 12_000, stage);
-  if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new YouTubeImportError('upstream_failed', 'YouTube could not be reached. Nothing was imported; try again shortly.'); }
-  try { return JSON.parse(await readCapped(response, MAX_JSON_BYTES)); }
-  catch (error) { if (error instanceof YouTubeImportError) throw error; throw new YouTubeImportError('upstream_failed', 'YouTube answered in a form this import could not read.'); }
+  }, parent, 12_000, stage, async response => {
+    if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new YouTubeImportError('upstream_failed', 'YouTube could not be reached. Nothing was imported; try again shortly.'); }
+    const text = await readCapped(response, MAX_JSON_BYTES);
+    try { return JSON.parse(text); }
+    catch { throw new YouTubeImportError('upstream_failed', 'YouTube answered in a form this import could not read.'); }
+  });
 }
 
 /** Visit parsed JSON in document order, iteratively, with a depth and node limit: the response is not trusted. */
@@ -86,7 +90,8 @@ function* nodes(root) {
   while (stack.length) {
     const [node, depth] = stack.pop();
     if (node === null || typeof node !== 'object' || depth > 60) continue;
-    if (++seen > MAX_NODES) return;
+    // Failing loudly beats silently dropping the rest of a playlist.
+    if (++seen > MAX_NODES) throw new YouTubeImportError('upstream_failed', 'YouTube sent a page larger than this import reads. Nothing was imported.');
     yield node;
     // Pushed last-to-first so children are visited in document order: a playlist's order is its meaning.
     const children = Array.isArray(node) ? node : Object.values(node);
@@ -96,11 +101,22 @@ function* nodes(root) {
 
 const textOf = value => typeof value === 'string' ? value : value?.simpleText ?? value?.runs?.map(run => run.text).join('') ?? value?.content ?? null;
 
+// The playlist's own list, not the sidebar, recommendations or filter chips around it. A continuation
+// response carries its items in its actions. An unfamiliar shape falls back to the whole response.
+function listScope(data) {
+  return data?.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content
+    ?? data?.onResponseReceivedActions ?? data?.onResponseReceivedEndpoints ?? data;
+}
+
 /** Pull videos, the title and the next-page token from one browse response (new and legacy shapes). */
 export function extractPlaylistPage(data) {
   const videos = [];
   let title = null, continuation = null;
   for (const node of nodes(data)) {
+    title = textOf(node.playlistMetadataRenderer?.title) ?? textOf(node.pageHeaderRenderer?.pageTitle);
+    if (title !== null) break;
+  }
+  for (const node of nodes(listScope(data))) {
     const lockup = node.lockupViewModel;
     if (lockup && validVideoId(lockup.contentId) && String(lockup.contentType || '').includes('VIDEO')) {
       let length = null;
@@ -115,8 +131,8 @@ export function extractPlaylistPage(data) {
       const length = Number(legacy.lengthSeconds);
       videos.push({ id: legacy.videoId, title: textOf(legacy.title), duration_seconds: Number.isFinite(length) && length > 0 ? length : null });
     }
-    if (title === null) title = textOf(node.playlistMetadataRenderer?.title);
-    if (continuation === null && typeof node.continuationCommand?.token === 'string') continuation = node.continuationCommand.token;
+    const token = node.continuationCommand?.token ?? node.nextContinuationData?.continuation;
+    if (continuation === null && typeof token === 'string') continuation = token;
   }
   return { videos, title: typeof title === 'string' ? title.slice(0, 200) : null, continuation };
 }
@@ -131,8 +147,9 @@ async function resolvePlaylist(playlistId, selected, parent) {
     title ??= found.title;
     for (const video of found.videos) if (!seen.has(video.id)) seen.set(video.id, video);
     token = found.continuation;
+    if (seen.size >= MAX_VIDEOS) { truncated = Boolean(token) || seen.size > MAX_VIDEOS; break; }
     if (!token) break;
-    if (seen.size >= MAX_VIDEOS || page === MAX_PAGES - 1) { truncated = true; break; }
+    if (page === MAX_PAGES - 1) { truncated = true; break; }
   }
   if (!seen.size) throw new YouTubeImportError('unavailable', 'That playlist is private, empty or unavailable. Only public and unlisted playlists can be read.');
   const videos = [...seen.values()].slice(0, MAX_VIDEOS).map(video => ({
@@ -142,21 +159,22 @@ async function resolvePlaylist(playlistId, selected, parent) {
 
 async function resolveVideo(videoId, parent) {
   const target = `${HOST}/watch?v=${videoId}`;
-  const response = await upstream(`${HOST}/oembed?format=json&url=${encodeURIComponent(target)}`, { headers: { 'User-Agent': WEB_UA } }, parent, 8000, 'oembed');
-  if ([400, 401, 403, 404].includes(response.status)) {
-    void response.body?.cancel().catch(() => {});
-    throw new YouTubeImportError('unavailable', 'That video is private, removed or unavailable.');
-  }
+  // The title is a courtesy. oEmbed refuses videos whose owner disabled embedding, and those still have
+  // captions, so only the transcript step decides whether a video is importable.
   let title = null;
-  if (response.ok) { try { title = textOf(JSON.parse(await readCapped(response, 64 * 1024)).title)?.slice(0, 200) || null; } catch { /* a title is optional */ } }
-  else void response.body?.cancel().catch(() => {});
+  try {
+    title = await upstream(`${HOST}/oembed?format=json&url=${encodeURIComponent(target)}`, { headers: { 'User-Agent': WEB_UA } }, parent, 8000, 'oembed', async response => {
+      if (!response.ok) { void response.body?.cancel().catch(() => {}); return null; }
+      try { return textOf(JSON.parse(await readCapped(response, 64 * 1024)).title)?.slice(0, 200) || null; } catch { return null; }
+    });
+  } catch (error) { if (error?.code === 'cancelled') throw error; }
   return { kind: 'video', playlist_id: null, title, videos: [{ id: videoId, title, duration_seconds: null }], truncated: false, selected_video_id: videoId };
 }
 
 function captionUrl(value) {
   try {
     const url = new URL(value);
-    if (url.origin !== HOST || url.pathname !== '/api/timedtext') return null;
+    if (url.origin !== HOST || url.pathname !== '/api/timedtext' || url.username || url.password) return null;
     url.searchParams.delete('fmt');
     return url.toString();
   } catch { return null; }
@@ -178,9 +196,10 @@ async function transcript(videoId, parent) {
   if (!chosen) throw new YouTubeImportError('no_captions', 'This video has no captions, so there is no transcript to import. Audio import can transcribe a downloaded copy.');
   const url = captionUrl(chosen.track.baseUrl);
   if (!url) throw new YouTubeImportError('upstream_failed', 'YouTube answered in a form this import could not read.');
-  const response = await upstream(url, { headers: { 'User-Agent': ANDROID_UA, 'Accept-Language': 'en' } }, parent, 20_000, 'captions');
-  if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new YouTubeImportError('upstream_failed', 'YouTube could not be reached. Nothing was imported; try again shortly.'); }
-  const cues = parseCaptionXml(await readCapped(response, MAX_CAPTION_BYTES));
+  const cues = await upstream(url, { headers: { 'User-Agent': ANDROID_UA, 'Accept-Language': 'en' } }, parent, 20_000, 'captions', async response => {
+    if (!response.ok) { void response.body?.cancel().catch(() => {}); throw new YouTubeImportError('upstream_failed', 'YouTube could not be reached. Nothing was imported; try again shortly.'); }
+    return parseCaptionXml(await readCapped(response, MAX_CAPTION_BYTES));
+  });
   const length = Number(data.videoDetails?.lengthSeconds);
   return {
     video: { id: videoId, title: textOf(data.videoDetails?.title)?.slice(0, 200) || null, length_seconds: Number.isFinite(length) && length > 0 ? length : null },
@@ -195,7 +214,8 @@ export async function handleYouTubeImport(request, env) {
   const stage = url.pathname.slice(PREFIX.length + 1);
   try {
     if (request.method !== 'GET') return json(405, { error: 'method', message: 'Use GET.' });
-    // A custom header forces a cross-site caller through a preflight this Worker never approves.
+    // A custom header makes a cross-site *browser* call preflight, which this Worker never approves. It does not
+    // stop a script that sets the header itself; that is the accepted exposure of the public audience.
     if (request.headers.get(CONSENT_HEADER) !== 'v1') throw new YouTubeImportError('consent', 'Start the import from this Site.');
     const audience = openRouterPolicy(env).audience;
     if (audience !== 'public' && !await resolveIdentity(request, env)) {

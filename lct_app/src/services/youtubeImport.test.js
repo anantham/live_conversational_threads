@@ -18,7 +18,8 @@ describe('parseYouTubeImportUrl', () => {
     for (const link of [`https://www.youtube.com/watch?v=${VIDEO}`, `https://youtu.be/${VIDEO}`, `https://youtu.be/${VIDEO}?t=42`,
       `https://m.youtube.com/watch?v=${VIDEO}&t=9s`, `https://music.youtube.com/watch?v=${VIDEO}`, `https://www.youtube.com/shorts/${VIDEO}`,
       `https://www.youtube.com/live/${VIDEO}`, `https://www.youtube.com/embed/${VIDEO}`, `www.youtube.com/watch?v=${VIDEO}`,
-      `  youtube.com/watch?v=${VIDEO}  `, `http://youtube.com/watch?v=${VIDEO}`]) {
+      `  youtube.com/watch?v=${VIDEO}  `, `http://youtube.com/watch?v=${VIDEO}`, `https://www.youtube.com/shorts/${VIDEO}/`,
+      `https://www.youtube.com/live/${VIDEO}/`, `https://www.youtube.com/watch/?v=${VIDEO}`]) {
       expect(parseYouTubeImportUrl(link), link).toEqual({ kind: 'video', videoId: VIDEO });
     }
   });
@@ -27,6 +28,7 @@ describe('parseYouTubeImportUrl', () => {
     expect(parseYouTubeImportUrl(`https://www.youtube.com/playlist?list=${LIST}`)).toEqual({ kind: 'playlist', playlistId: LIST, videoId: null });
     expect(parseYouTubeImportUrl(`https://www.youtube.com/watch?v=${VIDEO}&list=${LIST}`)).toEqual({ kind: 'playlist', playlistId: LIST, videoId: VIDEO });
     expect(parseYouTubeImportUrl(`https://youtu.be/${VIDEO}?list=${LIST}`)).toEqual({ kind: 'playlist', playlistId: LIST, videoId: VIDEO });
+    expect(parseYouTubeImportUrl(`https://www.youtube.com/playlist/?list=${LIST}`)).toEqual({ kind: 'playlist', playlistId: LIST, videoId: null });
   });
 
   it('treats an auto-generated mix as the single video it points at, and refuses a mix alone', () => {
@@ -109,9 +111,31 @@ describe('parseCaptionXml', () => {
     const [cue] = parseCaptionXml('<p t="0" d="5">a&#0;b&#27;c&#xD800;d&#65;</p>');
     expect(cue.text).toBe('abcdA');
   });
+  it('is not fooled by self-closing paragraphs, line-break entities, break tags or escaped formatting', () => {
+    const xml = '<timedtext><body><p t="100" d="200" a="1" /><p t="5000" d="1000">actual speech</p>'
+      + '<p t="7000" d="500">hello&#10;world</p><p t="8000" d="500">foo<br/>bar</p>'
+      + '<p t="9000" d="500">&lt;i&gt;styled&lt;/i&gt; &lt;3 you</p><p t="9500" d="500">a&#127;b&#133;c</p></body></timedtext>';
+    expect(parseCaptionXml(xml)).toEqual([
+      { start_ms: 5000, end_ms: 6000, text: 'actual speech' }, { start_ms: 7000, end_ms: 7500, text: 'hello world' },
+      { start_ms: 8000, end_ms: 8500, text: 'foo bar' }, { start_ms: 9000, end_ms: 9500, text: 'styled <3 you' },
+      { start_ms: 9500, end_ms: 10000, text: 'abc' }]);
+  });
+  it('unwraps captions that are escaped twice, as several real tracks are', () => {
+    const [cue] = parseCaptionXml('<timedtext><body><p t="0" d="1000"><s>what&amp;#39;s</s><s> up &amp;amp; down</s><s> &amp;lt;i&amp;gt;x&amp;lt;/i&amp;gt;</s></p></body></timedtext>');
+    expect(cue.text).toBe("what's up & down x");
+  });
+  it('keeps the longer cue when two cues start together', () => {
+    const cues = parseCaptionXml('<timedtext><body><p t="1000" d="4000">A</p><p t="1000" d="1000">B</p></body></timedtext>');
+    expect(cues.map(cue => [cue.text, cue.start_ms, cue.end_ms]).sort()).toEqual([['A', 1000, 5000], ['B', 1000, 2000]]);
+    expect(cuesToTokens(cues, 1)[0].endMs).toBe(5000);
+  });
   it('fails loudly when there is no text or the input is not text', () => {
-    for (const bad of ['<timedtext></timedtext>', '<p t="0" d="5">\n</p>', '']) {
+    for (const bad of ['<timedtext></timedtext>', '<timedtext><body><p t="0" d="5">\n</p></body></timedtext>']) {
       expect(() => parseCaptionXml(bad)).toThrow(expect.objectContaining({ code: 'captions_empty' }));
+    }
+    // A consent or bot-check page is not an empty caption file.
+    for (const page of ['', '<!doctype html><html><body>Before you continue to YouTube</body></html>']) {
+      expect(() => parseCaptionXml(page)).toThrow(expect.objectContaining({ code: 'captions_unreadable' }));
     }
     expect(() => parseCaptionXml(null)).toThrow(expect.objectContaining({ code: 'captions_unreadable' }));
     expect(() => parseCaptionXml('x'.repeat(4 * 1024 * 1024 + 1))).toThrow(expect.objectContaining({ code: 'captions_too_large' }));
@@ -133,6 +157,9 @@ describe('cuesToTokens', () => {
     expect(tokens[0].startMs).toBe(0);
     expect(tokens.at(-1).endMs).toBe(20_000 * 100 + 90);
     expect(tokens.map(token => token.text).join('').split(/\s+/).length).toBe(20_001);
+  });
+  it('cannot be made to loop forever by a bad limit', () => {
+    for (const limit of [0, -1, NaN, 0.2]) expect(cuesToTokens(cues, limit).length).toBeGreaterThan(0);
   });
   it('refuses an empty list', () => { expect(() => cuesToTokens([])).toThrow(expect.objectContaining({ code: 'captions_empty' })); });
   it('produces tokens the existing transcript builder accepts, with timing it can map', () => {

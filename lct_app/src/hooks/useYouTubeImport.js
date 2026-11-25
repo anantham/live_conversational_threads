@@ -17,6 +17,8 @@ async function ask(path, signal) {
   }
   let body = null;
   try { body = await response.json(); } catch { /* handled below */ }
+  // A cancel that lands while the body is being read is a cancel, not a failure to show.
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   if (!response.ok) throw new Error(typeof body?.message === 'string' ? body.message : 'The import failed before YouTube answered. Nothing was imported.');
   return body;
 }
@@ -37,7 +39,7 @@ export function useYouTubeImport() {
     if (!localId || recording) return;
     let cancelled = false;
     readLocalConversation(localId).then(value => {
-      if (cancelled || !alive.current) return;
+      if (cancelled || !alive.current) return; // starting an import re-runs this effect, which cancels this load
       if (!value) throw new Error('This import is not saved in this browser.');
       setRecording(value.recording); setTranscript(value.transcript); setMap(value.map);
       if (value.mapUnreadable) {
@@ -52,15 +54,16 @@ export function useYouTubeImport() {
 
   const mapReady = useCallback(bundle => { setMap(bundle); archive.update({ map: bundle }); }, [archive.update]);
 
-  const begin = useCallback(() => {
+  const begin = useCallback(kind => {
     request.current?.abort();
-    const controller = new AbortController(); request.current = controller;
+    const controller = new AbortController(); controller.kind = kind; request.current = controller;
     return controller;
   }, []);
 
   async function importVideo(video) {
-    if (busy || !validVideoId(video?.id)) return;
-    const controller = begin();
+    if (!validVideoId(video?.id)) { setError('That video has no valid id. Nothing was imported.'); return; }
+    if (request.current && request.current.kind === 'transcript') return;
+    const controller = begin('transcript');
     setLoadingId(video.id); setError('');
     try {
       const result = await ask('transcript?v=' + encodeURIComponent(video.id), controller.signal);
@@ -85,11 +88,11 @@ export function useYouTubeImport() {
   }
 
   async function find() {
-    if (busy || resolving) return;
+    if (request.current) return; // a lookup or import is already running
     setError(''); setResolved(null);
     try { parseYouTubeImportUrl(link); }
     catch (failure) { setError(failure instanceof YouTubeImportError ? failure.message : 'That does not look like a YouTube link.'); return; }
-    const controller = begin();
+    const controller = begin('resolve');
     setResolving(true);
     let result = null;
     try {
@@ -100,7 +103,7 @@ export function useYouTubeImport() {
       if (alive.current && failure?.name !== 'AbortError') setError(failure.message);
     } finally { if (alive.current && request.current === controller) { request.current = null; setResolving(false); } }
     // A single video needs no choosing: import its transcript straight away.
-    if (result?.kind === 'video') await importVideo(result.videos[0]);
+    if (result?.kind === 'video') await importVideo(result.videos?.[0]);
   }
 
   function cancel() { request.current?.abort(); request.current = null; setLoadingId(null); setResolving(false); }

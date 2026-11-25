@@ -33,14 +33,15 @@ export function parseYouTubeImportUrl(raw) {
     throw new YouTubeImportError('invalid_link', 'That does not look like a YouTube link.');
   }
   const host = url.hostname.toLowerCase();
+  const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
   let videoId = null;
   if (host === 'youtu.be') videoId = url.pathname.split('/')[1] || null;
   else if (HOSTS.has(host)) {
-    if (url.pathname === '/watch') videoId = url.searchParams.get('v');
+    if (path === '/watch') videoId = url.searchParams.get('v');
     else {
-      const match = /^\/(?:shorts|live|embed)\/([A-Za-z0-9_-]{11})$/.exec(url.pathname);
+      const match = /^\/(?:shorts|live|embed)\/([A-Za-z0-9_-]{11})$/.exec(path);
       if (match) videoId = match[1];
-      else if (url.pathname !== '/playlist') throw new YouTubeImportError('invalid_link', 'Paste a YouTube video link (watch, youtu.be, shorts or live) or a playlist link.');
+      else if (path !== '/playlist') throw new YouTubeImportError('invalid_link', 'Paste a YouTube video link (watch, youtu.be, shorts or live) or a playlist link.');
     }
   } else throw new YouTubeImportError('invalid_link', 'Only youtube.com and youtu.be links can be imported.');
   if (videoId !== null && !VIDEO_ID.test(videoId)) throw new YouTubeImportError('invalid_link', 'That video link has no valid video id.');
@@ -83,7 +84,9 @@ function decodeEntities(value) {
   return value.replace(/&(?:#(\d{1,7})|#x([0-9a-fA-F]{1,6})|(\w+));/g, (whole, dec, hex, name) => {
     if (name) return ENTITIES[name] ?? whole;
     const point = dec ? Number(dec) : parseInt(hex, 16);
-    return point > 31 && point < 0x110000 && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : '';
+    if (point === 9 || point === 10 || point === 13) return ' '; // line breaks separate words
+    const control = point < 32 || (point >= 127 && point <= 159);
+    return !control && point < 0x110000 && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : '';
   });
 }
 
@@ -102,8 +105,16 @@ export function chooseCaptionTrack(tracks, language = 'en') {
   return { track: pick, kind: auto(pick) ? 'auto' : 'manual' };
 }
 
+// Line breaks inside a cue separate words; formatting tags are dropped, before and after decoding
+// (older caption files carry escaped tags such as &lt;i&gt;).
+const FORMATTING = /<\/?(?:i|b|u|font|span|br)\b[^>]*>/gi;
 function plainText(inner) {
-  return decodeEntities(inner.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+  const spaced = inner.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '');
+  // Some caption tracks are escaped twice (`what&amp;#39;s`), found in a live run; unwrap a second layer
+  // only when the first left an entity behind.
+  let decoded = decodeEntities(spaced);
+  if (/&(?:#\d{1,7}|#x[0-9a-fA-F]{1,6}|amp|lt|gt|quot|apos);/.test(decoded)) decoded = decodeEntities(decoded);
+  return decoded.replace(FORMATTING, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -115,17 +126,18 @@ export function parseCaptionXml(xml) {
   if (typeof xml !== 'string') throw new YouTubeImportError('captions_unreadable', 'The captions could not be read.');
   if (xml.length > MAX_CAPTION_BYTES) throw new YouTubeImportError('captions_too_large', 'The captions are larger than this import can accept.');
   const cues = [];
-  const modern = /<p\b([^>]*)>([\s\S]*?)<\/p>/g;
+  // A self-closing <p .../> has no text and must not swallow the next cue.
+  const modern = /<p\b([^>]*?)(?:\/>|>([\s\S]*?)<\/p>)/g;
   for (let match; (match = modern.exec(xml));) {
     const start = /\bt="(\d+)"/.exec(match[1]), length = /\bd="(\d+)"/.exec(match[1]);
-    const text = plainText(match[2]);
+    const text = plainText(match[2] ?? '');
     if (start && text) cues.push({ start_ms: Number(start[1]), end_ms: Number(start[1]) + (length ? Number(length[1]) : 0), text });
   }
   if (!cues.length) {
-    const legacy = /<text\b([^>]*)>([\s\S]*?)<\/text>/g;
+    const legacy = /<text\b([^>]*?)(?:\/>|>([\s\S]*?)<\/text>)/g;
     for (let match; (match = legacy.exec(xml));) {
       const start = /\bstart="([\d.]+)"/.exec(match[1]), length = /\bdur="([\d.]+)"/.exec(match[1]);
-      const text = plainText(match[2]);
+      const text = plainText(match[2] ?? '');
       if (start && text) {
         const from = Math.round(Number(start[1]) * 1000);
         cues.push({ start_ms: from, end_ms: from + Math.round(Number(length?.[1] || 0) * 1000), text });
@@ -135,10 +147,15 @@ export function parseCaptionXml(xml) {
   cues.sort((a, b) => a.start_ms - b.start_ms);
   for (let index = 0; index < cues.length; index += 1) {
     const next = cues[index + 1];
-    if (next && cues[index].end_ms > next.start_ms) cues[index].end_ms = next.start_ms;
+    // Cues sharing a start keep their own ends: clamping to an equal start would erase the longer one.
+    if (next && next.start_ms > cues[index].start_ms && cues[index].end_ms > next.start_ms) cues[index].end_ms = next.start_ms;
     if (cues[index].end_ms < cues[index].start_ms) cues[index].end_ms = cues[index].start_ms;
   }
-  if (!cues.length) throw new YouTubeImportError('captions_empty', 'The captions contain no text.');
+  if (!cues.length) {
+    // An HTML consent or bot-check page is not an empty caption file.
+    if (!/<(?:timedtext|transcript)\b/.test(xml)) throw new YouTubeImportError('captions_unreadable', 'YouTube answered with something that is not a caption file.');
+    throw new YouTubeImportError('captions_empty', 'The captions contain no text.');
+  }
   return cues;
 }
 
@@ -149,14 +166,15 @@ export function parseCaptionXml(xml) {
  */
 export function cuesToTokens(cues, limit = MAX_IMPORT_TOKENS) {
   if (!Array.isArray(cues) || !cues.length) throw new YouTubeImportError('captions_empty', 'The captions contain no text.');
-  const group = Math.ceil(cues.length / limit);
+  const cap = Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : MAX_IMPORT_TOKENS;
+  const group = Math.ceil(cues.length / cap);
   const tokens = [];
   for (let index = 0; index < cues.length; index += group) {
     const slice = cues.slice(index, index + group);
     tokens.push({
       text: (tokens.length ? ' ' : '') + slice.map(cue => cue.text).join(' '),
       startMs: slice[0].start_ms,
-      endMs: slice[slice.length - 1].end_ms,
+      endMs: Math.max(...slice.map(cue => cue.end_ms)),
     });
   }
   return tokens;
