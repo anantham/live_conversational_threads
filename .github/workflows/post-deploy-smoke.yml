@@ -32,7 +32,11 @@ concurrency:
 jobs:
   live-smoke:
     name: Live prod smoke
-    runs-on: ubuntu-latest
+    # Pinned for the same reason as e2e.yml: ubuntu-latest moved to 26.04 and the locked
+    # @playwright/test 1.56.1 refuses it ("Playwright does not support chromium on
+    # ubuntu26.04-x64"), so this job failed at "Install Playwright browser" before the
+    # smoke ran. Move back to ubuntu-latest after upgrading Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Run for manual/scheduled triggers, or a SUCCESSFUL PRODUCTION deploy.
     # `environment` is Vercel's own label; verified against this repo's real

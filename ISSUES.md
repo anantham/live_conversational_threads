@@ -3284,3 +3284,11 @@ Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received
 - **Impact:** outside a sandbox the unit suite can reach a live service or spend on a provider if credentials are in the environment. Also: `test_speaker_correction_api.py` fails at collection when `/tmp/lct_recordings` is not writable, and 13 tests fail locally for environment reasons (network, missing `pwsh`).
 - **Blocker:** no.
 - **Next step:** trace the callers with a socket-blocking fixture in `tests/conftest.py`, then stub them.
+
+
+### 2026-11-25 — Live prod smoke has not run since the runner image moved to Ubuntu 26.04
+
+- **What:** `post-deploy-smoke.yml` ran on `ubuntu-latest`. On 26.04 the locked `@playwright/test` 1.56.1 fails at "Install Playwright browser" ("Playwright does not support chromium on ubuntu26.04-x64"), so the smoke itself never starts. Read from the logs of runs 45648475149 (2026-11-25, after the PR #257 merge) and 45475469466 (2026-11-24 scheduled, previous main). Last successful run in the most recent 100: 2026-11-04. `e2e.yml` was pinned to `ubuntu-24.04` for this on 2026-11-15; this workflow was missed.
+- **Impact:** production deploys and the daily canary have had no passing browser check for about three weeks; a red status on main looks like the merge broke production when the test never ran.
+- **Fix in this change:** pin `post-deploy-smoke.yml` to `ubuntu-24.04`. Not yet proven: the workflow only fires from the default branch, so the first real run is after merge (or a manual dispatch).
+- **Next step:** `nightly-stt-e2e.yml` uses the same install step on `ubuntu-latest` and has no listed runs; pin it or upgrade Playwright once and unpin all three.
