@@ -71,3 +71,4 @@ Last updated: 2026-09-01 (stable per-user runtime data in ADR-068)
 - **Deprecated** — No longer relevant, superseded by another ADR
 - **Superseded** — Replaced by a newer ADR (link to successor)
 - **Withdrawn** — Retracted by its own author after the motivating diagnosis proved wrong (e.g. ADR-040); kept for the post-mortem value
+| [2026-11-25](2026-11-25-youtube-transcript-import.md) | Import a transcript from a pasted YouTube link | 2026-11-25 | Proposed |

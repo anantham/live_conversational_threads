@@ -1,3 +1,11 @@
+## 2026-11-25 23:40 IST — YouTube link import (branch feat/youtube-import, from codex/lct-inference-choice 30216339)
+
+Owner asked to paste YouTube video or playlist links and import the transcript. Added `/import-youtube`, Worker routes `/api/cloud/youtube/resolve|transcript` (`lct_app/sites/youtubeImport.js`, wired in `worker.js`), shared parsing in `src/services/youtubeImport.js`, `useYouTubeImport.js`, `SitesYouTubeImport.jsx`, a Home button and the access-panel path. ADR `docs/adr/2026-11-25-youtube-transcript-import.md`, intent `tests/intent/youtube-import.md`.
+
+Evidence: 47 new tests pass (URL classification, caption parsing, Worker access/SSRF/limits with stubbed YouTube, page flows). One test caught a real bug: the JSON walk returned playlist videos reversed. A live run of the real handler against the owner's playlist resolved 5 videos with durations and fetched captions for all 5; the 107-minute video gave 2,821 cues, a valid transcript (65 utterances, 106,734 chars) and a 120,053-byte map request (cap 524,288).
+
+Not verified: Cloudflare's egress address may be refused by YouTube (residential only here); map quality beyond about 20 minutes; browser-visible UI (not opened in a browser); not published. Publishing belongs to the Codex session.
+
 ## 2026-11-05 16:40 IST — Merge origin/main (ecad4002) into codex/lct-inference-choice (a354a33b)
 
 Executes docs/plans/2026-11-03-main-consolidation.md (intent: tests/intent/main-consolidation.md). True merge, no squash/rebase/force. 9 textual conflicts, all resolved by keeping both sides' behaviour:
