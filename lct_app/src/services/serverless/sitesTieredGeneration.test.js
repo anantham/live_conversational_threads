@@ -65,7 +65,7 @@ describe('tier-safe generation on the public Worker backend routes', () => {
     const directClaude = backend === 'anthropic';
     expect(url).toBe(endpoints[backend]);
     const schema = directClaude ? wire.output_config.format.schema : wire.response_format.json_schema.schema;
-    expect(schema.properties.hierarchy_format.enum).toEqual(['tiered-parent-links-v2']);
+    expect(schema.properties.hierarchy_format.enum).toEqual(['tiered-ranges-v3']);
     expect(wire.max_tokens).toBe(8192);
     const evidence = wire.messages.at(-1).content;
     expect(JSON.parse(evidence)).toEqual({ transcription_complete: true,
@@ -363,7 +363,9 @@ it('builds one source-linked map across seven transcript windows through the pub
     expect(wire.model).toBe('claude-synthetic');
     const node = wire.output_config.format.schema.properties.nodes.items;
     expect(node.type).toBe('object');
-    expect(node.properties.thread_id.anyOf.map(branch => branch.type)).toEqual(['string', 'null']);
+    // One node shape; chunk ranges and higher-tier nulls are enforced after decoding.
+    expect(node.properties.source_range.anyOf.map(branch => branch.type)).toEqual(['object', 'null']);
+    expect(node.properties.thread_id).toBeUndefined();
     return Response.json(anthropicReply());
   });
 
@@ -427,7 +429,7 @@ describe('Claude schema diagnostic', () => {
     const node = wire.output_config.format.schema.properties.nodes.items;
     expect(node).toMatchObject({ type: 'object', properties: {
       semantic_level: { enum: [1, 2, 3, 4, 5] },
-      thread_id: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      source_range: { anyOf: [{ type: 'object', required: ['from', 'to'] }, { type: 'null' }] },
     } });
     expect(node).not.toHaveProperty('anyOf');
     expect(rows()).toEqual([{ max_output_tokens: 8192, completed_at: expect.any(Number) }]);

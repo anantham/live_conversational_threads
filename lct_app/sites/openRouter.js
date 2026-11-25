@@ -275,9 +275,11 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
-        const { bundle, referenceRepair } = readCompletion({ source: input.source, response: completion });
+        const { bundle, referenceRepair, coverage } = readCompletion({ source: input.source, response: completion });
         logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           nodes: bundle.graph_data.length, coveredTurns: bundle.coverage?.covered_turns, totalTurns: bundle.coverage?.total_turns,
+          ...(coverage ? { chunks: coverage.chunks, uncoveredTurns: coverage.uncoveredTurns, gapRuns: coverage.gapRuns,
+            overlapTurns: coverage.overlapTurns } : {}),
           ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
         return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair, minimalId,
           ...(diagnostic ? { mapId: anthropicRequestId(response) } : {}) };

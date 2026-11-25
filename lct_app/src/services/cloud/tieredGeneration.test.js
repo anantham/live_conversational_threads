@@ -78,7 +78,7 @@ describe('tier-safe generated maps through the public adapter', () => {
   it('constrains the emitted schema to matching tiers and strictly higher typed parent coordinates', () => {
     const wire = buildOpenRouterGenerationRequest({ source, model: 'synthetic/model', maxTokens: 8192 });
     const shape = wire.response_format.json_schema.schema;
-    expect(shape.properties.hierarchy_format.enum).toEqual(['tiered-parent-links-v2']);
+    expect(shape.properties.hierarchy_format.enum).toEqual(['tiered-ranges-v3']);
     const variants = shape.properties.nodes.items.anyOf;
     expect(variants).toHaveLength(5);
     variants.forEach((variant, index) => {

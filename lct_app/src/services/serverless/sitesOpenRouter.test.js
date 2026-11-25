@@ -85,8 +85,8 @@ describe('OpenRouter Worker API with actual generated SQLite schema', () => {
     expect(options.headers.Authorization).toBe(`Bearer ${KEY}`);
     expect(sent).toMatchObject({ model: 'provider/selected-model', max_tokens: 2048, stream: false,
       provider: { only: ['selected-provider'], data_collection: 'deny', require_parameters: true, allow_fallbacks: false } });
-    expect(sent.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt)
-      .toEqual({ type: 'string', enum: [''] });
+    expect(sent.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_range.required)
+      .toEqual(['from', 'to']);
     expect(options.body).not.toMatch(/synthetic-source|S1|startMs|untrusted\/model|untrusted-key/);
     expect(JSON.stringify(result)).not.toContain(KEY);
     const opened = await readThreadsFile(new File([JSON.stringify(result.artifact)], 'synthetic.threads'));

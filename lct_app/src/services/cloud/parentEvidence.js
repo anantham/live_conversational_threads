@@ -4,7 +4,7 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 
 /**
  * Give every higher-tier node the union of its own cited utterances and those of every
- * child filed under it (primary or secondary), lowest tier first so evidence flows up.
+ * child filed under it as primary parent, lowest tier first so evidence flows up.
  *
  * The model no longer writes this union out: repeating each child's utterance IDs at
  * every tier cost thousands of output tokens per window and truncated Claude maps at
@@ -20,9 +20,9 @@ export function deriveParentEvidence(graph) {
     const own = Array.isArray(node.source_ref?.utterance_ids) ? node.source_ref.utterance_ids : null;
     if (!own) return graph; // Malformed evidence: let the validator reject it unchanged.
     evidence.set(node.id, [...own]);
-    const parents = [node.parent_id, ...(Array.isArray(node.memberships) ? node.memberships : [])
-      .map(membership => membership?.parent_id)].filter(id => typeof id === 'string');
-    parentsOf.set(node.id, [...new Set(parents)]);
+    // Primary parent only: the primary links form a laminar backbone (nested or disjoint evidence);
+    // secondary parents are cross-links and never widen a parent's evidence.
+    parentsOf.set(node.id, typeof node.parent_id === 'string' ? [node.parent_id] : []);
   }
   const byLevel = [...graph.nodes].sort((a, b) => a.semantic_level - b.semantic_level);
   for (const node of byLevel) {

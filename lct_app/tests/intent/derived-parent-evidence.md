@@ -1,7 +1,7 @@
 # Derived parent evidence (2026-11-25)
 
 - A higher-tier node's evidence is its own cited utterances plus every child filed under it
-  (primary or secondary), so the model need not repeat child IDs at every tier.
+  (primary parent only), so the model need not repeat child IDs at every tier.
 - Evidence flows through all tiers: an arc covers the chunks under its themes, topics and ideas.
 - Derivation never adds, drops or moves a relationship; invalid IDs and missing parents still
   reach the existing validator unchanged and are rejected there.
