@@ -1,5 +1,21 @@
 # TECH_DEBT
 
+## 2026-11-25 — Unreferenced-code sweep: candidates kept for an owner decision
+
+A deletion-only sweep removed 19 unreferenced files (see WORKLOG, same date). These
+have no production importer either, but each has a reason not to be deleted without
+a ruling:
+
+- `experimental/consumption_trigger.py` (366) — deliberately mothballed; ADR-033 and two service docstrings point at it. Imported only by its test.
+- `services/embedding_service.py` (320) — imported only by `tests/unit/test_egress_guard_coverage.py`, which uses it to prove egress-guard coverage (ADR-034). Removing it means editing a guard test.
+- `services/intent_signal_persistence.py` (247) — ADR-013/016; imported only by its test.
+- `services/runtime_data_migration.py` (298) — imported only by its test; may be an operator-run migration.
+- `lct_app/src/services/serverless/sttRealtimeClient.js`, `components/audio/audioUpload.js` — unwired, but ADR-060 lists both as pending work.
+- `lct_app/src/components/ImportCanvas.jsx` — unrouted, but ADR-059 says canvas import "stays".
+- `lct_python_backend/performance_benchmark.py` — no importer; `docs/MONITORING_SETUP.md` documents it as a manual tool.
+- `auth_policy.py` still lists the `/api/costs` prefix for the removed, never-mounted `cost_api.py`.
+- `lct_app/NODE_DETAIL_PANEL.md` and `lct_app/ZOOM_SYSTEM.md` describe the removed `contextLoading.js` / `nodeTransitions.js`; both docs predate the current viewer and are archive candidates.
+
 ## 2026-10-09 — Sites UI regression suite boundaries
 
 The original-layout restoration keeps production controller under200lines and extracts the81-line pure toolbar. Recording/access tests remain mixed journey suites (>400/>300lines); existing test-only split candidate still applies. Incumbent NewConversation/AudioInput controllers were read for presentation evidence and deliberately not coupled to the cloud lifecycle. No broader refactor belongs to this visual repair.

@@ -3276,3 +3276,11 @@ Found while verifying CPU search: library get_pipeline_files/get_files do not fo
 ## 2026-11-05 23:32 IST — remote CPU binary verification limited by transport
 
 Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received200/application-wasm and69,666correct prefix bytes, then curl56connection reset. Native deployed archive and exact local real-model proof pass; this is transport evidence, not a confirmed application cause. Impact: full served-binary hash and physical-browser runtime acceptance remain unverified. Blocker: no for completed native publication; yes for claiming complete browser/search-download acceptance. Full-download method is stopped, no deployment retry or paid generation. Recommended next step: verify the runtime in a functioning browser/connection within applicable authority. See docs/reviews/2026-11-05-sites-cpu-search-deployment.json; retain the explicit limit at handoff.
+
+
+### 2026-11-25 — Unit suite attempts real network connections
+
+- **What:** running `pytest lct_python_backend/tests/unit tests` on a Mac inside a network sandbox, the sandbox reported blocked outbound connections to `api.openai.com:443` (twice), `stt.example:443`, and the Asus tailnet address on port 7777. Which tests open them was not traced. Seen on untouched `main` (04b85f67) as well as on `chore/remove-unreferenced-code`.
+- **Impact:** outside a sandbox the unit suite can reach a live service or spend on a provider if credentials are in the environment. Also: `test_speaker_correction_api.py` fails at collection when `/tmp/lct_recordings` is not writable, and 13 tests fail locally for environment reasons (network, missing `pwsh`).
+- **Blocker:** no.
+- **Next step:** trace the callers with a socket-blocking fixture in `tests/conftest.py`, then stub them.

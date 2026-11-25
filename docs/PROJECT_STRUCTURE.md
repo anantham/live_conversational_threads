@@ -67,7 +67,7 @@ live_conversational_threads/
 | `consumption_prayer_api.py` | `/api/consumption-prayer/*` | Intent/prayer matching + contacts picker (ADR-033) |
 | `graph_api.py` | `/api/graph/*` | Graph queries and persistence |
 | `canvas_api.py` | `/export/obsidian-canvas/*`, `/import/obsidian-canvas/` | Obsidian canvas interop |
-| `cost_api.py` | `/api/cost-tracking/*` | LLM cost aggregation |
+| `factcheck_api.py` | `/api/cost-tracking/stats` | LLM cost stats for the cost dashboard (the unmounted `cost_api.py` was removed 2026-11-25) |
 | `user_identity_api.py` | `/api/user-identity` | Self-identity ("which contact is me") |
 | `bookmarks_api.py` | `/api/bookmarks/*` | Node bookmarks |
 | `version_api.py` | `/api/version` | Backend version endpoint |
@@ -83,7 +83,7 @@ live_conversational_threads/
   - `observability.py` — telemetry, cost records, session observability
   - `system.py` — app settings, backend catalog entries
   - `base.py` — declarative base
-- `db.py`, `db_session.py`, `db_helpers.py`: sync and async session factories (`SessionLocal`, `get_async_session_context()`).
+- `db.py`, `db_session.py`: sync and async session factories (`SessionLocal`, `get_async_session_context()`).
 - `alembic/versions/`: migration history; run `alembic upgrade head` after pulling new migrations.
 - `schemas.py`, `schemas_edit_history.py`, `import_schemas.py`, `raw_turn_contract.py`: Pydantic request/response models.
 
