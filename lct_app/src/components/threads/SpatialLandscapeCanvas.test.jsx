@@ -121,27 +121,39 @@ describe("SpatialLandscapeCanvas", () => {
     expect(onBoundaryCorrection).toHaveBeenCalledWith({ kind: "split", sourceNodeId: "arc-1", splitUtteranceId: "u3" });
   });
 
-  it("switches to the interleaving Timeline view and supports on-demand epistemic analysis", () => {
+  it("switches to the interleaving Timeline view and verifies consent for the configured recipients", async () => {
     const onAddReaction = vi.fn();
     const onRunEpistemic = vi.fn().mockResolvedValue(true);
     const bundle = { conversation_title: "Andre Catch up", utterances };
-    act(() => {
+    const render = (label) => act(() => {
       root.render(
         <SpatialLandscapeCanvas
           bundle={bundle}
           nodes={nodes}
           onAddReaction={onAddReaction}
           onRunEpistemic={onRunEpistemic}
-          epistemicProviderLabel="Anthropic (claude-sonnet-5-5)"
+          epistemicProviderLabel={label}
         />,
       );
     });
+    render("Anthropic (claude-sonnet-5-5) or Gemini");
 
     // Click unanalyzed Cruxes pill to open 1-click analyze popover
     const cruxesBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Cruxes"));
     expect(cruxesBtn.disabled).toBe(false);
     act(() => cruxesBtn.click());
     expect(host.textContent).toContain("Analyze Cruxes, Claims & Normative assumptions");
+    expect(host.textContent).toContain("Send this transcript and map nodes to Anthropic (claude-sonnet-5-5) or Gemini.");
+    const analyzeButton = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Analyze now");
+    expect(analyzeButton().disabled).toBe(true);
+    act(() => host.querySelector('input[type="checkbox"]').click());
+    expect(analyzeButton().disabled).toBe(false);
+    render("Anthropic (claude-sonnet-5-5) or OpenRouter");
+    expect(analyzeButton().disabled).toBe(true);
+    expect(onRunEpistemic).not.toHaveBeenCalled();
+    act(() => host.querySelector('input[type="checkbox"]').click());
+    await act(async () => analyzeButton().click());
+    expect(onRunEpistemic).toHaveBeenCalledTimes(1);
 
     // Switch to Timeline surface and mark a reaction
     const timelineBtn = [...host.querySelectorAll('[aria-label="Surface mode"] button')].find((b) => b.textContent === "Timeline");

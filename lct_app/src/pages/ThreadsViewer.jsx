@@ -578,10 +578,12 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
 
   const epistemicRoutes = useMemo(() => (sitesRuntime ? configuredMapRoutes(sitesRuntime) : []), [sitesRuntime]);
   const epistemicProviderLabel = useMemo(() => {
-    const first = epistemicRoutes[0];
-    if (!first) return "";
-    const name = MAP_PROVIDERS[first.backend]?.name || first.backend;
-    return first.model ? `${name} (${first.model})` : name;
+    const labels = epistemicRoutes.map(({ backend, model, provider }) => {
+      const name = MAP_PROVIDERS[backend]?.name || backend;
+      const details = [model, provider].filter(Boolean).join(" · ");
+      return details ? `${name} (${details})` : name;
+    });
+    return new Intl.ListFormat("en", { type: "disjunction" }).format([...new Set(labels)]);
   }, [epistemicRoutes]);
 
   const handleRunEpistemic = useCallback(async () => {

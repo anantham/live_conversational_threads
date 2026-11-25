@@ -235,7 +235,8 @@ export default function SpatialLandscapeCanvas({
   const [hoveredId, setHoveredId] = useState(null);
   const [activeLens, setActiveLens] = useState("all");
   const [epistemicPromptOpen, setEpistemicPromptOpen] = useState(false);
-  const [epistemicConsent, setEpistemicConsent] = useState(false);
+  const [consentedProviderLabel, setConsentedProviderLabel] = useState("");
+  const epistemicConsent = Boolean(epistemicProviderLabel && consentedProviderLabel === epistemicProviderLabel);
   const touchStartX = useRef(null);
 
   const rawSiblingIds = useMemo(() => {
@@ -419,7 +420,7 @@ export default function SpatialLandscapeCanvas({
             <button
               type="button"
               aria-pressed={activeLens === "all"}
-              onClick={() => { setActiveLens("all"); setPageIndex(0); setEpistemicPromptOpen(false); }}
+              onClick={() => { setActiveLens("all"); setPageIndex(0); setEpistemicPromptOpen(false); setConsentedProviderLabel(""); }}
               className={`rounded-full px-2.5 py-1 transition-colors ${activeLens === "all" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-stone-200/70 hover:text-slate-900"}`}
             >
               All
@@ -449,7 +450,9 @@ export default function SpatialLandscapeCanvas({
                       setActiveLens(activeLens === lensId ? "all" : lensId);
                       setPageIndex(0);
                       setEpistemicPromptOpen(false);
+                      setConsentedProviderLabel("");
                     } else if (canAnalyze) {
+                      setConsentedProviderLabel("");
                       setEpistemicPromptOpen((v) => !v);
                     }
                   }}
@@ -476,22 +479,22 @@ export default function SpatialLandscapeCanvas({
                 {epistemicProviderLabel ? (
                   <>
                     <p className="mt-1 leading-5 text-slate-500">
-                      Runs one pass via {epistemicProviderLabel} and attaches findings directly to this map.
+                      Adds cruxes, claims, and assumptions to this map.
                     </p>
                     <label className="mt-2.5 flex items-start gap-2 text-[11px] leading-4 text-slate-600">
                       <input type="checkbox" className="mt-0.5" checked={epistemicConsent} disabled={epistemicRunning}
-                        onChange={(e) => setEpistemicConsent(e.target.checked)} />
+                        onChange={(e) => setConsentedProviderLabel(e.target.checked ? epistemicProviderLabel : "")} />
                       Send this transcript and map nodes to {epistemicProviderLabel}.
                     </label>
                     {epistemicError && <p role="alert" className="mt-2 text-[11px] text-rose-700">{epistemicError}</p>}
                     <div className="mt-3 flex items-center justify-end gap-2">
-                      <button type="button" onClick={() => setEpistemicPromptOpen(false)} className="rounded px-2 py-1 text-slate-500 hover:bg-stone-100">Cancel</button>
+                      <button type="button" onClick={() => { setEpistemicPromptOpen(false); setConsentedProviderLabel(""); }} className="rounded px-2 py-1 text-slate-500 hover:bg-stone-100">Cancel</button>
                       <button
                         type="button"
                         disabled={!epistemicConsent || epistemicRunning}
                         onClick={async () => {
                           const ok = await onRunEpistemic();
-                          if (ok) { setEpistemicPromptOpen(false); setEpistemicConsent(false); }
+                          if (ok) { setEpistemicPromptOpen(false); setConsentedProviderLabel(""); }
                         }}
                         className="rounded-lg bg-slate-900 px-3 py-1 font-medium text-white hover:bg-slate-800 disabled:opacity-40"
                       >
