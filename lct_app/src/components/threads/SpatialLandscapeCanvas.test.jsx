@@ -124,7 +124,7 @@ describe("SpatialLandscapeCanvas", () => {
   it("switches to the interleaving Timeline view and verifies consent for the configured recipients", async () => {
     const onAddReaction = vi.fn();
     const onRunEpistemic = vi.fn().mockResolvedValue(true);
-    const bundle = { conversation_title: "Andre Catch up", utterances };
+    const bundle = { conversation_title: "Mirela catch-up", utterances };
     const render = (label) => act(() => {
       root.render(
         <SpatialLandscapeCanvas
