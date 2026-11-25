@@ -202,10 +202,15 @@ test.describe('.threads opener (public recipient path)', () => {
       return dt;
     }, FIXTURE_JSON);
 
-    const serverHeading = page.getByRole('heading', { name: 'Recorded conversations' });
-    await serverHeading.dispatchEvent('dragenter', { dataTransfer });
+    // Drop on a heading deep in the page content that every build renders. The
+    // "Recorded conversations" server-history heading used here before exists only
+    // when VITE_SITES_MODE is off, so this test timed out against production (a
+    // Sites-mode build) while passing against the local dev server.
+    const contentHeading = page.getByRole('heading', { name: 'Opened conversations' });
+    await expect(contentHeading).toBeVisible();
+    await contentHeading.dispatchEvent('dragenter', { dataTransfer });
     await expect(page.getByText('Drop .threads to open')).toBeVisible();
-    await serverHeading.dispatchEvent('drop', { dataTransfer });
+    await contentHeading.dispatchEvent('drop', { dataTransfer });
 
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
   });

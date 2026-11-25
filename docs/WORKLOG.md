@@ -11030,3 +11030,22 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   TECH_DEBT, per-filename greps for the legacy scripts and prompt files: 0 hits).
 - Not deployed. auth_policy.py still lists the /api/costs prefix; left alone
   because it is an auth file.
+
+## 2026-11-25 23:25 IST — Browse drop smoke test no longer depends on a non-Sites heading (branch fix/smoke-browse-drop-sites-mode)
+
+- Why: once PR #260 let the live prod smoke run again (run 45652539884, main 835a74a8), 8 of 9 tests
+  passed and "Browse accepts a .threads file dropped anywhere on the page" timed out waiting for the
+  "Recorded conversations" heading. `Browse.jsx` renders that heading only when `VITE_SITES_MODE` is
+  off; the production domain serves a Sites-mode build.
+- Change: `lct_app/tests/e2e/prod-threads-opener.spec.js` (the drop test, ~lines 204-213) now
+  dispatches dragenter/drop on the "Opened conversations" heading, which `Browse.jsx:355` renders in
+  both modes. Test-only; no product code changed. `ISSUES.md` gets a new entry for the wider finding below.
+- Verified: the seven non-deploy-only tests in the spec pass against a local Vite server of this
+  branch with `VITE_SITES_MODE=true` and again with `VITE_SITES_MODE=false` (system Chrome; the
+  locked Playwright's bundled Chromium is not installed on this Mac).
+- NOT verified against production, and it cannot be from main: between the CI run (21:49 IST) and
+  my run (~23:15 IST) the live domain started serving a different UI (icon-only Home, viewer title
+  as a "Landscape breadcrumb" button). Those strings exist on `origin/integ/sites-combined`
+  (7662bb07, 23:15 IST) and not on main. Against that build 6 of 9 smoke tests fail, with or
+  without this change; with it, the drop itself opens the fixture and only the final title
+  assertion fails. See the ISSUES.md entry of the same date.
