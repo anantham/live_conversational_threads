@@ -750,7 +750,7 @@ app.add_middleware(PrometheusInstrumentationMiddleware)
 
 ## References
 
-- [Week 2 Roadmap](../docs/ROADMAP.md#week-2-instrumentation--cost-tracking)
+- [Week 2 Roadmap](../docs/archive/ROADMAP.md#week-2-instrumentation--cost-tracking)
 - [Database Schema](DATABASE_MIGRATIONS.md)
 - [OpenAI Pricing](https://openai.com/pricing)
 - [Anthropic Pricing](https://www.anthropic.com/pricing)

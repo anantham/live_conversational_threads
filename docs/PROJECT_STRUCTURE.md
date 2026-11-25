@@ -223,4 +223,4 @@ Full taxonomy: **`docs/README.md`**. Highlights:
 - `INDRASNET_INTEGRATION.md` — IndrasNet↔LCT integration design.
 - `SUPERVISION.md` — Backend supervisor and process management docs.
 - `PRODUCT_VISION.md` — Product mission and long-term goals.
-- `FEATURE_ROADMAP.md`, `ROADMAP.md` — Feature priority queues.
+- `archive/` — superseded roadmaps and design docs (the 2025 week plans live here).
