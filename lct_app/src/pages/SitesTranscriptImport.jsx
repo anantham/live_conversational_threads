@@ -27,6 +27,20 @@ function attachMeetingFields(bundle, parsed) {
   };
 }
 
+function formatElapsed(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+const TIER_STYLES = {
+  arc: 'bg-slate-900 text-white',
+  theme: 'bg-indigo-100 text-indigo-900',
+  topic: 'bg-amber-100 text-amber-900',
+  idea: 'bg-emerald-100 text-emerald-900',
+  chunk: 'bg-white text-slate-700 ring-1 ring-slate-200',
+};
+
 function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const runtime = useSitesRuntime();
   const navigate = useNavigate();
@@ -35,11 +49,16 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const [consentRoutes, setConsentRoutes] = useState(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [streamStats, setStreamStats] = useState(null);
+  const [liveNodes, setLiveNodes] = useState([]);
+  const [eventLog, setEventLog] = useState([]);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [pipelineError, setPipelineError] = useState('');
   const [served, setServed] = useState('');
   const [completedBundle, setCompletedBundle] = useState(null);
   const [detail, setDetail] = useState('all');
   const abortRef = useRef(null);
+  const startedAtRef = useRef(0);
   const status = readiness?.routes === routes ? readiness.status : null;
   const statusError = readiness?.routes === routes ? readiness.error : '';
   const consent = consentRoutes === routes;
@@ -61,12 +80,30 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
     return () => onBusyChange?.(false);
   }, [running, onBusyChange]);
 
+  useEffect(() => {
+    if (!running) return undefined;
+    const timer = window.setInterval(() => {
+      setElapsedSec(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  function appendLog(text) {
+    const stamp = formatElapsed(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+    setEventLog(prev => [...prev.slice(-24), { id: `${Date.now()}-${prev.length}`, stamp, text }]);
+  }
 
   async function startPipeline() {
     if (!consent || !status?.available || abortRef.current) return;
     const controller = new AbortController();
     abortRef.current = controller;
+    startedAtRef.current = Date.now();
+    setElapsedSec(0);
+    setStreamStats(null);
+    setLiveNodes([]);
+    setEventLog([{ id: 'start', stamp: '0:00', text: 'Starting overview → detail pipeline…' }]);
     setRunning(true);
     setPipelineError('');
     setProgress({ phase: 'starting' });
@@ -81,7 +118,45 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
         mediaRefs: parsed.mediaRefs,
         signal: controller.signal,
         onProgress: event => {
+          if (event.phase === 'stream' && event.streamEvent) {
+            const se = event.streamEvent;
+            if (se.type === 'stage') {
+              if (se.stage === 'admitted') {
+                setStreamStats({ stage: 'admitted', provider: se.provider, model: se.model, approxTokens: 0 });
+                appendLog(`Admitted (${se.task || 'map'}) → ${se.provider || ''} ${se.model || ''}`.trim());
+              } else if (se.stage === 'connected') {
+                setStreamStats(prev => ({ ...prev, stage: 'streaming', provider: se.provider, model: se.model, ttftMs: se.ttftMs }));
+                appendLog(`${se.provider} connected (TTFT ${(se.ttftMs / 1000).toFixed(1)}s) — streaming nodes…`);
+              } else if (se.stage === 'validating') {
+                setStreamStats(prev => ({ ...prev, stage: 'validating' }));
+                appendLog(`Response received (${(se.elapsedMs / 1000).toFixed(1)}s) — validating hierarchy & turn ranges…`);
+              } else if (se.stage === 'fallback') {
+                appendLog(`${se.provider} returned HTTP ${se.status} — trying ${se.nextModel}…`);
+              }
+            } else if (se.type === 'token_progress') {
+              setStreamStats(prev => ({ ...prev, stage: 'streaming', provider: se.provider, model: se.model, chars: se.chars, approxTokens: se.approxTokens, elapsedMs: se.elapsedMs }));
+            } else if (se.type === 'node_discovered') {
+              setLiveNodes(prev => {
+                const key = `${se.semantic_type}|${se.node_name}`;
+                if (prev.some(item => item.key === key)) return prev;
+                return [...prev.slice(-49), { key, type: se.semantic_type, name: se.node_name }];
+              });
+            }
+            return;
+          }
+
           setProgress(event);
+          if (event.phase === 'skeleton') {
+            const count = event.partialBundle?.graph_data?.length || 0;
+            appendLog(`✓ Overview ready (${count} skeleton nodes${event.model ? ` via ${event.model}` : ''}).`);
+          } else if (event.phase === 'detail') {
+            const label = (event.topics || []).slice(0, 2).join(', ');
+            appendLog(`Detailing group ${(event.segmentIndex ?? 0) + 1}/${event.totalSegments}: ${label}…`);
+          } else if (event.phase === 'done') {
+            const count = event.partialBundle?.graph_data?.length || 0;
+            appendLog(`✓ Map complete (${count} validated nodes).`);
+            setStreamStats(null);
+          }
           if (event.partialBundle) {
             setCompletedBundle(event.partialBundle);
             onBundleReady(event.partialBundle);
@@ -93,9 +168,12 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       if (result.backend && result.model) setServed(`${MAP_PROVIDERS[result.backend].name} · ${result.model}`);
     } catch (cause) {
       setProgress(current => ({ ...current, phase: 'stopped' }));
+      setStreamStats(null);
       if (cause?.name === 'AbortError') {
+        appendLog('Cancelled by user.');
         setPipelineError('Pipeline cancelled. The overview and any detailed topics are preserved in your partial map.');
       } else {
+        appendLog(`Stopped: ${cause?.message || 'error'}`);
         setPipelineError(cause?.message || 'Multi-tier pipeline did not finish.');
       }
     } finally {
@@ -164,29 +242,84 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
 
       <div className="flex flex-wrap gap-2">
         <button type="button" className={primary} disabled={!consent || !status?.available || running} onClick={() => void startPipeline()}>
-          {running ? 'Mapping…' : completedBundle ? 'Regenerate map' : 'Build map'}
+          {running ? `Mapping… (${formatElapsed(elapsedSec)})` : completedBundle ? 'Regenerate map' : 'Build map'}
         </button>
         {running && (
           <button type="button" className={button} onClick={() => abortRef.current?.abort()}>
             Cancel
           </button>
         )}
-        {completedBundle && !running && (
+        {completedBundle && (
           <button type="button" className={button} onClick={() => navigate('/view', { state: { generatedMapId: stageGeneratedMap(completedBundle), remember: false } })}>
-            Explore map
+            {running ? 'Explore overview' : 'Explore map'}
           </button>
         )}
       </div>
 
       {progress && (
-        <div role="status" className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-          <div className="flex items-center justify-between gap-3 text-xs font-medium text-slate-700">
-            <span>{progressText}</span>
-            <span>{percent}%</span>
+        <div role="status" className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3.5 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-slate-700">
+            <span className="flex items-center gap-2">
+              {running && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" aria-hidden="true" />}
+              <span>{progressText}</span>
+            </span>
+            <span className="tabular-nums text-slate-600">
+              {running ? `${formatElapsed(elapsedSec)} · ` : ''}{percent}%
+            </span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-            <div className="h-full bg-slate-900 transition-all" style={{ width: `${percent}%` }} />
+            <div
+              className={`h-full bg-slate-900 transition-all ${running && percent === 0 ? 'w-1/6 animate-pulse' : ''}`}
+              style={running && percent === 0 ? undefined : { width: `${percent}%` }}
+            />
           </div>
+
+          {streamStats && running && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-2.5 py-1.5 text-xs text-slate-700 ring-1 ring-slate-200">
+              <span>
+                <span className="font-medium text-slate-900">{streamStats.provider || 'Provider'}</span>
+                {streamStats.model ? ` · ${streamStats.model}` : ''}
+                {streamStats.ttftMs != null ? ` · TTFT ${(streamStats.ttftMs / 1000).toFixed(1)}s` : ''}
+              </span>
+              <span className="tabular-nums text-slate-600">
+                {streamStats.stage === 'validating'
+                  ? 'Validating JSON & turn ranges…'
+                  : streamStats.approxTokens > 0
+                    ? `~${streamStats.approxTokens.toLocaleString()} tokens streaming…`
+                    : 'Waiting for first token…'}
+              </span>
+            </div>
+          )}
+
+          {liveNodes.length > 0 && (
+            <div className="border-t border-slate-200 pt-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Live nodes emerging ({liveNodes.length})
+              </p>
+              <div className="mt-1.5 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
+                {liveNodes.map(node => (
+                  <span key={node.key} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${TIER_STYLES[node.type] || TIER_STYLES.chunk}`}>
+                    <span className="uppercase opacity-75">{node.type}</span>
+                    <span>{node.name}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {eventLog.length > 0 && (
+            <details open={running} className="border-t border-slate-200 pt-2 text-xs">
+              <summary className="cursor-pointer font-medium text-slate-600">Live event log ({eventLog.length})</summary>
+              <ul className="mt-1.5 max-h-32 space-y-1 overflow-y-auto font-mono text-[11px] text-slate-600">
+                {eventLog.map(item => (
+                  <li key={item.id} className="flex gap-2">
+                    <span className="shrink-0 tabular-nums text-slate-400">{item.stamp}</span>
+                    <span>{item.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
 

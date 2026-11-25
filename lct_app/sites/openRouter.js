@@ -6,6 +6,7 @@ import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/clo
 import { mapStructure } from '../src/services/cloud/mapStructure.js';
 import { anthropicRefusalDetails, anthropicRequestId, CLAUDE_DIAGNOSTIC_SOURCE, runMinimalClaudeProbe } from './anthropicDiagnostics.js';
 import { anthropicHeaders, buildAnthropicGenerationRequest, recordingThreadsFromAnthropicResponse } from './anthropic.js';
+import { readProviderStream } from './streamParser.js';
 
 const PREFIXES = {
   '/api/cloud/openrouter': openRouterPolicy,
@@ -257,7 +258,7 @@ function extractResponseUsage(completion, anthropic) {
   return { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, ...(costUsd == null ? {} : { cost_usd: costUsd }) };
 }
 
-  const { artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, usage } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
+  async function executeWires({ signal, stream = false, emit = null }) {
     const minimalId = diagnostic && payload.mode !== 'map' ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
     let lastRefusal = null;
@@ -268,9 +269,11 @@ function extractResponseUsage(completion, anthropic) {
       const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
       const callStarted = Date.now();
       const call = { backend: policy.backend, model: body.model, maxTokens, task: context?.task ?? 'map' };
+      emit?.('stage', { stage: 'connecting', provider: policy.label, backend: policy.backend, model: body.model, task: call.task });
+      const wireBody = stream ? { ...body, stream: true } : body;
       const response = await fetch(policy.endpoint, { method: 'POST',
-        headers: { ...authentication, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), signal, redirect: 'manual' });
+        headers: { ...authentication, 'Content-Type': 'application/json', ...(stream ? { Accept: 'text/event-stream' } : {}) },
+        body: JSON.stringify(wireBody), signal, redirect: 'manual' });
       if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
       if (response.status !== 200) {
         const remaining = wires.slice(index + 1);
@@ -290,6 +293,7 @@ function extractResponseUsage(completion, anthropic) {
           { ...details, ...(diagnostic ? { diagnostic_stage: 'map', minimal_request_id: minimalId } : {}) });
         if (nextRunnable && ((sameBackend && (modelFallback || providerFallback)) || (!sameBackend && providerFallback))) {
           if (nextRunnable.policy === policy && modelFallback) logModelFallback(response.status, index);
+          emit?.('stage', { stage: 'fallback', provider: policy.label, status: response.status, nextModel: nextRunnable.body.model });
           continue;
         }
         if (!ordered && modelFallback && wires.length > 1) {
@@ -297,7 +301,17 @@ function extractResponseUsage(completion, anthropic) {
         }
         throw lastRefusal;
       }
-      const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
+      const isEventStream = stream && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream');
+      const completion = isEventStream
+        ? await readProviderStream(response, {
+            anthropic,
+            signal,
+            onFirstToken: () => emit?.('stage', { stage: 'connected', provider: policy.label, backend: policy.backend, model: body.model, ttftMs: Date.now() - callStarted }),
+            onDelta: ({ chars, approxTokens }) => emit?.('token_progress', { provider: policy.label, backend: policy.backend, model: body.model, chars, approxTokens, elapsedMs: Date.now() - callStarted }),
+            onNodeDiscovered: node => emit?.('node_discovered', node),
+          })
+        : await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
+      emit?.('stage', { stage: 'validating', provider: policy.label, backend: policy.backend, model: body.model, elapsedMs: Date.now() - callStarted });
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
         const parsed = readCompletion({ source: input.source, response: completion, context });
@@ -328,24 +342,60 @@ function extractResponseUsage(completion, anthropic) {
       }
     }
     throw lastRefusal || new OpenRouterError(502, 'provider_refused', 'No configured provider could finish generation. The attempt remains counted.');
-  });
-  if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
-  const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
-  if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
-  if (diagnostic) return openRouterJSON(200, { diagnostic: 'passed', model,
-    minimal_request_id: minimalId, map_request_id: mapId });
-  if (audit) {
-    return openRouterJSON(200, { request_id: id, task: 'audit', backend, model, findings: audit.findings,
-      dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed,
-      ...(usage ? { usage } : {}) });
   }
-  logReferenceRepair(repair, backend);
-  logEvidenceMismatch(artifact, backend);
-  return openRouterJSON(200, { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),
-    ...(usage ? { usage } : {}),
-    ...(context?.task ? { task: context.task } : {}),
-    ...(boundaryNotes ? { boundary_notes: boundaryNotes, stub_topic_ids: stubTopicIds } : {}),
-    ...(glossary ? { glossary } : {}) });
+
+  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, usage }) {
+    if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
+    const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
+    if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
+    if (diagnostic) return { diagnostic: 'passed', model, minimal_request_id: minimalId, map_request_id: mapId };
+    if (audit) {
+      return { request_id: id, task: 'audit', backend, model, findings: audit.findings,
+        dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed,
+        ...(usage ? { usage } : {}) };
+    }
+    logReferenceRepair(repair, backend);
+    logEvidenceMismatch(artifact, backend);
+    return { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),
+      ...(usage ? { usage } : {}),
+      ...(context?.task ? { task: context.task } : {}),
+      ...(boundaryNotes ? { boundary_notes: boundaryNotes, stub_topic_ids: stubTopicIds } : {}),
+      ...(glossary ? { glossary } : {}) };
+  }
+
+  const wantsStream = ordered && !diagnostic && request.headers.get('accept')?.includes('text/event-stream');
+  if (wantsStream) {
+    const encoder = new TextEncoder();
+    const streamBody = new ReadableStream({
+      async start(controller) {
+        const send = (event, data) => {
+          try { controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)); } catch { /* Client disconnected. */ }
+        };
+        send('stage', { stage: 'admitted', task: context?.task ?? 'map', model: wires[0]?.body?.model, provider: wires[0]?.policy?.label, maxTokens });
+        try {
+          const outcome = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream: true, emit: send }));
+          const body = await finalizeResult(outcome);
+          send('complete', body);
+        } catch (error) {
+          if (error instanceof OpenRouterError) {
+            send('error', { status: error.status, code: error.code, error: error.message, ...error.details });
+          } else {
+            logOpenRouterFailure(env, 'generation_failed', undefined, undefined, 'map');
+            send('error', { status: 503, code: 'generation_failed', error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved.' });
+          }
+        } finally {
+          try { controller.close(); } catch { /* Already closed. */ }
+        }
+      },
+    });
+    return new Response(streamBody, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Cookie', 'X-Content-Type-Options': 'nosniff' },
+    });
+  }
+
+  const outcome = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream: false }));
+  return openRouterJSON(200, await finalizeResult(outcome));
 }
 
 async function handleMapSettings(request, env, path) {

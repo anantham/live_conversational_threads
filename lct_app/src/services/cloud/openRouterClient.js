@@ -194,15 +194,67 @@ export async function getOrderedMapStatus(signal, routes) {
   return { enabled: Boolean(ready.length), available: Boolean(ready.length && value.available), audience: value.audience, models };
 }
 
+async function readClientEventStream(response, signal, onEvent) {
+  if (!response.body) throw unreadable();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let currentEvent = 'message';
+  let completedPayload = null;
+  let streamError = null;
+  const stop = () => { void reader.cancel().catch(() => {}); };
+  signal?.addEventListener('abort', stop, { once: true });
+
+  const dispatch = (eventName, rawData) => {
+    let data;
+    try { data = JSON.parse(rawData); } catch { return; }
+    if (eventName === 'complete') completedPayload = data;
+    else if (eventName === 'error') streamError = data;
+    else onEvent?.({ type: eventName, ...data });
+  };
+
+  try {
+    while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        let ev = currentEvent;
+        const dataLines = [];
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event:')) ev = line.slice(6).trim();
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+        }
+        if (dataLines.length) dispatch(ev, dataLines.join('\n'));
+      }
+    }
+  } finally {
+    signal?.removeEventListener('abort', stop);
+    stop();
+  }
+  if (streamError) throw failure(streamError.status || 502, streamError);
+  if (!completedPayload || typeof completedPayload !== 'object') throw unreadable();
+  return completedPayload;
+}
+
 export async function generateOrderedRecordingMap(source, signal, routes, guidance, context = {}) {
   createRecordingTranscript(source);
   const body = JSON.stringify({ source, routes, guidance, ...(context.task ? { task: context.task } : {}),
     ...(context.topics ? { topics: context.topics } : {}), ...(context.glossary ? { glossary: context.glossary } : {}) });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
+  const wantsStream = typeof context.onEvent === 'function';
   const response = await fetch('/api/cloud/map/generate', { method: 'POST',
     credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
-  const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1',
+      ...(wantsStream ? { Accept: 'text/event-stream' } : {}) }, body });
+  const isEventStream = wantsStream && response.ok && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream');
+  const payload = isEventStream
+    ? await readClientEventStream(response, signal, context.onEvent)
+    : await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
   if (!response.ok) throw failure(response.status, payload);
   if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
   const notes = Array.isArray(payload.boundary_notes) ? payload.boundary_notes : null;

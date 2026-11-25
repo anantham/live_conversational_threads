@@ -214,7 +214,8 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     let result;
     try {
       result = await generate(segmentSource(source, segment, utteranceById), signal, routes, guidance,
-        { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}) });
+        { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}),
+          onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), streamEvent }) });
     } catch (error) {
       const halves = error?.stopReason === 'max_tokens' ? halve(segment) : null;
       log(halves ? 'detail split' : 'detail failed', { ...details, ms: Date.now() - started, error: error?.message });
@@ -244,7 +245,8 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   log('glance start', { turns: utterances.length, words: utterances.reduce((s, u) => s + countWords(u.text), 0) });
   const started = Date.now();
   let glance;
-  try { glance = await generate(source, signal, routes, guidance, { task: 'skeleton' }); }
+  try { glance = await generate(source, signal, routes, guidance, { task: 'skeleton',
+    onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'skeleton', streamEvent }) }); }
   catch (error) { log('glance failed', { ms: Date.now() - started, error: error?.message }); throw error; }
   const skeleton = { ...glance.bundle, conversation_title: title || glance.bundle.conversation_title,
     built_by: glance.backend ? [{ backend: glance.backend, model: glance.model }] : [],
