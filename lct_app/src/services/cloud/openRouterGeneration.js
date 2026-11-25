@@ -160,12 +160,17 @@ export function recordingThreadsFromOpenRouterResponse({ source, response, conte
  * Malformed shapes are left for the validator to refuse.
  */
 function flattenNestedDetail(graph) {
-  if (!Array.isArray(graph.ideas) || !Array.isArray(graph.boundary_notes)) return { ...graph, nodes: null };
+  // An empty reply, an idea without chunks, or a topic_id that is neither a string nor null is refused
+  // (required_shape), so the segment is re-asked instead of silently mapping nothing.
+  if (!Array.isArray(graph.ideas) || !graph.ideas.length || !Array.isArray(graph.boundary_notes)
+    || graph.ideas.some(idea => !object(idea) || !Array.isArray(idea.chunks) || !idea.chunks.length
+      || (idea.topic_id !== null && typeof idea.topic_id !== 'string'))) return { ...graph, nodes: null };
   const taken = new Set();
   const nodes = [];
   graph.ideas.forEach((idea, i) => {
     if (!object(idea) || !Array.isArray(idea.chunks)) { nodes.push(null); return; }
-    let id = (typeof idea.id === 'string' && idea.id.trim() ? idea.id.trim() : `idea-${i + 1}`).slice(0, 120);
+    // Room for a collision suffix, the chunk suffix and the merge prefix within the 158-character id limit.
+    let id = (typeof idea.id === 'string' && idea.id.trim() ? idea.id.trim() : `idea-${i + 1}`).slice(0, 100);
     while (taken.has(id)) id = `${id}-${i + 1}`;
     taken.add(id);
     nodes.push({ id, semantic_level: 2, semantic_type: 'idea', node_name: idea.node_name, summary: idea.summary ?? '',

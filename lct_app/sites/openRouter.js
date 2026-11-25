@@ -158,6 +158,8 @@ function recordRejectedStructure(env, { completion, anthropic, context, attempt 
     env.LCT_DEBUG_STRUCTURE_SINK({ at: new Date().toISOString(), task: attempt.task, stage: attempt.stage, rule: attempt.rule,
       request_id: attempt.request_id, format: graph?.hierarchy_format,
       segment_topic_ids: Array.isArray(context?.topics) ? context.topics.map(t => t.id) : undefined,
+      ...(Array.isArray(graph?.ideas) ? { ideas: graph.ideas.map(idea => ({ id: idea?.id, topic_id: idea?.topic_id,
+        chunks: Array.isArray(idea?.chunks) ? idea.chunks.map(c => (c?.source_range ? [c.source_range.from, c.source_range.to] : null)) : idea?.chunks })) } : {}),
       nodes: (Array.isArray(graph?.nodes) ? graph.nodes : []).map(n => ({ id: n?.id, level: n?.semantic_level, type: n?.semantic_type,
         range: n?.source_range ? [n.source_range.from, n.source_range.to] : null, parent: ref(n?.parent_id),
         secondary: Array.isArray(n?.secondary_parent_ids) ? n.secondary_parent_ids.map(ref) : undefined })) });

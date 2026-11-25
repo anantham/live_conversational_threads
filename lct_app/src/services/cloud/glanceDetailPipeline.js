@@ -124,9 +124,31 @@ export function detailPacing(routes, intervalMs = null, concurrency = null) {
     concurrency: concurrency ?? (personal ? PERSONAL_DETAIL_CONCURRENCY : 1) };
 }
 
+// What to fix, by the check that refused the previous reply (nested detail has no parent_id field).
+const RETRY_ADVICE = {
+  hierarchy: 'every idea topic_id must be one of the segment_topics ids, copied exactly, or null',
+  required_shape: 'return hierarchy_format detail-nested-v2 with an ideas array and a boundary_notes array',
+  node_shape: 'every idea needs id, node_name, summary, topic_id and at least one chunk; every chunk needs id, node_name, summary and source_range',
+  node_evidence: 'every chunk source_range must use utterance ids copied exactly from the supplied utterances, with from before to',
+  edges: 'return no edges',
+  threads: 'return no thread paths',
+};
+const GUIDANCE_LIMIT = 3000;
+
+/** The owner's guidance plus a one-line note naming what the refused reply got wrong, within the guidance limit. */
+export function retryGuidance(guidance, rule) {
+  const stage = String(rule).split('/')[0];
+  const note = `Your previous reply for this segment was refused at ${rule}. Fix exactly that: ${RETRY_ADVICE[stage] || 'follow the schema exactly'}.`;
+  const room = Math.max(0, GUIDANCE_LIMIT - note.length - 1);
+  return guidance ? `${String(guidance).slice(0, room)}\n${note}` : note;
+}
+
 function withBuilders(bundle, used) {
   const all = [...(bundle.built_by || []), ...used];
+  // Stable order: the overview's route first, then the rest sorted, never completion order.
   const unique = [...new Map(all.map(r => [`${r.backend}|${r.model}`, r])).values()];
+  const [first, ...rest] = unique;
+  unique.splice(0, unique.length, ...(first ? [first] : []), ...rest.sort((a, b) => `${a.backend}|${a.model}`.localeCompare(`${b.backend}|${b.model}`)));
   return { ...bundle, built_by: unique };
 }
 
@@ -227,7 +249,10 @@ export function mergeDetail(source, base, results) {
   }
   const withThreads = derived.map(n => {
     if (n.semantic_level !== 1 || n.thread_id) return n;
-    const thread = n.source_ref.utterance_ids.map(id => threadOfTurn.get(id)).find(Boolean);
+    // The thread most of the chunk's turns belong to (ties go to the earlier thread in the list).
+    const votes = new Map();
+    for (const id of n.source_ref.utterance_ids) { const t = threadOfTurn.get(id); if (t) votes.set(t, (votes.get(t) || 0) + 1); }
+    const thread = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     return thread ? { ...n, thread_id: thread } : n;
   });
   const cleaned = withThreads.map(({ parent_id, memberships, ...n }) => ({ ...n,
@@ -260,11 +285,17 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
   // Inside a finishing call it is already counted in `finished` but still in flight: count it once.
   const totalAtFinish = () => finished + queue.length + Math.max(0, inFlight.size - 1);
   const inFlight = new Set();
+  // Reserve the next start time only when a call is really about to start.
   const nextStart = async () => {
     const wait = lastStart + intervalMs - Date.now();
     lastStart = Math.max(Date.now(), lastStart + intervalMs);
     if (wait > 0) await sleep(wait, signal);
   };
+  // Wakes idle workers when a call finishes (it may have requeued a retry or two halves).
+  const waiters = [];
+  const wake = () => { while (waiters.length) waiters.shift()(); };
+  const changed = () => new Promise(resolve => { waiters.push(resolve); });
+  const stopWith = error => { failure = failure || error; };
 
   async function runOne(segment) {
     const n = ++started;
@@ -280,13 +311,15 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     const t0 = Date.now();
     let result;
     try {
-      const retryNote = segment.retryOf
-        ? `${guidance ? guidance.slice(0, 2600) + '\n' : ''}Your previous reply for this segment was refused at ${segment.retryOf}. Fix exactly that: every parent reference must name a node that exists, copied character for character.`
-        : guidance;
+      const retryNote = segment.retryOf ? retryGuidance(guidance, segment.retryOf) : guidance;
       result = await generate(segmentSource(source, segment, utteranceById), signal, routes, retryNote,
         { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}),
           onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segment: segment.label, segmentIndex: finished, totalSegments: total(), completedSegments: finished, topics: segment.topics.map(t => t.node_name), streamEvent }) });
     } catch (error) {
+      // A cancelled run is not a provider failure: stop quietly.
+      if (signal?.aborted || error?.name === 'AbortError') { stopWith(new DOMException('Aborted', 'AbortError')); return; }
+      // Once another call has failed, no new retries, splits or waits start; this call just reports.
+      if (failure) { log('detail stopped', { ...details, ms: Date.now() - t0, error: error?.message }); return; }
       // An admission refusal (429) happens before any provider call: nothing was spent, so wait and requeue.
       if (error?.status === 429 && (segment.admissionRetries || 0) < MAX_ADMISSION_RETRIES) {
         const tries = (segment.admissionRetries || 0) + 1;
@@ -332,22 +365,33 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
       topics: [], startedAt: Date.now(), inFlight: inFlight.size - 1 });
   }
 
-  // Workers pull from the queue until it is empty or a failure stops new starts.
+  // Each worker loops until nothing is queued or running. A failure or abort stops new starts, but the
+  // run only ends after every in-flight call has settled, so nothing mutates the map afterwards.
   async function worker() {
-    while (queue.length && !failure) {
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      await nextStart();
-      if (failure || !queue.length) return;
+    while (!failure) {
+      if (signal?.aborted) { stopWith(new DOMException('Aborted', 'AbortError')); break; }
+      if (!queue.length) {
+        if (!inFlight.size) break;
+        await changed();
+        continue;
+      }
       const segment = queue.shift();
-      const job = runOne(segment);
-      inFlight.add(job);
-      try { await job; } finally { inFlight.delete(job); }
+      const token = {};
+      inFlight.add(token);
+      try {
+        await nextStart();
+        if (failure || signal?.aborted) { queue.unshift(segment); break; }
+        await runOne(segment);
+      } catch (error) {
+        stopWith(signal?.aborted ? new DOMException('Aborted', 'AbortError') : error);
+      } finally {
+        inFlight.delete(token);
+        wake();
+      }
     }
+    wake();
   }
-  // Retries and halves re-enter the queue, so workers keep looping until nothing is queued or running.
-  while ((queue.length || inFlight.size) && !failure) {
-    await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, queue.length || 1)) }, worker));
-  }
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
   if (failure) throw Object.assign(failure, { partialBundle: merged });
   return { bundle: merged, segments: finished, used };
 }

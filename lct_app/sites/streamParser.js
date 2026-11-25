@@ -10,8 +10,8 @@ const NODE_NAME_THEN_TYPE = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,220}?"
 
 // Nested detail replies (detail-nested-v2) carry no semantic_type: an object whose name is followed by
 // topic_id is an idea, and one followed by source_range is a chunk (schema property order).
-const NESTED_IDEA = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,600}?"topic_id"\s*:/g;
-const NESTED_CHUNK = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,600}?"source_range"\s*:/g;
+const NESTED_IDEA = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,1500}?"topic_id"\s*:/g;
+const NESTED_CHUNK = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,1500}?"source_range"\s*:/g;
 const NESTED_FORMAT = '"detail-nested-v2"';
 
 function unescapeJsonString(raw) {
@@ -29,7 +29,7 @@ export function createNodeScanner(onNode) {
   return function scan(text) {
     if (!onNode || text.length <= lastScanned) return;
     // Overlap slightly so a match straddling two chunks is never missed.
-    const start = Math.max(0, lastScanned - 260);
+    const start = Math.max(0, lastScanned - 1600); // covers the widest pattern window; repeats are deduplicated
     const slice = text.slice(start);
     lastScanned = text.length;
 
