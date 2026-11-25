@@ -143,7 +143,7 @@ describe('redacted OpenRouter validation diagnostics through the public Worker',
     const response = await worker.fetch(request(), env), body = await response.json();
     expect(response.status).toBe(502); expect(body.code).toBe('invalid_completion'); expect(body.artifact).toBeUndefined();
     expect(logged.mock.calls).toEqual([['[openrouter] generation failed', { code: 'invalid_completion',
-      validationStage: stage, ...(stage === 'hierarchy' ? { validationRule: 'parent_missing' } : {}) }]]);
+      validationStage: stage, ...(stage === 'hierarchy' ? { validationRule: 'parent_missing' } : stage === 'edges' ? { validationRule: 'edge_unknown_endpoint' } : {}) }]]);
     expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toMatch(/synthetic-|utterance-0001|invented-|private-path|private-edge/);
     const rows = sqlite.prepare('SELECT * FROM lct_openrouter_attempts').all();
     expect(rows).toHaveLength(1); expect(rows[0].completed_at).toBeNull(); expect(fetch).toHaveBeenCalledTimes(1);

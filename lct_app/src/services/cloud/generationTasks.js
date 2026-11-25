@@ -53,7 +53,9 @@ export const SKELETON_SCHEMA = {
     hierarchy_format: { type: 'string', enum: [SKELETON_FORMAT] },
     glossary: { type: 'array', items: glossaryEntry },
     nodes: { type: 'array', items: { anyOf: [3, 4, 5].map(skeletonNode) } },
-    edges: { type: 'array', items: edge }, metadata, conversation_threads: { type: 'array', items: rangeThread },
+    // The overview writes no edges: a subject the conversation returns to is one topic with several
+    // ranges, so callback edges would only add references that can fail validation.
+    edges: { type: 'array', maxItems: 0, items: edge }, metadata, conversation_threads: { type: 'array', items: rangeThread },
   },
 };
 
@@ -83,7 +85,9 @@ function anthropicVariant(schema, levels, parentLevels) {
     ...(base.properties.source_ranges ? { source_ranges: { type: 'array', items: utteranceRange } } : {}),
     ...(base.properties.source_range ? { source_range: { anyOf: [utteranceRange, { type: 'null' }] } } : {}),
   } };
-  return { ...schema, properties: { ...schema.properties, nodes: { type: 'array', items: node } } };
+  // Claude's structured outputs accept minItems 0/1 but not maxItems, so array caps are enforced after decoding.
+  const edges = { type: 'array', items: schema.properties.edges.items };
+  return { ...schema, properties: { ...schema.properties, edges, nodes: { type: 'array', items: node } } };
 }
 export const ANTHROPIC_SKELETON_SCHEMA = anthropicVariant(SKELETON_SCHEMA, [3, 4, 5], [4, 5]);
 export const ANTHROPIC_DETAIL_SCHEMA = anthropicVariant(DETAIL_SCHEMA, [1, 2], [2, 3]);
@@ -106,8 +110,8 @@ export const SKELETON_PROMPT = [
   'Set salience to core for what the conversation is mainly about, supporting for what serves it, and aside for tangents and small talk.',
   'Themes group related topics; arcs are the few overarching movements of the whole conversation. Themes and arcs cite no ranges (empty source_ranges): their evidence is derived from their topics.',
   'File each topic under one theme and each theme under one arc with parent_id; arcs have parent_id null.',
-  'Use edges between topics, themes or arcs for real relations; when the conversation returns to an earlier subject, an edge with edge_kind temporal can record the callback.',
-  'Create a few ordered conversation threads when a path through topics is meaningful; each step cites a {"from","to"} range. Use empty arrays when nothing is defensible.',
+  'Return an empty edges array: returns to a subject are expressed by giving that topic several ranges.',
+  'Create a few ordered conversation threads when a path through topics is meaningful. Every moment_id must copy the semantic_level and id of a node you authored above, and each step cites a {"from","to"} range. Use an empty array when nothing is defensible.',
   'Speech recognition often spells one name, place or term several ways. List those in glossary as {"canonical","variants"} (for example a person whose name appears as two spellings), use the canonical spelling in node names and summaries, and never change the utterance text. Use an empty glossary when there are none.',
   ...SHARED_RULES,
 ].join(' ');

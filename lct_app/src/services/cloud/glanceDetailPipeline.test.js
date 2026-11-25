@@ -77,7 +77,8 @@ describe('glance then detail', () => {
       expect(n.source_ref.utterance_ids.every(id => parent.has(id))).toBe(true);
     }
     expect(bundle.audit_signals).toBeUndefined();
-    expect(bundle.edges.map(e => e.id)).toEqual(['callback']);
+    // The overview is asked for no edges; one sent anyway is ignored (counted in coverage), never used.
+    expect(bundle.edges).toEqual([]);
     expect(bundle.coverage).toMatchObject({ total_turns: 8, covered_turns: 8 });
     expect(JSON.stringify(info.mock.calls)).not.toMatch(/sea|budget|Boats/i);
     // The glossary reaches the detail pass and the saved map; utterance text is untouched.

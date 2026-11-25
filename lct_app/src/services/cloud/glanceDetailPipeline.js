@@ -176,6 +176,7 @@ export function mergeDetail(source, base, results) {
     for (const edge of result.bundle.edges || []) {
       edges.push({ ...edge, id: prefix + edge.id, from_node_id: remap(edge.from_node_id), to_node_id: remap(edge.to_node_id) });
     }
+    for (const item of result.bundle.audit_signals || []) signals.push({ ...item, segment: segment.label });
     for (const note of result.boundaryNotes || []) {
       signals.push({ source: 'detail', kind: note.kind, note: note.note, segment: segment.label,
         utterance_ids: (note.utterance_ids || []).map(id => toGlobal.get(id)).filter(Boolean) });

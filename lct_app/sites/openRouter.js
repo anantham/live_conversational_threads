@@ -18,6 +18,7 @@ const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_
   'choice_refusal', 'choice_tools_empty', 'choice_tools_present', 'choice_content', 'content_size', 'content_json',
   'required_shape', 'graph_shape', 'metadata', 'node_shape', 'node_evidence', 'node_excerpt', 'node_speaker',
   'node_provenance', 'memberships', 'hierarchy', 'edges', 'threads', 'bundle_validation', 'bundle_json', 'bundle_size']);
+const EDGE_RULES = new Set(['edge_malformed', 'edge_kind', 'edge_duplicate_id', 'edge_self_reference', 'edge_unknown_endpoint', 'edge_contract']);
 const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backlink', 'primary_mismatch',
   'membership_missing', 'membership_level', 'membership_backlink', 'secondary_duplicate',
   'child_missing', 'child_level', 'child_backlink', 'cycle', 'typed_reference']);
@@ -91,7 +92,8 @@ async function logProviderRefusal(env, response, signal, backend) {
 // Fixed labels only: stage and rule names come from allow-lists, never from the completion.
 function sanitizedValidation(validationStage, validationRule) {
   const stage = VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown';
-  return { stage, ...(stage === 'hierarchy' ? { rule: HIERARCHY_RULES.has(validationRule) ? validationRule : 'unknown' } : {}) };
+  const rules = { hierarchy: HIERARCHY_RULES, edges: EDGE_RULES }[stage];
+  return { stage, ...(rules ? { rule: rules.has(validationRule) ? validationRule : 'unknown' } : {}) };
 }
 
 export function logOpenRouterFailure(env, code, validationStage, validationRule, backend = 'openrouter') {
