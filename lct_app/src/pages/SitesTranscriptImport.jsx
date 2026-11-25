@@ -19,6 +19,7 @@ import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 import MapAuditPanel from '../components/audit/MapAuditPanel.jsx';
 import PublishLinkPanel from '../components/publish/PublishLinkPanel.jsx';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
+import { recordQualitySnapshot } from '../services/cloud/qualityLedgerStore.js';
 
 const navIcon = 'inline-flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700';
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
@@ -506,6 +507,7 @@ export default function SitesTranscriptImport() {
     try {
       const record = await rememberThreadsArtifact(activeBundle, { sourceName: parsed.initialFilename });
       setSavedRecordId(record.id);
+      recordQualitySnapshot(activeBundle);
       setNotice('Saved to this browser’s library under Browse → On this device.');
     } catch (cause) {
       setError(cause?.message || 'Could not save to this browser.');
