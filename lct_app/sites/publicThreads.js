@@ -11,6 +11,12 @@ function ready(env) {
 
 async function publish(request, env, id, keyHash) {
   if (request.headers.get('x-lct-public-consent') !== 'whole-file-v1') throw new StorageError(400, 'public_consent', 'Confirm that the entire file may be visible and downloadable to everyone.');
+  // Unlisted copies are reachable by their link but never appear in the public library list. Checked first,
+  // so even an idempotent retry cannot pass an invalid value; an absent header (older clients) means listed,
+  // an empty or unknown one is refused rather than defaulting to public.
+  const header = request.headers.get('x-lct-public-visibility');
+  const visibility = header === null ? 'listed' : header;
+  if (!['listed', 'unlisted'].includes(visibility)) throw new StorageError(400, 'public_visibility', 'Choose listed or unlisted visibility.');
   if (readers >= 4) throw new StorageError(429, 'public_busy', 'Several publications are arriving. Retry shortly.');
   readers++;
   let input;
@@ -22,23 +28,25 @@ async function publish(request, env, id, keyHash) {
     if (existing.delete_hash !== keyHash) throw new StorageError(404, 'public_missing', 'That publication is unavailable.');
     if (existing.state === 'removed') throw new StorageError(410, 'public_removed', 'This public copy was removed. It cannot be republished with the same ID.');
     if (existing.payload_hash !== payloadHash) throw new StorageError(409, 'public_immutable', 'A published copy cannot be replaced. Choose a new file to create a separate publication.');
+    if ((existing.listed === 0 ? 'unlisted' : 'listed') !== visibility) throw new StorageError(409, 'public_visibility_fixed', 'A published copy keeps the visibility it was published with. Publish a separate copy to change it.');
     return publicJSON(200, { item: publicSummary(existing) });
   }
   const now = Date.now();
   // One atomic row includes bytes, metadata and capacity/rate admission. No
   // R2 partial object, user identity, or private-file content enters this table.
   const row = await env.DB.prepare(`INSERT INTO lct_public_threads
-    (id, title, payload, byte_size, node_count, delete_hash, payload_hash, state, created_at)
-    SELECT ?, ?, ?, ?, ?, ?, ?, 'ready', ?
+    (id, title, payload, byte_size, node_count, delete_hash, payload_hash, state, created_at, listed)
+    SELECT ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?
     WHERE (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files) + (SELECT COALESCE(SUM(byte_size), 0) FROM lct_public_threads) + ? <= ?
       AND (SELECT COUNT(*) FROM lct_cloud_files) + (SELECT COUNT(*) FROM lct_cloud_file_fences) + (SELECT COUNT(*) FROM lct_public_threads) < ?
       AND (SELECT COUNT(*) FROM lct_public_threads WHERE created_at > ?) < ?
       AND NOT EXISTS (SELECT 1 FROM lct_public_threads WHERE created_at > ?)
-    ON CONFLICT(id) DO NOTHING RETURNING *`).bind(id, input.title, input.payload, input.size, input.nodeCount, keyHash, payloadHash, now,
+    ON CONFLICT(id) DO NOTHING RETURNING id, title, byte_size, node_count, created_at, listed`).bind(id, input.title, input.payload, input.size, input.nodeCount, keyHash, payloadHash, now, visibility === 'listed' ? 1 : 0,
     input.size, STORAGE_LIMITS.maxSiteBytes, STORAGE_LIMITS.maxSiteKeys, now - 86_400_000, PUBLIC_LIMITS.maxDaily, now - PUBLIC_LIMITS.minIntervalMs).first();
   if (!row) {
     const concurrent = await env.DB.prepare('SELECT * FROM lct_public_threads WHERE id = ?').bind(id).first();
-    if (concurrent?.delete_hash === keyHash && concurrent.state === 'ready' && concurrent.payload_hash === payloadHash) return publicJSON(200, { item: publicSummary(concurrent) });
+    if (concurrent?.delete_hash === keyHash && concurrent.state === 'ready' && concurrent.payload_hash === payloadHash
+      && (concurrent.listed === 0 ? 'unlisted' : 'listed') === visibility) return publicJSON(200, { item: publicSummary(concurrent) });
     throw new StorageError(429, 'public_limit', 'Public preview rate or storage limit reached. Allow 10 seconds between Site-wide publications; maximum 20 per 24 hours and 200 lifetime creations shared with private storage. Retry this same publication later.');
   }
   return publicJSON(201, { item: publicSummary(row) });
@@ -48,13 +56,13 @@ export async function handlePublicThreads(request, env) {
   const url = new URL(request.url);
   if (url.pathname !== PREFIX && !url.pathname.startsWith(PREFIX + '/')) return null;
   try {
-    if (url.pathname === PREFIX + '/status' && request.method === 'GET') return publicJSON(200, { enabled: env.LCT_PUBLIC_THREADS_ENABLED === 'true', configured: Boolean(env.DB?.prepare), visibility: 'public', limits: PUBLIC_LIMITS });
+    if (url.pathname === PREFIX + '/status' && request.method === 'GET') return publicJSON(200, { enabled: env.LCT_PUBLIC_THREADS_ENABLED === 'true', configured: Boolean(env.DB?.prepare), visibility: 'public', visibilities: ['listed', 'unlisted'], limits: PUBLIC_LIMITS });
     ready(env);
     if (url.pathname === PREFIX && request.method === 'GET') {
       const before = url.searchParams.get('before'), beforeId = url.searchParams.get('before_id');
       if ((before !== null && (!/^\d{1,16}$/.test(before) || !Number.isSafeInteger(Number(before)) || !FILE_ID.test(beforeId || ''))) || (before === null && beforeId !== null)) throw new StorageError(400, 'public_cursor', 'The public library cursor is invalid.');
       const cursor = before === null ? '' : ' AND (created_at < ? OR (created_at = ? AND id < ?))';
-      const statement = env.DB.prepare(`SELECT id, title, byte_size, node_count, created_at FROM lct_public_threads WHERE state = 'ready'${cursor} ORDER BY created_at DESC, id DESC LIMIT 21`);
+      const statement = env.DB.prepare(`SELECT id, title, byte_size, node_count, created_at FROM lct_public_threads WHERE state = 'ready' AND listed = 1${cursor} ORDER BY created_at DESC, id DESC LIMIT 21`);
       const result = await (before === null ? statement : statement.bind(Number(before), Number(before), beforeId)).all();
       if (!Array.isArray(result.results)) throw new Error('Public row collection unavailable');
       const items = result.results.slice(0, 20), last = items.at(-1);

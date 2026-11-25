@@ -141,10 +141,12 @@ function expandSkeleton(graph, utteranceIds) {
     }) };
   });
   const { glossary, ...withoutGlossary } = graph;
-  return { graph: { ...withoutGlossary, hierarchy_format: GENERATION_HIERARCHY_FORMAT, nodes, conversation_threads },
+  // The overview is asked for no edges; any it sends were not requested and are counted, not used.
+  const ignoredEdges = Array.isArray(graph.edges) ? graph.edges.length : 0;
+  return { graph: { ...withoutGlossary, edges: [], hierarchy_format: GENERATION_HIERARCHY_FORMAT, nodes, conversation_threads },
     glossary: sanitizeGlossary(glossary),
     coverage: { totalTurns: utteranceIds.length, topics: nodes.filter(n => n.semantic_level === 3).length,
-      uncoveredTurns, gapRuns: gaps.length, overlapTurns } };
+      uncoveredTurns, gapRuns: gaps.length, overlapTurns, ignoredEdges } };
 }
 
 /**

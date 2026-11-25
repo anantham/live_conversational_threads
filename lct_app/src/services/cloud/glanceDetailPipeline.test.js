@@ -1,7 +1,7 @@
 // Test intent: lct_app/tests/intent/glance-detail-generation.md. All source is synthetic.
 import { describe, expect, it, vi } from 'vitest';
 import { recordingThreadsFromGeneratedText } from './openRouterGeneration.js';
-import { expandTopicDetail, runGlanceDetailPipeline } from './glanceDetailPipeline.js';
+import { detailPacing, expandTopicDetail, retryGuidance, runGlanceDetailPipeline } from './glanceDetailPipeline.js';
 
 const texts = ['Welcome to the show.', 'I grew up by the sea.', 'Tell me more.', 'Boats every morning.',
   'Now, the budget.', 'It is tight.', 'Back to the sea.', 'Storms, mostly.'];
@@ -77,8 +77,11 @@ describe('glance then detail', () => {
       expect(n.source_ref.utterance_ids.every(id => parent.has(id))).toBe(true);
     }
     expect(bundle.audit_signals).toBeUndefined();
-    expect(bundle.edges.map(e => e.id)).toEqual(['callback']);
+    // The overview is asked for no edges; one sent anyway is ignored (counted in coverage), never used.
+    expect(bundle.edges).toEqual([]);
     expect(bundle.coverage).toMatchObject({ total_turns: 8, covered_turns: 8 });
+    // The timeline groups moments by thread_id, derived from the thread's step evidence (turns 7-8).
+    expect(bundle.graph_data.filter(n => n.thread_id === 'return').map(n => n.source_ref.utterance_ids)).toEqual([[u(7)], [u(8)]]);
     expect(JSON.stringify(info.mock.calls)).not.toMatch(/sea|budget|Boats/i);
     // The glossary reaches the detail pass and the saved map; utterance text is untouched.
     expect(bundle.glossary).toEqual([{ canonical: 'Mirela', variants: ['Mirella', 'Mireya'] }]);
@@ -179,4 +182,199 @@ describe('glance then detail', () => {
     expect(two.bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(7);
     expect(two.bundle.built_by).toEqual([{ backend: 'anthropic', model: 'claude-synthetic' }]);
   });
+
+  // A structural refusal is asked once more with the rule named; a second refusal stops the run.
+  it('re-asks a refused detail segment once, naming the rule, and stops if it is refused again', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const refusal = () => Object.assign(new Error('refused'), { code: 'invalid_completion', validationStage: 'hierarchy', validationRule: 'parent_missing' });
+    const inner = fakeModel();
+    let refusals = 1;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task === 'detail' && refusals > 0) { refusals -= 1; throw refusal(); }
+      return inner(...args);
+    });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    expect(generate.mock.calls.map(c => c[4].task)).toEqual(['skeleton', 'detail', 'detail']);
+    expect(generate.mock.calls[2][3]).toMatch(/refused at hierarchy\/parent_missing/);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+    refusals = 2;
+    const again = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 }).catch(e => e);
+    expect(again.message).toBe('refused');
+    expect(again.partialBundle.graph_data.some(n => n.id === '3:sea')).toBe(true);
+  });
+
+  // Personal-key routes run detail calls three at a time; the map is identical to a sequential run.
+  it('runs at most three detail calls at once and merges the same map as a sequential run', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    expect(detailPacing([{ backend: 'anthropic', key: 'k', model: 'm' }])).toEqual({ intervalMs: 1600, concurrency: 3 });
+    expect(detailPacing([{ backend: 'openrouter' }])).toEqual({ intervalMs: 10500, concurrency: 1 });
+    const inner = fakeModel();
+    let live = 0, peak = 0;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      live += 1; peak = Math.max(peak, live);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      try { return await inner(...args); } finally { live -= 1; }
+    });
+    const entries = [];
+    const parallel = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6,
+      onProgress: e => { if (e.phase === 'log') entries.push(e.entry.text); } });
+    expect(peak).toBe(3);
+    // The last completion counts every call once: "N of N".
+    const counts = entries.filter(t => /^Detail .* done in /.test(t)).map(t => t.match(/\((\d+) of (\d+)\)/).slice(1).map(Number));
+    expect(counts.at(-1)[0]).toBe(counts.at(-1)[1]);
+    expect(counts.every(([n, total]) => n <= total && total === counts.at(-1)[1])).toBe(true);
+    const sequential = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel(), intervalMs: 0, concurrency: 1, maxSegmentWords: 6 });
+    const shape = b => b.graph_data.map(n => [n.id, n.parent_id ?? null, n.source_ref.utterance_ids.join(',')]);
+    expect(shape(parallel.bundle)).toEqual(shape(sequential.bundle));
+  });
 });
+
+describe('nested detail replies', () => {
+  const segment = { recordingId: 'synthetic-nested', startedAt: Date.UTC(2026, 10, 25), complete: true,
+    finalTokens: ['One.', '\nTwo.', '\nThree.'].map((text, i) => ({ text, speaker: `turn-${i + 1}`, startMs: i * 1000, endMs: i * 1000 + 900 })) };
+  const topics = [{ id: 'sea', node_name: 'The sea', summary: '' }, { id: 'money', node_name: 'Budget', summary: '' }];
+  const nested = ideas => JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], ideas });
+  const chunk = (from, to) => ({ id: 'c', node_name: 'c', summary: '', source_range: { from: u(from), to: u(to) } });
+
+  it('files chunks under their idea and ideas under the chosen topic, by construction', () => {
+    const result = recordingThreadsFromGeneratedText(segment, nested([
+      { id: 'boats', node_name: 'Boats', summary: '', topic_id: 'sea', chunks: [chunk(1, 1), chunk(2, 2)] },
+      { id: 'boats', node_name: 'Costs', summary: '', topic_id: 'money', chunks: [chunk(3, 3)] }]), { task: 'detail', topics });
+    const byId = new Map(result.bundle.graph_data.map(n => [n.id, n]));
+    expect(byId.get('1:boats~2').parent_id).toBe('2:boats');
+    expect(byId.get('2:boats').parent_id).toBe('3:sea');
+    // A repeated idea id is made unique rather than merged.
+    expect(byId.get('1:boats-2~1').parent_id).toBe('2:boats-2');
+    expect(byId.get('2:boats-2').parent_id).toBe('3:money');
+    expect(result.coverage).toMatchObject({ chunks: 3, uncoveredTurns: 0 });
+  });
+
+  it('still refuses an idea under a topic outside the segment, and an idea without chunks', () => {
+    expect(() => recordingThreadsFromGeneratedText(segment, nested([
+      { id: 'x', node_name: 'X', summary: '', topic_id: 'elsewhere', chunks: [chunk(1, 3)] }]), { task: 'detail', topics }))
+      .toThrow(expect.objectContaining({ validationStage: 'hierarchy', validationRule: 'parent_missing' }));
+    // Review finding 1: empty replies, empty ideas and malformed topics are refused, so the segment is re-asked.
+    for (const ideas of [[], [{ id: 'x', node_name: 'X', summary: '', topic_id: 'sea', chunks: [] }],
+      [{ id: 'x', node_name: 'X', summary: '', topic_id: { semantic_level: 3, id: 'sea' }, chunks: [chunk(1, 3)] }]]) {
+      expect(() => recordingThreadsFromGeneratedText(segment, nested(ideas), { task: 'detail', topics }))
+        .toThrow(expect.objectContaining({ validationStage: 'required_shape' }));
+    }
+  });
+
+  // A 429 admission refusal spends nothing, so the segment waits and is requeued instead of stopping the run.
+  it('requeues a detail segment refused at admission and completes the map', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = fakeModel();
+    let refusals = 2;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task === 'detail' && refusals > 0) { refusals -= 1; throw Object.assign(new Error('limit'), { status: 429 }); }
+      return inner(...args);
+    });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, admissionRetryMs: 1 });
+    expect(generate.mock.calls.filter(c => c[4].task === 'detail')).toHaveLength(3);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+});
+
+// Streamed provider events reach onProgress from inside the parallel detail pool.
+it('forwards streamed detail events from the parallel pool without breaking the run', async () => {
+  vi.spyOn(console, 'info').mockImplementation(() => {});
+  const inner = fakeModel();
+  const generate = vi.fn(async (...args) => {
+    args[4].onEvent?.({ type: 'delta', output_tokens: 42 });
+    return inner(...args);
+  });
+  const streamed = [];
+  const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6,
+    onProgress: e => { if (e.phase === 'stream' && e.task === 'detail') streamed.push(e); } });
+  expect(streamed.length).toBeGreaterThan(1);
+  expect(streamed.every(e => typeof e.segment === 'string' && Number.isInteger(e.totalSegments))).toBe(true);
+  expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+});
+
+describe('detail pool robustness (review findings)', () => {
+  it('drains in-flight calls before failing, keeps the partial map, and changes nothing afterwards', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = fakeModel();
+    let detailCalls = 0, settledAfterFailure = 0, failed = false;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      detailCalls += 1;
+      if (detailCalls === 1) { await new Promise(r => setTimeout(r, 5)); failed = true; throw new Error('provider refused'); }
+      await new Promise(r => setTimeout(r, 30));
+      if (failed) settledAfterFailure += 1;
+      return inner(...args);
+    });
+    const progress = [];
+    const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6,
+      onProgress: e => progress.push(e) }).catch(e => e);
+    const eventsAtReject = progress.length;
+    expect(error.message).toBe('provider refused');
+    expect(error.partialBundle.graph_data.some(n => n.id === '3:sea')).toBe(true);
+    expect(settledAfterFailure).toBeGreaterThan(0); // in-flight calls finished before the run rejected
+    expect(detailCalls).toBe(3); // no new starts after the failure
+    await new Promise(r => setTimeout(r, 60));
+    expect(progress.length).toBe(eventsAtReject); // nothing ran in the background afterwards
+  });
+
+  it('on cancel, waits for in-flight calls, then rejects, and nothing changes afterwards', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = fakeModel();
+    const controller = new AbortController();
+    let started = 0;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      started += 1;
+      if (started === 2) setTimeout(() => controller.abort(), 2);
+      await new Promise(r => setTimeout(r, 30)); // the call ignores the signal, like a request already sent
+      return inner(...args);
+    });
+    const progress = [];
+    const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 5, concurrency: 3, maxSegmentWords: 6,
+      signal: controller.signal, onProgress: e => progress.push(e) }).catch(e => e);
+    const eventsAtReject = progress.length;
+    expect(error.name).toBe('AbortError');
+    expect(error.partialBundle?.graph_data.some(n => n.id === '3:sea')).toBe(true);
+    await new Promise(r => setTimeout(r, 80));
+    expect(progress.length).toBe(eventsAtReject);
+  });
+
+  it('runs the halves of a truncated segment in parallel', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = fakeModel();
+    let live = 0, peak = 0, first = true;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      if (first) { first = false; throw Object.assign(new Error('cut off'), { stopReason: 'max_tokens' }); }
+      live += 1; peak = Math.max(peak, live);
+      await new Promise(r => setTimeout(r, 10));
+      try { return await inner(...args); } finally { live -= 1; }
+    });
+    await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3 });
+    expect(peak).toBe(2);
+  });
+
+  it('names what to fix in a re-ask and stays within the guidance limit', () => {
+    expect(retryGuidance('', 'hierarchy/parent_missing')).toMatch(/topic_id must be one of the segment_topics ids/);
+    expect(retryGuidance('', 'node_evidence')).toMatch(/source_range must use utterance ids/);
+    const long = retryGuidance('g'.repeat(5000), 'hierarchy/secondary_duplicate');
+    expect(long.length).toBeLessThanOrEqual(3000);
+    expect(long).toMatch(/refused at hierarchy\/secondary_duplicate/);
+  });
+
+  it('assigns a chunk to the thread most of its turns belong to', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    // Thread intro-path owns u2; thread return owns u3-u4. One chunk covers u2-u4: first match says intro-path,
+    // the majority (2 of 3 turns) says return.
+    const twoThreads = () => skeletonReply()
+      .replace('"evidence":{"from":"utterance-0007","to":"utterance-0008"}', '"evidence":{"from":"utterance-0003","to":"utterance-0004"}')
+      .replace('"conversation_threads":[', '"conversation_threads":[{"id":"intro-path","title":"Intro","steps":[{"moment_id":{"semantic_level":3,"id":"intro"},"evidence":{"from":"utterance-0002","to":"utterance-0002"}}]},');
+    expect(twoThreads()).toContain('utterance-0003","to":"utterance-0004');
+    const generate = fakeModel({ oneChunk: true, skeleton: twoThreads });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, maxSegmentWords: 18 });
+    const chunk = bundle.graph_data.find(n => n.semantic_level === 1 && n.source_ref.utterance_ids.join() === [u(2), u(3), u(4)].join());
+    expect(chunk.thread_id).toBe('return');
+  });
+});
+

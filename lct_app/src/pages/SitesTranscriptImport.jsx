@@ -17,6 +17,7 @@ import { clearBoundaryCorrections, formatBoundaryPreferencesForPrompt, loadBound
 import { MAP_GUIDANCE_LIMIT } from '../services/cloud/sitesProviderPreferences.js';
 import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 import MapAuditPanel from '../components/audit/MapAuditPanel.jsx';
+import PublishLinkPanel from '../components/publish/PublishLinkPanel.jsx';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
 
 const navIcon = 'inline-flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700';
@@ -416,6 +417,8 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
         <MapAuditPanel source={parsed.source} bundle={completedBundle} routes={routes}
           onBundleChange={bundle => { setCompletedBundle(bundle); onBundleReady(bundle); }} />
       )}
+
+      {completedBundle && !running && <PublishLinkPanel bundle={completedBundle} />}
     </section>
   );
 }

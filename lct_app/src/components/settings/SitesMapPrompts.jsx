@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useSitesRuntime } from '../../contexts/SitesRuntimeContext';
 import { RECORDING_MAP_PROMPT } from '../../services/cloud/openRouterGeneration';
 import { GENERATION_GRAPH_SCHEMA } from '../../services/cloud/generationSchema';
-import { DETAIL_PROMPT, DETAIL_SCHEMA, SKELETON_PROMPT, SKELETON_SCHEMA } from '../../services/cloud/generationTasks';
+import { DETAIL_PROMPT, SKELETON_PROMPT, SKELETON_SCHEMA, detailNestedSchema } from '../../services/cloud/generationTasks';
+
+// The detail schema is built per segment: its topic_id enum lists that segment's topic ids.
+const EXAMPLE_DETAIL_SCHEMA = detailNestedSchema(['<topic ids of the segment>']);
 import { AUDIT_PROMPT, AUDIT_SCHEMA } from '../../services/cloud/auditTask';
 import { MAP_GUIDANCE_LIMIT } from '../../services/cloud/sitesProviderPreferences';
 import useUnsavedChangesGuard from './useUnsavedChangesGuard';
@@ -106,7 +109,7 @@ export default function SitesMapPrompts() {
       <details className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
         <summary className="cursor-pointer font-medium text-slate-900">6. Structured output JSON schemas (map · skeleton · detail · audit)</summary>
         <pre className="mt-3 max-h-72 overflow-auto rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
-          {JSON.stringify({ map: GENERATION_GRAPH_SCHEMA, skeleton: SKELETON_SCHEMA, detail: DETAIL_SCHEMA, audit: AUDIT_SCHEMA }, null, 2)}
+          {JSON.stringify({ map: GENERATION_GRAPH_SCHEMA, skeleton: SKELETON_SCHEMA, detail: EXAMPLE_DETAIL_SCHEMA, audit: AUDIT_SCHEMA }, null, 2)}
         </pre>
       </details>
     </div>

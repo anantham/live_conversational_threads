@@ -1,10 +1,11 @@
-import { buildRecordingGenerationMessages, readGeneratedText } from '../src/services/cloud/openRouterGeneration.js';
+import { buildRecordingGenerationMessages, generationTask, readGeneratedText } from '../src/services/cloud/openRouterGeneration.js';
 import { AUDIT_SCHEMA } from '../src/services/cloud/auditTask.js';
 import { EPISTEMIC_SCHEMA } from '../src/services/cloud/epistemicTask.js';
 import { ANTHROPIC_GENERATION_GRAPH_SCHEMA } from '../src/services/cloud/generationSchema.js';
-import { ANTHROPIC_DETAIL_SCHEMA, ANTHROPIC_SKELETON_SCHEMA } from '../src/services/cloud/generationTasks.js';
+import { ANTHROPIC_SKELETON_SCHEMA } from '../src/services/cloud/generationTasks.js';
 
-const ANTHROPIC_SCHEMAS = { map: ANTHROPIC_GENERATION_GRAPH_SCHEMA, skeleton: ANTHROPIC_SKELETON_SCHEMA, detail: ANTHROPIC_DETAIL_SCHEMA, audit: AUDIT_SCHEMA, epistemic: EPISTEMIC_SCHEMA };
+// The detail schema is built per segment (its topic ids are an enum), so it comes from generationTask.
+const ANTHROPIC_SCHEMAS = { map: ANTHROPIC_GENERATION_GRAPH_SCHEMA, skeleton: ANTHROPIC_SKELETON_SCHEMA, audit: AUDIT_SCHEMA, epistemic: EPISTEMIC_SCHEMA };
 
 export function anthropicHeaders(key) {
   return { 'x-api-key': key, 'anthropic-version': '2026-10-21' };
@@ -13,7 +14,7 @@ export function anthropicHeaders(key) {
 export function buildAnthropicGenerationRequest({ source, model, maxTokens, guidance, context }) {
   const [system, user] = buildRecordingGenerationMessages(source, maxTokens, guidance, context);
   return { model, max_tokens: maxTokens, stream: false, system: system.content, messages: [user],
-    output_config: { format: { type: 'json_schema', schema: ANTHROPIC_SCHEMAS[context?.task ?? 'map'] } } };
+    output_config: { format: { type: 'json_schema', schema: context?.task === 'detail' ? generationTask(context).schema : ANTHROPIC_SCHEMAS[context?.task ?? 'map'] } } };
 }
 
 function invalid(stage) {

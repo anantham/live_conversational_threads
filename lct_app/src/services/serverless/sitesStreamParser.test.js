@@ -71,4 +71,19 @@ describe('streamParser', () => {
     scan(full);
     expect(found).toEqual([{ semantic_type: 'theme', node_name: 'Embodied Presence' }]);
   });
+
+  it('finds ideas and chunks in nested detail replies, which carry no semantic_type', () => {
+    const found = [];
+    const scan = createNodeScanner(node => found.push(node));
+    const reply = JSON.stringify({ hierarchy_format: 'detail-nested-v2', ideas: [{ id: 'water', node_name: 'Watering plan', summary: 'When to water.',
+      topic_id: 'garden', chunks: [{ id: 'c', node_name: 'Morning slot', summary: 'Before breakfast.', source_range: { from: 'utterance-0001', to: 'utterance-0002' } }] }],
+      boundary_notes: [] });
+    for (let i = 20; i <= reply.length; i += 20) scan(reply.slice(0, i));
+    scan(reply);
+    expect(found).toEqual([{ semantic_type: 'idea', node_name: 'Watering plan' }, { semantic_type: 'chunk', node_name: 'Morning slot' }]);
+    const plain = [];
+    createNodeScanner(node => plain.push(node))(JSON.stringify({ hierarchy_format: 'skeleton-ranges-v1', nodes: [{ id: 't', node_name: 'Topic', summary: '', topic_id: 'x' }] }));
+    expect(plain).toEqual([]);
+  });
 });
+

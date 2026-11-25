@@ -8,6 +8,12 @@ const PROGRESS_INTERVAL_MS = 250;
 const NODE_TYPE_THEN_NAME = /"semantic_type"\s*:\s*"(chunk|idea|topic|theme|arc)"[^{}]{0,220}?"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
 const NODE_NAME_THEN_TYPE = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,220}?"semantic_type"\s*:\s*"(chunk|idea|topic|theme|arc)"/g;
 
+// Nested detail replies (detail-nested-v2) carry no semantic_type: an object whose name is followed by
+// topic_id is an idea, and one followed by source_range is a chunk (schema property order).
+const NESTED_IDEA = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,1500}?"topic_id"\s*:/g;
+const NESTED_CHUNK = /"node_name"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]{0,1500}?"source_range"\s*:/g;
+const NESTED_FORMAT = '"detail-nested-v2"';
+
 function unescapeJsonString(raw) {
   try { return JSON.parse(`"${raw}"`); } catch { return raw; }
 }
@@ -18,11 +24,12 @@ function unescapeJsonString(raw) {
 export function createNodeScanner(onNode) {
   const seen = new Set();
   let lastScanned = 0;
+  let nested = false;
 
   return function scan(text) {
     if (!onNode || text.length <= lastScanned) return;
     // Overlap slightly so a match straddling two chunks is never missed.
-    const start = Math.max(0, lastScanned - 260);
+    const start = Math.max(0, lastScanned - 1600); // covers the widest pattern window; repeats are deduplicated
     const slice = text.slice(start);
     lastScanned = text.length;
 
@@ -40,6 +47,13 @@ export function createNodeScanner(onNode) {
     while ((m = NODE_TYPE_THEN_NAME.exec(slice)) !== null) emit(m[1], m[2]);
     NODE_NAME_THEN_TYPE.lastIndex = 0;
     while ((m = NODE_NAME_THEN_TYPE.exec(slice)) !== null) emit(m[2], m[1]);
+    if (!nested) nested = text.includes(NESTED_FORMAT);
+    if (nested) {
+      NESTED_IDEA.lastIndex = 0;
+      while ((m = NESTED_IDEA.exec(slice)) !== null) emit('idea', m[1]);
+      NESTED_CHUNK.lastIndex = 0;
+      while ((m = NESTED_CHUNK.exec(slice)) !== null) emit('chunk', m[1]);
+    }
   };
 }
 

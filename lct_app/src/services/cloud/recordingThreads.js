@@ -26,6 +26,21 @@ function ids(value, required = false, validationStage = 'node_shape') {
   return value;
 }
 
+/** Name the first rule an edge list breaks, so a refusal says why (fixed labels, no content). */
+function edgeRule(rawEdges, nodes) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const seen = new Set();
+  for (const edge of Array.isArray(rawEdges) ? rawEdges : []) {
+    if (!object(edge) || !identity(edge.id) || !identity(edge.from_node_id) || !identity(edge.to_node_id) || !identity(edge.relation_type)) return 'edge_malformed';
+    if (edge.edge_kind != null && !['semantic', 'temporal'].includes(edge.edge_kind)) return 'edge_kind';
+    if (seen.has(edge.id)) return 'edge_duplicate_id';
+    if (edge.from_node_id === edge.to_node_id) return 'edge_self_reference';
+    if (!nodeIds.has(edge.from_node_id) || !nodeIds.has(edge.to_node_id)) return 'edge_unknown_endpoint';
+    seen.add(edge.id);
+  }
+  return 'edge_contract';
+}
+
 function optionalText(value) {
   if (value != null && typeof value !== 'string') throw invalid();
   return value;
@@ -156,7 +171,7 @@ function normalizedGraph(graph, utterances) {
     });
     validateThreadsArtifact({ format: 'lct.threads', format_version: 2, graph_data: nodes,
       edge_schema: EDGE_SCHEMA, edges });
-  } catch { throw invalid('edges'); }
+  } catch { throw invalid('edges', edgeRule(graph.edges, nodes)); }
 
   let conversationThreads;
   if (graph.conversation_threads != null) {

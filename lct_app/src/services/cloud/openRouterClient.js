@@ -100,7 +100,7 @@ export function invalidCompletionDetail(payload) {
   if (payload.stop_reason === 'refusal') return ' The model declined to answer.';
   const stage = typeof payload.validation_stage === 'string' && STAGE_LABELS.test(payload.validation_stage) ? payload.validation_stage : null;
   if (!stage) return '';
-  const rule = stage === 'hierarchy' && typeof payload.validation_rule === 'string' && STAGE_LABELS.test(payload.validation_rule)
+  const rule = ['hierarchy', 'edges'].includes(stage) && typeof payload.validation_rule === 'string' && STAGE_LABELS.test(payload.validation_rule)
     ? `/${payload.validation_rule}` : '';
   const stop = typeof payload.stop_reason === 'string' && STAGE_LABELS.test(payload.stop_reason) && payload.stop_reason !== 'end_turn'
     ? `, stop reason ${payload.stop_reason}` : '';
@@ -131,6 +131,10 @@ function failure(status, payload) {
   if (code === 'invalid_completion' && payload.stop_reason === 'max_tokens') error.stopReason = 'max_tokens';
   const attempts = publicAttempts(payload.attempts);
   if (attempts.length) error.attempts = attempts;
+  if (code === 'invalid_completion' && typeof payload.validation_stage === 'string' && STAGE_LABELS.test(payload.validation_stage)) {
+    error.validationStage = payload.validation_stage;
+    if (typeof payload.validation_rule === 'string' && STAGE_LABELS.test(payload.validation_rule)) error.validationRule = payload.validation_rule;
+  }
   return error;
 }
 
@@ -175,6 +179,12 @@ function recordingMapResult(source, payload) {
       if (JSON.stringify(result.bundle[key]) !== JSON.stringify(artifact[key])) throw unreadable();
     }
   } catch { throw unreadable(); }
+  // Validator signals (items dropped server-side) travel with the map; re-validation alone cannot see them.
+  if (Array.isArray(artifact.audit_signals)) {
+    const signals = artifact.audit_signals.slice(0, 500).filter(item => item && typeof item === 'object' && !Array.isArray(item))
+      .map(item => Object.fromEntries(Object.entries(item).filter(([, v]) => ['string', 'number'].includes(typeof v))));
+    result.bundle.audit_signals = [...(result.bundle.audit_signals || []), ...signals];
+  }
   return result;
 }
 

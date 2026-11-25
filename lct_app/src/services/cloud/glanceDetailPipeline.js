@@ -109,9 +109,46 @@ export function planSegments(bundle, utteranceById, { maxWords = DEFAULT_SEGMENT
 }
 
 /** Record every provider route that wrote part of the map, so an audit can exclude all their families. */
+export const PERSONAL_DETAIL_CONCURRENCY = 3;
+export const MAX_ADMISSION_RETRIES = 5;
+export const ADMISSION_RETRY_MS = 2_000;
+export const PERSONAL_INTERVAL_MS = 1_600;
+
+/**
+ * Personal-key routes (the owner's own spend) run detail calls in parallel with a short stagger, matching
+ * the Worker's PERSONAL_PACING; server-key routes keep one call per 10.5 s. Explicit values win (tests).
+ */
+export function detailPacing(routes, intervalMs = null, concurrency = null) {
+  const personal = Array.isArray(routes) && routes.length > 0 && routes.every(route => typeof route?.key === 'string' && route.key);
+  return { intervalMs: intervalMs ?? (personal ? PERSONAL_INTERVAL_MS : DEFAULT_INTERVAL_MS),
+    concurrency: concurrency ?? (personal ? PERSONAL_DETAIL_CONCURRENCY : 1) };
+}
+
+// What to fix, by the check that refused the previous reply (nested detail has no parent_id field).
+const RETRY_ADVICE = {
+  hierarchy: 'every idea topic_id must be one of the segment_topics ids, copied exactly, or null',
+  required_shape: 'return hierarchy_format detail-nested-v2 with an ideas array and a boundary_notes array',
+  node_shape: 'every idea needs id, node_name, summary, topic_id and at least one chunk; every chunk needs id, node_name, summary and source_range',
+  node_evidence: 'every chunk source_range must use utterance ids copied exactly from the supplied utterances, with from before to',
+  edges: 'return no edges',
+  threads: 'return no thread paths',
+};
+const GUIDANCE_LIMIT = 3000;
+
+/** The owner's guidance plus a one-line note naming what the refused reply got wrong, within the guidance limit. */
+export function retryGuidance(guidance, rule) {
+  const stage = String(rule).split('/')[0];
+  const note = `Your previous reply for this segment was refused at ${rule}. Fix exactly that: ${RETRY_ADVICE[stage] || 'follow the schema exactly'}.`;
+  const room = Math.max(0, GUIDANCE_LIMIT - note.length - 1);
+  return guidance ? `${String(guidance).slice(0, room)}\n${note}` : note;
+}
+
 function withBuilders(bundle, used) {
   const all = [...(bundle.built_by || []), ...used];
+  // Stable order: the overview's route first, then the rest sorted, never completion order.
   const unique = [...new Map(all.map(r => [`${r.backend}|${r.model}`, r])).values()];
+  const [first, ...rest] = unique;
+  unique.splice(0, unique.length, ...(first ? [first] : []), ...rest.sort((a, b) => `${a.backend}|${a.model}`.localeCompare(`${b.backend}|${b.model}`)));
   return { ...bundle, built_by: unique };
 }
 
@@ -176,6 +213,7 @@ export function mergeDetail(source, base, results) {
     for (const edge of result.bundle.edges || []) {
       edges.push({ ...edge, id: prefix + edge.id, from_node_id: remap(edge.from_node_id), to_node_id: remap(edge.to_node_id) });
     }
+    for (const item of result.bundle.audit_signals || []) signals.push({ ...item, segment: segment.label });
     for (const note of result.boundaryNotes || []) {
       signals.push({ source: 'detail', kind: note.kind, note: note.note, segment: segment.label,
         utterance_ids: (note.utterance_ids || []).map(id => toGlobal.get(id)).filter(Boolean) });
@@ -203,7 +241,21 @@ export function mergeDetail(source, base, results) {
     const dropped = [...before].filter(id => !after.has(id)).length, added = [...after].filter(id => !before.has(id)).length;
     if (dropped || added) signals.push({ source: 'detail', kind: 'boundary_shift', node_id: n.id, turns_dropped: dropped, turns_added: added });
   }
-  const cleaned = derived.map(({ parent_id, memberships, ...n }) => ({ ...n,
+  // The thread timeline groups moments by each chunk's thread_id. Derive it from the threads' own step
+  // evidence: a chunk covering a step's turns joins that thread (first thread in the list wins).
+  const threadOfTurn = new Map();
+  for (const path of base.conversation_threads || []) {
+    for (const step of path.steps || []) for (const id of step.evidence_utterance_ids || []) if (!threadOfTurn.has(id)) threadOfTurn.set(id, path.id);
+  }
+  const withThreads = derived.map(n => {
+    if (n.semantic_level !== 1 || n.thread_id) return n;
+    // The thread most of the chunk's turns belong to (ties go to the earlier thread in the list).
+    const votes = new Map();
+    for (const id of n.source_ref.utterance_ids) { const t = threadOfTurn.get(id); if (t) votes.set(t, (votes.get(t) || 0) + 1); }
+    const thread = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return thread ? { ...n, thread_id: thread } : n;
+  });
+  const cleaned = withThreads.map(({ parent_id, memberships, ...n }) => ({ ...n,
     ...(parent_id ? { parent_id } : {}), ...(memberships?.length ? { memberships } : {}) }));
   const assembled = createRecordingThreads({ ...source, graph: {
     metadata: { conversation_title: base.conversation_title, executive_summary: base.executive_summary },
@@ -217,50 +269,131 @@ export function mergeDetail(source, base, results) {
   return { ...assembled, bundle, json: JSON.stringify(bundle, null, 2) };
 }
 
-async function runSegments({ source, base, segments, routes, guidance, signal, onProgress, generate, intervalMs, utteranceById, waitFirst }) {
-  const queue = [...segments];
+/**
+ * Run detail segments through a pool of `concurrency` workers, starting calls at least `intervalMs`
+ * apart. A refused segment is re-asked once; a truncated one is halved; any other failure stops new
+ * starts, lets in-flight calls finish, then throws with the partial map. Results merge in segment
+ * order, so the map is the same whatever order calls finish in.
+ */
+async function runSegments({ source, base, segments, routes, guidance, signal, onProgress, generate, intervalMs, utteranceById,
+  waitFirst, concurrency = 1, admissionRetryMs = ADMISSION_RETRY_MS }) {
+  const queue = segments.map((segment, order) => ({ ...segment, order: String(order).padStart(4, '0') }));
   const results = [];
   const used = [];
-  let merged = base;
-  for (let i = 0; i < queue.length; i++) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const segment = queue[i];
-    if (i > 0 || waitFirst) await sleep(intervalMs, signal);
+  let merged = base, started = 0, finished = 0, failure = null, lastStart = waitFirst ? Date.now() : 0;
+  const total = () => finished + queue.length + inFlight.size;
+  // Inside a finishing call it is already counted in `finished` but still in flight: count it once.
+  const totalAtFinish = () => finished + queue.length + Math.max(0, inFlight.size - 1);
+  const inFlight = new Set();
+  // Reserve the next start time only when a call is really about to start.
+  const nextStart = async () => {
+    const wait = lastStart + intervalMs - Date.now();
+    lastStart = Math.max(Date.now(), lastStart + intervalMs);
+    if (wait > 0) await sleep(wait, signal);
+  };
+  // Wakes idle workers when a call finishes (it may have requeued a retry or two halves).
+  const waiters = [];
+  const wake = () => { while (waiters.length) waiters.shift()(); };
+  const changed = () => new Promise(resolve => { waiters.push(resolve); });
+  const stopWith = error => { failure = failure || error; };
+
+  async function runOne(segment) {
+    const n = ++started;
     const words = segment.utteranceIds.reduce((sum, id) => sum + countWords(utteranceById.get(id).text), 0);
     const first = utteranceById.get(segment.utteranceIds[0]), last = utteranceById.get(segment.utteranceIds.at(-1));
-    const details = { segment: segment.label, position: `${i + 1}/${queue.length}`, topics: segment.topics.length,
-      turns: segment.utteranceIds.length, words, span: `${clock((first.timestamp_start || 0) * 1000)}–${clock((last.timestamp_end || 0) * 1000)}` };
-    onProgress?.({ phase: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), partialBundle: merged, startedAt: Date.now() });
+    const details = { segment: segment.label, call: n, topics: segment.topics.length, turns: segment.utteranceIds.length, words,
+      span: `${clock((first.timestamp_start || 0) * 1000)}–${clock((last.timestamp_end || 0) * 1000)}` };
+    const name = `Detail ${segment.label}`;
+    onProgress?.({ phase: 'detail', segmentIndex: finished, totalSegments: total(), completedSegments: finished,
+      topics: segment.topics.map(t => t.node_name), partialBundle: merged, startedAt: Date.now(), inFlight: inFlight.size });
     log('detail start', details);
-    activity(onProgress, 'info', `Detail ${i + 1}/${queue.length} (${details.span}): ${segment.topics.map(t => t.node_name).join(', ')}; sending ${number(details.turns)} turns, ${number(words)} words.`, { running: true });
-    const started = Date.now();
+    activity(onProgress, 'info', `${name} (${details.span}): ${segment.topics.map(t => t.node_name).join(', ')}; sending ${number(details.turns)} turns, ${number(words)} words${inFlight.size > 1 ? ` (${inFlight.size} calls in flight)` : ''}.`, { running: true });
+    const t0 = Date.now();
     let result;
     try {
-      result = await generate(segmentSource(source, segment, utteranceById), signal, routes, guidance,
+      const retryNote = segment.retryOf ? retryGuidance(guidance, segment.retryOf) : guidance;
+      result = await generate(segmentSource(source, segment, utteranceById), signal, routes, retryNote,
         { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}),
-          onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), streamEvent }) });
+          onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segment: segment.label, segmentIndex: finished, totalSegments: total(), completedSegments: finished, topics: segment.topics.map(t => t.node_name), streamEvent }) });
     } catch (error) {
+      // A cancelled run is not a provider failure: stop quietly.
+      if (signal?.aborted || error?.name === 'AbortError') { stopWith(new DOMException('Aborted', 'AbortError')); return; }
+      // Once another call has failed, no new retries, splits or waits start; this call just reports.
+      if (failure) { log('detail stopped', { ...details, ms: Date.now() - t0, error: error?.message }); return; }
+      // An admission refusal (429) happens before any provider call: nothing was spent, so wait and requeue.
+      if (error?.status === 429 && (segment.admissionRetries || 0) < MAX_ADMISSION_RETRIES) {
+        const tries = (segment.admissionRetries || 0) + 1;
+        activity(onProgress, 'warn', `${name} was not admitted yet (another call was starting); retrying in ${seconds(admissionRetryMs * tries)} (try ${tries} of ${MAX_ADMISSION_RETRIES}).`);
+        log('detail admission retry', { ...details, tries });
+        await sleep(admissionRetryMs * tries, signal);
+        queue.unshift({ ...segment, admissionRetries: tries });
+        return;
+      }
+      // A structural refusal is asked once more with the rule named: re-asking, never repairing the reply.
+      const retriable = !segment.retryOf && error?.code === 'invalid_completion' && error?.stopReason !== 'max_tokens'
+        && ['hierarchy', 'edges', 'threads', 'node_evidence', 'node_shape', 'required_shape'].includes(error?.validationStage);
+      if (retriable) {
+        const rule = `${error.validationStage}${error.validationRule ? '/' + error.validationRule : ''}`;
+        log('detail retry', { ...details, ms: Date.now() - t0, rule });
+        activity(onProgress, 'warn', `${name} was refused (${rule}) after ${seconds(Date.now() - t0)}; asking once more with that rule named.`,
+          { attempts: (error?.attempts || []).map(describeAttempt) });
+        queue.unshift({ ...segment, retryOf: rule });
+        return;
+      }
       const halves = error?.stopReason === 'max_tokens' ? halve(segment) : null;
-      log(halves ? 'detail split' : 'detail failed', { ...details, ms: Date.now() - started, error: error?.message });
+      log(halves ? 'detail split' : 'detail failed', { ...details, ms: Date.now() - t0, error: error?.message });
       activity(onProgress, halves ? 'warn' : 'error', halves
-        ? `Detail ${i + 1} hit the output limit after ${seconds(Date.now() - started)}; splitting it into two halves and retrying.`
-        : `Detail ${i + 1} failed after ${seconds(Date.now() - started)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
-      if (!halves) throw Object.assign(error, { partialBundle: merged });
-      queue.splice(i, 1, ...halves); i -= 1;
-      continue;
+        ? `${name} hit the output limit after ${seconds(Date.now() - t0)}; splitting it into two halves and retrying.`
+        : `${name} failed after ${seconds(Date.now() - t0)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
+      if (!halves) { failure = failure || error; return; }
+      queue.unshift(...halves.map((half, k) => ({ ...half, order: `${segment.order}${k ? 'b' : 'a'}` })));
+      return;
     }
     results.push({ segment, result });
+    results.sort((a, b) => (a.segment.order < b.segment.order ? -1 : 1));
     if (result.backend) used.push({ backend: result.backend, model: result.model });
     merged = withBuilders(mergeDetail(source, base, results).bundle, used);
-    log('detail done', { ...details, ms: Date.now() - started, nodes: result.bundle.graph_data.length,
+    finished += 1;
+    log('detail done', { ...details, ms: Date.now() - t0, nodes: result.bundle.graph_data.length,
       notes: result.boundaryNotes?.length || 0, model: result.model });
     const made = result.bundle.graph_data.filter(n => !(result.stubTopicIds || []).includes(n.id.slice(2)));
     const ideas = made.filter(n => n.semantic_level === 2).length, chunks = made.filter(n => n.semantic_level === 1).length;
-    activity(onProgress, 'ok', `Detail ${i + 1}/${queue.length} done in ${seconds(Date.now() - started)}: ${ideas} ideas, ${chunks} chunks`
-      + `${result.boundaryNotes?.length ? `, ${result.boundaryNotes.length} boundary note${result.boundaryNotes.length === 1 ? '' : 's'} (${result.boundaryNotes.map(n => n.kind).join(', ')})` : ''}.`,
+    activity(onProgress, 'ok', `${name} done in ${seconds(Date.now() - t0)} (${finished} of ${totalAtFinish()}): ${ideas} ideas, ${chunks} chunks`
+      + `${result.boundaryNotes?.length ? `, ${result.boundaryNotes.length} boundary note${result.boundaryNotes.length === 1 ? '' : 's'} (${result.boundaryNotes.map(x => x.kind).join(', ')})` : ''}.`,
       { attempts: (result.attempts || []).map(describeAttempt) });
+    onProgress?.({ phase: 'detail', segmentIndex: finished, totalSegments: totalAtFinish(), completedSegments: finished, partialBundle: merged,
+      topics: [], startedAt: Date.now(), inFlight: inFlight.size - 1 });
   }
-  return { bundle: merged, segments: queue.length, used };
+
+  // Each worker loops until nothing is queued or running. A failure or abort stops new starts, but the
+  // run only ends after every in-flight call has settled, so nothing mutates the map afterwards.
+  async function worker() {
+    while (!failure) {
+      if (signal?.aborted) { stopWith(new DOMException('Aborted', 'AbortError')); break; }
+      if (!queue.length) {
+        if (!inFlight.size) break;
+        await changed();
+        continue;
+      }
+      const segment = queue.shift();
+      const token = {};
+      inFlight.add(token);
+      try {
+        await nextStart();
+        if (failure || signal?.aborted) { queue.unshift(segment); break; }
+        await runOne(segment);
+      } catch (error) {
+        stopWith(signal?.aborted ? new DOMException('Aborted', 'AbortError') : error);
+      } finally {
+        inFlight.delete(token);
+        wake();
+      }
+    }
+    wake();
+  }
+  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+  if (failure) throw Object.assign(failure, { partialBundle: merged });
+  return { bundle: merged, segments: finished, used };
 }
 
 /**
@@ -268,8 +401,8 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
  * (skeleton only; expand topics later with expandTopicDetail) or 'core' (core-salience topics).
  */
 export async function runGlanceDetailPipeline({ source, routes, guidance = '', title = '', meetingMetadata = null, mediaRefs = [],
-  signal, onProgress, generate = generateOrderedRecordingMap, intervalMs = DEFAULT_INTERVAL_MS, detail = 'all',
-  maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS }) {
+  signal, onProgress, generate = generateOrderedRecordingMap, intervalMs = null, concurrency = null, detail = 'all',
+  maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS, admissionRetryMs = ADMISSION_RETRY_MS }) {
   const utterances = createRecordingTranscript(source).document.utterances;
   const utteranceById = new Map(utterances.map(u => [u.id, u]));
   const totalWords = utterances.reduce((s, u) => s + countWords(u.text), 0);
@@ -300,9 +433,11 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
 
   const topicIds = detail === 'core' ? new Set(skeleton.graph_data.filter(n => n.semantic_level === 3 && n.salience === 'core').map(n => n.id)) : null;
   const segments = planSegments(skeleton, utteranceById, { maxWords: maxSegmentWords, topicIds });
-  activity(onProgress, 'info', `Detail plan: ${segments.length} topic group${segments.length === 1 ? '' : 's'} of up to ${number(maxSegmentWords)} words, about ${Math.round(intervalMs / 1000)} s apart (provider pacing).`);
+  const pace = detailPacing(routes, intervalMs, concurrency);
+  activity(onProgress, 'info', `Detail plan: ${segments.length} topic group${segments.length === 1 ? '' : 's'} of up to ${number(maxSegmentWords)} words, `
+    + `${pace.concurrency > 1 ? `up to ${pace.concurrency} at a time, starts ${seconds(pace.intervalMs)} apart (personal key)` : `one at a time, ${seconds(pace.intervalMs)} apart (provider pacing)`}.`);
   const run = await runSegments({ source, base: skeleton, segments, routes, guidance, signal, onProgress, generate,
-    intervalMs, utteranceById, waitFirst: true });
+    intervalMs: pace.intervalMs, concurrency: pace.concurrency, admissionRetryMs, utteranceById, waitFirst: true });
   onProgress?.({ phase: 'done', partialBundle: run.bundle, completedSegments: run.segments, totalSegments: run.segments });
   const bundle = withBuilders(run.bundle, run.used);
   return { bundle, json: JSON.stringify(bundle, null, 2), backend: glance.backend, model: glance.model,
@@ -322,7 +457,7 @@ export async function expandTopicDetail({ source, bundle, topicId, routes, guida
   const segments = planSegments(bundle, utteranceById, { maxWords: maxSegmentWords, topicIds: new Set([topicId]) })
     .map(segment => { while (taken.has(`t${next}`)) next += 1; taken.add(`t${next}`); return { ...segment, label: `t${next}` }; });
   const run = await runSegments({ source, base: bundle, segments, routes, guidance, signal, onProgress, generate,
-    intervalMs, utteranceById, waitFirst: false });
+    intervalMs, concurrency: 1, utteranceById, waitFirst: false });
   const merged = withBuilders(run.bundle, run.used);
   return { bundle: merged, json: JSON.stringify(merged, null, 2) };
 }

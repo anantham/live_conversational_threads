@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EPISTEMIC_FORMAT, epistemicFromGeneratedText } from './epistemicTask.js';
-import { DETAIL_FORMAT, DETAIL_SCHEMA } from './generationTasks.js';
+import { DETAIL_FORMAT, detailNestedSchema, SKELETON_PROMPT } from './generationTasks.js';
 import { expandTaskGeneration } from './rangeGeneration.js';
 import { expandGenerationHierarchy } from './generationHierarchy.js';
 
@@ -73,10 +73,11 @@ describe('epistemicTask', () => {
   });
 });
 
-describe('detail stopping rule (chunks directly under topics)', () => {
-  it('allows DETAIL_SCHEMA and hierarchy expansion to attach a chunk directly to a level-3 topic without a wrapper idea', () => {
-    const chunkSchema = DETAIL_SCHEMA.properties.nodes.items.anyOf[0];
-    expect(chunkSchema.properties.parent_id.anyOf[0].properties.semantic_level.enum).toEqual([2, 3]);
+describe('detail stopping rule & nested schema compatibility', () => {
+  it('encodes the stopping rule in SKELETON_PROMPT, builds per-segment nested detail schemas, and allows skipped levels in hierarchy expansion', () => {
+    expect(SKELETON_PROMPT).toContain('Stopping rule:');
+    const nested = detailNestedSchema(['logistics']);
+    expect(nested.properties.ideas.items.properties.topic_id.anyOf[0].enum).toEqual(['logistics']);
 
     const detailReply = {
       hierarchy_format: DETAIL_FORMAT,
