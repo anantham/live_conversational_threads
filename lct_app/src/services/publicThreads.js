@@ -1,7 +1,8 @@
 import { readThreadsFile, flattenThreadsGraph } from "./threadsArtifact";
 
 export const PUBLIC_API = "/api/cloud/public-threads";
-export const PUBLIC_MAX_BYTES = 512 * 1024;
+// Matches the Worker limit (1.5 MiB) and migration 0020.
+export const PUBLIC_MAX_BYTES = 1.5 * 1024 * 1024;
 const KEYS = "lct.public_removal_keys.v1";
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY = /^[0-9a-f]{64}$/;
@@ -29,18 +30,19 @@ export function newPublication() {
 }
 
 export async function preparePublicFile(file) {
-  if (!file || !/\.threads$/i.test(file.name) || !file.size || file.size > PUBLIC_MAX_BYTES) throw new Error("Choose a nonempty .threads file up to 512 KiB.");
+  if (!file || !/\.threads$/i.test(file.name) || !file.size || file.size > PUBLIC_MAX_BYTES) throw new Error("Choose a nonempty .threads file up to 1.5 MiB.");
   const bundle = await readThreadsFile(file);
   const payload = JSON.stringify(bundle);
-  if (new TextEncoder().encode(payload).byteLength > PUBLIC_MAX_BYTES) throw new Error("The normalized public file exceeds 512 KiB.");
+  if (new TextEncoder().encode(payload).byteLength > PUBLIC_MAX_BYTES) throw new Error("The normalized public file exceeds 1.5 MiB.");
   const count = flattenThreadsGraph(bundle.graph_data).length;
   if (!count || count > 2000 || bundle.edges.length > 8000) throw new Error("Public preview maps need 1–2,000 nodes and at most 8,000 edges.");
   return { payload, title: String(bundle.conversation_title || bundle.conversation_name || "Untitled conversation"), count };
 }
 
-export async function publicRequest(path, { method = "GET", capability, payload, signal } = {}) {
+export async function publicRequest(path, { method = "GET", capability, payload, signal, visibility } = {}) {
   const headers = { ...(method === "GET" ? {} : { "X-LCT-Public-Write": "1", "X-LCT-Removal-Key": capability.key }),
-    ...(payload ? { "Content-Type": "application/json", "X-LCT-Public-Consent": "whole-file-v1" } : {}) };
+    ...(payload ? { "Content-Type": "application/json", "X-LCT-Public-Consent": "whole-file-v1" } : {}),
+    ...(visibility ? { "X-LCT-Public-Visibility": visibility } : {}) };
   const response = await fetch(path, { method, headers, body: payload, signal, cache: "no-store", credentials: "omit" });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || `Public library returned HTTP ${response.status}.`);
@@ -55,4 +57,41 @@ export function downloadRemovalKey(capability) {
   document.body.appendChild(anchor); anchor.click(); anchor.remove();
   // Let the browser consume the URL before releasing this small local blob.
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Fields that identify people or private resources beyond the conversation itself.
+const PERSONAL_METADATA_KEEP = ["source_format", "meeting_date", "duration_ms"];
+
+/**
+ * A copy safe to share by default: drops attendee emails, Drive/Doc/calendar links, Gemini's notes and
+ * media links. The map, transcript and speakers' words are unchanged (the publisher consents to those).
+ */
+export function publicSafeCopy(bundle) {
+  const { media_refs, meeting_metadata, ...rest } = bundle;
+  void media_refs;
+  const kept = meeting_metadata && typeof meeting_metadata === "object"
+    ? Object.fromEntries(PERSONAL_METADATA_KEEP.filter(key => key in meeting_metadata).map(key => [key, meeting_metadata[key]])) : null;
+  return { ...rest, ...(kept && Object.keys(kept).length ? { meeting_metadata: kept } : {}) };
+}
+
+/** What a published copy would reveal beyond the map and transcript, for the confirmation step. */
+export function personalMetadataSummary(bundle) {
+  const meta = bundle?.meeting_metadata || {};
+  return { emails: Array.isArray(meta.invited_emails) ? meta.invited_emails.length : 0,
+    links: ["recording_url", "transcript_doc_url", "calendar_event_url"].filter(key => meta[key]).length + (bundle?.media_refs?.length || 0),
+    notes: Boolean(meta.reference_notes) };
+}
+
+/**
+ * Publish a map and return its link. The removal key is saved on this device before anything is sent,
+ * so a published copy can always be taken down. Unlisted by default: the link works, the library hides it.
+ */
+export async function publishBundle(bundle, { includePersonal = false, visibility = "unlisted", signal } = {}) {
+  const payload = JSON.stringify(includePersonal ? bundle : publicSafeCopy(bundle));
+  if (new TextEncoder().encode(payload).byteLength > PUBLIC_MAX_BYTES) throw new Error("This map is larger than the 1.5 MiB public limit.");
+  const capability = newPublication();
+  saveRemovalKey(capability);
+  const data = await publicRequest(`${PUBLIC_API}/${capability.id}`, { method: "POST", capability, payload, signal, visibility });
+  if (data?.item?.id !== capability.id) throw new Error("The public library returned an unexpected publication. Nothing was linked.");
+  return { capability, item: data.item, url: `${window.location.origin}/public/${encodeURIComponent(capability.id)}` };
 }

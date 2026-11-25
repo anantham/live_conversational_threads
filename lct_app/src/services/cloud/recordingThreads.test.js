@@ -176,10 +176,12 @@ describe('createRecordingThreads', () => {
     expect(() => createRecordingThreads({ ...source, graph })).toThrow('Invalid generated conversation graph.');
   });
 
+  // The public gate is 1.5 MiB (tests/intent/publish-link.md): a 600 KiB map now publishes, a larger one does not.
   it('keeps the separate public publication size gate', async () => {
     const graph = baseGraph();
     graph.nodes[0].summary = 'z'.repeat(600 * 1024);
-    const { file } = createRecordingThreads({ ...source, graph });
-    await expect(preparePublicFile(file)).rejects.toThrow('512 KiB');
+    await expect(preparePublicFile(createRecordingThreads({ ...source, graph }).file)).resolves.toMatchObject({ count: expect.any(Number) });
+    graph.nodes[0].summary = 'z'.repeat(1600 * 1024);
+    await expect(preparePublicFile(createRecordingThreads({ ...source, graph }).file)).rejects.toThrow('1.5 MiB');
   });
 });
