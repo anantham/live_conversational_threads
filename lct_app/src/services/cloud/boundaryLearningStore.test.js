@@ -14,14 +14,14 @@ import { flattenThreadsGraph, validateThreadsArtifact } from '../threadsArtifact
 const baseBundle = () => ({
   conversation_id: 'conv-1',
   utterances: [
-    { id: 'u1', timestamp_start: 0, text: 'Opening co-living.' },
-    { id: 'u2', timestamp_start: 20, text: 'Retreat logistics.' },
-    { id: 'u3', timestamp_start: 3065, text: 'Returning to co-living.' },
-    { id: 'u4', timestamp_start: 4918, text: 'Closing co-living.' },
+    { id: 'u1', timestamp_start: 0, text: 'Opening community-garden.' },
+    { id: 'u2', timestamp_start: 20, text: 'Picnic logistics.' },
+    { id: 'u3', timestamp_start: 2400, text: 'Returning to community-garden.' },
+    { id: 'u4', timestamp_start: 3900, text: 'Closing community-garden.' },
   ],
   graph_data: [
-    { id: 'arc-1', semantic_level: 5, node_name: 'Co-living', children_ids: ['t1'], source_ref: { utterance_ids: ['u1', 'u3'] } },
-    { id: 'arc-2', semantic_level: 5, node_name: 'Later co-living chat', children_ids: ['t2'], source_ref: { utterance_ids: ['u4'] } },
+    { id: 'arc-1', semantic_level: 5, node_name: 'Community garden', children_ids: ['t1'], source_ref: { utterance_ids: ['u1', 'u3'] } },
+    { id: 'arc-2', semantic_level: 5, node_name: 'Later garden chat', children_ids: ['t2'], source_ref: { utterance_ids: ['u4'] } },
     { id: 't1', semantic_level: 3, parent_id: 'arc-1', node_name: 'Funding', children_ids: [], source_ref: { utterance_ids: ['u1'] } },
     { id: 't2', semantic_level: 3, parent_id: 'arc-2', node_name: 'Collaborators', children_ids: [], source_ref: { utterance_ids: ['u4'] } },
   ],
@@ -55,7 +55,7 @@ describe('boundaryLearningStore', () => {
     const second = bundle.graph_data.find(n => n.id === 'arc-1-split-1');
     expect(first.source_ref.utterance_ids).toEqual(['u1']);
     expect(second.source_ref.utterance_ids).toEqual(['u3']);
-    expect(second.node_name).toBe('Co-living (continued)');
+    expect(second.node_name).toBe('Community garden (continued)');
   });
 
   // A complete artifact with explicit edges, threads and lenses that name the node being merged away.
@@ -70,7 +70,7 @@ describe('boundaryLearningStore', () => {
       { id: 'e3', from_node_id: 'arc-2', to_node_id: 'arc-1', relation_type: 'returns_to' },
     ],
     conversation_threads: [{
-      id: 'th1', title: 'Co-living',
+      id: 'th1', title: 'Community garden',
       steps: [
         { moment_id: 'arc-1', evidence_utterance_ids: ['u1'] },
         { moment_id: 'arc-2', evidence_utterance_ids: ['u4'] },
@@ -117,7 +117,7 @@ describe('boundaryLearningStore', () => {
 
   it('splits a node whose turns are cited only through utterance_ids', () => {
     const bundle = baseBundle();
-    bundle.graph_data[0] = { id: 'arc-1', semantic_level: 5, node_name: 'Co-living', children_ids: ['t1'], utterance_ids: ['u1', 'u3'] };
+    bundle.graph_data[0] = { id: 'arc-1', semantic_level: 5, node_name: 'Community garden', children_ids: ['t1'], utterance_ids: ['u1', 'u3'] };
     const { bundle: next, correction } = applySplitNodeAtVisit(bundle, 'arc-1', 'u3');
     expect(correction).not.toBeNull();
     expect(next.graph_data.find(n => n.id === 'arc-1').utterance_ids).toEqual(['u1']);
@@ -142,8 +142,8 @@ describe('boundaryLearningStore', () => {
   });
 
   it('persists boundary corrections locally and formats bounded prompt guidance', () => {
-    recordBoundaryCorrection({ kind: 'merge', source_title: 'Later co-living chat', target_title: 'Co-living' });
-    recordBoundaryCorrection({ kind: 'split', source_title: 'Retreat & cab logistics', target_title: 'Retreat & cab logistics (continued)' });
+    recordBoundaryCorrection({ kind: 'merge', source_title: 'Later garden chat', target_title: 'Community garden' });
+    recordBoundaryCorrection({ kind: 'split', source_title: 'Picnic logistics', target_title: 'Picnic logistics (continued)' });
     const stored = loadBoundaryCorrections();
     expect(stored).toHaveLength(2);
     const prompt = formatBoundaryPreferencesForPrompt(stored, 300);

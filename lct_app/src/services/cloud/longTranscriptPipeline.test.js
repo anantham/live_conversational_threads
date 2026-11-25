@@ -68,7 +68,7 @@ describe('longTranscriptPipeline', () => {
     const result = await runLongTranscriptPipeline({
       source,
       routes: [{ backend: 'anthropic', key: 'k', model: 'claude-sonnet-4-5' }],
-      title: 'Andre Catch up',
+      title: 'Mirela catch-up',
       mediaRefs,
       meetingMetadata: { invited_emails: ['a@example.com'] },
       generateWindow,
@@ -79,7 +79,7 @@ describe('longTranscriptPipeline', () => {
 
     expect(generateWindow).toHaveBeenCalledTimes(2);
     expect(result.windowCount).toBe(2);
-    expect(result.bundle.conversation_title).toBe('Andre Catch up');
+    expect(result.bundle.conversation_title).toBe('Mirela catch-up');
     expect(result.bundle.media_refs).toEqual(mediaRefs);
     expect(result.bundle.meeting_metadata).toEqual({ invited_emails: ['a@example.com'] });
     expect(result.bundle.graph_data.map(n => n.id)).toEqual(['w1-topic-1', 'w1-chunk-1', 'w2-topic-1', 'w2-chunk-1']);

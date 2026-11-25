@@ -10,7 +10,7 @@ describe('epistemicTask', () => {
       format: EPISTEMIC_FORMAT,
       cruxes: [
         {
-          node_id: '3:co-living',
+          node_id: '3:community-garden',
           label: 'Solo funding vs shared buy-in',
           note: 'Whether financial constraints are a blocker or a catalyst for shared ownership.',
           provenance: 'stated',
@@ -26,13 +26,13 @@ describe('epistemicTask', () => {
       ],
       factual_claims: [
         {
-          node_id: '3:co-living',
+          node_id: '3:community-garden',
           statement: 'Retreat begins on the 25th.',
           provenance: 'disputed',
           range: { from: 'utterance-0002', to: 'utterance-0003' },
         },
         {
-          node_id: '3:co-living',
+          node_id: '3:community-garden',
           statement: 'Bad range claim.',
           provenance: 'stated',
           range: { from: 'utterance-9999', to: 'utterance-9999' },
@@ -40,7 +40,7 @@ describe('epistemicTask', () => {
       ],
       normative_assumptions: [
         {
-          node_id: '3:co-living',
+          node_id: '3:community-garden',
           statement: 'Shared responsibility builds deeper community than solo sponsorship.',
           note: 'Implicit value behind preferring co-ownership.',
           provenance: 'stated',
@@ -49,17 +49,17 @@ describe('epistemicTask', () => {
       ],
     });
 
-    const parsed = epistemicFromGeneratedText(utteranceIds, content, ['3:co-living']);
+    const parsed = epistemicFromGeneratedText(utteranceIds, content, ['3:community-garden']);
     expect(parsed.cruxes).toHaveLength(1);
     expect(parsed.cruxes[0]).toMatchObject({
-      node_id: '3:co-living',
+      node_id: '3:community-garden',
       label: 'Solo funding vs shared buy-in',
       provenance: 'stated',
       utterance_ids: ['utterance-0001', 'utterance-0002'],
     });
     expect(parsed.factual_claims).toHaveLength(1);
     expect(parsed.factual_claims[0]).toMatchObject({
-      node_id: '3:co-living',
+      node_id: '3:community-garden',
       statement: 'Retreat begins on the 25th.',
       provenance: 'disputed',
       utterance_ids: ['utterance-0002', 'utterance-0003'],

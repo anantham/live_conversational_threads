@@ -546,13 +546,15 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
           : { bundle, correction: null };
     if (!outcome.correction) return;
     setBundle(outcome.bundle);
-    if (!privateMode && !publicId) recordBoundaryCorrection(outcome.correction);
+    if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
+    if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
+    // An unsaved map leaves nothing on this device: its node titles are not kept as learned preferences,
+    // which later imports would otherwise send to the map provider.
+    if (ephemeral) { setLibraryStatus({ state: "memory", message: "Boundary updated in this view only · not saved, not learned" }); return; }
+    recordBoundaryCorrection(outcome.correction);
     const label = kind === "split"
       ? `Split "${outcome.correction.source_title}" · preference learned`
       : `Linked "${outcome.correction.source_title}" → "${outcome.correction.target_title}" · preference learned`;
-    if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
-    if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
-    if (ephemeral) { setLibraryStatus({ state: "memory", message: label }); return; }
     setLibraryStatus({ state: "saving", message: label });
     void rememberThreadsArtifact(outcome.bundle).then((record) => {
       setLibraryStatus({ state: "saved", message: label, recordId: record.id });
