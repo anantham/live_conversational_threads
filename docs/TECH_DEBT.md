@@ -15,6 +15,7 @@ a ruling:
 - `lct_python_backend/performance_benchmark.py` — no importer; `docs/MONITORING_SETUP.md` documents it as a manual tool.
 - `auth_policy.py` still lists the `/api/costs` prefix for the removed, never-mounted `cost_api.py`.
 - `lct_app/NODE_DETAIL_PANEL.md` and `lct_app/ZOOM_SYSTEM.md` describe the removed `contextLoading.js` / `nodeTransitions.js`; both docs predate the current viewer and are archive candidates.
+- `docs/TESTING.md` (lines 165, 229-233) describes a `tests/test_database/test_db_helpers.py` that does not exist and imports the removed `db_helpers.py`. Other historical docs (plans, audits, ADR-011, `cost-dashboard-counterfactual-scoping.md`) still name removed files and were left as records.
 
 ## 2026-10-09 — Sites UI regression suite boundaries
 

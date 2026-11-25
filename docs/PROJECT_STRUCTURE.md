@@ -52,7 +52,7 @@ live_conversational_threads/
 | `generation_api.py` | `/get_chunks/`, `/generate-context-stream/`, `/save_json/` | Graph generation and streaming |
 | `prompts_api.py` | `/api/prompts*` | Prompt library management |
 | `edit_history_api.py` | `/api/nodes/*`, `/api/conversations/*/edits*` | Per-node edit history |
-| `factcheck_api.py` | `/fact_check_claims/` | Claim fact-checking |
+| `factcheck_api.py` | `/fact_check_claims/`, `/api/cost-tracking/stats` | Claim fact-checking; LLM cost stats for the cost dashboard |
 | `analysis_api.py` | `/api/conversations/*/{simulacra\|biases\|frames\|cruxes}*` | Analysis detectors |
 | `analytics_api.py` | `/api/analytics/*` | Usage analytics and cost stats |
 | `backend_catalog_api.py` | `/api/backend-catalog*` | Inference backend catalog + live probes (ADR-037) |
@@ -67,7 +67,6 @@ live_conversational_threads/
 | `consumption_prayer_api.py` | `/api/consumption-prayer/*` | Intent/prayer matching + contacts picker (ADR-033) |
 | `graph_api.py` | `/api/graph/*` | Graph queries and persistence |
 | `canvas_api.py` | `/export/obsidian-canvas/*`, `/import/obsidian-canvas/` | Obsidian canvas interop |
-| `factcheck_api.py` | `/api/cost-tracking/stats` | LLM cost stats for the cost dashboard (the unmounted `cost_api.py` was removed 2026-11-25) |
 | `user_identity_api.py` | `/api/user-identity` | Self-identity ("which contact is me") |
 | `bookmarks_api.py` | `/api/bookmarks/*` | Node bookmarks |
 | `version_api.py` | `/api/version` | Backend version endpoint |

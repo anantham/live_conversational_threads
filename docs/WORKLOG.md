@@ -11018,5 +11018,15 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   conversationSearch.worker.js (loaded with new Worker(new URL(...))),
   debateSnapshotEdges.js (lct_app/scripts/export-debate-snapshot.mjs),
   discussionFixtures.js (test fixture).
+- Checks on the branch: vite build passes with a fresh npm ci. Backend unit suite
+  2091 passed / 13 failed; vitest 22 files failed; eslint 150 problems. The same
+  tests fail on an untouched copy of main in this environment (sandboxed network,
+  no pwsh, Node 26) and eslint reports 152 there, so CI is the authoritative run.
+  The ISSUES.md entry added here is a separate finding from that run, not part of
+  the deletion.
+- Independent review: Gemini 4 Hydrogen (High) via agy plan mode, packet sha256
+  97269b17fb84734f…; it found no live reference to a removed file. Its doc and
+  evidence findings were applied (PROJECT_STRUCTURE row, TESTING.md noted in
+  TECH_DEBT, per-filename greps for the legacy scripts and prompt files: 0 hits).
 - Not deployed. auth_policy.py still lists the /api/costs prefix; left alone
   because it is an auth file.
