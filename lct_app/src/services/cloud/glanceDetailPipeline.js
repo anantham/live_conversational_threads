@@ -237,10 +237,24 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     const started = Date.now();
     let result;
     try {
-      result = await generate(segmentSource(source, segment, utteranceById), signal, routes, guidance,
+      const retryNote = segment.retryOf
+        ? `${guidance ? guidance.slice(0, 2600) + '\n' : ''}Your previous reply for this segment was refused at ${segment.retryOf}. Fix exactly that: every parent reference must name a node that exists, copied character for character.`
+        : guidance;
+      result = await generate(segmentSource(source, segment, utteranceById), signal, routes, retryNote,
         { task: 'detail', topics: segment.topics, ...(base.glossary?.length ? { glossary: base.glossary } : {}),
           onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), streamEvent }) });
     } catch (error) {
+      // A structural refusal is asked once more with the rule named: re-asking, never repairing the reply.
+      const retriable = !segment.retryOf && error?.code === 'invalid_completion' && error?.stopReason !== 'max_tokens'
+        && ['hierarchy', 'edges', 'threads', 'node_evidence', 'node_shape'].includes(error?.validationStage);
+      if (retriable) {
+        const rule = `${error.validationStage}${error.validationRule ? '/' + error.validationRule : ''}`;
+        log('detail retry', { ...details, ms: Date.now() - started, rule });
+        activity(onProgress, 'warn', `Detail ${i + 1} was refused (${rule}) after ${seconds(Date.now() - started)}; asking once more with that rule named.`,
+          { attempts: (error?.attempts || []).map(describeAttempt) });
+        queue.splice(i, 1, { ...segment, retryOf: rule }); i -= 1;
+        continue;
+      }
       const halves = error?.stopReason === 'max_tokens' ? halve(segment) : null;
       log(halves ? 'detail split' : 'detail failed', { ...details, ms: Date.now() - started, error: error?.message });
       activity(onProgress, halves ? 'warn' : 'error', halves

@@ -180,4 +180,24 @@ describe('glance then detail', () => {
     expect(two.bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(7);
     expect(two.bundle.built_by).toEqual([{ backend: 'anthropic', model: 'claude-synthetic' }]);
   });
+
+  // A structural refusal is asked once more with the rule named; a second refusal stops the run.
+  it('re-asks a refused detail segment once, naming the rule, and stops if it is refused again', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const refusal = () => Object.assign(new Error('refused'), { code: 'invalid_completion', validationStage: 'hierarchy', validationRule: 'parent_missing' });
+    const inner = fakeModel();
+    let refusals = 1;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task === 'detail' && refusals > 0) { refusals -= 1; throw refusal(); }
+      return inner(...args);
+    });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    expect(generate.mock.calls.map(c => c[4].task)).toEqual(['skeleton', 'detail', 'detail']);
+    expect(generate.mock.calls[2][3]).toMatch(/refused at hierarchy\/parent_missing/);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+    refusals = 2;
+    const again = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 }).catch(e => e);
+    expect(again.message).toBe('refused');
+    expect(again.partialBundle.graph_data.some(n => n.id === '3:sea')).toBe(true);
+  });
 });

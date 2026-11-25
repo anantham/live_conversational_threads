@@ -121,6 +121,7 @@ export const DETAIL_PROMPT = [
   'Set hierarchy_format to detail-ranges-v1.',
   'A chunk is one coherent moment: a run of consecutive utterances that develop the same point. Cite it as source_range {"from","to"}. Chunks should cover every supplied utterance once, in order, without overlapping. Fold short acknowledgements into a neighbouring chunk.',
   'An idea groups chunks that make one point. Ideas cite source_range null: their evidence is derived from their chunks. File each chunk under one idea, and each idea under the segment topic its utterances actually discuss, using {"semantic_level":3,"id":<topic id from segment_topics>}.',
+  'Every idea parent_id must copy an id from segment_topics exactly (or be null); never invent, rename or abbreviate a topic id. Every chunk parent_id must reference an idea you wrote in this reply, with exactly the same id. Check each parent reference against the ids above before answering.',
   'Do not force a fit. If content belongs to no supplied topic, give its idea parent_id null and add a boundary note of kind unfiled. If the segment contains a subject the overview missed, add a boundary note of kind missed_topic with its range. If a topic boundary looks wrong, add a boundary note of kind wrong_boundary. Otherwise return an empty boundary_notes array.',
   'Use edges between chunks or ideas only for real relations; otherwise an empty edges array.',
   'When a glossary is supplied, write names in node names and summaries with its canonical spelling.',

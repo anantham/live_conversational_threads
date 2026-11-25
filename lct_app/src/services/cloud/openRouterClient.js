@@ -131,6 +131,10 @@ function failure(status, payload) {
   if (code === 'invalid_completion' && payload.stop_reason === 'max_tokens') error.stopReason = 'max_tokens';
   const attempts = publicAttempts(payload.attempts);
   if (attempts.length) error.attempts = attempts;
+  if (code === 'invalid_completion' && typeof payload.validation_stage === 'string' && STAGE_LABELS.test(payload.validation_stage)) {
+    error.validationStage = payload.validation_stage;
+    if (typeof payload.validation_rule === 'string' && STAGE_LABELS.test(payload.validation_rule)) error.validationRule = payload.validation_rule;
+  }
   return error;
 }
 
