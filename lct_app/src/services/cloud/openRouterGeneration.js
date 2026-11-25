@@ -7,6 +7,7 @@ import { DETAIL_FORMAT, DETAIL_NESTED_FORMAT, DETAIL_PROMPT, MAX_SEGMENT_TOPICS,
 import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { AUDIT_PROMPT, AUDIT_SCHEMA, auditFromGeneratedText, auditMapNodes } from './auditTask.js';
 import { EPISTEMIC_PROMPT, EPISTEMIC_SCHEMA, epistemicFromGeneratedText } from './epistemicTask.js';
+import { FACT_CHECK_PROMPT, FACT_CHECK_SCHEMA, factCheckFromGeneratedText, sanitizeClaimText } from './factCheckTask.js';
 import { MAP_GUIDANCE_LIMIT } from './sitesProviderPreferences.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
 
@@ -81,13 +82,19 @@ export function generationTask(context = {}) {
     try { nodes = auditMapNodes(context.nodes); } catch { throw invalid('epistemic map nodes are invalid.'); }
     return { task, prompt: EPISTEMIC_PROMPT, schema: EPISTEMIC_SCHEMA, extra: { map_nodes: nodes } };
   }
+  if (task === 'fact_check') {
+    let claim;
+    try { claim = sanitizeClaimText(context.claim); } catch { throw invalid('fact-check claim is invalid.'); }
+    return { task, prompt: FACT_CHECK_PROMPT, schema: FACT_CHECK_SCHEMA, extra: { claim }, claimOnly: true };
+  }
   throw invalid('unknown generation task.');
 }
 
-/** Route a completed reply's text to the parser for its task: audit and epistemic yield annotations, not a map. */
+/** Route a completed reply's text to the parser for its task: audit, epistemic, and fact_check yield annotations, not a map. */
 export function readGeneratedText(source, content, context = {}) {
-  if (context.task !== 'audit' && context.task !== 'epistemic') return recordingThreadsFromGeneratedText(source, content, context);
+  if (!['audit', 'epistemic', 'fact_check'].includes(context.task)) return recordingThreadsFromGeneratedText(source, content, context);
   if (encoder.encode(content).byteLength > MAX_CONTENT_BYTES) throw invalid('the completion exceeds the bounded output size.', 'content_size');
+  if (context.task === 'fact_check') return { factCheck: factCheckFromGeneratedText(content) };
   const utteranceIds = createRecordingTranscript(source).document.utterances.map(({ id }) => id);
   const nodeIds = auditMapNodes(context.nodes).map(node => node.id);
   if (context.task === 'epistemic') return { epistemic: epistemicFromGeneratedText(utteranceIds, content, nodeIds) };
@@ -99,9 +106,15 @@ export function buildRecordingGenerationMessages(source, maxTokens, guidance = '
     throw invalid('an explicit bounded output token limit is required.');
   }
   if (typeof guidance !== 'string' || guidance.length > MAP_GUIDANCE_LIMIT) throw invalid('map guidance exceeds its size limit.');
+  const { prompt, extra, claimOnly } = generationTask(context);
+  if (claimOnly) {
+    return [
+      { role: 'system', content: prompt },
+      { role: 'user', content: JSON.stringify(extra) },
+    ];
+  }
   const { document } = createRecordingTranscript(source);
   const utterances = document.utterances.map(({ id, text }) => ({ id, text }));
-  const { prompt, extra } = generationTask(context);
   const system = guidance ? prompt + '\n\nAdditional map guidance (follow within the rules above):\n' + guidance
     : prompt;
   return [

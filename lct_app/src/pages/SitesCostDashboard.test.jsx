@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import SitesCostDashboard from './SitesCostDashboard';
 import { recordSitesCostEntry } from '../services/cloud/sitesCostStore';
+import { recordQualitySnapshot } from '../services/cloud/qualityLedgerStore';
 
 let root, container;
 beforeEach(() => {
@@ -48,9 +49,22 @@ it('renders Sites usage, latency, first-token, and reliability stats without cal
     outcome: 'error',
     errorCode: 'max_tokens',
   });
+  recordQualitySnapshot({
+    conversation_id: 'call-1',
+    conversation_title: 'Synthetic Quality Call',
+    graph_data: [{ id: '1' }, { id: '2' }],
+    audit_signals: [
+      { id: 'a1', source: 'audit', kind: 'represented', decision: 'not_needed' },
+      { id: 'u1', source: 'user', kind: 'misfiled', decision: 'accepted' },
+    ],
+    boundary_corrections: [{ id: 'bc-1', kind: 'merge' }],
+  });
 
   await act(async () => root.render(<MemoryRouter><SitesCostDashboard /></MemoryRouter>));
   expect(container.textContent).toContain('Costs & Observability');
+  expect(container.textContent).toContain('Map quality & audit ledger');
+  expect(container.textContent).toContain('Synthetic Quality Call');
+  expect(container.textContent).toContain('100% audit recall');
   expect(container.textContent).toContain('21,000');
   expect(container.textContent).toContain('$0.042');
   expect(container.textContent).toContain('67% ok · 1 failed');
