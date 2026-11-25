@@ -11050,7 +11050,7 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   without this change; with it, the drop itself opens the fixture and only the final title
   assertion fails. See the ISSUES.md entry of the same date.
 
-## 2026-11-26 00:10 IST — Production smoke trimmed to checks that hold on any healthy build (branch test/trim-prod-smoke)
+## 2026-11-25 23:49 IST — Production smoke trimmed to checks that hold on any healthy build (branch test/trim-prod-smoke)
 
 - Why: owner chose to trim. After PR #262 the smoke on main 59404d6a failed 6 of 9 (run
   45671560851) because the domain serves a Sites-branch build whose Home and viewer differ from

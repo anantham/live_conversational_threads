@@ -3303,7 +3303,7 @@ Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received
 - **Next step (owner's call):** decide what the smoke should test. Options: run it from the Site's own publish step with that branch's spec; point this workflow at the Vercel production URL so it tests main's build; or cut the spec down to build-health assertions that hold across both UIs.
 
 
-### 2026-11-26 — Follow-up: production smoke trimmed; the Site still ships without its own browser check
+### 2026-11-25 — Follow-up: production smoke trimmed; the Site still ships without its own browser check
 
 - **What changed:** the live prod smoke now runs only tests tagged `@prod-smoke` (boot, Drive-link handoff, backendless /browse, bad-file rejection), which pass on both main's build and the Sites-branch build seen on 2026-11-25.
 - **What is still open:** the five opener journeys that walk into the viewer are no longer checked on the live domain, and nothing runs a Sites branch's own spec against the build that branch publishes. A viewer regression in a published Site would not be caught by CI.
