@@ -11030,6 +11030,22 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   TECH_DEBT, per-filename greps for the legacy scripts and prompt files: 0 hits).
 - Not deployed. auth_policy.py still lists the /api/costs prefix; left alone
   because it is an auth file.
+## 2026-11-25 21:01 IST — Archive stale docs (branch docs/archive-stale-docs)
+
+- Scope: documentation only. Base origin/main 04b85f67.
+- Method: for each candidate, last commit date, how many of the source files it names
+  still exist, and inbound links from code, ADRs and other docs.
+- Moved to docs/archive/ (10 files, about 9,150 lines): docs/ROADMAP.md,
+  FEATURE_ROADMAP.md, ROADMAP_ADVANCED_ANALYSIS.md, ROADMAP_INSTRUMENTATION_METRICS.md,
+  TIER_2_FEATURES.md, FEATURE_SIMULACRA_LEVELS.md, TESTING.md;
+  lct_app/ZOOM_SYSTEM.md, lct_app/NODE_DETAIL_PANEL.md;
+  lct_python_backend/GRAPH_GENERATION.md. Reasons are tabled in docs/archive/README.md.
+- The roadmaps were not merged into a new one: all five are roadmaps or feature specs written in Nov 2025
+  (FEATURE_ROADMAP.md last revised 2026-03-20), and writing a current roadmap is an owner decision. docs/README.md now says there is no
+  current roadmap and points at VISION.md, adr/INDEX.md and plans/.
+- Links repointed in README.md, CONTRIBUTING.md, docs/README.md,
+  docs/PROJECT_STRUCTURE.md and four backend guides. ADRs, audits, handovers and plans
+  were not edited. Stale candidates left in place are listed in docs/TECH_DEBT.md.
 
 ## 2026-11-25 23:25 IST — Browse drop smoke test no longer depends on a non-Sites heading (branch fix/smoke-browse-drop-sites-mode)
 

@@ -14,8 +14,21 @@ a ruling:
 - `lct_app/src/components/ImportCanvas.jsx` — unrouted, but ADR-059 says canvas import "stays".
 - `lct_python_backend/performance_benchmark.py` — no importer; `docs/MONITORING_SETUP.md` documents it as a manual tool.
 - `auth_policy.py` still lists the `/api/costs` prefix for the removed, never-mounted `cost_api.py`.
-- `lct_app/NODE_DETAIL_PANEL.md` and `lct_app/ZOOM_SYSTEM.md` describe the removed `contextLoading.js` / `nodeTransitions.js`; both docs predate the current viewer and are archive candidates.
-- `docs/TESTING.md` (lines 165, 229-233) describes a `tests/test_database/test_db_helpers.py` that does not exist and imports the removed `db_helpers.py`. Other historical docs (plans, audits, ADR-011, `cost-dashboard-counterfactual-scoping.md`) still name removed files and were left as records.
+- `NODE_DETAIL_PANEL.md` and `ZOOM_SYSTEM.md`, which describe the removed `contextLoading.js` / `nodeTransitions.js`, were moved to `docs/archive/` on 2026-11-25.
+- `docs/TESTING.md`, which described a `tests/test_database/test_db_helpers.py` that does not exist, was moved to `docs/archive/` on 2026-11-25. Other historical docs (plans, audits, ADR-011, `cost-dashboard-counterfactual-scoping.md`) still name removed files and were left as records.
+
+## 2026-11-25 — Documentation: stale candidates left in place
+
+Ten docs were archived (see `docs/archive/README.md`). These were scored the same way
+(last edit, share of named files that still exist, inbound links) and left because they
+describe code that still exists or are still linked as the reference:
+
+- `lct_python_backend/DATABASE_MIGRATIONS.md`, `GOOGLE_MEET_IMPORT.md`, `INSTRUMENTATION.md`, `PROMPTS_CONFIGURATION.md`, `SPEAKER_ANALYTICS.md` — last edited 2025-11; each names some files that no longer exist. Need a read against the code, then either a refresh or the archive.
+- `docs/DATA_MODEL_V2.md` (+ `_CORRECTIONS.md`, 968 lines of corrections kept beside the original) — last edited 2025-11-10, still linked from the root README and `models/__init__.py` as the schema reference. Fold the corrections in or regenerate from the models.
+- `docs/FEATURES.md`, `docs/API_DOCUMENTATION.md`, `docs/DEPLOYMENT_CHECKLIST.md`, `docs/MONITORING_SETUP.md` — last edited 2026-06-29; none mentions the Sites deployment.
+- No doc at the root or in `docs/README.md` says which stack is production (the Python backend or the Sites worker).
+- `docs/WORKLOG.md` (11k lines) and `ISSUES.md` (3.3k lines) only grow. Rotating them by quarter was not done here because other sessions append to both continuously.
+- Dated records still cite the archived docs at their old paths and were not edited: ADR-003, ADR-005 and ADR-006 (whose `../ROADMAP.md` link is now broken; ADRs are immutable), the 2026-05-30 and 2026-06-05 audits, one handover, two plans, and the `docs/FEATURE_ROADMAP.md` row in the table below.
 
 ## 2026-10-09 — Sites UI regression suite boundaries
 

@@ -707,7 +707,7 @@ pytest tests/test_google_meet_parser.py -v
 
 ## References
 
-- [Week 3 Roadmap](../docs/ROADMAP.md#week-3-google-meet-transcript-parser)
+- [Week 3 Roadmap](../docs/archive/ROADMAP.md#week-3-google-meet-transcript-parser)
 - [Database Schema](DATABASE_MIGRATIONS.md)
 - [API Documentation](import_api.py)
 - [Parser Source Code](parsers/google_meet.py)
