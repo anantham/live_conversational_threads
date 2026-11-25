@@ -21,22 +21,41 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('renders Sites usage stats without calling the Python backend and clears local logs', async () => {
+it('renders Sites usage, latency, first-token, and reliability stats without calling the Python backend', async () => {
   recordSitesCostEntry({
     provider: 'anthropic',
     model: 'claude-sonnet-5-live',
+    kind: 'skeleton',
+    ttftMs: 12400,
+    durationMs: 32400,
+    nodes: 19,
+    coveragePct: 100,
     usage: { input_tokens: 12000, output_tokens: 3000, total_tokens: 15000 },
   });
   recordSitesCostEntry({
     provider: 'openrouter',
     model: 'google/gemini-3-pro',
+    kind: 'detail',
+    ttftMs: 2100,
+    durationMs: 8100,
     usage: { input_tokens: 5000, output_tokens: 1000, total_tokens: 6000, cost_usd: 0.042 },
+  });
+  recordSitesCostEntry({
+    provider: 'anthropic',
+    model: 'claude-sonnet-5-live',
+    kind: 'detail',
+    durationMs: 4000,
+    outcome: 'error',
+    errorCode: 'max_tokens',
   });
 
   await act(async () => root.render(<MemoryRouter><SitesCostDashboard /></MemoryRouter>));
-  expect(container.textContent).toContain('Costs');
+  expect(container.textContent).toContain('Costs & Observability');
   expect(container.textContent).toContain('21,000');
   expect(container.textContent).toContain('$0.042');
+  expect(container.textContent).toContain('67% ok · 1 failed');
+  expect(container.textContent).toContain('100% cov');
+  expect(container.textContent).toContain('max_tokens');
   expect(container.textContent).toContain('Anthropic · claude-sonnet-5-live');
   expect(container.textContent).toContain('OpenRouter · google/gemini-3-pro');
   expect(container.textContent).not.toContain('Error Loading Cost Data');

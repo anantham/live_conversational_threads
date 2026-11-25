@@ -19,7 +19,13 @@ function formatNumber(value) {
   return new Intl.NumberFormat('en-US').format(value || 0);
 }
 
+function formatSeconds(ms) {
+  if (ms == null || !Number.isFinite(ms)) return '—';
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function providerLabel(id) {
+  if (id === 'browser') return 'Browser';
   return MAP_PROVIDERS[id]?.name || id;
 }
 
@@ -46,7 +52,7 @@ export default function SitesCostDashboard() {
 
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-32 pt-8 font-sans text-slate-800 sm:px-8">
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="mx-auto max-w-4xl space-y-6">
         <nav className="flex flex-wrap items-center justify-between gap-4 text-sm">
           <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-slate-600 underline-offset-4 hover:underline">
             <ArrowLeft size={16} aria-hidden="true" /> Home
@@ -58,10 +64,10 @@ export default function SitesCostDashboard() {
 
         <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-6">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Usage &amp; spend</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-slate-900">Costs</h1>
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Usage, latency &amp; spend</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-slate-900">Costs &amp; Observability</h1>
             <p className="mt-2 max-w-[60ch] text-sm leading-6 text-slate-600">
-              Tracks map generation calls and token counts made from this browser. No transcript text or API keys are stored here; check your provider console for exact billing.
+              Tracks calls, latency, first-token speed, token counts, coverage, and errors from this browser. No transcript text or API keys are stored here; check your provider console for exact billing.
             </p>
           </div>
           <div role="group" aria-label="Time range" className="flex flex-wrap gap-1.5">
@@ -91,16 +97,28 @@ export default function SitesCostDashboard() {
           </section>
         )}
 
-        <section className="grid gap-3 sm:grid-cols-3">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Generation calls</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Calls &amp; reliability</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{formatNumber(summary.calls)}</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {summary.successRatePct != null ? `${summary.successRatePct}% ok · ${summary.errorCount} failed` : 'No calls yet'}
+            </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total tokens</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Tokens &amp; throughput</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">{formatNumber(summary.totalTokens)}</p>
             <p className="mt-0.5 text-xs text-slate-500">
               {formatNumber(summary.inputTokens)} in · {formatNumber(summary.outputTokens)} out
+              {summary.avgTokensPerSec != null ? ` · ${summary.avgTokensPerSec.toFixed(0)} tok/s` : ''}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Avg latency &amp; first token</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{formatSeconds(summary.avgDurationMs)}</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              First token: {formatSeconds(summary.avgTtftMs)}
+              {summary.avgCoveragePct != null ? ` · ${Math.round(summary.avgCoveragePct)}% cov` : ''}
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -109,7 +127,7 @@ export default function SitesCostDashboard() {
               {summary.hasReportedCost ? formatUsd(summary.reportedCostUsd) : '—'}
             </p>
             <p className="mt-0.5 text-xs text-slate-500">
-              {summary.hasReportedCost ? 'Reported by provider' : 'Token counts only (see provider billing)'}
+              {summary.hasReportedCost ? 'Reported by provider' : 'Token counts only'}
             </p>
           </div>
         </section>
@@ -130,7 +148,12 @@ export default function SitesCostDashboard() {
                   <div key={`${item.provider}-${item.model}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                     <div>
                       <p className="font-medium text-slate-900">{providerLabel(item.provider)} · {item.model}</p>
-                      <p className="text-xs text-slate-500">{formatNumber(item.calls)} calls · {formatNumber(item.inputTokens)} in · {formatNumber(item.outputTokens)} out</p>
+                      <p className="text-xs text-slate-500">
+                        {formatNumber(item.calls)} calls ({item.okCalls} ok{item.errorCalls ? `, ${item.errorCalls} err` : ''})
+                        {item.avgDurationMs != null ? ` · avg ${formatSeconds(item.avgDurationMs)}` : ''}
+                        {item.avgTtftMs != null ? ` · first token ${formatSeconds(item.avgTtftMs)}` : ''}
+                        {item.avgTokensPerSec != null ? ` · ${item.avgTokensPerSec.toFixed(0)} tok/s` : ''}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-slate-900">{item.hasCost ? formatUsd(item.costUsd) : `${formatNumber(item.totalTokens)} tok`}</p>
@@ -142,7 +165,7 @@ export default function SitesCostDashboard() {
 
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base font-semibold text-slate-900">Recent calls</h2>
+                <h2 className="text-base font-semibold text-slate-900">Recent events</h2>
                 <button type="button" onClick={handleClear} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">
                   <Trash2 size={13} aria-hidden="true" /> Clear browser log
                 </button>
@@ -150,12 +173,20 @@ export default function SitesCostDashboard() {
               <ul className="mt-3 divide-y divide-slate-100 text-xs">
                 {summary.recent.map(entry => (
                   <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${entry.outcome === 'error' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                        {entry.outcome === 'error' ? (entry.errorCode || 'error') : entry.kind}
+                      </span>
                       <span className="font-medium text-slate-800">{providerLabel(entry.provider)} · {entry.model}</span>
-                      <span className="ml-2 text-slate-500">{new Date(entry.at).toLocaleString()}</span>
+                      <span className="text-slate-500">{new Date(entry.at).toLocaleString()}</span>
                     </div>
-                    <div className="text-slate-600">
-                      {formatNumber(entry.totalTokens)} tok{entry.costUsd != null ? ` · ${formatUsd(entry.costUsd)}` : ''}
+                    <div className="tabular-nums text-slate-600">
+                      {entry.durationMs != null ? `${formatSeconds(entry.durationMs)}` : ''}
+                      {entry.ttftMs != null ? ` (1st ${formatSeconds(entry.ttftMs)})` : ''}
+                      {entry.totalTokens > 0 ? ` · ${formatNumber(entry.totalTokens)} tok` : ''}
+                      {entry.nodes != null ? ` · ${entry.nodes} nodes` : ''}
+                      {entry.coveragePct != null ? ` · ${entry.coveragePct}% cov` : ''}
+                      {entry.costUsd != null ? ` · ${formatUsd(entry.costUsd)}` : ''}
                     </div>
                   </li>
                 ))}

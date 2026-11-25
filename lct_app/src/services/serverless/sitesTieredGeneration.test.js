@@ -190,7 +190,9 @@ describe('direct Anthropic admission and health', () => {
     expect(body).toEqual({ code: 'invalid_completion',
       error: 'Anthropic did not return a complete source-linked map. The attempt remains counted; no map was saved.',
       validation_stage: 'choice_finish', stop_reason: 'max_tokens', output_tokens: 8192, max_output_tokens: 8192,
-      upstream_request_id: 'req_011SyntheticTruncated' });
+      upstream_request_id: 'req_011SyntheticTruncated',
+      attempts: [{ backend: 'anthropic', task: 'map', max_output_tokens: 8192, outcome: 'rejected', stage: 'choice_finish',
+        stop_reason: 'max_tokens', input_tokens: 9100, output_tokens: 8192, request_id: 'req_011SyntheticTruncated', duration_ms: expect.any(Number) }] });
     expect(JSON.stringify(body)).not.toMatch(/private-truncated|Synthetic internal reasoning|synthetic-anthropic-key/);
     expect(attempts()).toEqual([{ completed_at: null, max_output_tokens: 8192 }]);
   });
@@ -568,4 +570,18 @@ it('reports an OpenRouter cut-off as max_tokens so the browser can split', async
     usage: { completion_tokens: 8192 } }));
   const body = await (await worker.fetch(request('openrouter'), env)).json();
   expect(body).toMatchObject({ code: 'invalid_completion', validation_stage: 'choice_finish', stop_reason: 'max_tokens', output_tokens: 8192 });
+});
+
+// Intent: a provider that cannot be reached is named, with what was tried, never reported as a storage fault.
+it('names an unreachable provider and returns the attempt that was in flight', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  fetch.mockRejectedValueOnce(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } }));
+  const response = await worker.fetch(new Request(SITE + '/api/cloud/map/generate', { method: 'POST',
+    headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1' },
+    body: JSON.stringify({ source, task: 'skeleton', routes: [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }] }) }), env);
+  const body = await response.json();
+  expect(response.status).toBe(502);
+  expect(body).toMatchObject({ code: 'provider_unreachable', attempts: [{ backend: 'anthropic', model: 'claude-synthetic', task: 'skeleton',
+    outcome: 'network_error', error_name: 'TypeError', error_cause: 'ECONNRESET' }] });
+  expect(body.error).toMatch(/could not be reached \(TypeError ECONNRESET\)/);
 });

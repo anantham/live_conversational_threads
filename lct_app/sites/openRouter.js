@@ -116,6 +116,31 @@ function usageOf(completion, anthropic) {
     : { inputTokens: count(usage?.prompt_tokens), outputTokens: count(usage?.completion_tokens) };
 }
 
+// Only standard error classes and system cause codes (ECONNRESET, UND_ERR_HEADERS_TIMEOUT) are reported:
+// an arbitrary error name could carry data, so anything else is withheld.
+const ERROR_CLASSES = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'TimeoutError', 'DOMException']);
+const safeName = value => (typeof value === 'string' && (ERROR_CLASSES.has(value) || /^E[A-Z0-9_]{2,40}$|^UND_ERR_[A-Z_]{2,40}$/.test(value)) ? value : undefined);
+
+// Debug-gated: the class, cause and first line of an unexpected error, never request content.
+function logUnexpected(env, error, where) {
+  if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
+  try {
+    console.error('[map] unexpected error', { where, name: safeName(error?.name) || 'unknown', cause: safeName(error?.cause?.code),
+      at: typeof error?.stack === 'string' ? error.stack.split('\n').map(l => l.trim()).filter(l => l.startsWith('at ')).slice(0, 2).map(l => l.slice(0, 160)) : undefined });
+  } catch { /* Never changes the result. */ }
+}
+
+function attemptUsage(completion, anthropic, response) {
+  const usage = usageOf(completion, anthropic);
+  const requestId = anthropic ? anthropicRequestId(response) : undefined;
+  return { ...(usage.stopReason ? { stop_reason: usage.stopReason } : {}),
+    ...(usage.inputTokens != null ? { input_tokens: usage.inputTokens } : {}),
+    ...(usage.outputTokens != null ? { output_tokens: usage.outputTokens } : {}), ...(requestId ? { request_id: requestId } : {}) };
+}
+
+// eslint-disable-next-line no-unused-vars -- `started` is dropped on purpose (an internal clock reading)
+const publicAttempt = ({ started, ...attempt }) => attempt;
+
 const ANTHROPIC_STOP_REASONS = new Set(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use', 'pause_turn',
   'refusal', 'model_context_window_exceeded']);
 
@@ -170,7 +195,7 @@ function orderedPolicies(routes, env) {
   return routes.flatMap(route => {
     if (Object.hasOwn(route, 'key')) {
       const policy = personalMapPolicy(route, env);
-      return policy?.enabled ? [policy] : [];
+      return policy?.enabled ? [{ ...policy, personal: true }] : [];
     }
     const policy = mapPolicies[route.backend](env);
     return policy.enabled ? [policy] : [];
@@ -258,6 +283,10 @@ function extractResponseUsage(completion, anthropic) {
   return { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, ...(costUsd == null ? {} : { cost_usd: costUsd }) };
 }
 
+  // One content-free record per provider call, returned on success and failure so the browser can show what was tried.
+  const attempts = [];
+  const settle = (attempt, fields) => Object.assign(attempt, { duration_ms: Date.now() - attempt.started, ...fields });
+
   async function executeWires({ signal, stream = false, emit = null }) {
     const minimalId = diagnostic && payload.mode !== 'map' ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
@@ -269,6 +298,10 @@ function extractResponseUsage(completion, anthropic) {
       const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
       const callStarted = Date.now();
       const call = { backend: policy.backend, model: body.model, maxTokens, task: context?.task ?? 'map' };
+      // The model is named only on the owner's personal-key routes; server-configured routes keep it private.
+      const attempt = { backend: policy.backend, ...(policy.personal ? { model: body.model } : {}), task: call.task,
+        max_output_tokens: maxTokens, started: callStarted, outcome: 'in_flight' };
+      attempts.push(attempt);
       emit?.('stage', { stage: 'connecting', provider: policy.label, backend: policy.backend, model: body.model, task: call.task });
       const wireBody = stream ? { ...body, stream: true } : body;
       const response = await fetch(policy.endpoint, { method: 'POST',
@@ -284,6 +317,8 @@ function extractResponseUsage(completion, anthropic) {
         const modelFallback = policy.backend === 'openrouter' && ROUTE_UNAVAILABLE.has(response.status);
         const providerFallback = ordered && [401, 403, 404, 429].includes(response.status);
         const details = anthropic ? await anthropicRefusalDetails(response, signal) : { upstream_status: response.status };
+        settle(attempt, { outcome: 'refused', upstream_status: response.status, ...(details.upstream_reason ? { reason: details.upstream_reason } : {}),
+          ...(details.upstream_request_id ? { request_id: details.upstream_request_id } : {}) });
         logProviderCall(env, { ...call, outcome: 'refused', upstreamStatus: response.status, durationMs: Date.now() - callStarted,
           ...(details.upstream_reason ? { reason: details.upstream_reason } : {}),
           ...(details.upstream_request_id ? { requestId: details.upstream_request_id } : {}) });
@@ -315,6 +350,7 @@ function extractResponseUsage(completion, anthropic) {
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
         const parsed = readCompletion({ source: input.source, response: completion, context });
+        settle(attempt, { outcome: 'accepted', ...attemptUsage(completion, anthropic, response) });
         if (parsed.audit) {
           logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
             findings: parsed.audit.findings.length, droppedRanges: parsed.audit.droppedRanges, unknownNodes: parsed.audit.unknownNodes,
@@ -333,6 +369,7 @@ function extractResponseUsage(completion, anthropic) {
           ...(diagnostic ? { mapId: anthropicRequestId(response) } : {}) };
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
+        settle(attempt, { outcome: 'rejected', ...sanitizedValidation(error?.validationStage, error?.validationRule), ...attemptUsage(completion, anthropic, response) });
         logProviderCall(env, { ...call, outcome: 'rejected', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           ...sanitizedValidation(error?.validationStage, error?.validationRule),
           ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
@@ -344,19 +381,35 @@ function extractResponseUsage(completion, anthropic) {
     throw lastRefusal || new OpenRouterError(502, 'provider_refused', 'No configured provider could finish generation. The attempt remains counted.');
   }
 
+  async function runWiresWithAttempts({ stream = false, emit = null }) {
+    try {
+      return await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream, emit }));
+    } catch (error) {
+      const pending = attempts.find(a => a.outcome === 'in_flight');
+      if (pending) settle(pending, { outcome: error?.code === 'timeout' ? 'timeout' : error instanceof OpenRouterError ? error.code : 'network_error',
+        ...(error instanceof OpenRouterError ? {} : { error_name: safeName(error?.name), error_cause: safeName(error?.cause?.code) }) });
+      // A provider that could not be reached is not an admission or storage fault: name it.
+      const named = error instanceof OpenRouterError ? error : new OpenRouterError(502, 'provider_unreachable',
+        `The AI provider could not be reached (${safeName(error?.name) || 'error'}${error?.cause?.code ? ' ' + safeName(error.cause.code) : ''}). The attempt remains counted; no map was saved.`);
+      if (!(error instanceof OpenRouterError)) logUnexpected(env, error, 'provider_call');
+      named.details = { ...(named.details || {}), attempts: attempts.map(publicAttempt) };
+      throw named;
+    }
+  }
+
   async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, usage }) {
     if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
     const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
     if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
     if (diagnostic) return { diagnostic: 'passed', model, minimal_request_id: minimalId, map_request_id: mapId };
     if (audit) {
-      return { request_id: id, task: 'audit', backend, model, findings: audit.findings,
+      return { request_id: id, task: 'audit', backend, model, attempts: attempts.map(publicAttempt), findings: audit.findings,
         dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed,
         ...(usage ? { usage } : {}) };
     }
     logReferenceRepair(repair, backend);
     logEvidenceMismatch(artifact, backend);
-    return { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),
+    return { request_id: id, artifact, model, attempts: attempts.map(publicAttempt), ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),
       ...(usage ? { usage } : {}),
       ...(context?.task ? { task: context.task } : {}),
       ...(boundaryNotes ? { boundary_notes: boundaryNotes, stub_topic_ids: stubTopicIds } : {}),
@@ -373,7 +426,7 @@ function extractResponseUsage(completion, anthropic) {
         };
         send('stage', { stage: 'admitted', task: context?.task ?? 'map', model: wires[0]?.body?.model, provider: wires[0]?.policy?.label, maxTokens });
         try {
-          const outcome = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream: true, emit: send }));
+          const outcome = await runWiresWithAttempts({ stream: true, emit: send });
           const body = await finalizeResult(outcome);
           send('complete', body);
         } catch (error) {
@@ -381,6 +434,7 @@ function extractResponseUsage(completion, anthropic) {
             send('error', { status: error.status, code: error.code, error: error.message, ...error.details });
           } else {
             logOpenRouterFailure(env, 'generation_failed', undefined, undefined, 'map');
+            logUnexpected(env, error, 'route');
             send('error', { status: 503, code: 'generation_failed', error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved.' });
           }
         } finally {
@@ -394,7 +448,7 @@ function extractResponseUsage(completion, anthropic) {
     });
   }
 
-  const outcome = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream: false }));
+  const outcome = await runWiresWithAttempts({ stream: false });
   return openRouterJSON(200, await finalizeResult(outcome));
 }
 
@@ -445,6 +499,7 @@ export async function handleOpenRouter(request, env) {
   } catch (error) {
     if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code, ...error.details });
     logOpenRouterFailure(env, 'generation_failed', undefined, undefined, prefix?.split('/').at(-1) ?? 'map');
+    logUnexpected(env, error, 'route');
     return openRouterJSON(503, { error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved. Check admission storage and provider setup before retrying.', code: 'generation_failed' });
   }
 }

@@ -19,6 +19,28 @@ const clock = ms => {
   return [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60].map(v => String(v).padStart(2, '0')).join(':');
 };
 
+const seconds = ms => `${Math.round((ms || 0) / 100) / 10} s`;
+const number = n => (Number.isFinite(n) ? n.toLocaleString('en-US') : '?');
+
+/** One readable line per provider attempt: who, outcome, time, tokens, stop reason, request id. */
+export function describeAttempt(a) {
+  const who = [a.backend, a.model].filter(Boolean).join(' ');
+  const tokens = a.output_tokens != null ? ` · ${number(a.output_tokens)}${a.max_output_tokens ? ` of ${number(a.max_output_tokens)}` : ''} output tokens` : '';
+  const input = a.input_tokens != null ? ` · ${number(a.input_tokens)} input tokens` : '';
+  const why = [a.stop_reason && a.stop_reason !== 'end_turn' ? `stop ${a.stop_reason}` : '', a.stage ? `failed check ${a.stage}${a.rule ? '/' + a.rule : ''}` : '',
+    a.upstream_status ? `HTTP ${a.upstream_status}` : '', a.reason || '', a.error_name ? `${a.error_name}${a.error_cause ? ' ' + a.error_cause : ''}` : '']
+    .filter(Boolean).join(', ');
+  return `${who}: ${a.outcome}${a.duration_ms != null ? ` after ${seconds(a.duration_ms)}` : ''}${input}${tokens}${why ? ` · ${why}` : ''}${a.request_id ? ` · ${a.request_id}` : ''}`;
+}
+
+function activity(onProgress, level, text, extra = {}) {
+  onProgress?.({ phase: 'log', entry: { at: Date.now(), level, text, ...extra } });
+}
+
+function routeText(routes) {
+  return (routes || []).map(r => [r.backend, r.model].filter(Boolean).join(' ')).join(' → ') || 'the configured provider';
+}
+
 function log(event, details) {
   try { console.info(`[lct-pipeline] ${event}`, details); } catch { /* Logging never changes the result. */ }
 }
@@ -208,8 +230,9 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     const first = utteranceById.get(segment.utteranceIds[0]), last = utteranceById.get(segment.utteranceIds.at(-1));
     const details = { segment: segment.label, position: `${i + 1}/${queue.length}`, topics: segment.topics.length,
       turns: segment.utteranceIds.length, words, span: `${clock((first.timestamp_start || 0) * 1000)}–${clock((last.timestamp_end || 0) * 1000)}` };
-    onProgress?.({ phase: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), partialBundle: merged });
+    onProgress?.({ phase: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), partialBundle: merged, startedAt: Date.now() });
     log('detail start', details);
+    activity(onProgress, 'info', `Detail ${i + 1}/${queue.length} (${details.span}): ${segment.topics.map(t => t.node_name).join(', ')}; sending ${number(details.turns)} turns, ${number(words)} words.`, { running: true });
     const started = Date.now();
     let result;
     try {
@@ -219,6 +242,9 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     } catch (error) {
       const halves = error?.stopReason === 'max_tokens' ? halve(segment) : null;
       log(halves ? 'detail split' : 'detail failed', { ...details, ms: Date.now() - started, error: error?.message });
+      activity(onProgress, halves ? 'warn' : 'error', halves
+        ? `Detail ${i + 1} hit the output limit after ${seconds(Date.now() - started)}; splitting it into two halves and retrying.`
+        : `Detail ${i + 1} failed after ${seconds(Date.now() - started)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
       if (!halves) throw Object.assign(error, { partialBundle: merged });
       queue.splice(i, 1, ...halves); i -= 1;
       continue;
@@ -228,6 +254,11 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     merged = withBuilders(mergeDetail(source, base, results).bundle, used);
     log('detail done', { ...details, ms: Date.now() - started, nodes: result.bundle.graph_data.length,
       notes: result.boundaryNotes?.length || 0, model: result.model });
+    const made = result.bundle.graph_data.filter(n => !(result.stubTopicIds || []).includes(n.id.slice(2)));
+    const ideas = made.filter(n => n.semantic_level === 2).length, chunks = made.filter(n => n.semantic_level === 1).length;
+    activity(onProgress, 'ok', `Detail ${i + 1}/${queue.length} done in ${seconds(Date.now() - started)}: ${ideas} ideas, ${chunks} chunks`
+      + `${result.boundaryNotes?.length ? `, ${result.boundaryNotes.length} boundary note${result.boundaryNotes.length === 1 ? '' : 's'} (${result.boundaryNotes.map(n => n.kind).join(', ')})` : ''}.`,
+      { attempts: (result.attempts || []).map(describeAttempt) });
   }
   return { bundle: merged, segments: queue.length, used };
 }
@@ -241,24 +272,35 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS }) {
   const utterances = createRecordingTranscript(source).document.utterances;
   const utteranceById = new Map(utterances.map(u => [u.id, u]));
-  onProgress?.({ phase: 'glance' });
-  log('glance start', { turns: utterances.length, words: utterances.reduce((s, u) => s + countWords(u.text), 0) });
+  const totalWords = utterances.reduce((s, u) => s + countWords(u.text), 0);
+  onProgress?.({ phase: 'glance', startedAt: Date.now() });
+  log('glance start', { turns: utterances.length, words: totalWords });
+  activity(onProgress, 'info', `Overview: streaming all ${number(utterances.length)} turns (${number(totalWords)} words) to ${routeText(routes)}.`, { running: true });
   const started = Date.now();
   let glance;
   try { glance = await generate(source, signal, routes, guidance, { task: 'skeleton',
     onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'skeleton', streamEvent }) }); }
-  catch (error) { log('glance failed', { ms: Date.now() - started, error: error?.message }); throw error; }
+  catch (error) {
+    log('glance failed', { ms: Date.now() - started, error: error?.message });
+    activity(onProgress, 'error', `Overview failed after ${seconds(Date.now() - started)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
+    throw error;
+  }
   const skeleton = { ...glance.bundle, conversation_title: title || glance.bundle.conversation_title,
     built_by: glance.backend ? [{ backend: glance.backend, model: glance.model }] : [],
     ...(glance.glossary?.length ? { glossary: glance.glossary } : {}),
     ...(mediaRefs?.length ? { media_refs: mediaRefs } : {}), ...(meetingMetadata ? { meeting_metadata: meetingMetadata } : {}) };
   const levels = [3, 4, 5].map(level => skeleton.graph_data.filter(n => n.semantic_level === level).length);
   log('glance done', { ms: Date.now() - started, topics: levels[0], themes: levels[1], arcs: levels[2], model: glance.model });
+  const gap = skeleton.graph_data.find(n => n.generated_gap);
+  activity(onProgress, 'ok', `Overview done in ${seconds(Date.now() - started)}: ${levels[2]} arcs, ${levels[1]} themes, ${levels[0]} topics`
+    + `${glance.glossary?.length ? `, ${glance.glossary.length} glossary entries` : ''}${gap ? `; ${gap.source_ref.utterance_ids.length} turns no topic covered (kept as "Uncovered turns")` : ''}.`,
+    { attempts: (glance.attempts || []).map(describeAttempt) });
   onProgress?.({ phase: 'skeleton', partialBundle: skeleton, backend: glance.backend, model: glance.model });
   if (detail === 'none') return { bundle: skeleton, json: JSON.stringify(skeleton, null, 2), backend: glance.backend, model: glance.model, segmentCount: 0 };
 
   const topicIds = detail === 'core' ? new Set(skeleton.graph_data.filter(n => n.semantic_level === 3 && n.salience === 'core').map(n => n.id)) : null;
   const segments = planSegments(skeleton, utteranceById, { maxWords: maxSegmentWords, topicIds });
+  activity(onProgress, 'info', `Detail plan: ${segments.length} topic group${segments.length === 1 ? '' : 's'} of up to ${number(maxSegmentWords)} words, about ${Math.round(intervalMs / 1000)} s apart (provider pacing).`);
   const run = await runSegments({ source, base: skeleton, segments, routes, guidance, signal, onProgress, generate,
     intervalMs, utteranceById, waitFirst: true });
   onProgress?.({ phase: 'done', partialBundle: run.bundle, completedSegments: run.segments, totalSegments: run.segments });

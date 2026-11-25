@@ -3,9 +3,11 @@ import PropTypes from 'prop-types';
 import { Link, useNavigate } from 'react-router-dom';
 import { Download, ExternalLink, FileText, FolderOpen, HardDrive, House, Layers, Mail, Settings, Users } from 'lucide-react';
 import RecordingConversationMap from '../components/recording/RecordingConversationMap.jsx';
+import LiveConversationGraph from '../components/recording/LiveConversationGraph.jsx';
 import TooltipButton from '../components/TooltipButton.jsx';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
 import { configuredMapRoutes, getOrderedMapStatus, MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
+import { recordSitesCostEntry } from '../services/cloud/sitesCostStore.js';
 import { driveTimestampUrl, formatClock } from '../services/cloud/geminiNotesParser.js';
 import { readTranscriptFile } from '../services/cloud/pdfTranscriptReader.js';
 import { splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
@@ -41,6 +43,26 @@ const TIER_STYLES = {
   chunk: 'bg-white text-slate-700 ring-1 ring-slate-200',
 };
 
+const TIER_LEVEL = { chunk: 1, idea: 2, topic: 3, theme: 4, arc: 5 };
+
+function buildLiveCanvasBundle(completedBundle, liveNodes, parsed) {
+  if (completedBundle?.graph_data?.length) return completedBundle;
+  if (!liveNodes.length || !parsed) return null;
+  return {
+    conversation_title: parsed.title,
+    utterances: parsed.initialBundle?.utterances || [],
+    edges: [],
+    graph_data: liveNodes.map((node, index) => ({
+      id: `live-stream-${index}`,
+      semantic_level: TIER_LEVEL[node.type] || 1,
+      semantic_type: node.type || 'chunk',
+      node_name: node.name,
+      summary: 'Streaming live from model…',
+      source_ref: { utterance_ids: [] },
+    })),
+  };
+}
+
 function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const runtime = useSitesRuntime();
   const navigate = useNavigate();
@@ -56,7 +78,12 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const [pipelineError, setPipelineError] = useState('');
   const [served, setServed] = useState('');
   const [completedBundle, setCompletedBundle] = useState(null);
+  const [showLiveCanvas, setShowLiveCanvas] = useState(true);
   const [detail, setDetail] = useState('all');
+  const liveCanvasBundle = useMemo(
+    () => buildLiveCanvasBundle(completedBundle, liveNodes, parsed),
+    [completedBundle, liveNodes, parsed],
+  );
   const abortRef = useRef(null);
   const startedAtRef = useRef(0);
   const status = readiness?.routes === routes ? readiness.status : null;
@@ -92,7 +119,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
 
   function appendLog(text) {
     const stamp = formatElapsed(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
-    setEventLog(prev => [...prev.slice(-24), { id: `${Date.now()}-${prev.length}`, stamp, text }]);
+    setEventLog(prev => [...prev.slice(-49), { id: `${Date.now()}-${prev.length}`, stamp, text }]);
   }
 
   async function startPipeline() {
@@ -118,6 +145,11 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
         mediaRefs: parsed.mediaRefs,
         signal: controller.signal,
         onProgress: event => {
+          if (event.phase === 'log' && event.entry) {
+            appendLog(event.entry.text);
+            for (const line of event.entry.attempts || []) appendLog(`  ↳ ${line}`);
+            return;
+          }
           if (event.phase === 'stream' && event.streamEvent) {
             const se = event.streamEvent;
             if (se.type === 'stage') {
@@ -126,7 +158,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
                 appendLog(`Admitted (${se.task || 'map'}) → ${se.provider || ''} ${se.model || ''}`.trim());
               } else if (se.stage === 'connected') {
                 setStreamStats(prev => ({ ...prev, stage: 'streaming', provider: se.provider, model: se.model, ttftMs: se.ttftMs }));
-                appendLog(`${se.provider} connected (TTFT ${(se.ttftMs / 1000).toFixed(1)}s) — streaming nodes…`);
+                appendLog(`${se.provider} connected (first token ${(se.ttftMs / 1000).toFixed(1)}s) — streaming nodes…`);
               } else if (se.stage === 'validating') {
                 setStreamStats(prev => ({ ...prev, stage: 'validating' }));
                 appendLog(`Response received (${(se.elapsedMs / 1000).toFixed(1)}s) — validating hierarchy & turn ranges…`);
@@ -279,7 +311,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
               <span>
                 <span className="font-medium text-slate-900">{streamStats.provider || 'Provider'}</span>
                 {streamStats.model ? ` · ${streamStats.model}` : ''}
-                {streamStats.ttftMs != null ? ` · TTFT ${(streamStats.ttftMs / 1000).toFixed(1)}s` : ''}
+                {streamStats.ttftMs != null ? ` · First token ${(streamStats.ttftMs / 1000).toFixed(1)}s` : ''}
               </span>
               <span className="tabular-nums text-slate-600">
                 {streamStats.stage === 'validating'
@@ -288,6 +320,32 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
                     ? `~${streamStats.approxTokens.toLocaleString()} tokens streaming…`
                     : 'Waiting for first token…'}
               </span>
+            </div>
+          )}
+
+          {liveCanvasBundle && (
+            <div className="border-t border-slate-200 pt-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Live interactive canvas ({liveCanvasBundle.graph_data.length} nodes{running ? ' · updating live' : ''})
+                </p>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="text-xs font-medium text-slate-700 underline underline-offset-2" onClick={() => setShowLiveCanvas(v => !v)}>
+                    {showLiveCanvas ? 'Hide canvas' : 'Show canvas'}
+                  </button>
+                  {completedBundle && (
+                    <button type="button" className="text-xs font-medium text-slate-900 underline underline-offset-2"
+                      onClick={() => navigate('/view', { state: { generatedMapId: stageGeneratedMap(completedBundle), remember: false } })}>
+                      Full-screen viewer ↗
+                    </button>
+                  )}
+                </div>
+              </div>
+              {showLiveCanvas && (
+                <div className="relative flex h-[480px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
+                  <LiveConversationGraph bundle={liveCanvasBundle} recording={running} />
+                </div>
+              )}
             </div>
           )}
 
@@ -372,7 +430,12 @@ export default function SitesTranscriptImport() {
     setGeneratedBundle(null);
     setSavedRecordId('');
     try {
+      const parseStarted = Date.now();
       const result = await readTranscriptFile(file);
+      recordSitesCostEntry({
+        provider: 'browser', model: /\.pdf$/i.test(file.name) ? 'pdfjs-local' : 'text-local',
+        kind: 'parse', durationMs: Date.now() - parseStarted, outcome: 'ok', nodes: result.turns?.length ?? null,
+      });
       setParsed(result);
     } catch (cause) {
       setParsed(null);

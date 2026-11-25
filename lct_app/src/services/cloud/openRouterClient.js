@@ -13,10 +13,12 @@ const generationFailures = {
   provider_refused: 'The AI provider refused this generation request. Your audio and transcript are preserved; the attempt remains counted.',
   invalid_completion: 'The AI provider returned an incomplete or invalid map. Your audio and transcript are preserved; the attempt remains counted.',
   no_model_route: 'No approved AI model currently has a route through the selected provider. Your audio and transcript are preserved; the attempt remains counted.',
+  provider_unreachable: 'The AI provider could not be reached. Your audio and transcript are preserved; the attempt remains counted.',
 };
 const messages = {
   401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',
   403: 'Confirm permission to send this transcript to the selected inference provider.',
+  408: 'The AI provider did not finish within the time limit, so the request was stopped. The attempt remains counted; check the activity log for how long it ran.',
   429: 'The shared generation limit is reached or another attempt is starting. Wait and check setup before retrying; unresolved attempts may need owner review.',
   503: 'Generation is unavailable. Check provider setup and spending limits before retrying.',
 };
@@ -105,15 +107,30 @@ export function invalidCompletionDetail(payload) {
   return ` Validation failed at ${stage}${rule}${stop}${outputTokens ? ` after ${outputTokens} output tokens` : ''}.`;
 }
 
+const ATTEMPT_FIELDS = { backend: 'string', model: 'string', task: 'string', outcome: 'string', stage: 'string', rule: 'string',
+  reason: 'string', stop_reason: 'string', request_id: 'string', error_name: 'string', error_cause: 'string',
+  duration_ms: 'number', input_tokens: 'number', output_tokens: 'number', max_output_tokens: 'number', upstream_status: 'number' };
+
+/** The Worker's content-free attempt records, keeping only known fields of the expected type. */
+export function publicAttempts(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 20).filter(a => a && typeof a === 'object').map(a => Object.fromEntries(Object.entries(ATTEMPT_FIELDS)
+    .filter(([key, type]) => typeof a[key] === type && (type !== 'string' || a[key].length <= 120)).map(([key]) => [key, a[key]])));
+}
+
 function failure(status, payload) {
   const code = status === 502 && Object.hasOwn(generationFailures, payload.code) ? payload.code : null;
+  const failedAttempt = publicAttempts(payload.attempts).at(-1);
   const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status)
-    : code === 'invalid_completion' ? invalidCompletionDetail(payload) : '';
+    : code === 'invalid_completion' ? invalidCompletionDetail(payload)
+      : code === 'provider_unreachable' && failedAttempt?.error_name ? ` (${failedAttempt.error_name}${failedAttempt.error_cause ? ' ' + failedAttempt.error_cause : ''}).` : '';
   const error = new Error(code ? generationFailures[code] + detail + providerDiagnosticDetail(payload) : messages[status] || uncertain);
   error.status = status;
   if (code) error.code = code;
   // Lets the windowed pipeline split a window whose map was cut off at the output cap.
   if (code === 'invalid_completion' && payload.stop_reason === 'max_tokens') error.stopReason = 'max_tokens';
+  const attempts = publicAttempts(payload.attempts);
+  if (attempts.length) error.attempts = attempts;
   return error;
 }
 
@@ -246,24 +263,47 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
   const body = JSON.stringify({ source, routes, guidance, ...(context.task ? { task: context.task } : {}),
     ...(context.topics ? { topics: context.topics } : {}), ...(context.glossary ? { glossary: context.glossary } : {}) });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This finalized transcript is too large for generation. Keep its local download.');
+  const startedAt = Date.now();
+  let ttftMs = null;
   const wantsStream = typeof context.onEvent === 'function';
-  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
-    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1',
-      ...(wantsStream ? { Accept: 'text/event-stream' } : {}) }, body });
-  const isEventStream = wantsStream && response.ok && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream');
-  const payload = isEventStream
-    ? await readClientEventStream(response, signal, context.onEvent)
-    : await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
-  if (!response.ok) throw failure(response.status, payload);
-  if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
-  const notes = Array.isArray(payload.boundary_notes) ? payload.boundary_notes : null;
-  const result = recordingMapResult(source, payload);
-  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: context.task || 'map', requestId: payload.request_id });
-  return { ...result, backend: payload.backend, model: payload.model,
-    ...(payload.usage ? { usage: payload.usage } : {}),
-    ...(notes ? { boundaryNotes: notes, stubTopicIds: Array.isArray(payload.stub_topic_ids) ? payload.stub_topic_ids : [] } : {}),
-    ...(Array.isArray(payload.glossary) ? { glossary: payload.glossary } : {}) };
+  const wrappedOnEvent = wantsStream ? (ev) => {
+    if (ev?.type === 'stage' && ev.stage === 'connected' && typeof ev.ttftMs === 'number') ttftMs = ev.ttftMs;
+    context.onEvent(ev);
+  } : null;
+  try {
+    const response = await fetch('/api/cloud/map/generate', { method: 'POST',
+      credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+      headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1',
+        ...(wantsStream ? { Accept: 'text/event-stream' } : {}) }, body });
+    const isEventStream = wantsStream && response.ok && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream');
+    const payload = isEventStream
+      ? await readClientEventStream(response, signal, wrappedOnEvent)
+      : await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
+    if (!response.ok) throw failure(response.status, payload);
+    if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
+    const notes = Array.isArray(payload.boundary_notes) ? payload.boundary_notes : null;
+    const result = recordingMapResult(source, payload);
+    const cov = result.bundle.coverage;
+    const coveragePct = cov?.total_turns ? Math.round((cov.covered_turns / cov.total_turns) * 100) : null;
+    recordSitesCostEntry({
+      provider: payload.backend, model: payload.model, usage: payload.usage, kind: context.task || 'map',
+      requestId: payload.request_id, ttftMs, durationMs: Date.now() - startedAt, outcome: 'ok',
+      nodes: result.bundle.graph_data?.length ?? null, coveragePct,
+    });
+    return { ...result, backend: payload.backend, model: payload.model,
+      ...(payload.usage ? { usage: payload.usage } : {}),
+      ...(notes ? { boundaryNotes: notes, stubTopicIds: Array.isArray(payload.stub_topic_ids) ? payload.stub_topic_ids : [] } : {}),
+      ...(Array.isArray(payload.glossary) ? { glossary: payload.glossary } : {}), attempts: publicAttempts(payload.attempts) };
+  } catch (err) {
+    if (err?.name !== 'AbortError') {
+      const first = routes[0];
+      recordSitesCostEntry({
+        provider: first?.backend || 'unknown', model: first?.model || 'site-default', kind: context.task || 'map',
+        ttftMs, durationMs: Date.now() - startedAt, outcome: 'error', errorCode: err?.code || String(err?.status || 'failed'),
+      });
+    }
+    throw err;
+  }
 }
 
 /**
@@ -283,5 +323,6 @@ export async function auditRecordingMap(source, signal, route, nodes) {
   recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'audit', requestId: payload.request_id });
   return { findings: payload.findings, backend: payload.backend, model: payload.model,
     ...(payload.usage ? { usage: payload.usage } : {}),
-    droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0 };
+    droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0,
+    attempts: publicAttempts(payload.attempts) };
 }
