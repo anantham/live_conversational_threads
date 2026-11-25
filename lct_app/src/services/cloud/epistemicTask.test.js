@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EPISTEMIC_FORMAT, epistemicFromGeneratedText } from './epistemicTask.js';
-import { DETAIL_FORMAT, detailNestedSchema, SKELETON_PROMPT } from './generationTasks.js';
-import { expandTaskGeneration } from './rangeGeneration.js';
-import { expandGenerationHierarchy } from './generationHierarchy.js';
+import { DETAIL_PROMPT, detailNestedSchema, SKELETON_PROMPT } from './generationTasks.js';
 
 const utteranceIds = ['utterance-0001', 'utterance-0002', 'utterance-0003'];
 
@@ -73,35 +71,15 @@ describe('epistemicTask', () => {
   });
 });
 
-describe('detail stopping rule & nested schema compatibility', () => {
-  it('encodes the stopping rule in SKELETON_PROMPT, builds per-segment nested detail schemas, and allows skipped levels in hierarchy expansion', () => {
+describe('stopping rule in the prompts and nested detail schema', () => {
+  // The nested-reply path itself (topic_chunks filed under a topic) is exercised in glanceDetailPipeline.test.js.
+  it('states the stopping rule at both tiers and lets a detail chunk file directly under a segment topic', () => {
     expect(SKELETON_PROMPT).toContain('Stopping rule:');
+    expect(DETAIL_PROMPT).toContain('Stopping rule:');
+    expect(DETAIL_PROMPT).toContain('topic_chunks');
     const nested = detailNestedSchema(['logistics']);
     expect(nested.properties.ideas.items.properties.topic_id.anyOf[0].enum).toEqual(['logistics']);
-
-    const detailReply = {
-      hierarchy_format: DETAIL_FORMAT,
-      nodes: [
-        {
-          id: 'cab-decision',
-          semantic_level: 1,
-          semantic_type: 'chunk',
-          node_name: 'Book the cab for 6 PM',
-          summary: 'Quick agreement on departure time.',
-          source_range: { from: 'utterance-0001', to: 'utterance-0002' },
-          parent_id: { semantic_level: 3, id: 'logistics' },
-          secondary_parent_ids: [],
-        },
-      ],
-      edges: [],
-      boundary_notes: [],
-    };
-
-    const expanded = expandTaskGeneration(detailReply, utteranceIds, {
-      topics: [{ id: 'logistics', node_name: 'Logistics', summary: 'Travel timing.' }],
-    });
-    const validated = expandGenerationHierarchy(expanded.graph);
-    const chunk = validated.nodes.find(n => n.id === '1:cab-decision');
-    expect(chunk.parent_id).toBe('3:logistics');
+    expect(nested.required).toContain('topic_chunks');
+    expect(nested.properties.topic_chunks.items.properties.topic_id.enum).toEqual(['logistics']);
   });
 });
