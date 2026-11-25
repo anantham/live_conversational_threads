@@ -18,7 +18,8 @@ const gemini = { backend: 'gemini', model: 'gemini-x', key: 'k' };
 let root, host;
 beforeEach(() => { globalThis.IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host); });
 afterEach(() => { act(() => root.unmount()); host.remove(); });
-const view = props => act(() => root.render(<MapAuditPanel source={source} bundle={bundle} mapRoute={claude} onBundleChange={() => {}} {...props} />));
+const built = { ...bundle, built_by: [{ backend: 'anthropic', model: 'claude-x' }] };
+const view = props => act(() => root.render(<MapAuditPanel source={source} bundle={built} onBundleChange={() => {}} {...props} />));
 const buttonNamed = name => [...host.querySelectorAll('button')].find(b => b.textContent === name);
 
 describe('MapAuditPanel', () => {
@@ -33,14 +34,14 @@ describe('MapAuditPanel', () => {
     const run = buttonNamed('Run audit');
     expect(run.disabled).toBe(true);
     const label = [...host.querySelectorAll('label')].find(l => /I have permission/.test(l.textContent));
-    expect(label.textContent).toMatch(/send 2 transcript turns \(00:00:00–00:01:50\).*Gemini/);
+    expect(label.textContent).toMatch(/send 2 transcript turns \(00:00:00–00:01:50\), plus the names and summaries.*themes and arcs.*Gemini.*model gemini-x/);
     act(() => label.querySelector('input').click());
     expect(buttonNamed('Run audit').disabled).toBe(false);
   });
 
   it('records accept and dismiss decisions on pending findings', () => {
     const onBundleChange = vi.fn();
-    const audited = { ...bundle, audit_signals: [{ id: 'f1', source: 'audit', kind: 'missed', point_kind: 'reversal',
+    const audited = { ...built, audit_signals: [{ id: 'f1', source: 'audit', kind: 'missed', point_kind: 'reversal',
       note: 'Switched to email.', utterance_ids: ['utterance-0002'], decision: 'pending' }] };
     view({ routes: [claude, gemini], bundle: audited, onBundleChange });
     act(() => buttonNamed('Accept').click());

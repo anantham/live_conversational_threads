@@ -38,6 +38,7 @@ export const AUDIT_PROMPT = [
 ].join(' ');
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const UTTERANCE = /^utterance-\d{4,6}$/;
 const identity = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && value === value.trim();
 
 function invalid(validationStage) {
@@ -45,12 +46,15 @@ function invalid(validationStage) {
 }
 
 /** Validate the client-supplied map nodes for an audit request; returns the bounded copy sent to the model. */
+// An empty list is valid: a span of turns no node covers is exactly where misses are expected.
 export function auditMapNodes(nodes) {
-  if (!Array.isArray(nodes) || !nodes.length || nodes.length > MAX_AUDIT_NODES) throw invalid('request');
+  if (!Array.isArray(nodes) || nodes.length > MAX_AUDIT_NODES || new Set(nodes.map(n => n?.id)).size !== nodes.length) throw invalid('request');
   return nodes.map(node => {
     if (!object(node) || !identity(node.id) || !Number.isInteger(node.semantic_level) || node.semantic_level < 1 || node.semantic_level > 5
-      || typeof node.node_name !== 'string' || !Array.isArray(node.ranges) || node.ranges.length > 200
-      || node.ranges.some(r => !object(r) || !identity(r.from) || !identity(r.to))) throw invalid('request');
+      || typeof node.node_name !== 'string' || node.node_name.length > 300
+      || (node.summary != null && (typeof node.summary !== 'string' || node.summary.length > 1000))
+      || !Array.isArray(node.ranges) || !node.ranges.length || node.ranges.length > 200
+      || node.ranges.some(r => !object(r) || !UTTERANCE.test(r.from) || !UTTERANCE.test(r.to))) throw invalid('request');
     return { id: node.id, semantic_level: node.semantic_level, node_name: node.node_name.slice(0, 300),
       summary: typeof node.summary === 'string' ? node.summary.slice(0, 1000) : '', ranges: node.ranges.map(({ from, to }) => ({ from, to })) };
   });
@@ -68,7 +72,7 @@ export function auditFromGeneratedText(utteranceIds, content, nodeIds) {
     || !Array.isArray(reply.contradictions) || !Array.isArray(reply.entity_splits)) throw invalid('required_shape');
   const position = new Map(utteranceIds.map((id, i) => [id, i]));
   const known = new Set(nodeIds);
-  let droppedRanges = 0, unknownNodes = 0;
+  let droppedRanges = 0, unknownNodes = 0, malformed = 0;
   const cite = value => {
     if (!object(value)) return null;
     const from = position.get(value.from), to = position.get(value.to);
@@ -78,7 +82,7 @@ export function auditFromGeneratedText(utteranceIds, content, nodeIds) {
   const note = value => (typeof value === 'string' ? value.slice(0, MAX_NOTE) : '');
   const findings = [];
   for (const point of reply.independent_points) {
-    if (!object(point) || !AUDIT_POINT_KINDS.includes(point.kind)) continue;
+    if (!object(point) || !AUDIT_POINT_KINDS.includes(point.kind)) { malformed += 1; continue; }
     const ids = cite(point.range);
     if (!ids) { droppedRanges += 1; continue; }
     let representedBy = typeof point.represented_by === 'string' ? point.represented_by : null;
@@ -88,13 +92,14 @@ export function auditFromGeneratedText(utteranceIds, content, nodeIds) {
   }
   for (const item of reply.contradictions) {
     const ids = object(item) ? cite(item.range) : null;
-    if (!ids || !known.has(item.node_id)) { droppedRanges += 1; continue; }
+    if (!ids) { droppedRanges += 1; continue; }
+    if (!known.has(item.node_id)) { unknownNodes += 1; continue; }
     findings.push({ kind: 'contradiction', note: note(item.note), utterance_ids: ids, node_id: item.node_id });
   }
   for (const item of reply.entity_splits) {
-    if (!object(item) || typeof item.canonical !== 'string' || !Array.isArray(item.variants)) continue;
+    if (!object(item) || typeof item.canonical !== 'string' || !Array.isArray(item.variants)) { malformed += 1; continue; }
     findings.push({ kind: 'entity_split', note: note(item.note), canonical: item.canonical.slice(0, 80),
       variants: item.variants.filter(v => typeof v === 'string').slice(0, 10).map(v => v.slice(0, 80)) });
   }
-  return { findings, droppedRanges, unknownNodes };
+  return { findings, droppedRanges, unknownNodes, malformed };
 }

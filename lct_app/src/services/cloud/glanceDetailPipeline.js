@@ -51,15 +51,20 @@ export function segmentSource(source, segment, utteranceById) {
 /** Group skeleton topics (timeline order) into segments of at most maxWords; oversized topics split by turns. */
 export function planSegments(bundle, utteranceById, { maxWords = DEFAULT_SEGMENT_MAX_WORDS, topicIds = null } = {}) {
   const order = new Map(bundle.utterances.map((u, i) => [u.id, i]));
+  const claimed = new Set();
   const topics = bundle.graph_data.filter(n => n.semantic_level === 3 && n.source_ref.utterance_ids.length
     && (!topicIds || topicIds.has(n.id)))
     .map(n => ({ node: n, ids: [...n.source_ref.utterance_ids].sort((a, b) => order.get(a) - order.get(b)) }))
+    .sort((a, b) => order.get(a.ids[0]) - order.get(b.ids[0]))
+    // A turn two overlapping topics both claim is detailed once, with the topic that starts first.
+    .map(t => { const ids = t.ids.filter(id => !claimed.has(id)); ids.forEach(id => claimed.add(id)); return { ...t, ids }; })
+    .filter(t => t.ids.length)
     .map(t => ({ ...t, words: t.ids.reduce((sum, id) => sum + countWords(utteranceById.get(id).text), 0) }))
     .sort((a, b) => order.get(a.ids[0]) - order.get(b.ids[0]));
   const segments = [];
   const push = (members, ids) => segments.push({ label: `s${segments.length + 1}`, splitDepth: 0,
     topics: members.map(({ node }) => ({ id: localId(node.id), node_name: node.node_name, summary: node.summary || '' })),
-    utteranceIds: [...ids].sort((a, b) => order.get(a) - order.get(b)) });
+    utteranceIds: [...new Set(ids)].sort((a, b) => order.get(a) - order.get(b)) });
   let group = [], words = 0;
   const flush = () => { if (group.length) push(group, group.flatMap(t => t.ids)); group = []; words = 0; };
   for (const topic of topics) {
@@ -81,6 +86,13 @@ export function planSegments(bundle, utteranceById, { maxWords = DEFAULT_SEGMENT
   return segments;
 }
 
+/** Record every provider route that wrote part of the map, so an audit can exclude all their families. */
+function withBuilders(bundle, used) {
+  const all = [...(bundle.built_by || []), ...used];
+  const unique = [...new Map(all.map(r => [`${r.backend}|${r.model}`, r])).values()];
+  return { ...bundle, built_by: unique };
+}
+
 function halve(segment) {
   if (segment.splitDepth >= MAX_SEGMENT_SPLIT_DEPTH || segment.utteranceIds.length < 2) return null;
   const middle = Math.ceil(segment.utteranceIds.length / 2);
@@ -89,20 +101,30 @@ function halve(segment) {
 }
 
 /**
- * Merge detail results into a base map (the skeleton, or a map already partly detailed). Stub topics
- * are dropped and ideas attach to the real topic; detail ids get a segment prefix; local utterance ids
- * map to global ones by position. A detailed topic's evidence becomes exactly its chunks; turns the
- * skeleton gave a topic but its detail did not are recorded, never silently dropped or moved.
+ * Merge detail results into a base map (the skeleton, or a map already partly detailed), always from
+ * that same base, so a topic split across segments is never judged before all its segments finish.
+ *
+ * Stub topics are dropped and ideas attach to the real topic; detail ids get a segment prefix; local
+ * utterance ids map to global ones by position; a chunk that bridges two separate stretches of a
+ * revisited topic is split at the gap (recorded). A topic whose segment completed gets exactly its
+ * chunks' turns plus any of its base turns not yet detailed; turns it gained or lost against the base
+ * are recorded as a boundary shift, never silently moved.
  */
 export function mergeDetail(source, base, results) {
+  const order = new Map(base.utterances.map((u, i) => [u.id, i]));
   const byId = new Map(base.graph_data.map(n => [n.id, structuredClone(n)]));
+  const baseEvidence = new Map(base.graph_data.map(n => [n.id, n.source_ref.utterance_ids]));
   const edges = [...(base.edges || [])];
   const signals = [...(base.audit_signals || [])];
+  const completed = new Set();
+  const touchedTopics = new Set();
   for (const { segment, result } of results) {
     const local = result.bundle.utterances;
     if (local.length !== segment.utteranceIds.length) {
       throw new Error(`Detail segment ${segment.label} returned ${local.length} utterances for ${segment.utteranceIds.length} turns; it was not merged.`);
     }
+    segment.utteranceIds.forEach(id => completed.add(id));
+    segment.topics.forEach(t => touchedTopics.add(`3:${t.id}`));
     const toGlobal = new Map(local.map((u, i) => [u.id, segment.utteranceIds[i]]));
     const stubs = new Set((result.stubTopicIds || []).map(id => `3:${id}`));
     const prefix = `d${segment.label}-`;
@@ -113,13 +135,21 @@ export function mergeDetail(source, base, results) {
       if (parent && !byId.has(parent) && !parent.startsWith(prefix)) {
         throw new Error(`Detail segment ${segment.label} filed a node under a topic the map does not contain.`);
       }
-      byId.set(prefix + node.id, { ...node, id: prefix + node.id, parent_id: parent ?? undefined,
-        memberships: (node.memberships || []).map(m => ({ ...m, parent_id: remap(m.parent_id) })),
-        children_ids: [], source_ref: { utterance_ids: node.semantic_level === 1
-          ? node.source_ref.utterance_ids.map(id => toGlobal.get(id)) : [] } });
-      if (!parent) {
-        signals.push({ source: 'detail', kind: 'unfiled', node_id: prefix + node.id, segment: segment.label });
+      const copy = { ...node, id: prefix + node.id, parent_id: parent ?? undefined,
+        memberships: (node.memberships || []).map(m => ({ ...m, parent_id: remap(m.parent_id) })), children_ids: [] };
+      if (node.semantic_level !== 1) { byId.set(copy.id, { ...copy, source_ref: { utterance_ids: [] } }); }
+      else {
+        // Contiguous runs in transcript order: a chunk may not bridge the gap between two stretches.
+        const ids = node.source_ref.utterance_ids.map(id => toGlobal.get(id)).sort((a, b) => order.get(a) - order.get(b));
+        const runs = [];
+        for (const id of ids) {
+          if (runs.length && order.get(id) === order.get(runs.at(-1).at(-1)) + 1) runs.at(-1).push(id); else runs.push([id]);
+        }
+        runs.forEach((run, k) => byId.set(k ? `${copy.id}~${k + 1}` : copy.id,
+          { ...copy, id: k ? `${copy.id}~${k + 1}` : copy.id, source_ref: { utterance_ids: run } }));
+        if (runs.length > 1) signals.push({ source: 'detail', kind: 'chunk_split_at_gap', node_id: copy.id, parts: runs.length, segment: segment.label });
       }
+      if (!parent) signals.push({ source: 'detail', kind: 'unfiled', node_id: copy.id, segment: segment.label });
     }
     for (const edge of result.bundle.edges || []) {
       edges.push({ ...edge, id: prefix + edge.id, from_node_id: remap(edge.from_node_id), to_node_id: remap(edge.to_node_id) });
@@ -129,26 +159,25 @@ export function mergeDetail(source, base, results) {
         utterance_ids: (note.utterance_ids || []).map(id => toGlobal.get(id)).filter(Boolean) });
     }
   }
-  const nodes = [...byId.values()].map(n => ({ ...n, ...(n.parent_id == null ? { parent_id: undefined } : {}) }));
-  // Rebuild reciprocal links from the authored parent links.
+  const nodes = [...byId.values()];
   const index = new Map(nodes.map(n => [n.id, n]));
   for (const n of nodes) n.children_ids = [];
   for (const n of nodes) {
     if (!n.memberships?.length && n.parent_id) n.memberships = [{ parent_id: n.parent_id, role: 'primary' }];
     for (const m of n.memberships || []) index.get(m.parent_id)?.children_ids.push(n.id);
   }
-  // Evidence: chunks keep theirs; an undetailed topic keeps its skeleton ranges; everything else re-derives.
-  const skeletonEvidence = new Map();
+  // Own evidence before derivation: chunks keep theirs; a topic keeps its base turns not yet detailed
+  // (all of them when untouched); everything above re-derives from primary children.
   for (const n of nodes) {
-    const detailed = n.semantic_level === 3 && n.children_ids.length > 0;
-    if (detailed) skeletonEvidence.set(n.id, new Set(n.source_ref.utterance_ids));
-    if (n.semantic_level > 1 && !(n.semantic_level === 3 && !detailed)) n.source_ref = { utterance_ids: [] };
+    if (n.semantic_level === 1) continue;
+    const own = n.semantic_level === 3 ? (baseEvidence.get(n.id) || []).filter(id => !(touchedTopics.has(n.id) && completed.has(id))) : [];
+    n.source_ref = { utterance_ids: own };
   }
-  const derived = deriveParentEvidence({ nodes }).nodes;
+  const derived = deriveParentEvidence({ nodes }, order).nodes;
   for (const n of derived) {
-    const before = skeletonEvidence.get(n.id);
-    if (!before) continue;
-    const after = new Set(n.source_ref.utterance_ids);
+    if (!touchedTopics.has(n.id)) continue;
+    const before = new Set((baseEvidence.get(n.id) || []).filter(id => completed.has(id)));
+    const after = new Set(n.source_ref.utterance_ids.filter(id => completed.has(id)));
     const dropped = [...before].filter(id => !after.has(id)).length, added = [...after].filter(id => !before.has(id)).length;
     if (dropped || added) signals.push({ source: 'detail', kind: 'boundary_shift', node_id: n.id, turns_dropped: dropped, turns_added: added });
   }
@@ -161,13 +190,16 @@ export function mergeDetail(source, base, results) {
     ...(base.media_refs ? { media_refs: base.media_refs } : {}),
     ...(base.meeting_metadata ? { meeting_metadata: base.meeting_metadata } : {}),
     ...(base.glossary ? { glossary: base.glossary } : {}),
+    ...(base.built_by ? { built_by: base.built_by } : {}),
     ...(signals.length ? { audit_signals: signals } : {}) };
   return { ...assembled, bundle, json: JSON.stringify(bundle, null, 2) };
 }
 
 async function runSegments({ source, base, segments, routes, guidance, signal, onProgress, generate, intervalMs, utteranceById, waitFirst }) {
   const queue = [...segments];
-  let merged = base, done = 0, lastBackend = null, lastModel = null;
+  const results = [];
+  const used = [];
+  let merged = base;
   for (let i = 0; i < queue.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const segment = queue[i];
@@ -176,7 +208,7 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     const first = utteranceById.get(segment.utteranceIds[0]), last = utteranceById.get(segment.utteranceIds.at(-1));
     const details = { segment: segment.label, position: `${i + 1}/${queue.length}`, topics: segment.topics.length,
       turns: segment.utteranceIds.length, words, span: `${clock((first.timestamp_start || 0) * 1000)}–${clock((last.timestamp_end || 0) * 1000)}` };
-    onProgress?.({ phase: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: done, topics: segment.topics.map(t => t.node_name), partialBundle: merged });
+    onProgress?.({ phase: 'detail', segmentIndex: i, totalSegments: queue.length, completedSegments: results.length, topics: segment.topics.map(t => t.node_name), partialBundle: merged });
     log('detail start', details);
     const started = Date.now();
     let result;
@@ -186,16 +218,17 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
     } catch (error) {
       const halves = error?.stopReason === 'max_tokens' ? halve(segment) : null;
       log(halves ? 'detail split' : 'detail failed', { ...details, ms: Date.now() - started, error: error?.message });
-      if (!halves) throw error;
+      if (!halves) throw Object.assign(error, { partialBundle: merged });
       queue.splice(i, 1, ...halves); i -= 1;
       continue;
     }
-    merged = mergeDetail(source, merged, [{ segment, result }]).bundle;
-    done += 1; lastBackend = result.backend || lastBackend; lastModel = result.model || lastModel;
+    results.push({ segment, result });
+    if (result.backend) used.push({ backend: result.backend, model: result.model });
+    merged = withBuilders(mergeDetail(source, base, results).bundle, used);
     log('detail done', { ...details, ms: Date.now() - started, nodes: result.bundle.graph_data.length,
       notes: result.boundaryNotes?.length || 0, model: result.model });
   }
-  return { bundle: merged, segments: queue.length, backend: lastBackend, model: lastModel };
+  return { bundle: merged, segments: queue.length, used };
 }
 
 /**
@@ -214,6 +247,7 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   try { glance = await generate(source, signal, routes, guidance, { task: 'skeleton' }); }
   catch (error) { log('glance failed', { ms: Date.now() - started, error: error?.message }); throw error; }
   const skeleton = { ...glance.bundle, conversation_title: title || glance.bundle.conversation_title,
+    built_by: glance.backend ? [{ backend: glance.backend, model: glance.model }] : [],
     ...(glance.glossary?.length ? { glossary: glance.glossary } : {}),
     ...(mediaRefs?.length ? { media_refs: mediaRefs } : {}), ...(meetingMetadata ? { meeting_metadata: meetingMetadata } : {}) };
   const levels = [3, 4, 5].map(level => skeleton.graph_data.filter(n => n.semantic_level === level).length);
@@ -226,8 +260,9 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   const run = await runSegments({ source, base: skeleton, segments, routes, guidance, signal, onProgress, generate,
     intervalMs, utteranceById, waitFirst: true });
   onProgress?.({ phase: 'done', partialBundle: run.bundle, completedSegments: run.segments, totalSegments: run.segments });
-  return { bundle: run.bundle, json: JSON.stringify(run.bundle, null, 2), backend: run.backend || glance.backend,
-    model: run.model || glance.model, segmentCount: run.segments };
+  const bundle = withBuilders(run.bundle, run.used);
+  return { bundle, json: JSON.stringify(bundle, null, 2), backend: glance.backend, model: glance.model,
+    builtBy: bundle.built_by, segmentCount: run.segments };
 }
 
 /** Detail on demand: map one undetailed topic of an existing map and merge it in place. */
@@ -237,9 +272,13 @@ export async function expandTopicDetail({ source, bundle, topicId, routes, guida
   if (!topic) throw new Error('That topic is not in this map.');
   if (topic.children_ids?.length) throw new Error('That topic already has detail.');
   const utteranceById = new Map(createRecordingTranscript(source).document.utterances.map(u => [u.id, u]));
+  // Labels must never repeat an earlier expansion's, or its nodes would be overwritten on merge.
+  const taken = new Set(bundle.graph_data.map(n => n.id.match(/^d(t\d+)/)?.[1]).filter(Boolean));
+  let next = 1;
   const segments = planSegments(bundle, utteranceById, { maxWords: maxSegmentWords, topicIds: new Set([topicId]) })
-    .map((segment, i) => ({ ...segment, label: `t${localId(topicId).replace(/[^A-Za-z0-9]/g, '').slice(0, 24)}${i + 1}` }));
+    .map(segment => { while (taken.has(`t${next}`)) next += 1; taken.add(`t${next}`); return { ...segment, label: `t${next}` }; });
   const run = await runSegments({ source, base: bundle, segments, routes, guidance, signal, onProgress, generate,
     intervalMs, utteranceById, waitFirst: false });
-  return { bundle: run.bundle, json: JSON.stringify(run.bundle, null, 2) };
+  const merged = withBuilders(run.bundle, run.used);
+  return { bundle: merged, json: JSON.stringify(merged, null, 2) };
 }

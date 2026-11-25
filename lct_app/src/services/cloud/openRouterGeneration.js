@@ -50,6 +50,11 @@ export const RECORDING_MAP_PROMPT = [
 
 const IDENTITY = value => typeof value === 'string' && value.length > 0 && value.length <= 158 && value === value.trim();
 
+function validGlossary(value) {
+  if (!Array.isArray(value) || value.length > 80) throw invalid('the glossary is invalid.');
+  return sanitizeGlossary(value);
+}
+
 /** The prompt and output schema for a generation task; an unknown task or malformed context is refused. */
 export function generationTask(context = {}) {
   const task = context.task ?? 'map';
@@ -63,7 +68,7 @@ export function generationTask(context = {}) {
       || new Set(topics.map(t => t.id)).size !== topics.length) throw invalid('detail segment topics are invalid.');
     return { task, prompt: DETAIL_PROMPT, schema: DETAIL_SCHEMA,
       extra: { segment_topics: topics.map(({ id, node_name, summary }) => ({ id, node_name, summary: summary || '' })),
-        ...(context.glossary != null ? { glossary: sanitizeGlossary(context.glossary) } : {}) } };
+        ...(context.glossary != null ? { glossary: validGlossary(context.glossary) } : {}) } };
   }
   if (task === 'audit') {
     let nodes;
@@ -169,8 +174,11 @@ export function recordingThreadsFromGeneratedText(source, content, context = {})
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
   const utteranceIds = createRecordingTranscript(source).document.utterances.map(({ id }) => id);
+  // Placeholder status is the app's to assign, never the model's.
+  graph.nodes.forEach(node => { if (object(node)) delete node.generated_gap; });
   const { graph: explicit, coverage, boundaryNotes, stubTopicIds, glossary } = expandTaskGeneration(graph, utteranceIds, context);
   const { graph: repaired, repair } = repairGeneratedReferences(explicit);
-  return { ...createRecordingThreads({ ...source, graph: deriveParentEvidence(expandGenerationHierarchy(repaired)) }),
+  const order = new Map(utteranceIds.map((id, i) => [id, i]));
+  return { ...createRecordingThreads({ ...source, graph: deriveParentEvidence(expandGenerationHierarchy(repaired), order) }),
     referenceRepair: repair, coverage, ...(boundaryNotes ? { boundaryNotes, stubTopicIds } : {}), ...(glossary ? { glossary } : {}) };
 }

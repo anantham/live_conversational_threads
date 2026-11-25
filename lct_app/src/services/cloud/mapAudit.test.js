@@ -21,6 +21,11 @@ describe('map audit', () => {
     expect(modelFamily({ backend: 'openrouter', model: 'openai/gpt-x' })).toBe('openai');
     expect(chooseAuditRoute([claude, { backend: 'gemini', model: 'gemini-x', key: 'k' }], claude).backend).toBe('gemini');
     expect(chooseAuditRoute([claude, { backend: 'openrouter', model: 'anthropic/claude-y', key: 'k' }], claude)).toBeNull();
+    // Review findings 9 and 10: every builder family is excluded, and a meta-router never qualifies.
+    expect(chooseAuditRoute([claude, { backend: 'openrouter', model: 'openrouter/auto', key: 'k' }], claude)).toBeNull();
+    const gemini = { backend: 'gemini', model: 'gemini-x', key: 'k' };
+    expect(chooseAuditRoute([claude, gemini], [claude, { backend: 'gemini', model: 'gemini-x' }])).toBeNull();
+    expect(chooseAuditRoute([claude, gemini, { backend: 'openrouter', model: 'openai/gpt-x', key: 'k' }], [claude, gemini]).model).toBe('openai/gpt-x');
   });
 
   it('audits core spans independently and records missed points, contradictions and decisions', async () => {
@@ -49,5 +54,12 @@ describe('map audit', () => {
     const decided = recordUserFlag(decideSignal(audited, missed.id, 'accepted'), '3:budget', 'irrelevant');
     expect(auditSummary(decided)).toMatchObject({ points: 3, represented: 1, missed: 2, contradictions: 1, accepted: 1, pending: 2, userFlags: 1 });
     expect(() => recordUserFlag(decided, '3:absent', 'irrelevant')).toThrow('not in this map');
+  });
+
+  // Review finding 3: a span only placeholders cover is still audited, with no nodes to credit.
+  it('audits a span no node covers, so every point there is a miss', () => {
+    const parsed = auditFromGeneratedText([u(1)], JSON.stringify({ format: 'audit-v1', contradictions: [], entity_splits: [],
+      independent_points: [{ kind: 'decision', note: 'Ship Friday.', range: { from: u(1), to: u(1) }, represented_by: null }] }), []);
+    expect(parsed.findings).toEqual([expect.objectContaining({ kind: 'missed', utterance_ids: [u(1)] })]);
   });
 });

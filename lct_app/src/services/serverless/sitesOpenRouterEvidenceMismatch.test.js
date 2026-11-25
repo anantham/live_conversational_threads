@@ -52,7 +52,7 @@ describe('evidence-mismatch warning at the map route', () => {
     expect(response.status).toBe(200);
     const nodes = (await response.json()).artifact.graph_data;
     expect(nodes.find(n => n.id === '1:intro').parent_id).toBe('2:childhood');
-    expect(nodes.find(n => n.id === '2:childhood').source_ref.utterance_ids).toEqual(['utterance-0002', 'utterance-0001']);
+    expect(nodes.find(n => n.id === '2:childhood').source_ref.utterance_ids).toEqual(['utterance-0001', 'utterance-0002']);
     expect(mismatchLogs()).toEqual([]);
   });
 

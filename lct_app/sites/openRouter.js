@@ -126,7 +126,14 @@ const ANTHROPIC_STOP_REASONS = new Set(['end_turn', 'max_tokens', 'stop_sequence
 export function invalidCompletionDetails(error, { anthropic, completion, response, maxTokens }) {
   const { stage, rule } = sanitizedValidation(error?.validationStage, error?.validationRule);
   const details = { validation_stage: stage, ...(rule ? { validation_rule: rule } : {}) };
-  if (!anthropic) return details;
+  if (!anthropic) {
+    // OpenRouter and Gemini report truncation as finish_reason "length": the same cut-off, so the
+    // browser can split the window exactly as it does for Claude.
+    const finish = completion?.choices?.[0]?.finish_reason;
+    return { ...details, ...(finish === 'length' ? { stop_reason: 'max_tokens' } : {}),
+      ...(Number.isSafeInteger(completion?.usage?.completion_tokens) ? { output_tokens: completion.usage.completion_tokens } : {}),
+      ...(Number.isSafeInteger(maxTokens) ? { max_output_tokens: maxTokens } : {}) };
+  }
   const stopReason = completion?.stop_reason;
   const outputTokens = completion?.usage?.output_tokens;
   const requestId = anthropicRequestId(response);
@@ -207,8 +214,8 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     maxTokens = diagnostic ? policy.longMaxTokens : outputCapFor(policy, input?.source);
     const guidance = ordered ? input.guidance : undefined;
     // Glance (skeleton) and detail tasks run only on the ordered map route; legacy routes map in one pass.
-    context = ordered && !diagnostic && input.task != null
-      ? { task: input.task, topics: input.topics, glossary: input.glossary, nodes: input.nodes } : {};
+    if (input.task != null && (!ordered || diagnostic)) throw new Error('tasks run only on the ordered map route');
+    context = input.task != null ? { task: input.task, topics: input.topics, glossary: input.glossary, nodes: input.nodes } : {};
     wires = policies.flatMap(policy => generationWires(policy, input.source, maxTokens, guidance, context).map(body => ({ policy, body })));
   } catch { throw new OpenRouterError(400, 'source', 'The recording source or prompt guidance is invalid or too large. No attempt was requested.'); }
   if (wires.some(({ body }) => new TextEncoder().encode(JSON.stringify(body)).byteLength > 512 * 1024)) {
@@ -282,6 +289,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
         if (parsed.audit) {
           logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
             findings: parsed.audit.findings.length, droppedRanges: parsed.audit.droppedRanges, unknownNodes: parsed.audit.unknownNodes,
+            malformed: parsed.audit.malformed,
             ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
           return { audit: parsed.audit, backend: policy.backend, model: body.model };
         }
@@ -312,7 +320,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     minimal_request_id: minimalId, map_request_id: mapId });
   if (audit) {
     return openRouterJSON(200, { request_id: id, task: 'audit', backend, model, findings: audit.findings,
-      dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes });
+      dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed });
   }
   logReferenceRepair(repair, backend);
   logEvidenceMismatch(artifact, backend);

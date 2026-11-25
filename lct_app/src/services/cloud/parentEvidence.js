@@ -12,7 +12,7 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
  * Runs on the expanded parent-links graph (memberships present); it never adds, drops or
  * moves a relationship, and leaves ID validation to the graph validator downstream.
  */
-export function deriveParentEvidence(graph) {
+export function deriveParentEvidence(graph, order = null) {
   if (!object(graph) || !Array.isArray(graph.nodes)) return graph;
   const evidence = new Map(), parentsOf = new Map();
   for (const node of graph.nodes) {
@@ -32,7 +32,9 @@ export function deriveParentEvidence(graph) {
       for (const id of evidence.get(node.id)) if (!parent.includes(id)) parent.push(id);
     }
   }
+  // Transcript order when known, so a parent's evidence reads in the order it was said.
+  const sorted = ids => (order ? [...ids].sort((a, b) => (order.get(a) ?? Infinity) - (order.get(b) ?? Infinity)) : ids);
   return { ...graph, nodes: graph.nodes.map(node => ({
-    ...node, source_ref: { ...node.source_ref, utterance_ids: evidence.get(node.id) },
+    ...node, source_ref: { ...node.source_ref, utterance_ids: node.semantic_level > 1 ? sorted(evidence.get(node.id)) : evidence.get(node.id) },
   })) };
 }

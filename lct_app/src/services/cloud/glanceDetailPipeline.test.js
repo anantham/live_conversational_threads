@@ -36,16 +36,23 @@ function detailReply(local, topics, { note = null, unfiledFirst = false } = {}) 
 }
 
 // Plays both server and client: real translation and validation, no network.
-function fakeModel({ truncateOver = Infinity, note, unfiled, misfileBudget = false } = {}) {
+function fakeModel({ truncateOver = Infinity, note, unfiled, misfileBudget = false, oneChunk = false, failCall = 0, skeleton = skeletonReply } = {}) {
+  let calls = 0;
   return vi.fn(async (src, _signal, _routes, _guidance, context) => {
-    if (context.task === 'skeleton') return { ...recordingThreadsFromGeneratedText(src, skeletonReply(), context), backend: 'anthropic', model: 'claude-synthetic' };
+    if (context.task === 'skeleton') return { ...recordingThreadsFromGeneratedText(src, skeleton(), context), backend: 'anthropic', model: 'claude-synthetic' };
+    calls += 1;
+    if (calls === failCall) throw new Error('provider refused');
     if (src.finalTokens.length > truncateOver) throw Object.assign(new Error('cut off'), { stopReason: 'max_tokens' });
     const owner = src.finalTokens.map(t => {
       const n = texts.findIndex(text => t.text.trim() === text) + 1;
       return n === 1 ? 'intro' : (n === 6 || (n === 5 && !misfileBudget)) ? 'money' : 'sea';
     }).map(id => context.topics.some(t => t.id === id) ? id : context.topics[0].id);
     const local = src.finalTokens.map((_, i) => u(i + 1)); local.owner = owner;
-    const result = recordingThreadsFromGeneratedText(src, detailReply(local, context.topics, { note, unfiledFirst: unfiled }), context);
+    const reply = oneChunk ? JSON.stringify({ hierarchy_format: 'detail-ranges-v1', edges: [], boundary_notes: [], nodes: [
+      { id: 'all-idea', semantic_level: 2, semantic_type: 'idea', node_name: 'All', summary: '', source_range: null, parent_id: ref(3, context.topics[0].id), secondary_parent_ids: [] },
+      { id: 'all', semantic_level: 1, semantic_type: 'chunk', node_name: 'All', summary: '', source_range: { from: u(1), to: local.at(-1) }, parent_id: ref(2, 'all-idea'), secondary_parent_ids: [] }] })
+      : detailReply(local, context.topics, { note, unfiledFirst: unfiled });
+    const result = recordingThreadsFromGeneratedText(src, reply, context);
     return { ...result, backend: 'anthropic', model: 'claude-synthetic' };
   });
 }
@@ -84,7 +91,9 @@ describe('glance then detail', () => {
     const generate = fakeModel({ note: { kind: 'missed_topic', note: 'Weather deserves its own topic.', range: { from: u(1), to: u(1) } }, unfiled: true });
     const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
     const kinds = bundle.audit_signals.map(s => s.kind).sort();
-    expect(kinds).toEqual(['missed_topic', 'unfiled']);
+    // The intro topic lost its only turn to an unfiled idea: recorded as a shift, not left overlapping.
+    expect(kinds).toEqual(['boundary_shift', 'missed_topic', 'unfiled']);
+    expect(bundle.audit_signals.find(s => s.kind === 'boundary_shift')).toMatchObject({ node_id: '3:intro', turns_dropped: 1, turns_added: 0 });
     expect(bundle.audit_signals.find(s => s.kind === 'unfiled').node_id).toBe('ds1-2:intro-idea');
     const note = bundle.audit_signals.find(s => s.kind === 'missed_topic');
     expect(note.utterance_ids).toHaveLength(1);
@@ -119,5 +128,55 @@ describe('glance then detail', () => {
     expect(seaChunks.flatMap(n => n.source_ref.utterance_ids)).toEqual([u(2), u(3), u(4), u(7), u(8)]);
     expect(evidence(expanded.bundle, '3:money')).toEqual([u(5), u(6)]);
     await expect(expandTopicDetail({ source, bundle: expanded.bundle, topicId: '3:sea', routes: [], generate })).rejects.toThrow('already has detail');
+  });
+
+  // Review finding 1: a topic split across segments is judged only on turns already detailed.
+  it('does not report a boundary shift for a topic split across segments, and keeps undetailed turns on failure', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel(), intervalMs: 0, maxSegmentWords: 10 });
+    expect(bundle.audit_signals).toBeUndefined();
+    expect(evidence(bundle, '3:sea')).toEqual([u(2), u(3), u(4), u(7), u(8)]);
+    const failing = runGlanceDetailPipeline({ source, routes: [], generate: fakeModel({ failCall: 3 }), intervalMs: 0, maxSegmentWords: 10 });
+    const error = await failing.catch(e => e);
+    expect(error.message).toBe('provider refused');
+    // The partial map still carries every turn of every topic, detailed or not.
+    expect(evidence(error.partialBundle, '3:sea')).toEqual([u(2), u(3), u(4), u(7), u(8)]);
+    expect(error.partialBundle.audit_signals).toBeUndefined();
+  });
+
+  // Review finding 7: one chunk across both stretches of a revisited topic is split at the gap.
+  it('splits a chunk that bridges two stretches of a revisited topic, and records it', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel({ oneChunk: true }), intervalMs: 0, maxSegmentWords: 18 });
+    const chunks = bundle.graph_data.filter(n => n.semantic_level === 1).map(n => n.source_ref.utterance_ids);
+    expect(chunks).toContainEqual([u(2), u(3), u(4)]);
+    expect(chunks).toContainEqual([u(7), u(8)]);
+    expect(bundle.audit_signals.filter(s => s.kind === 'chunk_split_at_gap')).toHaveLength(1);
+  });
+
+  // Review finding 5: a turn two overlapping topics both claim is detailed once.
+  it('details a turn claimed by two overlapping topics only once', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const overlapping = () => skeletonReply().replace('{"from":"utterance-0005","to":"utterance-0006"}', '{"from":"utterance-0004","to":"utterance-0006"}');
+    expect(overlapping()).not.toBe(skeletonReply());
+    const generate = fakeModel({ skeleton: overlapping });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    const sent = generate.mock.calls.slice(1).flatMap(c => c[0].finalTokens.map(t => t.text.trim()));
+    expect(sent.filter(text => text === texts[3])).toHaveLength(1);
+    const chunkTurns = bundle.graph_data.filter(n => n.semantic_level === 1).flatMap(n => n.source_ref.utterance_ids);
+    expect(new Set(chunkTurns).size).toBe(chunkTurns.length);
+  });
+
+  // Review finding 8: on-demand expansions never reuse a label.
+  it('gives each on-demand expansion its own label', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = fakeModel();
+    const skeleton = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, detail: 'none' });
+    const one = await expandTopicDetail({ source, bundle: skeleton.bundle, topicId: '3:sea', routes: [], generate });
+    const two = await expandTopicDetail({ source, bundle: one.bundle, topicId: '3:money', routes: [], generate });
+    const prefixes = new Set(two.bundle.graph_data.filter(n => n.semantic_level < 3).map(n => n.id.split('-')[0]));
+    expect([...prefixes].sort()).toEqual(['dt1', 'dt2']);
+    expect(two.bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(7);
+    expect(two.bundle.built_by).toEqual([{ backend: 'anthropic', model: 'claude-synthetic' }]);
   });
 });

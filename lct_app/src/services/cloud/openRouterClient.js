@@ -221,9 +221,9 @@ export async function auditRecordingMap(source, signal, route, nodes) {
   const response = await fetch('/api/cloud/map/generate', { method: 'POST',
     credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
     headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
-  const payload = await readJSON(response, signal, 512 * 1024);
+  const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
   if (!response.ok) throw failure(response.status, payload);
   if (payload.task !== 'audit' || !Array.isArray(payload.findings) || payload.backend !== route.backend) throw unreadable();
   return { findings: payload.findings, backend: payload.backend, model: payload.model,
-    droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0 };
+    droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0 };
 }

@@ -12,8 +12,8 @@ const primary = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-
 const LABELS = { missed: 'Missed', contradiction: 'Contradiction', entity_split: 'Name split', represented: 'Represented' };
 
 /** Second-family semantic audit of a finished map, with its own consent and per-finding decisions. */
-export default function MapAuditPanel({ source, bundle, routes, mapRoute, onBundleChange }) {
-  const route = useMemo(() => chooseAuditRoute(routes, mapRoute), [routes, mapRoute]);
+export default function MapAuditPanel({ source, bundle, routes, onBundleChange }) {
+  const route = useMemo(() => chooseAuditRoute(routes, bundle.built_by), [routes, bundle.built_by]);
   const spans = useMemo(() => planAuditSpans(bundle), [bundle]);
   const timeOf = useMemo(() => new Map(bundle.utterances.map(u => [u.id, u])), [bundle]);
   const spanKey = `${route?.backend}|${route?.model}|${spans.map(s => s.utteranceIds.join(',')).join(';')}`;
@@ -50,7 +50,7 @@ export default function MapAuditPanel({ source, bundle, routes, mapRoute, onBund
       </p>
       {!route ? (
         <p className="text-sm text-slate-600">
-          Add a provider from a different model family than the one that built this map in <Link className="underline" to="/settings/runtime">Settings → Providers</Link> to audit it.
+          Add a provider from a different model family than the ones that built this map in <Link className="underline" to="/settings/runtime">Settings → Providers</Link> to audit it.
         </p>
       ) : (
         <>
@@ -60,7 +60,7 @@ export default function MapAuditPanel({ source, bundle, routes, mapRoute, onBund
           <label className="flex items-start gap-3 text-sm leading-6">
             <input type="checkbox" className="mt-1" checked={consentKey === spanKey} disabled={running || !spans.length}
               onChange={event => setConsentKey(event.target.checked ? spanKey : null)} />
-            I have permission to send {turns} transcript turns ({spanText}) and this map&apos;s names and summaries for them to {MAP_PROVIDERS[route.backend].recipient}.
+            I have permission to send {turns} transcript turns ({spanText}), plus the names and summaries of the map nodes covering them (including their themes and arcs), to {MAP_PROVIDERS[route.backend].recipient}{route.model ? ` (model ${route.model})` : ''}.
           </label>
           <div className="flex gap-2">
             <button type="button" className={primary} disabled={running || consentKey !== spanKey} onClick={() => void start()}>
@@ -111,6 +111,5 @@ MapAuditPanel.propTypes = {
   source: PropTypes.object.isRequired,
   bundle: PropTypes.object.isRequired,
   routes: PropTypes.array.isRequired,
-  mapRoute: PropTypes.object,
   onBundleChange: PropTypes.func.isRequired,
 };

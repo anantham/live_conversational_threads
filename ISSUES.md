@@ -3284,3 +3284,11 @@ The existing public recording test fails in setup on Node 26.0.0 because `localS
 ## 2026-11-24 — Anthropic rejected the first long-transcript map window
 
 The local preview received an upstream HTTP 400 on the first window and stopped before producing a map. The previous error response retained the HTTP status and discarded provider diagnostics, so the exact rejection remains unknown. Claude diagnostics now captures a bounded reason and validated Anthropic request ID. A live synthetic check with the same model and the user's personal key remains the next step. It blocks confirming the Claude path and does not block local transcript reading.
+
+## 2026-11-25 — Window halving can desynchronise local/global utterance IDs (pre-existing class, low priority)
+- Where: `lct_app/src/services/cloud/longTranscriptPipeline.js` `splitSourceIntoWindows` / `splitWindowInHalf`.
+- What: windows map local→global utterances by position, assuming one token per utterance. Consecutive same-speaker
+  utterances (long turns split by `recordingTranscript.js`) can re-merge inside a window source, shifting every later ID.
+- Impact: evidence attached to the wrong turns, silently. The import page now uses `glanceDetailPipeline.js`, which gives each
+  turn its own speaker label and asserts the count at merge; the old windowed path remains for other callers.
+- Next: apply the same unique-label + count assertion to `splitSourceIntoWindows`, or retire it. Found by Gemini review (ADR-073).

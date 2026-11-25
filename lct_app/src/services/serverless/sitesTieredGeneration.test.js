@@ -544,3 +544,28 @@ it('runs an audit task through the ordered route and returns findings, not a map
   expect(JSON.parse(wire.messages[0].content).map_nodes[0].id).toBe('3:garden');
   expect(wire.system).toContain('independently of the map');
 });
+
+// Review findings 3, 6, 11.
+it('accepts an audit with no covering nodes but rejects malformed audit nodes and tasks on legacy routes', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  const post = (path, body, consent = 'x-lct-map-consent') => worker.fetch(new Request(SITE + path, { method: 'POST',
+    headers: { origin: SITE, 'content-type': 'application/json', [consent]: 'generate-v1' }, body: JSON.stringify(body) }), env);
+  const routes = [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }];
+  fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify({ format: 'audit-v1', independent_points: [], contradictions: [], entity_splits: [] }) }] }));
+  expect((await post('/api/cloud/map/generate', { source, task: 'audit', nodes: [], routes })).status).toBe(200);
+  const bad = [{ id: '3:a', semantic_level: 3, node_name: 'A', ranges: [{ from: 'anything goes', to: 'utterance-0001' }] }];
+  expect((await post('/api/cloud/map/generate', { source, task: 'audit', nodes: bad, routes })).status).toBe(400);
+  const dup = [1, 2].map(() => ({ id: '3:a', semantic_level: 3, node_name: 'A', ranges: [{ from: 'utterance-0001', to: 'utterance-0001' }] }));
+  expect((await post('/api/cloud/map/generate', { source, task: 'audit', nodes: dup, routes })).status).toBe(400);
+  expect((await post('/api/cloud/map/generate', { source, task: 'detail', topics: [{ id: 'a', node_name: 'A' }], glossary: 'not-a-list', routes })).status).toBe(400);
+  expect((await post('/api/cloud/anthropic/generate', { source, task: 'audit' }, 'x-lct-anthropic-consent')).status).toBe(400);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('reports an OpenRouter cut-off as max_tokens so the browser can split', async () => {
+  fetch.mockResolvedValueOnce(Response.json({ choices: [{ finish_reason: 'length', message: { role: 'assistant', content: '{"nodes":[' } }],
+    usage: { completion_tokens: 8192 } }));
+  const body = await (await worker.fetch(request('openrouter'), env)).json();
+  expect(body).toMatchObject({ code: 'invalid_completion', validation_stage: 'choice_finish', stop_reason: 'max_tokens', output_tokens: 8192 });
+});

@@ -33,7 +33,8 @@ describe('derived parent evidence', () => {
       node(1, 'sell', ['utterance-0004'], ref(2, 'money')),
       node(2, 'grow', ['utterance-0003', 'utterance-0001'], null), node(2, 'money', [], null),
     ]));
-    expect(evidenceOf(bundle, '2:grow')).toEqual(['utterance-0003', 'utterance-0001']);
+    // Transcript order, whatever order the model cited them in.
+    expect(evidenceOf(bundle, '2:grow')).toEqual(['utterance-0001', 'utterance-0003']);
     expect(evidenceOf(bundle, '2:money')).toEqual(['utterance-0004']);
     expect(bundle.graph_data.find(n => n.id === '1:plant').memberships).toEqual([
       { parent_id: '2:grow', role: 'primary' }, { parent_id: '2:money', role: 'secondary' }]);

@@ -168,7 +168,7 @@ describe('redacted OpenRouter validation diagnostics through the public Worker',
     const response = await worker.fetch(request(), env), body = await response.json();
     expect(response.status).toBe(502);
     expect(body).toEqual({ code: 'invalid_completion', error: 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.',
-      validation_stage: 'hierarchy', validation_rule: rule });
+      validation_stage: 'hierarchy', validation_rule: rule, max_output_tokens: Number(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS) });
     expect(logged.mock.calls).toEqual([['[openrouter] generation failed', {
       code: 'invalid_completion', validationStage: 'hierarchy', validationRule: rule,
     }]]);

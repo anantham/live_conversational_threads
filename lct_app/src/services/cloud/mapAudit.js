@@ -10,14 +10,20 @@ export function modelFamily(route) {
   if (!route) return null;
   if (route.backend === 'anthropic') return 'anthropic';
   if (route.backend === 'gemini') return 'google';
+  // A meta-router (openrouter/auto) can answer with any family, so its family is unknown.
   const vendor = String(route.model || '').split('/')[0].toLowerCase();
-  return vendor === 'google' ? 'google' : vendor || 'openrouter-unknown';
+  return !vendor || vendor === 'openrouter' || !String(route.model).includes('/') ? UNKNOWN : vendor;
 }
+const UNKNOWN = 'unknown';
 
-/** First configured route from a different family than the one that built the map, or null. */
-export function chooseAuditRoute(routes, mapRoute) {
-  const built = modelFamily(mapRoute);
-  return routes.find(route => modelFamily(route) !== built && modelFamily(route) !== 'openrouter-unknown') || null;
+/**
+ * First configured route whose family differs from every family that wrote any part of the map
+ * (glance and every detail call, including fallbacks), or null. Unknown families never qualify.
+ */
+export function chooseAuditRoute(routes, builders) {
+  const built = new Set((Array.isArray(builders) ? builders : [builders]).filter(Boolean).map(modelFamily));
+  if (!built.size || built.has(UNKNOWN)) return null;
+  return routes.find(route => { const family = modelFamily(route); return family !== UNKNOWN && !built.has(family); }) || null;
 }
 
 /** Spans to audit: uncovered turns first, then core topics (all topics for maps without salience). */
@@ -67,7 +73,11 @@ export async function runMapAudit({ source, bundle, route, segments = planAuditS
   for (const [i, segment] of segments.entries()) {
     if (i > 0) await sleep(intervalMs, signal);
     onProgress?.({ phase: 'audit', segmentIndex: i, totalSegments: segments.length });
-    const result = await request(segmentSource(source, segment, utteranceById), signal, route, auditNodesFor(bundle, segment));
+    const segmentSrc = segmentSource(source, segment, utteranceById);
+    if (createRecordingTranscript(segmentSrc).document.utterances.length !== segment.utteranceIds.length) {
+      throw new Error(`Audit span ${segment.label} did not keep one utterance per turn; it was not sent.`);
+    }
+    const result = await request(segmentSrc, signal, route, auditNodesFor(bundle, segment));
     const toGlobal = new Map(segment.utteranceIds.map((id, k) => [`utterance-${String(k + 1).padStart(4, '0')}`, id]));
     for (const finding of result.findings) {
       signals.push({ id: signalId(), source: 'audit', run, provider: result.backend, model: result.model, segment: segment.label,

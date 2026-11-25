@@ -39,7 +39,6 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const [served, setServed] = useState('');
   const [completedBundle, setCompletedBundle] = useState(null);
   const [detail, setDetail] = useState('all');
-  const [mapRoute, setMapRoute] = useState(null);
   const abortRef = useRef(null);
   const status = readiness?.routes === routes ? readiness.status : null;
   const statusError = readiness?.routes === routes ? readiness.error : '';
@@ -92,7 +91,6 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       setCompletedBundle(result.bundle);
       onBundleReady(result.bundle);
       if (result.backend && result.model) setServed(`${MAP_PROVIDERS[result.backend].name} · ${result.model}`);
-      setMapRoute(result.backend ? { backend: result.backend, model: result.model } : null);
     } catch (cause) {
       setProgress(current => ({ ...current, phase: 'stopped' }));
       if (cause?.name === 'AbortError') {
@@ -194,8 +192,8 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
 
       {pipelineError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{pipelineError}</p>}
 
-      {completedBundle && !running && mapRoute && (
-        <MapAuditPanel source={parsed.source} bundle={completedBundle} routes={routes} mapRoute={mapRoute}
+      {completedBundle && !running && (
+        <MapAuditPanel source={parsed.source} bundle={completedBundle} routes={routes}
           onBundleChange={bundle => { setCompletedBundle(bundle); onBundleReady(bundle); }} />
       )}
     </section>
