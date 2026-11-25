@@ -1,6 +1,7 @@
 import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { expandGenerationHierarchy } from './generationHierarchy.js';
+import { deriveParentEvidence } from './parentEvidence.js';
 import { repairGeneratedReferences } from './generationReferenceRepair.js';
 import { MAP_GUIDANCE_LIMIT } from './sitesProviderPreferences.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
@@ -24,10 +25,10 @@ export const RECORDING_MAP_PROMPT = [
   'Use all semantic tiers that the conversation supports: chunk (1), idea (2), topic (3), theme (4), arc (5).',
   'Return authored nodes, explicit edges, metadata, and optional conversation thread paths as JSON only.',
   'Return compact JSON on one line: no indentation, line breaks or spaces between tokens, so the whole map fits the output limit.',
-  'Every chunk must link to original utterance IDs; link higher tiers where evidence supports them.',
+  'Every chunk must cite its original utterance IDs in source_ref.',
   'A chunk is one coherent moment: group consecutive utterances that develop the same point, and fold short acknowledgements such as "Right." or "Yeah." into a neighbouring chunk rather than giving them their own.',
   'Give a parent a single child only when that tier says something the child does not; never repeat a node one tier up under a new name.',
-  "A parent's source_ref must include the utterance IDs of every child filed under it, so file each node under the parent its utterances actually discuss.",
+  'Above chunks, leave source_ref.utterance_ids empty: the application derives each parent\'s evidence from every child filed under it, so file each node under the parent its utterances actually discuss. Cite an utterance on a higher tier only when none of its children covers it.',
   'Give a digression, or a story about someone other than the main speaker, its own node rather than folding it into the surrounding one.',
   'Set hierarchy_format to tiered-parent-links-v2. Author each parent relationship only on the child node.',
   'Node ids are local to a semantic level. Every node reference is an object with semantic_level and id copied exactly from that node, never a bare string.',
@@ -126,5 +127,5 @@ export function recordingThreadsFromGeneratedText(source, content) {
     throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
   const { graph: repaired, repair } = repairGeneratedReferences(graph);
-  return { ...createRecordingThreads({ ...source, graph: expandGenerationHierarchy(repaired) }), referenceRepair: repair };
+  return { ...createRecordingThreads({ ...source, graph: deriveParentEvidence(expandGenerationHierarchy(repaired)) }), referenceRepair: repair };
 }

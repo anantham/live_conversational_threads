@@ -111,6 +111,8 @@ function failure(status, payload) {
   const error = new Error(code ? generationFailures[code] + detail + providerDiagnosticDetail(payload) : messages[status] || uncertain);
   error.status = status;
   if (code) error.code = code;
+  // Lets the windowed pipeline split a window whose map was cut off at the output cap.
+  if (code === 'invalid_completion' && payload.stop_reason === 'max_tokens') error.stopReason = 'max_tokens';
   return error;
 }
 

@@ -44,15 +44,16 @@ beforeEach(() => {
 afterEach(() => { sqlite.close(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('evidence-mismatch warning at the map route', () => {
-  it('still saves a map with a misfiled chunk, and always logs the mismatch by tier, counts only', async () => {
+  // Intent: tests/intent/derived-parent-evidence.md. A parent's evidence now includes every child filed
+  // under it, so the model's filing stays as authored and the generated map has nothing to warn about.
+  it('keeps the authored filing and extends the parent\'s evidence to the child, with no mismatch to log', async () => {
     next = () => reply(map('childhood'));
     const response = await generate();
     expect(response.status).toBe(200);
-    expect((await response.json()).artifact.graph_data.find(n => n.id === '1:intro').parent_id).toBe('2:childhood');
-    expect(mismatchLogs()).toEqual([['[openrouter] generated map files children outside their parent\'s evidence',
-      { code: 'evidence_mismatch', mismatches: 1, byChildLevel: [1, 0, 0, 0] }]]);
-    // Node ids summarise the conversation, so the log carries counts only.
-    expect(JSON.stringify(mismatchLogs())).not.toMatch(/intro|childhood|utterance-/);
+    const nodes = (await response.json()).artifact.graph_data;
+    expect(nodes.find(n => n.id === '1:intro').parent_id).toBe('2:childhood');
+    expect(nodes.find(n => n.id === '2:childhood').source_ref.utterance_ids).toEqual(['utterance-0002', 'utterance-0001']);
+    expect(mismatchLogs()).toEqual([]);
   });
 
   it('logs nothing for a map whose children sit inside their parents\' evidence', async () => {

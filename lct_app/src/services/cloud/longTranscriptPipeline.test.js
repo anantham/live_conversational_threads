@@ -89,6 +89,42 @@ describe('longTranscriptPipeline', () => {
     expect(progress.at(-1).phase).toBe('done');
   });
 
+  // Intent: a window whose map is cut off at the output cap is mapped as two halves, not the end of the run.
+  it('splits a truncated window in half and keeps exact global evidence for each half', async () => {
+    const source = makeSource(6, 10);
+    const truncated = Object.assign(new Error('cut off'), { code: 'invalid_completion', stopReason: 'max_tokens' });
+    const generateWindow = vi.fn(async (winSource) => {
+      if (winSource.finalTokens.length > 2) throw truncated;
+      return { ...fakeWindowMap(winSource, winSource.recordingId), backend: 'anthropic', model: 'claude-synthetic' };
+    });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const result = await runLongTranscriptPipeline({ source, routes: [], generateWindow, intervalMs: 0,
+      windowOptions: { maxWords: 40, maxSeconds: 10_000 } });
+    // Windows of 4 + 2 turns: the first is truncated, halved into 2 + 2.
+    expect(generateWindow.mock.calls.map(([w]) => w.finalTokens.length)).toEqual([4, 2, 2, 2]);
+    expect(generateWindow.mock.calls[1][0].finalTokens[0].text.startsWith('\n')).toBe(false);
+    expect(result.windowCount).toBe(3);
+    expect(result.bundle.graph_data.filter(n => n.semantic_level === 1).map(n => [n.id, n.source_ref.utterance_ids]))
+      .toEqual([['w1a-chunk-1', ['utterance-0001']], ['w1b-chunk-1', ['utterance-0003']], ['w2-chunk-1', ['utterance-0005']]]);
+    const events = info.mock.calls.map(([line]) => line.split(') ').at(-1));
+    expect(events).toEqual(['start', 'split', 'start', 'done', 'start', 'done', 'start', 'done']);
+    expect(JSON.stringify(info.mock.calls)).not.toMatch(/word\d/);
+  });
+
+  it('stops on a truncated window that cannot be split further and on other failures', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const truncated = Object.assign(new Error('cut off'), { stopReason: 'max_tokens' });
+    const always = vi.fn(async () => { throw truncated; });
+    await expect(runLongTranscriptPipeline({ source: makeSource(8, 10), routes: [], generateWindow: always, intervalMs: 0,
+      windowOptions: { maxWords: 1000, maxSeconds: 10_000 } })).rejects.toBe(truncated);
+    expect(always.mock.calls.map(([w]) => w.finalTokens.length)).toEqual([8, 4, 2]);
+    const invalid = new Error('tier rule');
+    const once = vi.fn(async () => { throw invalid; });
+    await expect(runLongTranscriptPipeline({ source: makeSource(8, 10), routes: [], generateWindow: once, intervalMs: 0,
+      windowOptions: { maxWords: 1000, maxSeconds: 10_000 } })).rejects.toBe(invalid);
+    expect(once).toHaveBeenCalledTimes(1);
+  });
+
   it('merges a single window without adding a w1- prefix', () => {
     const source = makeSource(2, 5);
     const [win] = splitSourceIntoWindows(source, { maxWords: 100, maxSeconds: 1000 });

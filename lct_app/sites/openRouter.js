@@ -101,6 +101,20 @@ export function logOpenRouterFailure(env, code, validationStage, validationRule,
   } catch { /* Diagnostics must never replace the public result or release an attempt. */ }
 }
 
+// Debug-gated, one line per provider call: timing, sizes and outcome. Never transcript, map or key.
+function logProviderCall(env, fields) {
+  if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
+  try { console.info(`[${fields.backend}] provider call`, fields); } catch { /* Never changes the result. */ }
+}
+
+function usageOf(completion, anthropic) {
+  const usage = completion?.usage;
+  const count = value => Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+  return anthropic ? { stopReason: ANTHROPIC_STOP_REASONS.has(completion?.stop_reason) ? completion.stop_reason : 'unknown',
+    inputTokens: count(usage?.input_tokens), outputTokens: count(usage?.output_tokens) }
+    : { inputTokens: count(usage?.prompt_tokens), outputTokens: count(usage?.completion_tokens) };
+}
+
 const ANTHROPIC_STOP_REASONS = new Set(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use', 'pause_turn',
   'refusal', 'model_context_window_exceeded']);
 
@@ -227,6 +241,8 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       if (failedAuthKeys.has(authKey)) continue;
       const anthropic = policy.backend === 'anthropic';
       const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
+      const callStarted = Date.now();
+      const call = { backend: policy.backend, model: body.model, maxTokens };
       const response = await fetch(policy.endpoint, { method: 'POST',
         headers: { ...authentication, 'Content-Type': 'application/json' },
         body: JSON.stringify(body), signal, redirect: 'manual' });
@@ -240,6 +256,9 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
         const modelFallback = policy.backend === 'openrouter' && ROUTE_UNAVAILABLE.has(response.status);
         const providerFallback = ordered && [401, 403, 404, 429].includes(response.status);
         const details = anthropic ? await anthropicRefusalDetails(response, signal) : { upstream_status: response.status };
+        logProviderCall(env, { ...call, outcome: 'refused', upstreamStatus: response.status, durationMs: Date.now() - callStarted,
+          ...(details.upstream_reason ? { reason: details.upstream_reason } : {}),
+          ...(details.upstream_request_id ? { requestId: details.upstream_request_id } : {}) });
         if (!anthropic) await logProviderRefusal(env, response, signal, policy.backend);
         void response.body?.cancel().catch(() => {});
         lastRefusal = new OpenRouterError(502, 'provider_refused', `${policy.label} refused or could not finish generation (HTTP ${response.status}: ${refusalReason(response.status)}). The attempt remains counted. Check provider availability and allowance before retrying.`,
@@ -257,10 +276,16 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
         const { bundle, referenceRepair } = readCompletion({ source: input.source, response: completion });
+        logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
+          nodes: bundle.graph_data.length, coveredTurns: bundle.coverage?.covered_turns, totalTurns: bundle.coverage?.total_turns,
+          ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
         return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair, minimalId,
           ...(diagnostic ? { mapId: anthropicRequestId(response) } : {}) };
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
+        logProviderCall(env, { ...call, outcome: 'rejected', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
+          ...sanitizedValidation(error?.validationStage, error?.validationRule),
+          ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
         throw new OpenRouterError(502, 'invalid_completion', `${policy.label} did not return a complete source-linked map. The attempt remains counted; no map was saved.`,
           { ...invalidCompletionDetails(error, { anthropic, completion, response, maxTokens }),
             ...(diagnostic ? { diagnostic_stage: 'map', minimal_request_id: minimalId } : {}) });

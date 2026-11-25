@@ -99,7 +99,7 @@ export function mergeWindowedGraphs(fullSource, windowResults, { title = '', mee
 
   for (const item of windowResults) {
     const { window: win, bundle } = item;
-    const prefix = windowResults.length > 1 ? `w${win.index + 1}-` : '';
+    const prefix = windowResults.length > 1 ? `w${win.label ?? win.index + 1}-` : '';
     const localUtterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
     const localToGlobal = new Map();
     for (let i = 0; i < localUtterances.length; i++) {
@@ -175,6 +175,41 @@ export function mergeWindowedGraphs(fullSource, windowResults, { title = '', mee
   return { ...assembled, bundle, json: JSON.stringify(bundle, null, 2) };
 }
 
+// Windows split this many times at most (a 15-minute window becomes quarters at worst).
+export const MAX_WINDOW_SPLIT_DEPTH = 2;
+
+/** Halve a window by utterances, keeping global IDs and timing; null when it cannot shrink further. */
+export function splitWindowInHalf(win) {
+  const depth = win.splitDepth ?? 0;
+  if (depth >= MAX_WINDOW_SPLIT_DEPTH || win.utteranceCount < 2) return null;
+  const tokens = win.source.finalTokens;
+  const middle = Math.ceil(tokens.length / 2);
+  return [tokens.slice(0, middle), tokens.slice(middle)].map((part, half) => {
+    const finalTokens = part.map((token, i) => ({ ...token, text: i === 0 ? token.text.replace(/^\n/, '') : token.text }));
+    const ids = half === 0 ? win.globalUtteranceIds.slice(0, middle) : win.globalUtteranceIds.slice(middle);
+    const label = `${win.label ?? win.index + 1}${half === 0 ? 'a' : 'b'}`;
+    return { ...win, label, splitDepth: depth + 1,
+      source: { ...win.source, recordingId: `${win.source.recordingId}${half === 0 ? 'a' : 'b'}`, finalTokens },
+      startMs: finalTokens[0].startMs ?? win.startMs, endMs: finalTokens.at(-1).endMs ?? win.endMs,
+      utteranceCount: finalTokens.length, wordCount: finalTokens.reduce((sum, t) => sum + countWords(t.text), 0),
+      globalUtteranceIds: ids };
+  });
+}
+
+const clock = ms => {
+  const total = Math.max(0, Math.floor((ms || 0) / 1000));
+  return [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60].map(v => String(v).padStart(2, '0')).join(':');
+};
+
+// One console line per window event: timing, sizes and outcome only, never transcript or map text.
+function logWindow(event, win, position, total, details = {}) {
+  try {
+    const { message, ...rest } = details;
+    console.info(`[lct-pipeline] window ${win.label} (${position + 1}/${total}, ${clock(win.startMs)}–${clock(win.endMs)}, `
+      + `${win.utteranceCount} turns, ${win.wordCount} words) ${event}`, { ...rest, ...(message ? { error: message } : {}) });
+  } catch { /* Logging must never change the pipeline result. */ }
+}
+
 function sleep(ms, signal) {
   if (ms <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -208,7 +243,7 @@ export async function runLongTranscriptPipeline({
   intervalMs = DEFAULT_WINDOW_INTERVAL_MS,
   windowOptions = {},
 }) {
-  const windows = splitSourceIntoWindows(source, windowOptions);
+  const windows = splitSourceIntoWindows(source, windowOptions).map(win => ({ ...win, label: String(win.index + 1) }));
   const completed = [];
   let lastBackend = null;
   let lastModel = null;
@@ -216,12 +251,28 @@ export async function runLongTranscriptPipeline({
   for (let i = 0; i < windows.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const win = windows[i];
-    if (i > 0) {
+    // Split halves wait too, even at position 0: the Worker admits one attempt per interval.
+    if (i > 0 || win.splitDepth) {
       onProgress?.({ phase: 'waiting', windowIndex: i, totalWindows: windows.length, startMs: win.startMs, endMs: win.endMs, completedWindows: completed.length });
       await sleep(intervalMs, signal);
     }
     onProgress?.({ phase: 'generating', windowIndex: i, totalWindows: windows.length, startMs: win.startMs, endMs: win.endMs, completedWindows: completed.length });
-    const result = await generateWindow(win.source, signal, routes, guidance);
+    const startedAt = Date.now();
+    logWindow('start', win, i, windows.length);
+    let result;
+    try {
+      result = await generateWindow(win.source, signal, routes, guidance);
+    } catch (error) {
+      const halves = error?.stopReason === 'max_tokens' ? splitWindowInHalf(win) : null;
+      logWindow(halves ? 'split' : 'failed', win, i, windows.length, { ms: Date.now() - startedAt, message: error?.message });
+      if (!halves) throw error;
+      // The map for this window did not fit the output cap: map each half instead.
+      windows.splice(i, 1, ...halves);
+      i -= 1;
+      continue;
+    }
+    logWindow('done', win, i, windows.length, { ms: Date.now() - startedAt, nodes: result.bundle?.graph_data?.length,
+      backend: result.backend, model: result.model });
     lastBackend = result.backend || lastBackend;
     lastModel = result.model || lastModel;
     completed.push({ window: win, bundle: result.bundle });

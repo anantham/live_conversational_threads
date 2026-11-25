@@ -67,7 +67,7 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(request.messages[0].content).toContain('Return compact JSON on one line');
     // Intent: tests/intent/map-structure-quality.md. Their effect is measured by the paid A/B, not here.
     for (const rule of ['A chunk is one coherent moment', 'Give a parent a single child only when',
-      "A parent's source_ref must include the utterance IDs of every child", 'Give a digression']) {
+      'derives each parent\'s evidence from every child filed under it', 'Give a digression']) {
       expect(request.messages[0].content).toContain(rule);
     }
     expect(JSON.parse(request.messages[1].content).utterances.map(row => row.text))
