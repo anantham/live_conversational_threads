@@ -18,7 +18,7 @@ function tierSummary(bundle) {
 
 export default function TextSourcePanel({ bundle, selection = null, compact = false, onClose, onRenameSpeaker, namesStayInView = false, sectionMode, onSectionChange }) {
   const transcript = typeof bundle.full_transcript === "string" ? bundle.full_transcript : "";
-  const utterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
+  const utterances = useMemo(() => (Array.isArray(bundle.utterances) ? bundle.utterances : []), [bundle.utterances]);
   const referenceNotes = bundle.meeting_metadata?.reference_notes || null;
   const hasGeminiNotes = Boolean(referenceNotes && (referenceNotes.summary || referenceNotes.quick_notes || referenceNotes.next_steps));
   const driveMediaRef = useMemo(() => {
@@ -43,9 +43,17 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > transcript.length) return null;
     return { start, end };
   }, [selection, transcript]);
+  // A cited run spans utteranceId..endUtteranceId in source order; every row in it is marked.
+  const citedRows = useMemo(() => {
+    if (selection?.kind !== "utterance") return null;
+    const startIdx = utterances.findIndex((row) => String(row.id) === String(selection.utteranceId));
+    if (startIdx < 0) return null;
+    const endIdx = selection.endUtteranceId == null ? startIdx : utterances.findIndex((row) => String(row.id) === String(selection.endUtteranceId));
+    return { start: startIdx, end: endIdx >= startIdx ? endIdx : startIdx };
+  }, [selection, utterances]);
   useEffect(() => {
-    selectedRef.current?.scrollIntoView?.({ block: "center" });
-  }, [mode, range, selection?.utteranceId]);
+    selectedRef.current?.scrollIntoView?.({ block: citedRows && citedRows.end > citedRows.start ? "start" : "center" });
+  }, [mode, range, selection?.utteranceId, citedRows]);
 
   const renderRaw = (start, end) => {
     if (!range || end <= range.start || start >= range.end) return transcript.slice(start, end);
@@ -81,15 +89,16 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
     {onRenameSpeaker && mode !== "gemini" && <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} namesStayInView={namesStayInView} /></div>}
     <div data-viewer-scroll="text-source" aria-label="Original source passages" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-100 bg-stone-50 p-2 leading-5">
       {mode === "transcript" && transcript && <pre className="whitespace-pre-wrap break-words font-sans">{renderedTranscript}</pre>}
-      {mode === "utterances" && utterances.map((row) => {
-        const selected = selection?.kind === "utterance" && String(row.id) === String(selection.utteranceId);
+      {mode === "utterances" && utterances.map((row, rowIdx) => {
+        const selected = Boolean(citedRows && rowIdx >= citedRows.start && rowIdx <= citedRows.end);
+        const firstSelected = selected && rowIdx === citedRows.start;
         const offset = mediaOffsetLabel(row.timestamp_start);
         const driveUrl = driveMediaRef ? buildMediaSeekUrl(driveMediaRef, row.timestamp_start) : null;
-        return <div key={row.id} ref={selected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} className={`mb-2 rounded border-l-2 p-2 ${selected ? "border-amber-500 bg-amber-50" : "border-transparent bg-white"}`}>
+        return <div key={row.id} ref={firstSelected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} className={`mb-2 rounded p-2 ${selected ? "bg-amber-50 ring-1 ring-inset ring-amber-200" : "bg-white"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium text-slate-700">{row.speaker_id ? speakerDisplayName(speakerNames, row.speaker_id) : row.speaker_name || row.speaker_display || "Source passage"}</span>
             {driveUrl && offset && (
-              <a href={driveUrl} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900">
+              <a href={driveUrl} target="_blank" rel="noreferrer" className="text-[11px] text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-900">
                 Drive {offset} ↗
               </a>
             )}

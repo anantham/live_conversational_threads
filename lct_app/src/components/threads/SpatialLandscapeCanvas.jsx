@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import ConversationTimelineView from "./ConversationTimelineView";
 import {
@@ -51,6 +51,7 @@ function IslandVisits({ visits, onOpenVisit, nodeId }) {
               onOpenVisit?.({
                 nodeId,
                 utteranceId: visit.startUtteranceId,
+                endUtteranceId: visit.endUtteranceId,
                 seconds: visit.startSeconds,
               });
             }}
@@ -238,6 +239,7 @@ export default function SpatialLandscapeCanvas({
   const [consentedProviderLabel, setConsentedProviderLabel] = useState("");
   const epistemicConsent = Boolean(epistemicProviderLabel && consentedProviderLabel === epistemicProviderLabel);
   const touchStartX = useRef(null);
+  const breadcrumbRef = useRef(null);
 
   const rawSiblingIds = useMemo(() => {
     if (parentId === "__unfiled__") return landscape.unfiledIds;
@@ -269,6 +271,12 @@ export default function SpatialLandscapeCanvas({
     [parentId, landscape],
   );
 
+  // Keep the deepest crumb in view: the trail scrolls sideways instead of wrapping.
+  useEffect(() => {
+    const trail = breadcrumbRef.current;
+    if (trail) trail.scrollLeft = trail.scrollWidth;
+  }, [parentId]);
+
   useEffect(() => {
     const focus = parentId && parentId !== "__unfiled__" ? landscape.nodesById.get(parentId) || null : null;
     onFocusNodeChange?.(focus);
@@ -282,11 +290,12 @@ export default function SpatialLandscapeCanvas({
       setHoveredId(null);
       return;
     }
-    const firstVisit = landscape.visitsById.get(id)?.[0];
+    const firstVisit = landscape.sourceVisitsById.get(id)?.[0];
     if (firstVisit) {
       onOpenVisit?.({
         nodeId: id,
         utteranceId: firstVisit.startUtteranceId,
+        endUtteranceId: firstVisit.endUtteranceId,
         seconds: firstVisit.startSeconds,
       });
     }
@@ -353,7 +362,7 @@ export default function SpatialLandscapeCanvas({
   return (
     <div
       data-testid="spatial-landscape"
-      className="flex h-full min-h-0 flex-1 flex-col bg-[#fbfaf7] font-sans text-slate-900 select-none"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#fbfaf7] font-sans text-slate-900 select-none"
       onTouchStart={(e) => { touchStartX.current = e.touches?.[0]?.clientX ?? null; }}
       onTouchEnd={(e) => {
         if (touchStartX.current == null) return;
@@ -364,25 +373,25 @@ export default function SpatialLandscapeCanvas({
       }}
     >
       {/* Minimal top strip: Breadcrumb · Honest Lens bar · ▾ overflow */}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-stone-200/70 bg-[#fbfaf7]/90 px-4 py-2.5 sm:px-8">
-        <nav aria-label="Landscape breadcrumb" className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
+      <header className="flex shrink-0 flex-col gap-1.5 border-b border-stone-200/70 bg-[#fbfaf7]/90 px-4 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-8 sm:py-2.5">
+        <nav ref={breadcrumbRef} aria-label="Landscape breadcrumb" className="flex min-w-0 items-center gap-1.5 overflow-x-auto text-sm">
           <button
             type="button"
             onClick={() => { setParentId(null); setPageIndex(0); setHoveredId(null); }}
-            className={`truncate rounded px-1.5 py-0.5 transition-colors hover:text-slate-950 ${parentId ? "text-slate-500" : "font-medium text-slate-900"}`}
+            className={`max-w-[24ch] shrink-0 truncate rounded px-1.5 py-0.5 transition-colors hover:text-slate-950 ${parentId ? "text-slate-500" : "font-medium text-slate-900"}`}
           >
             {title}
           </button>
           {parentId === "__unfiled__" && (
             <>
-              <span aria-hidden="true" className="text-stone-300">/</span>
-              <span className="font-medium text-slate-900">Unfiled</span>
+              <span aria-hidden="true" className="shrink-0 text-stone-300">/</span>
+              <span className="shrink-0 font-medium text-slate-900">Unfiled</span>
             </>
           )}
           {breadcrumbs.map((crumb, idx) => {
             const isLast = idx === breadcrumbs.length - 1;
             return (
-              <span key={crumb.id} className="inline-flex min-w-0 items-center gap-1.5">
+              <span key={crumb.id} className="inline-flex shrink-0 items-center gap-1.5">
                 <span aria-hidden="true" className="text-stone-300">/</span>
                 <button
                   type="button"
@@ -396,8 +405,12 @@ export default function SpatialLandscapeCanvas({
           })}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <div role="group" aria-label="Surface mode" className="inline-flex rounded-full bg-stone-200/70 p-0.5 text-xs">
+        {/* One row at every width: the controls scroll sideways on a phone rather than wrapping
+            into a tall header, and the popover + overflow menu sit outside the scroller so it
+            cannot clip them. */}
+        <div className="relative flex min-w-0 items-center gap-2">
+          <div data-testid="landscape-controls" className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto sm:flex-none">
+          <div role="group" aria-label="Surface mode" className="inline-flex shrink-0 rounded-full bg-stone-200/70 p-0.5 text-xs">
             <button
               type="button"
               aria-pressed={surface === "map"}
@@ -416,7 +429,7 @@ export default function SpatialLandscapeCanvas({
             </button>
           </div>
 
-          <div role="group" aria-label="Epistemic lenses" className="relative flex flex-wrap items-center gap-1 text-xs">
+          <div role="group" aria-label="Epistemic lenses" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs">
             <button
               type="button"
               aria-pressed={activeLens === "all"}
@@ -462,7 +475,7 @@ export default function SpatialLandscapeCanvas({
                       : isReady
                         ? "text-slate-700 hover:bg-stone-200/70 hover:text-slate-950"
                         : canAnalyze
-                          ? "cursor-pointer text-slate-400 hover:bg-stone-200/60 hover:text-slate-700"
+                          ? "cursor-pointer text-slate-500 hover:bg-stone-200/60 hover:text-slate-800"
                           : "cursor-default text-slate-400"
                   }`}
                 >
@@ -472,9 +485,11 @@ export default function SpatialLandscapeCanvas({
                 </button>
               );
             })}
+          </div>
+          </div>
 
             {epistemicPromptOpen && onRunEpistemic && (
-              <div className="absolute right-0 top-9 z-[70] w-72 rounded-xl border border-stone-200 bg-white p-3.5 text-xs text-slate-700 shadow-lg">
+              <div className="absolute right-0 top-full z-[70] mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-stone-200 bg-white p-3.5 text-xs text-slate-700 shadow-lg">
                 <p className="font-medium text-slate-900">Analyze Cruxes, Claims &amp; Normative assumptions</p>
                 {epistemicProviderLabel ? (
                   <>
@@ -509,8 +524,7 @@ export default function SpatialLandscapeCanvas({
                 )}
               </div>
             )}
-          </div>
-          {overflowMenu}
+          {overflowMenu && <div className="shrink-0">{overflowMenu}</div>}
         </div>
       </header>
 
@@ -525,13 +539,14 @@ export default function SpatialLandscapeCanvas({
       ) : (
       <>
       {/* Open-space stage: ≤3 focal typographic islands */}
-      <main className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10 sm:px-12">
+      {/* my-auto (not justify-center) centres the stage while letting a tall stage scroll from its top. */}
+      <main className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-5 py-8 sm:px-12 sm:py-10">
         {page.visibleIds.length === 0 ? (
-          <p className="text-sm text-slate-500">No nodes at this level yet.</p>
+          <p className="my-auto text-sm text-slate-500">No nodes at this level yet.</p>
         ) : (
           <div
             data-testid="landscape-stage"
-            className={`grid w-full max-w-6xl gap-10 sm:gap-12 ${
+            className={`my-auto grid w-full max-w-6xl gap-6 sm:gap-12 ${
               page.visibleIds.length === 1
                 ? "max-w-xl grid-cols-1"
                 : page.visibleIds.length === 2
@@ -541,7 +556,8 @@ export default function SpatialLandscapeCanvas({
           >
             {page.visibleIds.map((id) => {
               const node = landscape.nodesById.get(id);
-              const visits = landscape.visitsById.get(id) || [];
+              const ownVisits = landscape.visitsById.get(id) || [];
+              const visits = landscape.sourceVisitsById.get(id) || ownVisits;
               const children = landscape.childrenById.get(id) || [];
               const crossLinks = landscape.crossLinksById.get(id) || [];
               const isRevealed = hoveredId === id;
@@ -550,6 +566,10 @@ export default function SpatialLandscapeCanvas({
               const levelLabel = LEVEL_NAMES[Number(node?.semantic_level || node?.level)] || "";
               const hairline = speakerHairline(node, speakerDisplayNames, speakerColorMap);
               const nodeTitle = node?.node_name || node?.title || id;
+              // A lone node has nothing to compete with, and touch screens cannot hover:
+              // both show the detail at rest instead of hiding it behind a pointer.
+              const showDetail = isRevealed || lensFindings?.length > 0 || page.visibleIds.length === 1;
+              const openLabel = children.length > 0 ? `${children.length} inside` : visits.length > 0 ? "Open passage" : "";
 
               return (
                 <article
@@ -586,11 +606,25 @@ export default function SpatialLandscapeCanvas({
                       </button>
                     </h2>
 
-                    {/* Stable-height preview region revealed on hover/focus without shifting layout */}
-                    <div className={`mt-3 space-y-3 transition-opacity duration-200 ${isRevealed || lensFindings?.length ? "opacity-100" : "opacity-0 group-focus-within:opacity-100"}`}>
-                      {node?.summary && (
-                        <p className="line-clamp-3 text-sm leading-6 text-slate-600">{node.summary}</p>
-                      )}
+                    {/* The summary is the node's meaning, so it is always shown. */}
+                    {node?.summary && (
+                      <p className="mt-2 line-clamp-3 max-w-[60ch] text-sm leading-6 text-slate-600">{node.summary}</p>
+                    )}
+
+                    {openLabel && (
+                      <button
+                        type="button"
+                        aria-label={`${openLabel}: ${nodeTitle}`}
+                        onClick={() => drillInto(id)}
+                        className="mt-3 inline-flex min-h-8 items-center gap-1 rounded text-xs font-medium text-slate-600 transition-colors hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+                      >
+                        {openLabel}
+                        <ArrowRight size={12} aria-hidden="true" />
+                      </button>
+                    )}
+
+                    {/* Stable-height detail region revealed on hover/focus without shifting layout */}
+                    <div className={`mt-3 space-y-3 transition-opacity duration-200 ${showDetail ? "opacity-100" : "opacity-0 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"}`}>
 
                       {hairline && (
                         <div className="space-y-1">
@@ -599,7 +633,7 @@ export default function SpatialLandscapeCanvas({
                               <div key={s.id} style={{ width: `${s.percent}%`, backgroundColor: s.color }} />
                             ))}
                           </div>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-xs text-slate-500">
                             {hairline.map((s) => `${s.name} ${s.percent}%`).join(" · ")}
                           </p>
                         </div>
@@ -607,18 +641,8 @@ export default function SpatialLandscapeCanvas({
 
                       <IslandVisits visits={visits} onOpenVisit={onOpenVisit} nodeId={id} />
 
-                      {children.length > 0 ? (
-                        <p className="text-xs text-slate-400">
-                          {children.length} inside →
-                        </p>
-                      ) : visits.length > 0 ? (
-                        <p className="text-xs text-slate-400">
-                          Open passage →
-                        </p>
-                      ) : null}
-
                       {crossLinks.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                           <span>Also touches:</span>
                           {crossLinks.slice(0, 2).map((linkId) => {
                             const target = landscape.nodesById.get(linkId);
@@ -644,7 +668,7 @@ export default function SpatialLandscapeCanvas({
                         <BoundaryMenu
                           nodeId={id}
                           siblings={rawSiblingIds}
-                          visits={visits}
+                          visits={ownVisits}
                           nodesById={landscape.nodesById}
                           onBoundaryCorrection={onBoundaryCorrection}
                         />

@@ -78,3 +78,17 @@ it("updates recognized speaker labels twice while selection and source bytes rem
   act(() => host.querySelector('button[aria-pressed="false"]').click());
   expect(host.querySelector("[aria-label='Original source passages']").textContent).toContain("A. RaoFirst  phrase");
 });
+
+it("marks every passage of a cited run with a wash, not a side stripe", () => {
+  const bundle = { utterances: [
+    { id: "a", speaker_name: "Ada", text: "Before" },
+    { id: "b", speaker_name: "Ada", text: "Run starts" },
+    { id: "c", speaker_name: "Bo", text: "Run ends" },
+    { id: "d", speaker_name: "Bo", text: "After" },
+  ] };
+  act(() => root.render(<TextSourcePanel bundle={bundle} selection={{ kind: "utterance", utteranceId: "b", endUtteranceId: "c" }} onClose={vi.fn()} />));
+  const cited = [...host.querySelectorAll('[aria-current="true"]')].map((row) => row.textContent);
+  expect(cited).toEqual([expect.stringContaining("Run starts"), expect.stringContaining("Run ends")]);
+  expect(host.querySelector(".border-l-2")).toBeNull();
+  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+});

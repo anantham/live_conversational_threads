@@ -265,6 +265,32 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
     visitsById.set(id, computeNodeVisits(node, utterances, utteranceIndex));
   }
 
+  // Upper tiers usually cite no turns of their own; their provenance is the turns
+  // their descendants cite. visitsById stays own-citation only (boundary corrections
+  // and the timeline act on what a node itself claims); sourceVisitsById is what the
+  // reader is shown and opened to.
+  const descendantIdsMemo = new Map();
+  const citedIdsFor = (id, path = new Set()) => {
+    if (descendantIdsMemo.has(id)) return descendantIdsMemo.get(id);
+    const own = utteranceIdsOf(nodesById.get(id));
+    if (own.length || path.has(id)) return own;
+    path.add(id);
+    const rolled = [...new Set((childrenById.get(id) || []).flatMap((childId) => citedIdsFor(childId, path)))];
+    path.delete(id);
+    descendantIdsMemo.set(id, rolled);
+    return rolled;
+  };
+  const sourceVisitsById = new Map();
+  for (const [id, node] of nodesById.entries()) {
+    const own = visitsById.get(id) || [];
+    if (own.some((visit) => visit.startUtteranceId) || utteranceIdsOf(node).length) {
+      sourceVisitsById.set(id, own);
+      continue;
+    }
+    const rolled = computeNodeVisits({ utterance_ids: citedIdsFor(id) }, utterances, utteranceIndex);
+    sourceVisitsById.set(id, rolled.length ? rolled : own);
+  }
+
   const sortOrder = (aId, bId) => {
     const aFirst = visitsById.get(aId)?.[0]?.startSeconds ?? nodesById.get(aId)?.timestamp_start ?? Number.MAX_SAFE_INTEGER;
     const bFirst = visitsById.get(bId)?.[0]?.startSeconds ?? nodesById.get(bId)?.timestamp_start ?? Number.MAX_SAFE_INTEGER;
@@ -299,6 +325,7 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
     childrenById,
     crossLinksById,
     visitsById,
+    sourceVisitsById,
     rootIds,
     unfiledIds,
     topLevel,

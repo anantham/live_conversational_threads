@@ -70,7 +70,7 @@ describe("SpatialLandscapeCanvas", () => {
     const visit51 = [...host.querySelectorAll("button")].find((b) => b.textContent === "51:05");
     expect(visit51).not.toBeUndefined();
     act(() => visit51.click());
-    expect(onOpenVisit).toHaveBeenCalledWith({ nodeId: "arc-1", utteranceId: "u3", seconds: 3065 });
+    expect(onOpenVisit).toHaveBeenCalledWith({ nodeId: "arc-1", utteranceId: "u3", endUtteranceId: "u4", seconds: 3065 });
 
     // Next page shows 4–4 of 4
     act(() => host.querySelector('[aria-label="Next siblings"]').click());
@@ -102,6 +102,40 @@ describe("SpatialLandscapeCanvas", () => {
     expect(host.textContent).toContain("Co-living");
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
     expect(host.textContent).toContain("Funding & Collaborators");
+  });
+
+
+  // Test intent (2026-11-25 critique): a node's meaning and the way into it are legible
+  // without a hover, and an upper tier that cites no turns itself still opens to the
+  // turns its descendants cite (never to an unmarked whole transcript).
+  it("shows summaries and a real drill control at rest, and opens upper tiers to their descendants' passages", () => {
+    const onOpenVisit = vi.fn();
+    const layered = [
+      { id: "theme-a", semantic_level: 4, node_name: "Shared rhythms", summary: "How the group keeps time." },
+      { id: "theme-b", semantic_level: 4, node_name: "Money", summary: "Who pays for what." },
+      { id: "moment-a1", semantic_level: 1, parent_id: "theme-a", node_name: "Morning sits", source_ref: { utterance_ids: ["u3", "u4"] } },
+      { id: "moment-b1", semantic_level: 1, parent_id: "theme-b", node_name: "Rent", source_ref: { utterance_ids: ["u2"] } },
+    ];
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={{ conversation_title: "Rhythms", utterances }} nodes={layered} onOpenVisit={onOpenVisit} />);
+    });
+
+    // Summaries sit outside the hover-only region, so they are visible with no pointer.
+    const summary = [...host.querySelectorAll("p")].find((p) => p.textContent === "How the group keeps time.");
+    expect(summary).not.toBeUndefined();
+    expect(summary.closest(".opacity-0")).toBeNull();
+
+    // The theme's visits come from the moment beneath it, as one contiguous run u3..u4.
+    const visit = [...host.querySelectorAll("button")].find((b) => b.textContent === "51:05");
+    act(() => visit.click());
+    expect(onOpenVisit).toHaveBeenCalledWith({ nodeId: "theme-a", utteranceId: "u3", endUtteranceId: "u4", seconds: 3065 });
+
+    // "1 inside" is a real button that drills in.
+    const drill = host.querySelector('button[aria-label="1 inside: Shared rhythms"]');
+    expect(drill).not.toBeNull();
+    act(() => drill.click());
+    expect(host.textContent).toContain("Morning sits");
+    expect(host.textContent).not.toContain("Who pays for what.");
   });
 
   it("emits merge and split boundary corrections through the quiet Adjust boundary control", () => {

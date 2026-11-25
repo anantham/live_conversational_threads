@@ -32,6 +32,24 @@ describe("spatialLandscapeModel", () => {
     expect(visits[2].speaker).toBe("Andre");
   });
 
+  it("rolls descendant citations up into source visits without changing a node's own visits", () => {
+    const nodes = [
+      { id: "theme", semantic_level: 4, node_name: "Theme", timestamp_start: 0 },
+      { id: "idea", semantic_level: 2, parent_id: "theme", node_name: "Idea" },
+      { id: "m1", semantic_level: 1, parent_id: "idea", source_ref: { utterance_ids: ["u1", "u2"] } },
+      { id: "m2", semantic_level: 1, parent_id: "idea", source_ref: { utterance_ids: ["u4"] } },
+      { id: "cited", semantic_level: 4, node_name: "Cites itself", source_ref: { utterance_ids: ["u6"] } },
+      { id: "cited-child", semantic_level: 1, parent_id: "cited", source_ref: { utterance_ids: ["u1"] } },
+    ];
+    const landscape = buildSpatialLandscape(nodes, { utterances });
+    // Own visits for an uncited theme stay the timestamp-only fallback.
+    expect(landscape.visitsById.get("theme").map((v) => v.startUtteranceId)).toEqual([null]);
+    // Source visits come from the moments two levels down, as exact runs.
+    expect(landscape.sourceVisitsById.get("theme").map((v) => [v.startUtteranceId, v.endUtteranceId])).toEqual([["u1", "u2"], ["u4", "u4"]]);
+    // A node that cites turns itself keeps exactly those, not its children's.
+    expect(landscape.sourceVisitsById.get("cited").map((v) => v.startUtteranceId)).toEqual(["u6"]);
+  });
+
   it("isolates unfiled lower-level orphans from root Arcs", () => {
     const nodes = [
       { id: "arc-1", semantic_level: 5, node_name: "Arc 1", source_ref: { utterance_ids: ["u1"] } },
