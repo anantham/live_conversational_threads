@@ -10995,3 +10995,38 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - Audio import applies a deadline to the setup response and its body, even when the fetch ignores cancellation. Only the current setup request can set capability. Ending an import before it produces content clears the leave warning while active work and unsaved output still receive protection. See `lct_app/src/hooks/useAudioImport.js:25` and `lct_app/src/pages/SitesAudioImport.jsx:30`.
 - The eight new cases reproduced failures before edits. All 1,547 frontend tests across 164 files passed after the fixes. The Sites build passed, and Chrome at 390 px confirmed usable transcription with failing storage and a successful retry after stalled import setup. Scoped lint had no errors and reported existing hook dependency warnings. Test intent is in `lct_app/tests/intent/workflow-request-ownership.md:1`.
 - Includes the earlier duplicate Start and empty recording cancellation repairs. All changes are committed locally on `fix/hosted-recording-guards` from `f49da765`.
+
+## 2026-11-25 20:45 IST — Remove unreferenced code and tracked clutter (branch chore/remove-unreferenced-code)
+
+- Scope: deletion only, no behaviour change. Base origin/main 04b85f67.
+- Method: Python import graph over lct_python_backend plus a frontend reachability
+  walk from src/main.jsx, then a repo-wide `git grep` of every candidate name
+  (code, scripts, workflows, docs) on main and on the Sites branches
+  (codex/lct-inference-choice, codex/anthropic-sites).
+- Removed (19 files, 1,607 lines): lct_python_backend/cost_api.py (router never
+  mounted; the dashboard uses factcheck_api.py /api/cost-tracking/stats),
+  db_helpers.py, create_bookmarks_table.py; lct_app/src/utils/contextLoading.js,
+  utils/nodeTransitions.js, components/SttFallbackOrderFields.jsx,
+  components/settings/LlmModelsCard.jsx, components/threads/SourcePlaybackControls.jsx;
+  scripts/legacy_commands/ (7); tracked files under the gitignored .tmp/ and
+  prompts_and_transcripts/ (4).
+- Docs touched: docs/LOCAL_SETUP.md (legacy archive section), docs/PROJECT_STRUCTURE.md
+  (cost_api and db_helpers rows), lct_python_backend/INSTRUMENTATION.md (removal note),
+  docs/TECH_DEBT.md (candidates deliberately kept).
+- The grep pass overturned the import-graph result for four files, which stay:
+  services/threads_semantic_authoring.py (scripts/author_thread_experiment.py),
+  conversationSearch.worker.js (loaded with new Worker(new URL(...))),
+  debateSnapshotEdges.js (lct_app/scripts/export-debate-snapshot.mjs),
+  discussionFixtures.js (test fixture).
+- Checks on the branch: vite build passes with a fresh npm ci. Backend unit suite
+  2091 passed / 13 failed; vitest 22 files failed; eslint 150 problems. The same
+  tests fail on an untouched copy of main in this environment (sandboxed network,
+  no pwsh, Node 26) and eslint reports 152 there, so CI is the authoritative run.
+  The ISSUES.md entry added here is a separate finding from that run, not part of
+  the deletion.
+- Independent review: Gemini 4 Hydrogen (High) via agy plan mode, packet sha256
+  97269b17fb84734f…; it found no live reference to a removed file. Its doc and
+  evidence findings were applied (PROJECT_STRUCTURE row, TESTING.md noted in
+  TECH_DEBT, per-filename greps for the legacy scripts and prompt files: 0 hits).
+- Not deployed. auth_policy.py still lists the /api/costs prefix; left alone
+  because it is an auth file.

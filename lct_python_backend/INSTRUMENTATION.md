@@ -83,6 +83,11 @@ app.add_middleware(InstrumentationMiddleware, enable_logging=True)
 
 ### 4. Including Cost Tracking API
 
+> **Removed 2026-11-25.** `cost_api.py` was never mounted in `backend.py`, so the
+> `/api/costs/*` endpoints described in this document were never served. The file
+> has been deleted. The cost dashboard reads `/api/cost-tracking/stats`
+> (`factcheck_api.py`). The text below is kept as history of the intended design.
+
 Include the cost tracking API endpoints:
 
 ```python
