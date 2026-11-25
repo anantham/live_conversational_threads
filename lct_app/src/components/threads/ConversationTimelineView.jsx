@@ -200,7 +200,7 @@ export default function ConversationTimelineView({
                   </>
                 )}
                 <span>Returns: <strong className="font-medium text-slate-800">{activeLane.returns}</strong></span>
-                {activeLane.longestGapSeconds > 0 && (
+                {!timeline.useTurnAxis && activeLane.longestGapSeconds > 0 && (
                   <span>Longest away: <strong className="font-medium text-slate-800">{formatDurationCompact(activeLane.longestGapSeconds, timeline.approximateTiming)}</strong></span>
                 )}
                 <span>{activeLane.totalWords.toLocaleString()} words · {activeLane.totalTurns} turns</span>

@@ -124,6 +124,13 @@ export function buildConversationTimeline(nodes, bundle, speakerDisplayNames = {
     };
   });
 
+  const firstTurn = (lane) => {
+    const first = lane.visits[0];
+    return first?.startUtteranceId ? first.startIdx : Number.MAX_SAFE_INTEGER;
+  };
+  const firstPosition = (lane) => lane.visits[0]?.startPos ?? Number.MAX_SAFE_INTEGER;
+  lanes.sort((left, right) => firstTurn(left) - firstTurn(right) || firstPosition(left) - firstPosition(right));
+
   // Compute intervening tangents between consecutive visits of each lane (A -> B -> C -> A)
   const laneById = new Map(lanes.map((l) => [l.id, l]));
   for (const lane of lanes) {
@@ -170,15 +177,18 @@ export function buildConversationTimeline(nodes, bundle, speakerDisplayNames = {
   const reactions = (Array.isArray(bundle?.reaction_markers) ? bundle.reaction_markers : []).map((r) => {
     const idx = r.utterance_id && utteranceIndex.has(String(r.utterance_id)) ? utteranceIndex.get(String(r.utterance_id)) : null;
     const u = idx != null ? utterances[idx] : null;
-    const pos = Number.isFinite(r.timestamp_seconds)
+    const timedPosition = Number.isFinite(r.timestamp_seconds)
       ? r.timestamp_seconds
       : Number.isFinite(u?.timestamp_start)
         ? u.timestamp_start
         : (idx ?? 0);
+    const pos = useTurnAxis ? (idx ?? 0) : timedPosition;
     return {
       ...r,
       pos,
-      label: formatVisitClock(pos) || (idx != null ? `Turn ${idx + 1}` : "00:00"),
+      label: useTurnAxis
+        ? (idx != null ? `Turn ${idx + 1}` : "Unplaced")
+        : (formatVisitClock(pos) || "00:00"),
     };
   });
 
