@@ -11049,3 +11049,21 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   (7662bb07, 23:15 IST) and not on main. Against that build 6 of 9 smoke tests fail, with or
   without this change; with it, the drop itself opens the fixture and only the final title
   assertion fails. See the ISSUES.md entry of the same date.
+
+## 2026-11-26 00:10 IST — Production smoke trimmed to checks that hold on any healthy build (branch test/trim-prod-smoke)
+
+- Why: owner chose to trim. After PR #262 the smoke on main 59404d6a failed 6 of 9 (run
+  45671560851) because the domain serves a Sites-branch build whose Home and viewer differ from
+  main's. See the two 2026-11-25 ISSUES.md entries.
+- Change: `lct_app/playwright.prod.config.ts` adds `grep: /@prod-smoke/`. Tagged: the boot test in
+  `prod-smoke.spec.js` and three tests in `prod-threads-opener.spec.js` (Drive-link handoff, real
+  deploy /browse stays the library, non-.threads file rejected). The boot test identifies Home by
+  its "Threads" heading instead of the visible text "New", which the icon-only Home lacks. Header
+  comments in both specs, the config and `post-deploy-smoke.yml` updated. No product code.
+- What production loses: five opener journeys (remembered Drive artifact, open/remember/reopen,
+  accessible card names, drop on Browse, drop on /view) no longer run against the live domain.
+  They still run untagged in `e2e.yml` against the local dev server.
+- Verified (system Chrome): tagged run against the live domain 4/4; tagged run against local Vite
+  with `VITE_SITES_MODE=true` and `false`, 3 passed + 1 skipped each (the real-deploy test skips
+  off the public domain); full untagged spec + smoke against local non-Sites, 8 passed + 1 skipped.
+- Not done: the Site's own publish step still has no browser check of the build it ships.
