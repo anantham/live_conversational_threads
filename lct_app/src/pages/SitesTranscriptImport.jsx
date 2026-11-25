@@ -67,7 +67,7 @@ function buildLiveCanvasBundle(completedBundle, liveNodes, parsed) {
   };
 }
 
-function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
+export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const runtime = useSitesRuntime();
   const navigate = useNavigate();
   const routes = useMemo(() => (runtime ? configuredMapRoutes(runtime) : []), [runtime]);
@@ -85,11 +85,22 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const [showLiveCanvas, setShowLiveCanvas] = useState(true);
   const [detail, setDetail] = useState('all');
   const [learnedCorrections, setLearnedCorrections] = useState(() => loadBoundaryCorrections());
+  // The exact preference text appended to the guidance, so the page shows what the provider will receive.
+  const baseGuidance = runtime?.preferences?.guidance || '';
+  const learnedNote = useMemo(
+    () => formatBoundaryPreferencesForPrompt(learnedCorrections, Math.max(0, MAP_GUIDANCE_LIMIT - baseGuidance.length - 4)),
+    [learnedCorrections, baseGuidance],
+  );
+  const learnedLineCount = learnedNote ? learnedNote.split('\n').length - 1 : 0;
   const liveCanvasBundle = useMemo(
     () => buildLiveCanvasBundle(completedBundle, liveNodes, parsed),
     [completedBundle, liveNodes, parsed],
   );
   const abortRef = useRef(null);
+  // The background epistemic pass outlives its run, so it gets its own controller and run number:
+  // a newer run or leaving the page cancels it, and a stale result never replaces a newer map.
+  const epistemicRef = useRef(null);
+  const runIdRef = useRef(0);
   const startedAtRef = useRef(0);
   const status = readiness?.routes === routes ? readiness.status : null;
   const statusError = readiness?.routes === routes ? readiness.error : '';
@@ -120,7 +131,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
     return () => window.clearInterval(timer);
   }, [running]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => { abortRef.current?.abort(); epistemicRef.current?.abort(); }, []);
 
   function appendLog(text) {
     const stamp = formatElapsed(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
@@ -131,6 +142,9 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
     if (!consent || !status?.available || abortRef.current) return;
     const controller = new AbortController();
     abortRef.current = controller;
+    epistemicRef.current?.abort();
+    epistemicRef.current = null;
+    const runId = ++runIdRef.current;
     startedAtRef.current = Date.now();
     setElapsedSec(0);
     setStreamStats(null);
@@ -140,8 +154,6 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
     setPipelineError('');
     setProgress({ phase: 'starting' });
     try {
-      const baseGuidance = runtime?.preferences?.guidance || '';
-      const learnedNote = formatBoundaryPreferencesForPrompt(learnedCorrections, Math.max(0, MAP_GUIDANCE_LIMIT - baseGuidance.length - 4));
       const combinedGuidance = [baseGuidance, learnedNote].filter(Boolean).join('\n\n').slice(0, MAP_GUIDANCE_LIMIT);
       const result = await runGlanceDetailPipeline({
         detail,
@@ -209,16 +221,21 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       // Quiet background epistemic pass (non-blocking): populates Cruxes, Claims, and Normative lenses.
       if (detail !== 'none' && !controller.signal.aborted) {
         appendLog('Running quiet background epistemic pass (cruxes, claims, normative assumptions)…');
-        void runEpistemicAnalysis({ source: parsed.source, bundle: result.bundle, routes, signal: controller.signal })
+        const epistemicController = new AbortController();
+        epistemicRef.current = epistemicController;
+        const current = () => runIdRef.current === runId && !epistemicController.signal.aborted;
+        void runEpistemicAnalysis({ source: parsed.source, bundle: result.bundle, routes, signal: epistemicController.signal })
           .then(enriched => {
+            if (!current()) return;
             setCompletedBundle(enriched.bundle);
             onBundleReady(enriched.bundle);
             const { cruxes, factual_claims: claims, normative_assumptions: normative } = enriched.epistemic;
             appendLog(`✓ Epistemic lenses ready: ${cruxes.length} cruxes · ${claims.length} claims · ${normative.length} normative.`);
           })
           .catch(() => {
-            appendLog('Background epistemic pass skipped (map is complete and unaffected).');
-          });
+            if (current()) appendLog('Background epistemic pass skipped (map is complete and unaffected).');
+          })
+          .finally(() => { if (epistemicRef.current === epistemicController) epistemicRef.current = null; });
       }
     } catch (cause) {
       setProgress(current => ({ ...current, phase: 'stopped' }));
@@ -269,13 +286,16 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
         <p className="font-medium">{routeSummary || (runtime?.credentialsReady === false ? 'Loading saved providers…' : 'No provider configured')}</p>
         <Link className="text-xs underline underline-offset-4" to="/settings/runtime">Manage provider order, models, and keys</Link>
-        {learnedCorrections.length > 0 && (
-          <p className="mt-1.5 text-xs text-slate-500">
-            Applying {learnedCorrections.length} learned boundary preference{learnedCorrections.length === 1 ? '' : 's'} from your past edits ·{' '}
+        {learnedLineCount > 0 && (
+          <details className="mt-1.5 text-xs text-slate-500">
+            <summary className="cursor-pointer">
+              Sending {learnedLineCount} learned boundary preference{learnedLineCount === 1 ? '' : 's'} from your past edits to the provider with this transcript
+            </summary>
+            <pre className="mt-1 whitespace-pre-wrap font-sans">{learnedNote}</pre>
             <button type="button" className="underline underline-offset-2 hover:text-slate-800" onClick={() => { clearBoundaryCorrections(); setLearnedCorrections([]); }}>
-              Clear
+              Clear learned preferences
             </button>
-          </p>
+          </details>
         )}
       </div>
 
@@ -299,7 +319,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       <label className="flex items-start gap-3 text-sm leading-6">
         <input type="checkbox" className="mt-1" checked={consent} disabled={running || !status?.enabled}
           onChange={event => setConsentRoutes(event.target.checked ? routes : null)} />
-        I have permission to send these {parsed.turns.length} transcript turns to {recipients}: the whole transcript once for the overview, then the turns of each topic group for detail.
+        I have permission to send these {parsed.turns.length} transcript turns to {recipients}: the whole transcript once for the overview, then the turns of each topic group for detail{detail !== 'none' ? ', then the whole transcript once more with the finished map for the cruxes, claims and assumptions lenses' : ''}.
       </label>
 
       <div className="flex flex-wrap gap-2">
