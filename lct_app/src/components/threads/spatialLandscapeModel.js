@@ -283,7 +283,7 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
       visited.add(id);
       const own = resolvedOwnIds(id);
       if (own.length) own.forEach((uid) => cited.add(uid));
-      else stack.push(...(childrenById.get(id) || []));
+      else for (const childId of childrenById.get(id) || []) if (!visited.has(childId)) stack.push(childId);
     }
     return [...cited];
   };
