@@ -94,6 +94,25 @@ describe('boundaryLearningStore', () => {
     }
   });
 
+  it('re-points references with the node id type as stored, and drops a target membership naming the removed node', () => {
+    const bundle = validBundle();
+    bundle.graph_data = bundle.graph_data.map(n => (n.id === 'arc-1' ? { ...n, id: 7 } : n));
+    bundle.graph_data.find(n => n.id === 't1').parent_id = 7;
+    bundle.edges = [{ id: 'e1', from_node_id: 'arc-2', to_node_id: 't1', relation_type: 'leads_to' }];
+    bundle.conversation_threads[0].steps[0].moment_id = 7;
+    bundle.conversation_threads[0].returns = [];
+    expect(() => validateThreadsArtifact(bundle)).not.toThrow();
+    const merged = applyMergeNodes(bundle, 'arc-2', 7).bundle;
+    expect(() => validateThreadsArtifact(merged)).not.toThrow();
+    expect(merged.edges[0].from_node_id).toBe(7);
+
+    const withMembership = validBundle();
+    withMembership.graph_data = withMembership.graph_data.map(n => (n.id === 'arc-1'
+      ? { ...n, memberships: [{ parent_id: 'arc-2', role: 'secondary' }] } : n));
+    const target = applyMergeNodes(withMembership, 'arc-2', 'arc-1').bundle.graph_data.find(n => n.id === 'arc-1');
+    expect(target.memberships).toEqual([]);
+  });
+
   it('refuses to fold a node into its own descendant', () => {
     const before = validBundle();
     const outcome = applyMergeNodes(before, 'arc-1', 't1');
@@ -111,7 +130,8 @@ describe('boundaryLearningStore', () => {
     expect(() => validateThreadsArtifact(merged.bundle)).not.toThrow();
     const split = applySplitNodeAtVisit(chunked, 'arc-1', 'u3');
     expect(split.correction).not.toBeNull();
-    expect(merged.bundle.graph_data).toHaveLength(2);
+    expect(split.bundle.graph_data).toHaveLength(2);
+    expect(() => validateThreadsArtifact(split.bundle)).not.toThrow();
     expect(split.bundle.graph_data[0].map(n => n.id)).toEqual(['arc-1', 'arc-1-split-1', 'arc-2']);
   });
 

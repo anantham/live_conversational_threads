@@ -2,7 +2,8 @@
 // - The background epistemic pass of an earlier run is cancelled when a newer run starts, and its late
 //   result never replaces the newer map.
 // - Leaving the page cancels a pending epistemic pass.
-// - The consent copy names the extra whole-transcript send when detail runs.
+// - The consent copy names the extra whole-transcript send when detail runs, and consent is asked again
+//   when the detail choice changes what will be sent.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -85,4 +86,18 @@ it('cancels a pending epistemic pass when the page is left', async () => {
   act(() => root.unmount());
   expect(signal.aborted).toBe(true);
   root = createRoot(host);
+});
+
+it('asks for consent again when the detail choice changes what is sent', async () => {
+  await render(vi.fn());
+  const box = () => host.querySelector('label input[type="checkbox"]');
+  expect(box().checked).toBe(true);
+  const select = host.querySelector('select');
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+    setter.call(select, 'none');
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(box().checked).toBe(false);
+  expect(host.textContent).not.toMatch(/once more with the finished map/);
 });

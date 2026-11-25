@@ -91,7 +91,7 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
     () => formatBoundaryPreferencesForPrompt(learnedCorrections, Math.max(0, MAP_GUIDANCE_LIMIT - baseGuidance.length - 4)),
     [learnedCorrections, baseGuidance],
   );
-  const learnedLineCount = learnedNote ? learnedNote.split('\n').length - 1 : 0;
+  const learnedLineCount = learnedNote ? (learnedNote.match(/^- /gm) || []).length : 0;
   const liveCanvasBundle = useMemo(
     () => buildLiveCanvasBundle(completedBundle, liveNodes, parsed),
     [completedBundle, liveNodes, parsed],
@@ -227,9 +227,9 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
         void runEpistemicAnalysis({ source: parsed.source, bundle: result.bundle, routes, signal: epistemicController.signal })
           .then(enriched => {
             if (!current()) return;
+            const { cruxes, factual_claims: claims, normative_assumptions: normative } = enriched.epistemic;
             setCompletedBundle(enriched.bundle);
             onBundleReady(enriched.bundle);
-            const { cruxes, factual_claims: claims, normative_assumptions: normative } = enriched.epistemic;
             appendLog(`✓ Epistemic lenses ready: ${cruxes.length} cruxes · ${claims.length} claims · ${normative.length} normative.`);
           })
           .catch(() => {
@@ -292,10 +292,12 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
               Sending {learnedLineCount} learned boundary preference{learnedLineCount === 1 ? '' : 's'} from your past edits to the provider with this transcript
             </summary>
             <pre className="mt-1 whitespace-pre-wrap font-sans">{learnedNote}</pre>
-            <button type="button" className="underline underline-offset-2 hover:text-slate-800" onClick={() => { clearBoundaryCorrections(); setLearnedCorrections([]); }}>
-              Clear learned preferences
-            </button>
           </details>
+        )}
+        {learnedLineCount > 0 && (
+          <button type="button" className="mt-1 text-xs text-slate-500 underline underline-offset-2 hover:text-slate-800" onClick={() => { clearBoundaryCorrections(); setLearnedCorrections([]); }}>
+            Clear learned preferences
+          </button>
         )}
       </div>
 
@@ -309,7 +311,7 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
       <label className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-700">Detail</span>
         <select className="rounded-md border border-slate-300 bg-white px-2 py-1" value={detail} disabled={running}
-          onChange={event => setDetail(event.target.value)}>
+          onChange={event => { setDetail(event.target.value); setConsentRoutes(null); }}>
           <option value="all">All topics</option>
           <option value="core">Core topics only</option>
           <option value="none">Overview only</option>
@@ -319,7 +321,7 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
       <label className="flex items-start gap-3 text-sm leading-6">
         <input type="checkbox" className="mt-1" checked={consent} disabled={running || !status?.enabled}
           onChange={event => setConsentRoutes(event.target.checked ? routes : null)} />
-        I have permission to send these {parsed.turns.length} transcript turns to {recipients}: the whole transcript once for the overview, then the turns of each topic group for detail{detail !== 'none' ? ', then the whole transcript once more with the finished map for the cruxes, claims and assumptions lenses' : ''}.
+        I have permission to send these {parsed.turns.length} transcript turns to {recipients}: the whole transcript once for the overview{detail !== 'none' ? ', then the turns of each topic group for detail, then the whole transcript once more with the finished map for the cruxes, claims and assumptions lenses' : ''}.
       </label>
 
       <div className="flex flex-wrap gap-2">

@@ -277,6 +277,14 @@ describe('nested detail replies', () => {
     expect(recordingThreadsFromGeneratedText(segment, onlyTopicChunks, { task: 'detail', topics }).coverage).toMatchObject({ chunks: 1 });
   });
 
+  it('never emits two nodes with one id when an idea is named like another idea\'s chunk', () => {
+    const reply = JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], topic_chunks: [],
+      ideas: [{ id: 'a', node_name: 'A', summary: '', topic_id: 'sea', chunks: [chunk(1, 1)] },
+        { id: 'a~1', node_name: 'B', summary: '', topic_id: 'sea', chunks: [chunk(2, 3)] }] });
+    const ids = recordingThreadsFromGeneratedText(segment, reply, { task: 'detail', topics }).bundle.graph_data.map(n => n.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('refuses a topic chunk without a segment topic, and a reply with neither ideas nor topic chunks', () => {
     const withTopicChunks = topicChunks => JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], ideas: [], topic_chunks: topicChunks });
     const loose = topicId => ({ id: 'x', node_name: 'X', summary: '', source_range: { from: u(1), to: u(3) }, topic_id: topicId });

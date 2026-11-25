@@ -73,6 +73,7 @@ function isDescendant(nodesById, candidateId, ancestorId) {
 
 // Re-point everything else in the bundle that names the removed node, so the merged map still
 // validates (explicit edges, thread steps and returns) and lenses keep their anchors.
+// dstId is the target's id as stored on the node, since the validator compares ids without coercion.
 function retargetReferences(bundle, srcId, dstId) {
   const out = {};
   if (Array.isArray(bundle.edges)) {
@@ -145,15 +146,17 @@ function combineNodes(bundle, sourceNodeId, targetNodeId, kind) {
   const graph_data = mapGraph(bundle.graph_data, n => {
     const id = String(n.id);
     if (id === srcId) return [];
+    let next = n;
     if (id === dstId) {
       const nextChildren = [...new Set([
         ...(n.children_ids || []).map(String).filter(c => c !== srcId),
         ...(src.children_ids || []).map(String).filter(c => c !== dstId),
       ])];
-      return [{ ...withEvidence(n, mergedUtterances), children_ids: nextChildren }];
+      next = { ...withEvidence(n, mergedUtterances), children_ids: nextChildren };
+    } else if (String(n.parent_id) === srcId) {
+      next = { ...next, parent_id: dstId };
     }
-    let next = n;
-    if (String(n.parent_id) === srcId) next = { ...next, parent_id: dstId };
+    // Memberships naming the removed node move to the target; the target drops any that would name itself.
     if (Array.isArray(n.memberships) && n.memberships.some(m => String(m?.parent_id) === srcId)) {
       const dedup = new Map();
       for (const m of n.memberships) {
@@ -180,7 +183,7 @@ function combineNodes(bundle, sourceNodeId, targetNodeId, kind) {
 
   const updated = {
     ...bundle,
-    ...retargetReferences(bundle, srcId, dstId),
+    ...retargetReferences(bundle, srcId, dst.id),
     graph_data,
     boundary_corrections: [...(bundle.boundary_corrections || []), correction],
   };
