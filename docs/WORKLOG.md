@@ -11102,3 +11102,15 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - Owner decisions: unlisted links; personal metadata left out by default; raise the publish limit (1.5 MiB, under D1's 2,000,000-byte value limit). Commit 8abb5330 added migration 0020 (listed flag, widened CHECK), visibility on the Worker, publicSafeCopy/publishBundle and the import-page panel.
 - Review: agy `--mode plan --model gemini-4-hydrogen-high`, packet `git diff 25854164 8abb5330 -- lct_app` (snapshot JSON excluded), sha256 `c859d5b0925b9b25…`, exit 0, 13 KB. The pre-send name scan matched only the substring "repub" in "republish"/"preparePublicFile". Fixed: unlisted copies were unremovable from the UI (the Public page now lists this device's saved-key copies outside the library, and keys are forgotten after confirmed removal); a failed or unconfirmed publish still exposes its removal key and link; the safe copy is now an allowlist of format fields; consent and the opt-in reset when the map changes; empty or unknown visibility is refused, visibility is fixed on republish (409) and checked before the idempotent path; the client verifies the confirmed visibility; double-click guard; clipboard failure shown with the link selected; no `RETURNING *` of the payload; turn-count wording. Not changed: re-running 0020 by hand would relist rows (migrations are tracked; same pattern as 0019); no table references lct_public_threads by foreign key.
 - Deploy order: apply migration 0020 to D1 before deploying this Worker. Settings: LCT_PUBLIC_THREADS_ENABLED=true, LCT_PERSONAL_PROVIDERS_ENABLED=true, LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS=12000.
+
+## 2026-11-25 23:31 IST — Two-day commit review; top-tier fixes on fix/review-top-tier (base 173f8f2c)
+- Review: five read-only reviewers over 45 commits (24–25 Nov); lower-tier findings logged in ISSUES.md.
+- Fixed, each with a test that fails on the previous code:
+  - `lct_app/src/services/cloud/boundaryLearningStore.js`: merge/return re-point edges, thread steps/returns and epistemic node_ids; refuse folding into a descendant; flat and chunked graph_data; both evidence fields; unique split ids; later children move with the later half.
+  - `generationTasks.js` / `openRouterGeneration.js` / `glanceDetailPipeline.js`: detail stopping rule restored via required `topic_chunks` (merge 173f8f2c had dropped it).
+  - Fixtures/docs: real call participant name, title, topics and timestamps replaced with invented ones.
+  - `ThreadsViewer.jsx`: unsaved maps record no boundary preferences. `SitesTranscriptImport.jsx`: epistemic pass has its own controller and run guard; consent names the extra send and resets when Detail changes; exact learned-preference text shown.
+- Cross-family review: Gemini 4 Hydrogen High via agy plan mode; 6 findings fixed, 6 checked and declined with reasons (commit 1b724ce2).
+- Verification: changed suites pass; full vitest failure set identical to base (Node 26 environment); `build:sites` passes after `npm ci` in the worktree; lint clean on changed files.
+- Not done: nothing pushed or merged; branch awaits owner go-ahead.
+
