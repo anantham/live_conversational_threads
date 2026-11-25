@@ -13,6 +13,8 @@ import { readTranscriptFile } from '../services/cloud/pdfTranscriptReader.js';
 import { splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
 import { runGlanceDetailPipeline } from '../services/cloud/glanceDetailPipeline.js';
 import { runEpistemicAnalysis } from '../services/cloud/epistemicPipeline.js';
+import { clearBoundaryCorrections, formatBoundaryPreferencesForPrompt, loadBoundaryCorrections } from '../services/cloud/boundaryLearningStore.js';
+import { MAP_GUIDANCE_LIMIT } from '../services/cloud/sitesProviderPreferences.js';
 import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 import MapAuditPanel from '../components/audit/MapAuditPanel.jsx';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
@@ -81,6 +83,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const [completedBundle, setCompletedBundle] = useState(null);
   const [showLiveCanvas, setShowLiveCanvas] = useState(true);
   const [detail, setDetail] = useState('all');
+  const [learnedCorrections, setLearnedCorrections] = useState(() => loadBoundaryCorrections());
   const liveCanvasBundle = useMemo(
     () => buildLiveCanvasBundle(completedBundle, liveNodes, parsed),
     [completedBundle, liveNodes, parsed],
@@ -136,11 +139,14 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
     setPipelineError('');
     setProgress({ phase: 'starting' });
     try {
+      const baseGuidance = runtime?.preferences?.guidance || '';
+      const learnedNote = formatBoundaryPreferencesForPrompt(learnedCorrections, Math.max(0, MAP_GUIDANCE_LIMIT - baseGuidance.length - 4));
+      const combinedGuidance = [baseGuidance, learnedNote].filter(Boolean).join('\n\n').slice(0, MAP_GUIDANCE_LIMIT);
       const result = await runGlanceDetailPipeline({
         detail,
         source: parsed.source,
         routes,
-        guidance: runtime?.preferences?.guidance || '',
+        guidance: combinedGuidance,
         title: parsed.title,
         meetingMetadata: parsed.meetingMetadata,
         mediaRefs: parsed.mediaRefs,
@@ -262,6 +268,14 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
         <p className="font-medium">{routeSummary || (runtime?.credentialsReady === false ? 'Loading saved providers…' : 'No provider configured')}</p>
         <Link className="text-xs underline underline-offset-4" to="/settings/runtime">Manage provider order, models, and keys</Link>
+        {learnedCorrections.length > 0 && (
+          <p className="mt-1.5 text-xs text-slate-500">
+            Applying {learnedCorrections.length} learned boundary preference{learnedCorrections.length === 1 ? '' : 's'} from your past edits ·{' '}
+            <button type="button" className="underline underline-offset-2 hover:text-slate-800" onClick={() => { clearBoundaryCorrections(); setLearnedCorrections([]); }}>
+              Clear
+            </button>
+          </p>
+        )}
       </div>
 
       {statusError && <p role="alert" className="text-sm text-rose-800">{statusError}</p>}

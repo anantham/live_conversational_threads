@@ -37,6 +37,7 @@ import {
 } from "../services/threadsArtifact";
 import { indexExplicitEdges } from "../services/edgeContract";
 import { readGeneratedMap, releaseGeneratedMap } from "../services/cloud/generatedMapHandoff.js";
+import { applyMergeNodes, applyReturnToThread, applySplitNodeAtVisit, recordBoundaryCorrection } from "../services/cloud/boundaryLearningStore.js";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
@@ -533,6 +534,30 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
     }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
   }, [bundle, publicId, privateMode, ephemeral]);
+
+  const handleBoundaryCorrection = useCallback(({ kind, sourceNodeId, targetNodeId, splitUtteranceId }) => {
+    if (!bundle) return;
+    const outcome = kind === "merge"
+      ? applyMergeNodes(bundle, sourceNodeId, targetNodeId)
+      : kind === "return_to_thread"
+        ? applyReturnToThread(bundle, sourceNodeId, targetNodeId)
+        : kind === "split"
+          ? applySplitNodeAtVisit(bundle, sourceNodeId, splitUtteranceId)
+          : { bundle, correction: null };
+    if (!outcome.correction) return;
+    setBundle(outcome.bundle);
+    if (!privateMode && !publicId) recordBoundaryCorrection(outcome.correction);
+    const label = kind === "split"
+      ? `Split "${outcome.correction.source_title}" · preference learned`
+      : `Linked "${outcome.correction.source_title}" → "${outcome.correction.target_title}" · preference learned`;
+    if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
+    if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
+    if (ephemeral) { setLibraryStatus({ state: "memory", message: label }); return; }
+    setLibraryStatus({ state: "saving", message: label });
+    void rememberThreadsArtifact(outcome.bundle).then((record) => {
+      setLibraryStatus({ state: "saved", message: label, recordId: record.id });
+    }).catch(() => setLibraryStatus({ state: "error", message: `${label} (download to save)` }));
+  }, [bundle, privateMode, publicId, ephemeral]);
   const openAnother = useCallback(() => {
     if (privateMode) { onPrivateClose(); return; }
     setBundle(null);
@@ -736,6 +761,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             speakerDisplayNames={speakerDisplayNames}
             speakerColorMap={speakerColorMap}
             onFocusNodeChange={setFocusNode}
+            onBoundaryCorrection={handleBoundaryCorrection}
             onOpenVisit={({ utteranceId, seconds }) => {
               if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
               else if (validMediaSeconds(seconds)) seekSourcePassage(seconds);

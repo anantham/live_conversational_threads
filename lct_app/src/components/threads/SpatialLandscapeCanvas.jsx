@@ -124,6 +124,88 @@ LensFindingsPreview.propTypes = {
   nodeId: PropTypes.string.isRequired,
 };
 
+function BoundaryMenu({ nodeId, siblings, visits, nodesById, onBoundaryCorrection }) {
+  const detailsRef = useRef(null);
+  const otherSiblings = siblings.filter((sid) => sid !== nodeId);
+  const myIndex = siblings.indexOf(nodeId);
+  const earlierSiblings = myIndex > 0 ? siblings.slice(0, myIndex) : [];
+  const splitVisits = visits.slice(1).filter((v) => v.startUtteranceId);
+  if (!otherSiblings.length && !splitVisits.length) return null;
+
+  const fire = (payload) => {
+    if (detailsRef.current) detailsRef.current.open = false;
+    onBoundaryCorrection(payload);
+  };
+
+  return (
+    <details ref={detailsRef} className="relative pt-1 text-[11px] text-slate-400" onClick={(e) => e.stopPropagation()}>
+      <summary className="cursor-pointer list-none transition-colors hover:text-slate-700">
+        Adjust boundary ▾
+      </summary>
+      <div className="mt-1.5 space-y-2 rounded-xl border border-stone-200 bg-white p-2.5 text-slate-600 shadow-sm">
+        {otherSiblings.length > 0 && (
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-400">These belong together</p>
+            <div className="flex flex-wrap gap-1">
+              {otherSiblings.slice(0, 5).map((sid) => (
+                <button
+                  key={`merge-${sid}`}
+                  type="button"
+                  onClick={() => fire({ kind: "merge", sourceNodeId: nodeId, targetNodeId: sid })}
+                  className="rounded-md bg-stone-100 px-2 py-0.5 text-left text-[11px] text-slate-700 hover:bg-stone-200"
+                >
+                  Merge into {nodesById.get(sid)?.node_name || sid}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {earlierSiblings.length > 0 && (
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-400">Return to earlier thread</p>
+            <div className="flex flex-wrap gap-1">
+              {earlierSiblings.slice(0, 4).map((sid) => (
+                <button
+                  key={`return-${sid}`}
+                  type="button"
+                  onClick={() => fire({ kind: "return_to_thread", sourceNodeId: nodeId, targetNodeId: sid })}
+                  className="rounded-md bg-stone-100 px-2 py-0.5 text-left text-[11px] text-slate-700 hover:bg-stone-200"
+                >
+                  Return to {nodesById.get(sid)?.node_name || sid}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {splitVisits.length > 0 && (
+          <div>
+            <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-400">Split here</p>
+            <div className="flex flex-wrap gap-1">
+              {splitVisits.slice(0, 5).map((visit) => (
+                <button
+                  key={`split-${visit.startUtteranceId}`}
+                  type="button"
+                  onClick={() => fire({ kind: "split", sourceNodeId: nodeId, splitUtteranceId: visit.startUtteranceId })}
+                  className="rounded-md bg-stone-100 px-2 py-0.5 font-mono text-[11px] text-slate-700 hover:bg-stone-200"
+                >
+                  Split at {visit.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+BoundaryMenu.propTypes = {
+  nodeId: PropTypes.string.isRequired,
+  siblings: PropTypes.array.isRequired,
+  visits: PropTypes.array.isRequired,
+  nodesById: PropTypes.object.isRequired,
+  onBoundaryCorrection: PropTypes.func.isRequired,
+};
+
 export default function SpatialLandscapeCanvas({
   bundle,
   nodes,
@@ -131,6 +213,7 @@ export default function SpatialLandscapeCanvas({
   speakerColorMap = {},
   onOpenVisit,
   onFocusNodeChange,
+  onBoundaryCorrection,
   overflowMenu = null,
 }) {
   const landscape = useMemo(
@@ -464,6 +547,16 @@ export default function SpatialLandscapeCanvas({
                       {lensFindings?.length > 0 && (
                         <LensFindingsPreview findings={lensFindings} onOpenVisit={onOpenVisit} nodeId={id} />
                       )}
+
+                      {onBoundaryCorrection && (
+                        <BoundaryMenu
+                          nodeId={id}
+                          siblings={rawSiblingIds}
+                          visits={visits}
+                          nodesById={landscape.nodesById}
+                          onBoundaryCorrection={onBoundaryCorrection}
+                        />
+                      )}
                     </div>
                   </div>
                 </article>
@@ -528,5 +621,6 @@ SpatialLandscapeCanvas.propTypes = {
   speakerColorMap: PropTypes.object,
   onOpenVisit: PropTypes.func,
   onFocusNodeChange: PropTypes.func,
+  onBoundaryCorrection: PropTypes.func,
   overflowMenu: PropTypes.node,
 };

@@ -103,4 +103,21 @@ describe("SpatialLandscapeCanvas", () => {
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
     expect(host.textContent).toContain("Funding & Collaborators");
   });
+
+  it("emits merge and split boundary corrections through the quiet Adjust boundary control", () => {
+    const onBoundaryCorrection = vi.fn();
+    const bundle = { conversation_title: "Andre Catch up", utterances };
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={bundle} nodes={nodes} onBoundaryCorrection={onBoundaryCorrection} />);
+    });
+    const mergeBtn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Merge into Ooty Retreat");
+    expect(mergeBtn).not.toBeUndefined();
+    act(() => mergeBtn.click());
+    expect(onBoundaryCorrection).toHaveBeenCalledWith({ kind: "merge", sourceNodeId: "arc-1", targetNodeId: "arc-2" });
+
+    const splitBtn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Split at 51:05");
+    expect(splitBtn).not.toBeUndefined();
+    act(() => splitBtn.click());
+    expect(onBoundaryCorrection).toHaveBeenCalledWith({ kind: "split", sourceNodeId: "arc-1", splitUtteranceId: "u3" });
+  });
 });
