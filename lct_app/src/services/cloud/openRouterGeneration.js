@@ -5,6 +5,7 @@ import { deriveParentEvidence } from './parentEvidence.js';
 import { expandTaskGeneration } from './rangeGeneration.js';
 import { DETAIL_FORMAT, DETAIL_PROMPT, DETAIL_SCHEMA, MAX_SEGMENT_TOPICS, SKELETON_FORMAT, SKELETON_PROMPT, SKELETON_SCHEMA, sanitizeGlossary } from './generationTasks.js';
 import { repairGeneratedReferences } from './generationReferenceRepair.js';
+import { AUDIT_PROMPT, AUDIT_SCHEMA, auditFromGeneratedText, auditMapNodes } from './auditTask.js';
 import { MAP_GUIDANCE_LIMIT } from './sitesProviderPreferences.js';
 import { GENERATION_GRAPH_SCHEMA } from './generationSchema.js';
 
@@ -64,7 +65,20 @@ export function generationTask(context = {}) {
       extra: { segment_topics: topics.map(({ id, node_name, summary }) => ({ id, node_name, summary: summary || '' })),
         ...(context.glossary != null ? { glossary: sanitizeGlossary(context.glossary) } : {}) } };
   }
+  if (task === 'audit') {
+    let nodes;
+    try { nodes = auditMapNodes(context.nodes); } catch { throw invalid('audit map nodes are invalid.'); }
+    return { task, prompt: AUDIT_PROMPT, schema: AUDIT_SCHEMA, extra: { map_nodes: nodes } };
+  }
   throw invalid('unknown generation task.');
+}
+
+/** Route a completed reply's text to the parser for its task: an audit yields findings, not a map. */
+export function readGeneratedText(source, content, context = {}) {
+  if (context.task !== 'audit') return recordingThreadsFromGeneratedText(source, content, context);
+  if (encoder.encode(content).byteLength > MAX_CONTENT_BYTES) throw invalid('the completion exceeds the bounded output size.', 'content_size');
+  const utteranceIds = createRecordingTranscript(source).document.utterances.map(({ id }) => id);
+  return { audit: auditFromGeneratedText(utteranceIds, content, auditMapNodes(context.nodes).map(node => node.id)) };
 }
 
 export function buildRecordingGenerationMessages(source, maxTokens, guidance = '', context = {}) {
@@ -132,7 +146,7 @@ export function recordingThreadsFromOpenRouterResponse({ source, response, conte
   if (rejectedStage) {
     throw invalid('the completion was refused, interrupted, or incomplete.', rejectedStage);
   }
-  return recordingThreadsFromGeneratedText(source, message.content, context);
+  return readGeneratedText(source, message.content, context);
 }
 
 /**

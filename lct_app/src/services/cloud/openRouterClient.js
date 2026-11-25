@@ -209,3 +209,21 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
     ...(notes ? { boundaryNotes: notes, stubTopicIds: Array.isArray(payload.stub_topic_ids) ? payload.stub_topic_ids : [] } : {}),
     ...(Array.isArray(payload.glossary) ? { glossary: payload.glossary } : {}) };
 }
+
+/**
+ * Ask one provider route to audit transcript spans against map nodes. Findings come back in the
+ * segment's local utterance IDs; the caller maps them to the full transcript.
+ */
+export async function auditRecordingMap(source, signal, route, nodes) {
+  createRecordingTranscript(source);
+  const body = JSON.stringify({ source, routes: [route], task: 'audit', nodes });
+  if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This audit request is too large. Audit fewer spans.');
+  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
+  const payload = await readJSON(response, signal, 512 * 1024);
+  if (!response.ok) throw failure(response.status, payload);
+  if (payload.task !== 'audit' || !Array.isArray(payload.findings) || payload.backend !== route.backend) throw unreadable();
+  return { findings: payload.findings, backend: payload.backend, model: payload.model,
+    droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0 };
+}

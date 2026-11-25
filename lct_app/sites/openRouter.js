@@ -207,7 +207,8 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     maxTokens = diagnostic ? policy.longMaxTokens : outputCapFor(policy, input?.source);
     const guidance = ordered ? input.guidance : undefined;
     // Glance (skeleton) and detail tasks run only on the ordered map route; legacy routes map in one pass.
-    context = ordered && !diagnostic && input.task != null ? { task: input.task, topics: input.topics, glossary: input.glossary } : {};
+    context = ordered && !diagnostic && input.task != null
+      ? { task: input.task, topics: input.topics, glossary: input.glossary, nodes: input.nodes } : {};
     wires = policies.flatMap(policy => generationWires(policy, input.source, maxTokens, guidance, context).map(body => ({ policy, body })));
   } catch { throw new OpenRouterError(400, 'source', 'The recording source or prompt guidance is invalid or too large. No attempt was requested.'); }
   if (wires.some(({ body }) => new TextEncoder().encode(JSON.stringify(body)).byteLength > 512 * 1024)) {
@@ -234,7 +235,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   }
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
-  const { artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
+  const { artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
     const minimalId = diagnostic && payload.mode !== 'map' ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
     let lastRefusal = null;
@@ -277,7 +278,14 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
       const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
-        const { bundle, referenceRepair, coverage, boundaryNotes, stubTopicIds, glossary } = readCompletion({ source: input.source, response: completion, context });
+        const parsed = readCompletion({ source: input.source, response: completion, context });
+        if (parsed.audit) {
+          logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
+            findings: parsed.audit.findings.length, droppedRanges: parsed.audit.droppedRanges, unknownNodes: parsed.audit.unknownNodes,
+            ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
+          return { audit: parsed.audit, backend: policy.backend, model: body.model };
+        }
+        const { bundle, referenceRepair, coverage, boundaryNotes, stubTopicIds, glossary } = parsed;
         logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
           nodes: bundle.graph_data.length, coveredTurns: bundle.coverage?.covered_turns, totalTurns: bundle.coverage?.total_turns,
           ...(coverage ? { chunks: coverage.chunks, uncoveredTurns: coverage.uncoveredTurns, gapRuns: coverage.gapRuns,
@@ -302,6 +310,10 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
   if (diagnostic) return openRouterJSON(200, { diagnostic: 'passed', model,
     minimal_request_id: minimalId, map_request_id: mapId });
+  if (audit) {
+    return openRouterJSON(200, { request_id: id, task: 'audit', backend, model, findings: audit.findings,
+      dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes });
+  }
   logReferenceRepair(repair, backend);
   logEvidenceMismatch(artifact, backend);
   return openRouterJSON(200, { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),

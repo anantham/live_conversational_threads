@@ -524,3 +524,23 @@ it('refuses a detail task without segment topics before any provider call', asyn
   expect(response.status).toBe(400);
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it('runs an audit task through the ordered route and returns findings, not a map', async () => {
+  env.LCT_PERSONAL_PROVIDERS_ENABLED = 'true';
+  const reply = { format: 'audit-v1', contradictions: [], entity_splits: [],
+    independent_points: [{ kind: 'decision', note: 'Water at seven.', range: { from: 'utterance-0001', to: 'utterance-0001' }, represented_by: null }] };
+  fetch.mockResolvedValueOnce(Response.json({ type: 'message', role: 'assistant', stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify(reply) }] }));
+  const response = await worker.fetch(new Request(SITE + '/api/cloud/map/generate', { method: 'POST',
+    headers: { origin: SITE, 'content-type': 'application/json', 'x-lct-map-consent': 'generate-v1' },
+    body: JSON.stringify({ source, task: 'audit', nodes: [{ id: '3:garden', semantic_level: 3, node_name: 'Garden', summary: 'Water.',
+      ranges: [{ from: 'utterance-0001', to: 'utterance-0001' }] }],
+    routes: [{ backend: 'anthropic', key: 'sk-ant-synthetic-personal-key-000000', model: 'claude-synthetic' }] }) }), env);
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body).toMatchObject({ task: 'audit', findings: [{ kind: 'missed', point_kind: 'decision', utterance_ids: ['utterance-0001'] }] });
+  expect(body.artifact).toBeUndefined();
+  const wire = JSON.parse(fetch.mock.calls[0][1].body);
+  expect(JSON.parse(wire.messages[0].content).map_nodes[0].id).toBe('3:garden');
+  expect(wire.system).toContain('independently of the map');
+});

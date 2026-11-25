@@ -11,6 +11,7 @@ import { readTranscriptFile } from '../services/cloud/pdfTranscriptReader.js';
 import { splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
 import { runGlanceDetailPipeline } from '../services/cloud/glanceDetailPipeline.js';
 import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
+import MapAuditPanel from '../components/audit/MapAuditPanel.jsx';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
 
 const navIcon = 'inline-flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700';
@@ -38,6 +39,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
   const [served, setServed] = useState('');
   const [completedBundle, setCompletedBundle] = useState(null);
   const [detail, setDetail] = useState('all');
+  const [mapRoute, setMapRoute] = useState(null);
   const abortRef = useRef(null);
   const status = readiness?.routes === routes ? readiness.status : null;
   const statusError = readiness?.routes === routes ? readiness.error : '';
@@ -90,6 +92,7 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       setCompletedBundle(result.bundle);
       onBundleReady(result.bundle);
       if (result.backend && result.model) setServed(`${MAP_PROVIDERS[result.backend].name} · ${result.model}`);
+      setMapRoute(result.backend ? { backend: result.backend, model: result.model } : null);
     } catch (cause) {
       setProgress(current => ({ ...current, phase: 'stopped' }));
       if (cause?.name === 'AbortError') {
@@ -190,6 +193,11 @@ function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }) {
       )}
 
       {pipelineError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{pipelineError}</p>}
+
+      {completedBundle && !running && mapRoute && (
+        <MapAuditPanel source={parsed.source} bundle={completedBundle} routes={routes} mapRoute={mapRoute}
+          onBundleChange={bundle => { setCompletedBundle(bundle); onBundleReady(bundle); }} />
+      )}
     </section>
   );
 }

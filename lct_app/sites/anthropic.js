@@ -1,8 +1,9 @@
-import { buildRecordingGenerationMessages, recordingThreadsFromGeneratedText } from '../src/services/cloud/openRouterGeneration.js';
+import { buildRecordingGenerationMessages, readGeneratedText } from '../src/services/cloud/openRouterGeneration.js';
+import { AUDIT_SCHEMA } from '../src/services/cloud/auditTask.js';
 import { ANTHROPIC_GENERATION_GRAPH_SCHEMA } from '../src/services/cloud/generationSchema.js';
 import { ANTHROPIC_DETAIL_SCHEMA, ANTHROPIC_SKELETON_SCHEMA } from '../src/services/cloud/generationTasks.js';
 
-const ANTHROPIC_SCHEMAS = { map: ANTHROPIC_GENERATION_GRAPH_SCHEMA, skeleton: ANTHROPIC_SKELETON_SCHEMA, detail: ANTHROPIC_DETAIL_SCHEMA };
+const ANTHROPIC_SCHEMAS = { map: ANTHROPIC_GENERATION_GRAPH_SCHEMA, skeleton: ANTHROPIC_SKELETON_SCHEMA, detail: ANTHROPIC_DETAIL_SCHEMA, audit: AUDIT_SCHEMA };
 
 export function anthropicHeaders(key) {
   return { 'x-api-key': key, 'anthropic-version': '2026-10-21' };
@@ -28,5 +29,5 @@ export function recordingThreadsFromAnthropicResponse({ source, response, contex
   if (unexpected || text.length !== 1 || typeof text[0].text !== 'string' || !text[0].text.trim()) {
     throw invalid('choice_content');
   }
-  return recordingThreadsFromGeneratedText(source, text[0].text, context);
+  return readGeneratedText(source, text[0].text, context);
 }
