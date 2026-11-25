@@ -242,7 +242,22 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   }
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
 
-  const { artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
+function extractResponseUsage(completion, anthropic) {
+  const raw = completion?.usage;
+  if (!raw || typeof raw !== 'object') return null;
+  const input = Number(anthropic ? raw.input_tokens : raw.prompt_tokens);
+  const output = Number(anthropic ? raw.output_tokens : raw.completion_tokens);
+  const inputTokens = Number.isFinite(input) && input >= 0 ? Math.round(input) : 0;
+  const outputTokens = Number.isFinite(output) && output >= 0 ? Math.round(output) : 0;
+  const totalRaw = Number(raw.total_tokens);
+  const totalTokens = Number.isFinite(totalRaw) && totalRaw >= 0 ? Math.round(totalRaw) : inputTokens + outputTokens;
+  const costRaw = Number(raw.cost);
+  const costUsd = Number.isFinite(costRaw) && costRaw >= 0 ? costRaw : null;
+  if (!inputTokens && !outputTokens && !totalTokens && costUsd == null) return null;
+  return { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, ...(costUsd == null ? {} : { cost_usd: costUsd }) };
+}
+
+  const { artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, usage } = await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, async signal => {
     const minimalId = diagnostic && payload.mode !== 'map' ? await runMinimalClaudeProbe(policy, wires[0].body, signal) : undefined;
     const failedAuthKeys = new Set();
     let lastRefusal = null;
@@ -291,7 +306,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
             findings: parsed.audit.findings.length, droppedRanges: parsed.audit.droppedRanges, unknownNodes: parsed.audit.unknownNodes,
             malformed: parsed.audit.malformed,
             ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
-          return { audit: parsed.audit, backend: policy.backend, model: body.model };
+          return { audit: parsed.audit, backend: policy.backend, model: body.model, usage: extractResponseUsage(completion, anthropic) };
         }
         const { bundle, referenceRepair, coverage, boundaryNotes, stubTopicIds, glossary } = parsed;
         logProviderCall(env, { ...call, outcome: 'accepted', durationMs: Date.now() - callStarted, ...usageOf(completion, anthropic),
@@ -300,6 +315,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
             overlapTurns: coverage.overlapTurns } : {}),
           ...(anthropic && anthropicRequestId(response) ? { requestId: anthropicRequestId(response) } : {}) });
         return { artifact: bundle, backend: policy.backend, model: body.model, repair: referenceRepair, minimalId, boundaryNotes, stubTopicIds, glossary,
+          usage: extractResponseUsage(completion, anthropic),
           ...(diagnostic ? { mapId: anthropicRequestId(response) } : {}) };
       } catch (error) {
         logOpenRouterFailure(env, 'invalid_completion', error?.validationStage, error?.validationRule, policy.backend);
@@ -320,11 +336,13 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     minimal_request_id: minimalId, map_request_id: mapId });
   if (audit) {
     return openRouterJSON(200, { request_id: id, task: 'audit', backend, model, findings: audit.findings,
-      dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed });
+      dropped_ranges: audit.droppedRanges, unknown_nodes: audit.unknownNodes, malformed: audit.malformed,
+      ...(usage ? { usage } : {}) });
   }
   logReferenceRepair(repair, backend);
   logEvidenceMismatch(artifact, backend);
   return openRouterJSON(200, { request_id: id, artifact, model, ...(ordered ? { backend } : {}), ...(repair ? { reference_repair: repair } : {}),
+    ...(usage ? { usage } : {}),
     ...(context?.task ? { task: context.task } : {}),
     ...(boundaryNotes ? { boundary_notes: boundaryNotes, stub_topic_ids: stubTopicIds } : {}),
     ...(glossary ? { glossary } : {}) });

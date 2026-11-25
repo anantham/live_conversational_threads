@@ -1,6 +1,7 @@
 import { createRecordingTranscript } from './recordingTranscript.js';
 import { createRecordingThreads } from './recordingThreads.js';
 import { validateThreadsArtifact } from '../threadsArtifact.js';
+import { recordSitesCostEntry } from './sitesCostStore.js';
 
 export const MAP_PROVIDERS = {
   openrouter: { option: 'OpenRouter', name: 'OpenRouter', recipient: 'OpenRouter and the selected model provider' },
@@ -205,7 +206,10 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
   if (!response.ok) throw failure(response.status, payload);
   if (!routes.some(route => route.backend === payload.backend)) throw unreadable();
   const notes = Array.isArray(payload.boundary_notes) ? payload.boundary_notes : null;
-  return { ...recordingMapResult(source, payload), backend: payload.backend, model: payload.model,
+  const result = recordingMapResult(source, payload);
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: context.task || 'map', requestId: payload.request_id });
+  return { ...result, backend: payload.backend, model: payload.model,
+    ...(payload.usage ? { usage: payload.usage } : {}),
     ...(notes ? { boundaryNotes: notes, stubTopicIds: Array.isArray(payload.stub_topic_ids) ? payload.stub_topic_ids : [] } : {}),
     ...(Array.isArray(payload.glossary) ? { glossary: payload.glossary } : {}) };
 }
@@ -224,6 +228,8 @@ export async function auditRecordingMap(source, signal, route, nodes) {
   const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
   if (!response.ok) throw failure(response.status, payload);
   if (payload.task !== 'audit' || !Array.isArray(payload.findings) || payload.backend !== route.backend) throw unreadable();
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'audit', requestId: payload.request_id });
   return { findings: payload.findings, backend: payload.backend, model: payload.model,
+    ...(payload.usage ? { usage: payload.usage } : {}),
     droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0 };
 }

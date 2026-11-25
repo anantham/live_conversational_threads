@@ -28,6 +28,7 @@ import ClaimsView from "../pages/ClaimsView";
 import DebateReport from "../pages/DebateReport";
 import DebateShared from "../pages/DebateShared";
 import CostDashboard from "../pages/CostDashboard";
+import SitesCostDashboard from "../pages/SitesCostDashboard";
 import Bookmarks from "../pages/Bookmarks";
 import SitesProviderSettings from '../components/settings/SitesProviderSettings';
 import SitesMapPrompts from '../components/settings/SitesMapPrompts';
@@ -75,7 +76,7 @@ export default function AppRoutes() {
       <Route path="/claims/:conversationId" element={<ClaimsView />} />
       <Route path="/debate/s" element={<DebateShared />} />
       <Route path="/debate/:conversationId" element={<DebateReport />} />
-      <Route path="/cost-dashboard" element={<CostDashboard />} />
+      <Route path="/cost-dashboard" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesCostDashboard /> : <CostDashboard />} />
       <Route path="/bookmarks" element={<Bookmarks />} />
       <Route path="/settings" element={<SettingsLayout />}>
         <Route index element={<Navigate replace to="runtime" />} />
