@@ -31,7 +31,7 @@ export default function SitesReplayTrial() {
         {flow.setup?.budget && <p id="replay-budget">Existing allowance: ${flow.setup.budget.available_usd.toFixed(2)} · conservative test bound: ${flow.setup.budget.required_usd.toFixed(2)} · {flow.setup.budget.sufficient ? 'sufficient' : 'insufficient; no paid operation started'}</p>}
         <button type="submit" className="min-h-11 rounded-lg bg-slate-900 px-4 text-white disabled:opacity-50" disabled={!flow.consent || !flow.file || !flow.setup?.enabled || !flow.setup?.budget.sufficient}>Start approved replay</button>
         <button type="button" className="min-h-11 px-3 underline" onClick={() => void flow.check()}>Check replay readiness</button>
-      </form> : <><LiveConversationGraph bundle={flow.map} transcriptVisible={!minimized} recording />
+      </form> : <><LiveConversationGraph bundle={flow.map} transcriptVisible={!minimized} onConfigure={() => setPanel('files')} recording />
         <ConversationTranscriptPanel transcript={flow.transcript} status={flow.stage} minimized={minimized} onMinimize={() => setMinimized(x => !x)} fullscreen={fullscreen} onFullscreen={() => setFullscreen(x => !x)} /></>}
       <aside hidden={!panel} aria-label="Replay tools" className="absolute right-3 top-3 z-50 max-h-[90%] w-[28rem] max-w-[95%] overflow-auto rounded-xl border border-slate-200 bg-white p-5 shadow-lg"><CloseConversationTools onClose={() => setPanel(null)} />
         <RecordingAudioFiles localOnly retention="local" audio={flow.audio} recordingId={flow.recording?.id} privateEnabled={false} busy={flow.busy} onPrivateSave={() => {}} />

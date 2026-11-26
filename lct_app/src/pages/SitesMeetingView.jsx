@@ -79,7 +79,7 @@ export default function SitesMeetingView({ id }) {
         {leaveMessage && <p role="status">{leaveMessage}</p>}
         {(local.error || local.archive.status.state === 'error') && <div className="text-rose-800"><p role="alert">{local.error}</p><ConversationStorageStatus status={local.archive.status} preference={local.retention} onRetry={local.archive.retry} /><button className="min-h-8 underline" onClick={local.retryAudio}>Retry local audio copy</button></div>}
       </div>
-      <LiveConversationGraph bundle={local.map} transcriptVisible={!minimized} recording />
+      <LiveConversationGraph bundle={local.map} transcriptVisible={!minimized} recording onConfigure={() => setPanel('map')} />
       <ConversationTranscriptPanel transcript={transcript} status={error ? local.restored ? 'Saved on this device · disconnected' : 'Connection interrupted' : ended ? 'Finished' : 'Meet captions'} minimized={minimized} onMinimize={() => { setMinimized(value => !value); setFullscreen(false); }} fullscreen={fullscreen} onFullscreen={() => setFullscreen(value => !value)} />
       <aside hidden={!panel} aria-label="Meeting tools" className="absolute right-3 top-3 z-40 max-h-[calc(100%-1.5rem)] w-[28rem] max-w-[calc(100%-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
         <CloseConversationTools onClose={() => setPanel(null)} />

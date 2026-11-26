@@ -40,3 +40,16 @@ unrequired", "I don't see why we have two buttons").
 ## Related
 
 `tests/intent/sites-compact-recording.md`, `tests/intent/recording-screen-clean.md`.
+
+## Independent review (2026-11-26)
+
+Reviewed by OpenAI (`gpt-6.2-sol` through Codex) on the 50 KB code diff; Gemini was out of quota and Grok
+returned nothing. Acted on: the blank placeholder leaked to the meeting, replay and audio-import pages (now an
+opt-in `quiet` prop used only by the recording page); two quick presses of Start could create two sessions
+(a synchronous `starting` ref guards it, test proven red without it); the Settings note regained the
+keep-the-tab-open warning for ephemeral recordings and the Pause/Resume limit wording; a test for the
+unavailable-transcription refusal came back. Not acted on: the missing in-page Cancel during finalization
+(finalization is bounded at 10 s in `recordingSession.js`), and losing the previous recording when a start fails
+after the replace-confirm (the previous flow also cleared it before the session started). Accepted as the
+owner's choice: audio can stream to Soniox without a first-use disclosure, because the owner asked for the
+checkbox to go. A persistent live region for the first screen-reader announcement was not added.

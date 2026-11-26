@@ -228,6 +228,25 @@ describe('Sites recording page', () => {
     expect(container.textContent).not.toMatch(/\d+ s elapsed/);
   });
 
+  it('starts only one session when Start is pressed twice before the screen updates', async () => {
+    await mount();
+    const start = button('Start session');
+    await act(async () => { start.click(); start.click(); });
+    expect(fixture.sessions).toHaveLength(1);
+    expect(fixture.sessions[0].cancelled).toBe(false);
+  });
+
+  it('keeps an explicitly chosen transcription mode unavailable-aware: Start is blocked and says how to continue', async () => {
+    transcribe = true; await mount();
+    await chooseTranscription(false); await chooseTranscription(true);
+    transcribe = false; await click('Check connections');
+    expect(transcriptionSwitch().checked).toBe(true);
+    expect(button('Start session').disabled).toBe(true);
+    expect(container.textContent).toContain('Turn it off in Settings to record audio only.');
+    await click('Start session');
+    expect(fixture.sessions).toHaveLength(0);
+  });
+
   it('still asks before a new recording would replace an unsaved one, and declining keeps it', async () => {
     await mount(); await record(); await click('Stop recording');
     const ask = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -253,6 +272,10 @@ describe('Sites recording page', () => {
     const settings = [...container.querySelectorAll('[aria-label="Conversation tools"] > div')].find(node => node.textContent.includes('Settings'));
     expect(settings.textContent).toContain('Recording starts as soon as you press Start');
     expect(settings.textContent).toContain('Soniox');
+    expect(settings.textContent).toContain('Pause closes the connection');
+    expect(settings.textContent).not.toContain('keep the tab open until then');
+    await act(async () => settings.querySelectorAll('input[name="conversation-retention"]')[1].click());
+    expect(settings.textContent).toContain('keep the tab open until then');
     expect(settings.querySelector('a[href="/privacy"]')).toBeTruthy();
     await act(async () => transcriptionSwitch().click());
     expect(settings.textContent).toContain('5 minutes or 2 MiB');

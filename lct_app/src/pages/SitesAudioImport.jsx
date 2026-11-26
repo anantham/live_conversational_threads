@@ -68,7 +68,7 @@ export default function SitesAudioImport() {
         </form>
       </div>}
       {recording && <>
-        {map ? <LiveConversationGraph bundle={map} transcriptVisible={!minimized} recording /> :
+        {map ? <LiveConversationGraph bundle={map} transcriptVisible={!minimized} onConfigure={() => setPanel('map')} recording /> :
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center" aria-label="Imported conversation graph">
             <p className="text-sm font-medium text-slate-700">{busy ? 'Your threads will take shape here' : 'No thread map is saved'}</p>
             {busy && artifact?.source && <button className="mt-3 min-h-11 px-3 text-xs underline" onClick={() => setPanel('map')}>Set up live map</button>}
