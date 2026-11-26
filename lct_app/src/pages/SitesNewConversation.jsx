@@ -48,6 +48,7 @@ export default function SitesNewConversation() {
   const [generating, setGenerating] = useState(false);
   const runtime = useSitesRuntime();
   const [chosenBackend, setBackend] = useState('openrouter'), [voiceHealth, setVoiceHealth] = useState(null), [inferenceHealth, setInferenceHealth] = useState(null);
+  const [voiceState, setVoiceState] = useState(null);
   const backend = inferenceHealth?.ok && runtime?.preferences.map.includes(inferenceHealth.service)
     ? inferenceHealth.service : runtime?.preferences.map[0] || chosenBackend;
   const voiceStarted = useRef(null), voiceFirst = useRef(false);
@@ -178,7 +179,9 @@ export default function SitesNewConversation() {
   }
 
   const active = ACTIVE.has(activity?.stage);
-  const live = runtime?.credentialsReady !== false && (!runtime || runtime.preferences.speech.includes('soniox')) && (runtime?.keys.soniox
+  // At the shared limit, transcription is closed for now: say so, and start audio-only (a personal key has its own limit).
+  const voiceLimited = !runtime?.keys.soniox && voiceState === 'limited';
+  const live = !voiceLimited && runtime?.credentialsReady !== false && (!runtime || runtime.preferences.speech.includes('soniox')) && (runtime?.keys.soniox
     ? capabilities?.transcription?.personal_enabled : capabilities?.transcription?.enabled);
   // A fast check stays silent; only one that runs past two seconds says so.
   const slowSetup = Boolean(setup && elapsed >= 2);
@@ -217,7 +220,7 @@ export default function SitesNewConversation() {
         {restoring && <p role="status">Opening saved conversation…</p>}
         {!supported && <p className="text-rose-800">This browser needs HTTPS, microphone access and audio-recording support.</p>}
         {(slowSetup || activity || saving) && <><p role="status">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : slowSetup ? 'Checking connections' : activity.message}</p>{(slowSetup || active || saving) && <p className="tabular-nums">{elapsed} s elapsed · Time remaining unknown</p>}{slowSetup && <button className="min-h-8 underline underline-offset-2" onClick={() => setupRequest.current?.abort()}>Cancel connection check</button>}{saving && <button className="min-h-8 underline underline-offset-2" onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</>}
-        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
+        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{voiceLimited ? <>Live transcription is closed for now. It has reached its shared limit. {transcribe ? <>Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'You can still record audio.'}</> : transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
         {active && <p>Keep this tab open while recording.</p>}
       </div>
       {error && <p role="alert" className="shrink-0 bg-rose-50 px-5 py-2 text-xs text-rose-900">{error}</p>}
@@ -258,7 +261,7 @@ export default function SitesNewConversation() {
     </section>
     <footer className="relative shrink-0 border-t border-gray-100 bg-white/80 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-4">
       <div className={active || activity?.stage === 'paused' ? "flex w-full items-center justify-between gap-2 max-[380px]:flex-col-reverse max-[380px]:items-stretch" : "grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2"}>
-        <ConversationServiceStatus backend={backend} voice={voiceHealth} inference={inferenceHealth}
+        <ConversationServiceStatus backend={backend} voice={voiceHealth} inference={inferenceHealth} onVoiceState={setVoiceState}
           personalVoice={Boolean(runtime?.keys.soniox)} personalInference={Boolean(runtime?.keys[backend])} />
         <CloudRecordingToolbar active={active} supported={supported} live={Boolean(live)} busy={restoring || saving || generating} stage={activity?.stage} stopRef={stopControl} resumeRef={resumeControl} transcribe={transcribe} onStart={() => requestRecording(transcribe)} onPause={() => void session.current?.pause()} onResume={() => { setError(''); void session.current?.resume().catch(failure => setError(failure.message)); }} onStop={() => void session.current?.stop()} onCancel={() => session.current?.cancel()} />
       </div>

@@ -2,6 +2,7 @@ import { sonioxPolicy } from './sonioxPolicy.js';
 import { openRouterPolicy, geminiPolicy, anthropicPolicy, readOpenRouterAdmission, openRouterJSON } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { anthropicHeaders } from './anthropic.js';
+import { meetingConfig } from './meetingPolicy.js';
 
 // Fixed slots per Worker, no visitor-controlled cache keys. Never cache identities.
 const checks = new Map();
@@ -146,8 +147,18 @@ async function providerCheck(service, policy, env) {
   return entry.promise;
 }
 
+// Whether Meet is open to join, for the Home page. It reads configuration only: no session,
+// no provider call, no database write, and never the window's end time or owner.
+function meetingsHealth(env) {
+  const config = meetingConfig(env);
+  return openRouterJSON(200, { service: 'meetings', enabled: config.enabled, available: config.canJoin, checked_at: Date.now() });
+}
+
 export async function handleServiceHealth(request, env) {
   const path = new URL(request.url).pathname;
+  if (path === '/api/cloud/health/meetings') {
+    return request.method === 'GET' ? meetingsHealth(env) : openRouterJSON(405, { error: 'Use GET to check service availability.' });
+  }
   const match = /^\/api\/cloud\/health\/(soniox|openrouter|gemini|anthropic)$/.exec(path);
   if (!match) return null;
   if (request.method !== 'GET') return openRouterJSON(405, { error: 'Use GET to check service availability.' });

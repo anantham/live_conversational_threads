@@ -20,7 +20,7 @@ const plain = {
   map: { checking: 'Checking map making.', idle: 'Maps can be made from your transcript.', off: 'Map making is switched off on this site.',
     limited: 'Map making has reached its shared limit. Recording and the transcript still work.', busy: 'Map making is busy. Try again in a minute.', stale: 'This check is out of date. Check again.', error: 'The check could not reach map making. Recording and the transcript still work.' },
 };
-function ServiceIndicator({ service, label, Icon, evidence, personal }) {
+function ServiceIndicator({ service, label, Icon, evidence, personal, onState }) {
   const [check, setCheck] = useState(null), [open, setOpen] = useState(false), [revision, setRevision] = useState(0), [now, setNow] = useState(Date.now());
   useEffect(() => {
     let alive = true, pending;
@@ -58,6 +58,8 @@ function ServiceIndicator({ service, label, Icon, evidence, personal }) {
   const limited = current?.capacity === 'exhausted' || current?.allowance === 'exhausted';
   const state = failed ? 'error' : verified ? 'ready' : !current ? 'checking' : !current.enabled ? 'off' : limited ? 'limited' : stale || current.capacity === 'busy' ? 'uncertain' : !current.available || (!current.reachable && !listingOnly) ? 'error' : 'idle';
   const busy = state === 'uncertain' && !stale;
+  // The page uses this to stop promising a transcript once the shared limit is reached.
+  useEffect(() => { onState?.(state); }, [state, onState]);
   const headline = failed ? 'Last attempt failed' : personal && !verified ? 'Personal key set' : state === 'uncertain' ? (busy ? 'Busy' : 'Check is out of date') : headlines[state];
   const copy = plain[service === 'soniox' ? 'soniox' : 'map'];
   const summary = failed || verified ? result.detail || (failed ? 'The last attempt did not finish.' : 'Working this session.') : personal ? 'Check this key from Providers in Settings.' : copy[state === 'uncertain' ? (busy ? 'busy' : 'stale') : state];
@@ -79,8 +81,8 @@ function ServiceIndicator({ service, label, Icon, evidence, personal }) {
     </div>}
   </div>;
 }
-ServiceIndicator.propTypes = { service: PropTypes.string.isRequired, label: PropTypes.string.isRequired, Icon: PropTypes.elementType.isRequired, evidence: PropTypes.object, personal: PropTypes.bool };
-export default function ConversationServiceStatus({ backend, voice, inference, personalVoice, personalInference }) {
-  return <div aria-label="Service status" className="flex shrink-0 items-center gap-1"><ServiceIndicator service="soniox" label="Live transcription" Icon={Mic} evidence={voice} personal={personalVoice} /><ServiceIndicator service={backend} label="Map making" Icon={Sparkles} evidence={inference} personal={personalInference} /></div>;
+ServiceIndicator.propTypes = { service: PropTypes.string.isRequired, label: PropTypes.string.isRequired, Icon: PropTypes.elementType.isRequired, evidence: PropTypes.object, personal: PropTypes.bool, onState: PropTypes.func };
+export default function ConversationServiceStatus({ backend, voice, inference, personalVoice, personalInference, onVoiceState }) {
+  return <div aria-label="Service status" className="flex shrink-0 items-center gap-1"><ServiceIndicator service="soniox" label="Live transcription" Icon={Mic} evidence={voice} personal={personalVoice} onState={onVoiceState} /><ServiceIndicator service={backend} label="Map making" Icon={Sparkles} evidence={inference} personal={personalInference} /></div>;
 }
-ConversationServiceStatus.propTypes = { backend: PropTypes.string.isRequired, voice: PropTypes.object, inference: PropTypes.object, personalVoice: PropTypes.bool, personalInference: PropTypes.bool };
+ConversationServiceStatus.propTypes = { backend: PropTypes.string.isRequired, voice: PropTypes.object, inference: PropTypes.object, personalVoice: PropTypes.bool, personalInference: PropTypes.bool, onVoiceState: PropTypes.func };

@@ -28,6 +28,7 @@ beforeEach(() => {
     calls.push({ path, options });
     if (path === BASE + '/guest-session') { server.guestStarted = true; return json({ mode: 'guest' }); }
     if (path === '/api/auth/session') return json({ authenticated: false }, 401);
+    if (path === '/api/cloud/health/meetings') return json({ service: 'meetings', enabled: server.canJoin, available: server.canJoin, checked_at: 1 });
     if (path === BASE + '/status' && server.failStatus) throw new TypeError('Failed to fetch');
     if (path === BASE + '/status') return json(server.status === 200 ? { enabled: true, canJoin: server.canJoin } : { error: server.status === 401 ? 'Sign in to use private meeting recordings.' : 'The recorder is unavailable.', code: server.errorCode || (server.status === 401 ? 'sign_in' : 'inactive') }, server.status);
     if (path === BASE && options.method === 'POST') {
@@ -99,14 +100,27 @@ describe('Cloud meeting journey', () => {
   it('never joins on load and requires consent inside an open test window', async () => {
     await mount(); expect(server.guestStarted).toBe(true); expect(creates()).toHaveLength(0); expect(button('Join and record').disabled).toBe(true);
     await inputURL(); expect(button('Join and record').disabled).toBe(false);
+    expect(container.textContent).not.toContain('closed for now');
     await click('Join and record'); expect(creates()).toHaveLength(1);
     expect(JSON.parse(creates()[0].options.body)).toMatchObject({ meetingUrl: 'https://meet.google.com/abc-defg-hij', consent: true });
     expect(container.textContent).toContain('Capturing captions and audio');
   });
   it('refuses a closed test window and shows sign-in failures without joining', async () => {
     server.canJoin = false; await mount(); await inputURL(); expect(button('Join and record').disabled).toBe(true);
-    expect(container.textContent).toContain('testing window is closed');
-    server.status = 401; await click('Check connection'); expect(container.textContent).toContain('Sign in to use'); expect(creates()).toHaveLength(0);
+    // Closed for now (owner ruling 2026-11-26): said at the top, and the form cannot be filled in.
+    expect(container.querySelector('[role="status"]').textContent).toContain('Meetings are closed for now');
+    expect(container.querySelector('#meet-url').disabled).toBe(true);
+    expect(container.querySelector('form input[type=checkbox]').disabled).toBe(true);
+    expect(container.querySelector('form input[type=checkbox]').checked).toBe(false);
+    server.status = 401; await click('Check connection'); expect(container.textContent).toContain('to see recordings you made before'); expect(creates()).toHaveLength(0);
+  });
+  it('says closed for now instead of asking to sign in when Meet is switched off', async () => {
+    server.canJoin = false; server.status = 401; server.errorCode = 'sign_in'; await mount();
+    expect(container.querySelector('[role="status"]').textContent).toContain('Meetings are closed for now');
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).toContain('to see recordings you made before');
+    expect(container.querySelector('#meet-url').disabled).toBe(true);
+    expect(creates()).toHaveLength(0);
   });
   it.each([401, 403, 503])('offers account recovery only for authentication refusal (%i)', async status => {
     server.status = status; await mount(); await inputURL();

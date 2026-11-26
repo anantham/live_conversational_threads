@@ -90,3 +90,14 @@ it('keeps a live transcript green across a refresh that only says the key cannot
   await act(async () => vi.advanceTimersByTimeAsync(60_000)); // the background refresh lands after the evidence
   expect(host.querySelector('button[aria-label^="Live transcription"]').getAttribute('aria-label')).toBe('Live transcription: Working');
 });
+
+// Critique 2026-11-25 issue 3: /new stops promising a transcript when the voice check reports the shared limit.
+it('reports the live transcription state to the page, including the shared limit', async () => {
+  const onVoiceState = vi.fn();
+  fetch.mockImplementation(async path => new Response(JSON.stringify(path.includes('soniox')
+    ? { service: 'soniox', enabled: true, available: false, reachable: false, capacity: 'exhausted', allowance: 'unknown', checked_at: Date.now() }
+    : { service: 'openrouter', enabled: true, available: true, reachable: true, allowance: 'unknown', checked_at: Date.now() })));
+  await render({ onVoiceState });
+  expect(onVoiceState).toHaveBeenLastCalledWith('limited');
+  expect(host.querySelector('button[aria-label="Live transcription: Not available right now"]')).toBeTruthy();
+});

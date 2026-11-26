@@ -9,8 +9,8 @@ vi.mock("../services/localDraftStore", () => ({ loadLatestDraft: async () => nul
 vi.mock("../components/ServiceStatus", () => ({ default: () => <span>Legacy service status</span> }));
 import Home from "./Home";
 let root, host;
-beforeEach(() => { globalThis.IS_REACT_ACT_ENVIRONMENT = true; navigate.mockReset(); host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllEnvs(); });
+beforeEach(() => { globalThis.IS_REACT_ACT_ENVIRONMENT = true; navigate.mockReset(); vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 }))); host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe("Home in Sites mode", () => {
   it("omits the private backend service status while retaining public browse", async () => {
     vi.stubEnv("VITE_SITES_MODE", "true");
@@ -49,4 +49,41 @@ it("shows the icon label on keyboard focus and dismisses it with Escape", async 
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   await act(async () => importTranscript.click());
   expect(navigate).toHaveBeenCalledWith("/import-transcript");
+});
+
+// Critique 2026-11-25 issue 3, owner ruling 2026-11-26: a closed Meet stays visible as "closed for now".
+describe("Meet door on Home", () => {
+  const meetTile = () => host.querySelector('button[aria-label^="Join Google Meet"], button[aria-label^="Google Meet"]');
+  async function renderWith(reply) {
+    vi.stubEnv("VITE_SITES_MODE", "true");
+    const fetchMock = vi.fn(reply);
+    vi.stubGlobal("fetch", fetchMock);
+    await act(async () => root.render(<Home />));
+    await act(async () => {});
+    return fetchMock;
+  }
+  it("says closed for now in words, and still opens the page with earlier recordings", async () => {
+    const fetchMock = await renderWith(async () => new Response(JSON.stringify({ service: "meetings", enabled: true, available: false, checked_at: 1 })));
+    expect(fetchMock).toHaveBeenCalledWith("/api/cloud/health/meetings", expect.objectContaining({ credentials: "same-origin" }));
+    expect(meetTile().getAttribute("aria-label")).toBe("Google Meet, closed for now");
+    expect(host.textContent).toContain("Closed for now");
+    await act(async () => meetTile().click());
+    expect(navigate).toHaveBeenCalledWith("/meeting");
+  });
+
+  it("looks like any working door when Meet is open", async () => {
+    await renderWith(async () => new Response(JSON.stringify({ service: "meetings", enabled: true, available: true, checked_at: 1 })));
+    expect(meetTile().getAttribute("aria-label")).toBe("Join Google Meet");
+    expect(host.textContent).not.toContain("Closed for now");
+  });
+
+  it.each([
+    ["a failed check", async () => { throw new TypeError("offline"); }],
+    ["an unreadable answer", async () => new Response(JSON.stringify({ service: "soniox", available: false }))],
+    ["a server error", async () => new Response("{}", { status: 503 })],
+  ])("does not claim Meet is closed after %s", async (_label, reply) => {
+    await renderWith(reply);
+    expect(meetTile().getAttribute("aria-label")).toBe("Join Google Meet");
+    expect(host.textContent).not.toContain("Closed for now");
+  });
 });

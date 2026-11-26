@@ -1,3 +1,15 @@
+## 2026-11-26 22:45 IST — Closed features say "closed for now" (critique issue 3)
+
+Owner ruling 2026-11-26: a feature that is closed today stays visible, marked "closed for now". Branch `fix/closed-for-now` from `integ/sites-combined` (`e3936dc8`).
+
+- `lct_app/sites/serviceHealth.js`: new public `GET /api/cloud/health/meetings` → `{service, enabled, available, checked_at}` from `meetingConfig` alone. No session, provider call or DB write; never the window end or owner. Home could not use `/api/cloud/meetings/status`, which needs a guest session the page would have to create for every visitor.
+- `lct_app/src/hooks/useMeetingsOpen.js` (new): reads that check. Only a well-formed `available:false` means closed; a failed or unreadable check changes nothing.
+- `pages/Home.jsx`: the Meet circle is drawn quieter (dashed) with a visible "Closed for now" caption and label, and still opens `/meeting`, where earlier recordings live.
+- `pages/SitesMeetings.jsx`: a status line at the top says meetings are closed; the link field and consent box are disabled. The page also reads the public check, so a signed-out visitor no longer gets "Sign in to use private meeting recordings" for a switched-off feature, only "Sign in to see recordings you made before".
+- `components/recording/ConversationServiceStatus.jsx` + `pages/SitesNewConversation.jsx`: the voice indicator reports its state; at the shared limit (`limited`, managed key only) `/new` turns live transcription off, starts audio-only, and says "Live transcription is closed for now. It has reached its shared limit."
+- Tests: 7 new or changed cases across 5 files; the 5 new behaviour tests fail on the old sources and pass now. Full suite 1726/1727 (publicDrive needs local port binding). Lint clean on changed files; `build:sites` passes. Checked in the browser on the local Sites preview at desktop and phone width.
+- Wording drafted by Claude; the owner may want to edit it.
+
 ## 2026-11-26 00:05 IST — Landscape viewer: legible at rest, cited passages marked, one-row phone header
 
 From the 2026-11-25 impeccable critique of the live Site (snapshot `.impeccable/critique/2026-11-25T18-15-42Z__threads-adityaarpitha-com.md`, issues 1, 2 and 4). Branch `fix/viewer-landscape-legibility` off `integ/sites-combined` (27e83a1c), the branch the live Site is built from.
