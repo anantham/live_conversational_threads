@@ -129,6 +129,63 @@ describe("SitesAccessPanel", () => {
     expect(container.textContent).toBe("Sign inPrivacy");
   });
 
+  // Escape works like the close button, but only for a key pressed inside the panel, and
+  // nothing behind it sees that key: not the map ("go back a level", window bubble) and not
+  // the node-detail drawer (document capture).
+  it("closes on Escape pressed inside the panel and nothing behind it sees that Escape", async () => {
+    fetch.mockResolvedValue(sessionResponse(401)); await mount("/");
+    const panel = container.querySelector("#site-access");
+    const escapes = (spy) => spy.mock.calls.filter(([event]) => event.key === "Escape").length;
+    const map = vi.fn(), drawer = vi.fn();
+    window.addEventListener("keydown", map);
+    document.addEventListener("keydown", drawer, true);
+    const press = async (target, key = "Escape") => {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      await act(async () => target.dispatchEvent(event));
+      return event;
+    };
+    try {
+      // Opened the way a person opens it; the panel itself takes focus.
+      await act(async () => container.querySelector("button").click());
+      expect(document.activeElement).toBe(panel);
+      const first = await press(document.activeElement);
+      expect(container.textContent).toBe("Sign inPrivacy");
+      expect(document.activeElement).toBe(container.querySelector("button"));
+      expect(first.defaultPrevented).toBe(true);
+      expect([escapes(map), escapes(drawer)]).toEqual([0, 0]);
+
+      // From a control inside the panel too.
+      await act(async () => container.querySelector("button").click());
+      await act(async () => panel.querySelector('a[href^="/signin-with-chatgpt"]').focus());
+      await press(document.activeElement);
+      expect(container.textContent).toBe("Sign inPrivacy");
+      expect([escapes(map), escapes(drawer)]).toEqual([0, 0]);
+
+      // Closed, Escape belongs to the page again.
+      await press(document.activeElement);
+      expect([escapes(map), escapes(drawer)]).toEqual([1, 1]);
+
+      // Open, but the key is pressed elsewhere on the page: the panel stays, the page gets it.
+      await act(async () => container.querySelector("button").click());
+      const outside = document.createElement("button");
+      document.body.appendChild(outside);
+      outside.focus();
+      await press(outside);
+      expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
+      expect([escapes(map), escapes(drawer)]).toEqual([2, 2]);
+      outside.remove();
+
+      // Other keys inside the open panel pass through.
+      const enter = await press(panel, "Enter");
+      expect(enter.defaultPrevented).toBe(false);
+      expect(panel.querySelector('[aria-label="Close site access"]')).toBeTruthy();
+      expect(map.mock.calls.at(-1)[0].key).toBe("Enter");
+    } finally {
+      window.removeEventListener("keydown", map);
+      document.removeEventListener("keydown", drawer, true);
+    }
+  });
+
   it('uses neutral Account wording while the compact session check is pending or failed', async () => {
     vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
     await mount("/"); expect(container.textContent).toBe("AccountPrivacy");

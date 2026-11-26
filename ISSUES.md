@@ -3309,3 +3309,6 @@ Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received
 - **What is still open:** the five opener journeys that walk into the viewer are no longer checked on the live domain, and nothing runs a Sites branch's own spec against the build that branch publishes. A viewer regression in a published Site would not be caught by CI.
 - **Blocker:** no.
 - **Next step (owner's call):** add a browser check to the Site publish path, using the publishing branch's spec.
+
+## 2026-11-27 — Resolved: the account panel has no Escape-to-close (entry of 2026-11-05)
+- **Fix:** branch `fix/panel-escape-share-credentials`. Escape pressed inside the panel closes it and returns focus as the × does; neither the map nor the node-detail drawer sees that Escape. See WORKLOG 2026-11-27.
