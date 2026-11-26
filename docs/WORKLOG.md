@@ -1,3 +1,13 @@
+## 2026-11-27 01:20 IST — Codex review fixes for the shared page header (PR #273)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved 2026-11-27), read-only, code-only diff `e90f816b...d5a93e85` without the worklog, packet sha256 `0327b22f…d1`. 7 findings, all fixed.
+
+- `pages/settings/SettingsLayout.jsx`: Back goes Home when Settings was opened directly (`location.key === "default"`); it used to do nothing there (`navigate(-1)` with no earlier entry; that predates this PR).
+- `components/PageHeader.jsx`: embedded headers keep links a caller passes (the way back is still dropped); the title block is a `div`, not `<header>`, which outside `<main>` became a site-wide banner landmark; `back` must name a destination or a click handler (custom prop validator).
+- `pages/PublicThreads.jsx`, `pages/PrivateFiles.jsx`: inside the library the page title is an h2, so their section headings move to h3 (and PublicThreads' selected-file title to h4). PublicThreads passes its links to the other library tabs only when standalone.
+- Tests: `PageHeader.test.jsx` checks nothing precedes the title at any depth, the validator, embedded links; new `settings/SettingsLayout.test.jsx` (direct open → Home, with history → back); `PublicThreads.test.jsx` checks both heading structures; the Browse test's router mock now renders a real `href` and asserts the Home link. 5 new behaviour tests fail on the old sources.
+- Full suite on a loaded machine (load average ~220 from a VM and an unrelated experiment): failures varied run to run (6, then 4) and all passed when rerun alone except `SitesReplayTrial`, which imports nothing changed here and passed on the #270/#272 runs; treated as timeouts, not regressions. PrivateFiles' heading change has no dedicated test (same pattern as PublicThreads, which is tested).
+
 ## 2026-11-27 00:20 IST — One page header for the Site's pages (critique issue 5, part 2)
 
 Branch `fix/one-page-header` from `integ/sites-combined` (`e3936dc8`). Follows the Graph restyle (PR #272).

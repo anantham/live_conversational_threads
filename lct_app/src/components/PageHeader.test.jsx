@@ -22,8 +22,20 @@ describe("PageHeader", () => {
     const header = host.querySelector("[data-page-header]");
     expect(header.textContent).toContain("Files here belong to your account.");
     expect(header.querySelector("button").textContent).toBe("Upload");
-    // No eyebrow: nothing sits above the title inside the header.
-    expect(header.querySelector("h1").previousElementSibling).toBeNull();
+    // No eyebrow: the title comes first, at every depth from the header block down to the h1.
+    let node = header.querySelector("h1");
+    while (node !== header) { expect(node.previousElementSibling).toBeNull(); node = node.parentElement; }
+    expect(header.textContent.startsWith("Private cloud files")).toBe(true);
+    // One page's title, not a site-wide banner landmark.
+    expect(host.querySelector("header")).toBeNull();
+  });
+
+  it("refuses a way back with nowhere to go", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await render(<PageHeader title="Lost" back={{ label: "Back" }} />);
+      expect(error.mock.calls.flat().join(" ")).toContain('needs a "to" destination or an onClick handler');
+    } finally { error.mockRestore(); }
   });
 
   it("can go back through history instead of a link", async () => {
@@ -36,9 +48,15 @@ describe("PageHeader", () => {
   });
 
   it("inside another page, drops the way back and yields the h1 to its host", async () => {
-    await render(<PageHeader embedded title="Public conversations" links={<a href="/x">x</a>} />);
+    await render(<PageHeader embedded title="Public conversations" />);
     expect(host.querySelector('nav[aria-label="Page"]')).toBeNull();
     expect(host.querySelector("h1")).toBeNull();
     expect(host.querySelector("h2").textContent).toBe("Public conversations");
+  });
+
+  it("inside another page, keeps links the caller still passes", async () => {
+    await render(<PageHeader embedded title="Public conversations" links={<a href="/x">Only here</a>} />);
+    expect(host.querySelector('nav[aria-label="Page"] a[href="/x"]').textContent).toBe("Only here");
+    expect(host.querySelector('nav[aria-label="Page"] a[href="/"]')).toBeNull();
   });
 });

@@ -7,7 +7,8 @@ const { listSaved, apiFetch, navigate, listLocal, loadDraft } = vi.hoisted(() =>
   listSaved: vi.fn(), apiFetch: vi.fn(), navigate: vi.fn(), listLocal: vi.fn(), loadDraft: vi.fn(),
 }));
 const provider = { conversations: { listSaved } };
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate, Link: "a" }));
+// eslint-disable-next-line react/prop-types
+vi.mock("react-router-dom", () => ({ useNavigate: () => navigate, Link: function LinkStub({ to, ...rest }) { return <a href={to} {...rest} />; } }));
 vi.mock("../services/dataProvider", () => ({ useDataProvider: () => provider }));
 vi.mock("../services/apiClient", () => ({ apiFetch, API_BASE_URL: "https://owner.example" }));
 vi.mock("../components/browse/IndrasNetAudioLibrary", () => ({ default: () => <div>Owner audio library</div> }));
@@ -61,6 +62,8 @@ describe("Browse Sites access", () => {
     expect(container.textContent).toContain("Private cloud");
     expect(container.textContent).toContain("Public library");
     expect(container.textContent).toContain("Files opened here stay in this browser.");
+    expect(container.querySelector('nav[aria-label="Page"] a[href="/"]').textContent).toBe("Home");
+    expect([...container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Library"]);
     expect(container.textContent).not.toContain("Owner audio library");
     expect(container.textContent).not.toContain("Server history");
     expect(container.textContent).not.toContain("Start a live recording");

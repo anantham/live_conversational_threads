@@ -22,9 +22,9 @@ function server(path, options) {
 }
 beforeEach(() => { globalThis.IS_REACT_ACT_ENVIRONMENT = true; rows = []; localStorage.clear(); vi.stubGlobal("fetch", vi.fn(server)); });
 afterEach(async () => { if (root) await act(async () => root.unmount()); host?.remove(); root = null; vi.useRealTimers(); vi.unstubAllGlobals(); });
-async function mount(strict = false) {
+async function mount(strict = false, props = {}) {
   host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
-  const page = <MemoryRouter><PublicThreads /></MemoryRouter>;
+  const page = <MemoryRouter><PublicThreads {...props} /></MemoryRouter>;
   await act(async () => root.render(strict ? <StrictMode>{page}</StrictMode> : page));
 }
 const button = label => [...host.querySelectorAll("button")].find(node => node.textContent === label);
@@ -37,6 +37,23 @@ async function choose() {
   await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
 }
 const permit = () => act(async () => host.querySelector('input[type="checkbox"]').click());
+
+describe("Public library headings", () => {
+  it("standalone: h1 title, h2 sections, links to the other library tabs", async () => {
+    await mount();
+    expect([...host.querySelectorAll("h1")].map(h => h.textContent)).toEqual(["Public conversations"]);
+    expect(host.querySelector("#public-list-title").tagName).toBe("H2");
+    expect(host.querySelector('nav[aria-label="Page"] a[href="/private-files"]')).toBeTruthy();
+  });
+  it("inside the library: h2 title, sections one level below it, no duplicate tab links", async () => {
+    await mount(false, { embedded: true });
+    expect(host.querySelector("h1")).toBeNull();
+    expect(host.querySelector("h2").textContent).toBe("Public conversations");
+    expect(host.querySelector("#public-list-title").tagName).toBe("H3");
+    expect(host.querySelector("#publish-title").tagName).toBe("H3");
+    expect(host.querySelector('nav[aria-label="Page"]')).toBeNull();
+  });
+});
 
 describe("Guest public library", () => {
   it("opens without sign-in and keeps inactive storage free of file selectors", async () => {
