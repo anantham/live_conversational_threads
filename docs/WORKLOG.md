@@ -1,3 +1,7 @@
+## 2026-11-27 02:30 IST — Second Codex round on the #272 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings and my reasons for declining three (packet sha256 `22ddb90b…`). It accepted the floating-control backing and the paper-colour assertion, and called the decline reasons partly sound (crux marker size, active-pill outline) or insufficient (no dominant-speaker name on grouped cards for assistive technology). Those stay with the owner. Taken here, all in `tests/e2e/graph-calm.spec.ts`: the halo check requires an unselected crux, grouped cards are identified positively (`react-flow__node-default`) and checked in one read, and selecting a clickable grouped card must change its shadow, which fails with the old inline shadow and passes now.
+
 ## 2026-11-27 01:40 IST — Codex review fixes for the Graph restyle (PR #272)
 
 Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved 2026-11-27), read-only, code-only diff `e3936dc8...fbd22597` without worklog/ISSUES, packet sha256 `118c57b3…f08`. 8 findings: 5 fixed, 3 design findings declined on their visual part.

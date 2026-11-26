@@ -14,7 +14,8 @@ const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
  *   swatch or border, never a full fill.
  * - No card carries an amber halo: amber stays with the selection. Every node in the loaded copy
  *   is marked a crux (the checked-in fixture has none), so the crux halo check can fail.
- * - The grouped level is checked only once its own renderer is on screen.
+ * - The grouped level is checked only once its own renderer is on screen, and selecting a
+ *   grouped card shows React Flow's selection ring.
  */
 
 const AMBER = /245,\s*158,\s*11/;
@@ -49,7 +50,8 @@ async function cardStyles(page) {
     return {
       background: style.backgroundColor,
       shadow: style.boxShadow,
-      grouped: !node.querySelector(".lct-conversation-node"),
+      // Grouped clusters are React Flow default nodes; conversation cards are custom nodes.
+      grouped: node.classList.contains("react-flow__node-default"),
       crux: Boolean(node.querySelector(`[title="${cruxTitle}"]`)),
       selected: node.classList.contains("selected"),
     };
@@ -69,7 +71,7 @@ test("the Graph sits on the Landscape's paper with white cards and no amber halo
 
   const top = await cardStyles(page);
   expect(top.length).toBeGreaterThan(0);
-  expect(top.some((card) => card.crux), "a crux card is on screen").toBe(true);
+  expect(top.some((card) => card.crux && !card.selected), "an unselected crux card is on screen").toBe(true);
   for (const card of top) {
     expect(card.background).toBe("rgb(255, 255, 255)");
     // A selected card may carry the amber selection ring; every other card must not glow.
@@ -79,7 +81,25 @@ test("the Graph sits on the Landscape's paper with white cards and no amber halo
   // The lowest level groups moments into clusters drawn by a different renderer.
   await page.getByRole("button", { name: /^moments/ }).click();
   await expect(page.getByRole("button", { name: /^sentences/ })).toBeVisible();
-  await expect.poll(async () => (await cardStyles(page)).filter((card) => card.grouped).length).toBeGreaterThan(0);
-  const grouped = await cardStyles(page);
-  for (const card of grouped) expect(card.background).toBe("rgb(255, 255, 255)");
+  // One read decides: grouped cards are present and every one of them is white.
+  await expect.poll(async () => {
+    const grouped = (await cardStyles(page)).filter((card) => card.grouped);
+    return grouped.length > 0 && grouped.every((card) => card.background === "rgb(255, 255, 255)");
+  }).toBe(true);
+
+  // Selecting a grouped card shows React Flow's ring; an inline shadow used to hide it.
+  // Pick a grouped card whose centre is not under the page header.
+  const index = await page.locator(".react-flow__node-default").evaluateAll((nodes) => nodes.findIndex((node) => {
+    const r = node.getBoundingClientRect();
+    return node.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  }));
+  expect(index, "a grouped card is clickable").toBeGreaterThanOrEqual(0);
+  const groupedNode = page.locator(".react-flow__node-default").nth(index);
+  const shadow = () => groupedNode.evaluate((node) => getComputedStyle(node).boxShadow);
+  const resting = await shadow();
+  await groupedNode.click();
+  await expect(groupedNode).toHaveClass(/selected/);
+  const chosen = await shadow();
+  expect(chosen).not.toBe("none");
+  expect(chosen, "selection changes the card's shadow").not.toBe(resting);
 });
