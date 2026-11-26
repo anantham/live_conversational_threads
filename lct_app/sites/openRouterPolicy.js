@@ -18,6 +18,10 @@ export function admissionCutoffs(policy, now) {
   return { countSince: policy.windowMs ? now - policy.windowMs : 0, liveSince: now - STALE_ATTEMPT_MS };
 }
 
+export function attemptLimitReached(policy, attempts) {
+  return policy.attemptLimitEnabled && attempts >= policy.maxRequests;
+}
+
 export function openRouterJSON(status, body) {
   return new Response(JSON.stringify(body), { status, headers: {
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Cookie', 'X-Content-Type-Options': 'nosniff',
@@ -94,15 +98,17 @@ export function openRouterPolicy(env, { optionalProvider = false } = {}) {
   const providerValid = optionalProvider ? (rawProvider === undefined || rawProvider === '' || Boolean(provider)) : Boolean(provider);
   const dataCollection = ['allow', 'deny'].includes(env.LCT_OPENROUTER_DATA_COLLECTION) ? env.LCT_OPENROUTER_DATA_COLLECTION : null;
   const audience = ['public', 'authenticated'].includes(env.LCT_OPENROUTER_AUDIENCE) ? env.LCT_OPENROUTER_AUDIENCE : null;
-  const maxRequests = integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200);
-  const windowMs = attemptWindowMs(env.LCT_OPENROUTER_WINDOW_HOURS);
+  const attemptLimitEnabled = env.LCT_GENERATION_ATTEMPT_LIMIT_ENABLED !== 'false';
+  const maxRequests = attemptLimitEnabled ? integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200) : null;
+  const windowMs = attemptLimitEnabled ? attemptWindowMs(env.LCT_OPENROUTER_WINDOW_HOURS) : null;
+  const attemptLimitConfigured = !attemptLimitEnabled || Boolean(maxRequests && windowMs !== false);
   const maxTokens = integer(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS, 8192);
   const longTokens = longMaxTokens(env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS, maxTokens);
   const key = text(env.OPENROUTER_API_KEY_2 ?? env.OPENROUTER_API_KEY, 4096);
-  const configured = Boolean(model && fallbacks && providerValid && dataCollection && audience && maxRequests && windowMs !== false
+  const configured = Boolean(model && fallbacks && providerValid && dataCollection && audience && attemptLimitConfigured
     && maxTokens && longTokens && key && env.DB?.prepare);
   return { configured, model, fallbackModels: fallbacks || [], models: model && fallbacks ? [model, ...fallbacks] : [],
-    provider, dataCollection, audience, maxRequests, windowMs: windowMs || null, windowValid: windowMs !== false,
+    provider, dataCollection, audience, maxRequests, windowMs: windowMs || null, attemptLimitEnabled, attemptLimitConfigured,
     maxTokens, longMaxTokens: longTokens, key,
     backend: 'openrouter', label: 'OpenRouter', consentHeader: 'x-lct-openrouter-consent',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
@@ -129,7 +135,7 @@ export function geminiPolicy(env) {
   const modelValue = text(env.LCT_GEMINI_MODEL, 160);
   const model = modelValue && /^gemini-[A-Za-z0-9._-]+$/.test(modelValue) ? modelValue : null;
   const key = text(env.GEMINI_API_KEY, 4096);
-  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.windowValid
+  const configured = Boolean(model && key && shared.audience && shared.attemptLimitConfigured
     && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
   return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
     backend: 'gemini', label: 'Gemini', provider: 'Google AI Studio', dataCollection: null,
@@ -143,7 +149,7 @@ export function anthropicPolicy(env) {
   const modelValue = text(env.LCT_ANTHROPIC_MODEL, MAX_MODEL_ID);
   const model = modelValue && /^claude-[A-Za-z0-9][A-Za-z0-9._-]*$/.test(modelValue) ? modelValue : null;
   const key = text(env.ANTHROPIC_API_KEY, 4096);
-  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.windowValid
+  const configured = Boolean(model && key && shared.audience && shared.attemptLimitConfigured
     && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
   return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
     backend: 'anthropic', label: 'Anthropic', provider: 'Anthropic', dataCollection: null,
