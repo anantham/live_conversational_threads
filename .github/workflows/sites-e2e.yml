@@ -1,0 +1,63 @@
+name: Sites e2e
+
+# Browser tests of the ChatGPT Site build (threads.adityaarpitha.com). They serve the real
+# Sites frontend bundle and answer its /api calls with recorded shapes, so they need no
+# backend, database, provider key or sign-in. The other e2e workflow tests the self-hosted
+# app, which shares components but not the Site's data provider, account panel or service
+# checks: the 2026-11-05 share-link bug passed every unit test for that reason.
+#
+# No path filters, for the same reason as sites-ci.yml: a filtered check that is later made
+# required stays "expected" forever on PRs that do not touch those paths.
+
+on:
+  pull_request:
+    branches: [main, integ/sites-combined, codex/lct-inference-choice]
+  push:
+    branches: [main, integ/sites-combined, codex/lct-inference-choice]
+  workflow_dispatch:
+
+concurrency:
+  group: sites-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sites-e2e:
+    name: Playwright (Sites build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: lct_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: lct_app/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Sites e2e (builds the Site first)
+        env:
+          CI: "true"
+        run: npm run test:e2e:sites
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sites-e2e-report
+          path: |
+            lct_app/playwright-report/
+            lct_app/test-results/
+          retention-days: 14

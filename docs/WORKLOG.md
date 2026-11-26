@@ -11083,3 +11083,10 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   with `VITE_SITES_MODE=true` and `false`, 3 passed + 1 skipped each (the real-deploy test skips
   off the public domain); full untagged spec + smoke against local non-Sites, 8 passed + 1 skipped.
 - Not done: the Site's own publish step still has no browser check of the build it ships.
+
+## 2026-11-26 — Sites-mode e2e tests (branch `test/sites-e2e` from `main` @ e5f9f5ae)
+- Context found first: `codex/lct-inference-choice` was merged into `main` (#238) and has been quiet since 9 Nov; the live Site is built from `integ/sites-combined` (#261, open into `main`). Neither ran any browser test of the Sites build.
+- Added `lct_app/playwright.sites.config.ts` (builds `build:sites`, serves `dist/client` with `vite preview`), `lct_app/tests/e2e-sites/` (siteApi stand-in + 3 specs, 6 tests), `npm run test:e2e:sites`, `.github/workflows/sites-e2e.yml` (PRs and pushes on main, integ/sites-combined, codex/lct-inference-choice), `tests/intent/sites-e2e.md`, and a section in `lct_app/docs/E2E-TESTING.md`.
+- Red-proved: 8 mutations of the fixes these tests guard, all caught. One survived at first: `toHaveCount(0)` retries until the element disappears, so a flashing "Checking connections" passed; the test now samples every 100 ms while the check is in flight.
+- Passes on `main` and on `integ/sites-combined` (temp detached worktree, removed after).
+- Needed `npx playwright install chromium`: the project pins Playwright 1.5x with Chromium build 1194.
