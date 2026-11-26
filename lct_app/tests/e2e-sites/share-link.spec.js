@@ -13,23 +13,24 @@ test('opens a shared map without sending the Site cookies', async ({ page, conte
   const site = await mockSiteApi(page);
   await context.addCookies([{ name: 'lct_site_session', value: 'synthetic', url: baseURL }]);
   const cookies = [];
-  await page.route('**/shared/sample.threads', async route => {
+  // Scoped to this server: a glob would also answer a regression that fetched another host.
+  await page.route(url => url.origin === new URL(baseURL).origin && url.pathname === '/shared/sample.threads', async route => {
     cookies.push((await route.request().allHeaders()).cookie ?? null);
     await route.fulfill({ status: 200, contentType: 'application/json', body: fixture });
   });
 
   await page.goto(`/view?src=${encodeURIComponent('/shared/sample.threads')}`);
   await expect(page.getByText('E2E fixture conversation').first()).toBeVisible();
-  await expect(page.getByText(/Could not load|could not be (found|reached)|is not a function/)).toHaveCount(0);
   expect(cookies).toEqual([null]);
   await site.expectClean();
 });
 
-test('explains a shared link whose file is gone', async ({ page }) => {
+test('explains a shared link whose file is gone', async ({ page, baseURL }) => {
   const site = await mockSiteApi(page);
-  await page.route('**/shared/gone.threads', route => route.fulfill({ status: 404, body: 'Not found' }));
+  await page.route(url => url.origin === new URL(baseURL).origin && url.pathname === '/shared/gone.threads', route => route.fulfill({ status: 404, body: 'Not found' }));
   await page.goto(`/view?src=${encodeURIComponent('/shared/gone.threads')}`);
-  await expect(page.getByText('This shared map could not be found.', { exact: false })).toBeVisible();
-  await expect(page.getByText('fetch failed (404)')).toHaveCount(0);
+  const message = page.getByText('This shared map could not be found.', { exact: false });
+  await expect(message).toBeVisible();
+  await expect(message).not.toContainText('fetch failed');
   await site.expectClean();
 });

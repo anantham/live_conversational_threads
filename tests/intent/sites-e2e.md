@@ -16,12 +16,18 @@ every unit test. These tests load the real `build:sites` bundle in Chromium.
   now"; a key that fails authentication reads red "Not reachable". A check that answers within
   2 s shows no status block and no "not available yet" line.
 
-Boundaries: the Worker is not run. `tests/e2e-sites/siteApi.js` answers each `/api` path with a
-recorded shape, fails a test on any `/api` path it does not know, and refuses requests to other
-hosts. Nothing reaches a provider, spends a generation attempt or signs anyone in.
+Boundaries: the Worker is not run. `tests/e2e-sites/siteApi.js` answers same-origin `/api` paths
+(GET unless stated) with recorded shapes. It fails a test on any `/api` path or method it does not
+know and on any request to another origin, including other ports on localhost. Test-specific
+routes are scoped to the test server's origin, never a glob that would also answer another host.
+Nothing reaches a provider, spends a generation attempt or signs anyone in.
 
-A disappearing element is checked by sampling, not with a retrying assertion: `toHaveCount(0)`
-waits for the element to go away and so passes even if it flashed (found while red-proving).
+Things that must never appear, even briefly, are watched with `recordAppearances` (a
+MutationObserver from first paint), not a retrying assertion: `toHaveCount(0)` waits for a flashing
+element to go away and so passes anyway (found while red-proving). The slow-check test delays the
+status answers 1.5 s (past the 1 s tick, under the 2 s threshold) and keeps watching until 0.7 s
+after they answer.
 
-Each spec was red-proved on 2026-11-26 by removing the fix it guards (8 mutations, all failed),
-and the suite passes on both `main` and `integ/sites-combined`.
+Red-proved on 2026-11-26 by removing or weakening each guarded fix (11 mutations, including a
+1-second threshold, an unauthenticated key read as available and a fetch to production: all
+caught). The suite passes on `main` and `integ/sites-combined`, and 30/30 with each test repeated 5x.

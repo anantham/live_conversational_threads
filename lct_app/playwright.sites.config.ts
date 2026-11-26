@@ -12,13 +12,15 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const port = process.env.SITES_E2E_PORT || '4331';
 const baseURL = `http://127.0.0.1:${port}`;
+// siteApi.js refuses every other origin, so it needs to know this one.
+process.env.SITES_E2E_BASE_URL = baseURL;
 
 export default defineConfig({
   testDir: './tests/e2e-sites',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL,
@@ -34,7 +36,7 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: false,
     timeout: 240 * 1000,
-    stdout: 'ignore',
+    stdout: 'pipe',
     stderr: 'pipe',
   },
 });

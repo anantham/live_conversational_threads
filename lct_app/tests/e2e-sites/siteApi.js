@@ -25,18 +25,30 @@ const defaults = () => ({
   '/api/cloud/health/gemini': { body: { service: 'gemini', enabled: false, available: false, reachable: false, allowance: 'unknown', detail: 'This service is switched off or not configured.' }, stamp: true },
 });
 
-/** Answer the Site's API for this page. `overrides` maps a path to { status, body, stamp, delayMs }. */
+/**
+ * Answer the Site's API for this page. `overrides` maps a path to
+ * { status, body, stamp, delayMs, method } (method defaults to GET).
+ * Only same-origin /api paths are answered; any other origin is refused and recorded,
+ * so a regression that calls production or a provider fails the test instead of being
+ * answered by these stand-ins.
+ */
 export async function mockSiteApi(page, overrides = {}) {
   const routes = { ...defaults(), ...overrides };
   const unexpected = [];
+  const blocked = [];
   const pageErrors = [];
+  const origin = new URL(process.env.SITES_E2E_BASE_URL || 'http://127.0.0.1:4331').origin;
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.route(url => !['127.0.0.1', 'localhost'].includes(url.hostname), route => route.abort('blockedbyclient'));
-  await page.route('**/api/**', async route => {
-    const path = new URL(route.request().url()).pathname;
+  await page.route(url => url.origin !== origin, route => {
+    blocked.push(`${route.request().method()} ${route.request().url()}`);
+    return route.abort('blockedbyclient');
+  });
+  await page.route(url => url.origin === origin && url.pathname.startsWith('/api/'), async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
     const answer = routes[path];
-    if (!answer) {
-      unexpected.push(`${route.request().method()} ${path}`);
+    if (!answer || request.method() !== (answer.method || 'GET')) {
+      unexpected.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not mocked' }) });
     }
     if (answer.delayMs) await new Promise(resolve => setTimeout(resolve, answer.delayMs));
@@ -44,12 +56,37 @@ export async function mockSiteApi(page, overrides = {}) {
     return route.fulfill({ status: answer.status || 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   return {
-    unexpected,
-    pageErrors,
-    /** Call at the end of a test: no uncaught page errors and no /api call this stand-in does not know. */
+    /** Call at the end of a test: no uncaught page errors, no unknown /api call, no other origin. */
     async expectClean() {
       expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([]);
       expect(unexpected, 'the page called /api paths siteApi.js does not answer; add them deliberately').toEqual([]);
+      expect(blocked, 'the page tried to reach another origin').toEqual([]);
     },
   };
+}
+
+/**
+ * Record, from the first paint, every moment one of `watch` appears in the page:
+ * { name, text } matches visible text, { name, selector } matches an element.
+ * Use this for things that must never appear, even briefly. A retrying assertion such as
+ * toHaveCount(0) waits for a flashing element to go away and so passes anyway.
+ * Returns a function that reads what was seen so far.
+ */
+export async function recordAppearances(page, watch) {
+  await page.addInitScript(list => {
+    const seen = [];
+    window.__lctSeen = seen;
+    const start = performance.now();
+    const check = () => {
+      const text = document.body?.innerText || '';
+      for (const item of list) {
+        if (seen.some(entry => entry.name === item.name)) continue;
+        if ((item.text && text.includes(item.text)) || (item.selector && document.querySelector(item.selector))) {
+          seen.push({ name: item.name, atMs: Math.round(performance.now() - start) });
+        }
+      }
+    };
+    new MutationObserver(check).observe(document, { subtree: true, childList: true, characterData: true, attributes: true });
+  }, watch);
+  return () => page.evaluate(() => window.__lctSeen || []);
 }
