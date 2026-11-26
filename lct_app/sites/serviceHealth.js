@@ -1,5 +1,5 @@
 import { sonioxPolicy } from './sonioxPolicy.js';
-import { openRouterPolicy, geminiPolicy, anthropicPolicy, readOpenRouterAdmission, openRouterJSON } from './openRouterPolicy.js';
+import { openRouterPolicy, geminiPolicy, anthropicPolicy, readOpenRouterAdmission, attemptLimitReached, openRouterJSON } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { anthropicHeaders } from './anthropic.js';
 
@@ -164,8 +164,8 @@ export async function handleServiceHealth(request, env) {
       available = row.attempts < policy.maxSessions && row.active < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.mintIntervalMs);
     } else {
       const row = await readOpenRouterAdmission(env, policy);
-      exhausted = row.attempts >= policy.maxRequests;
-      available = row.attempts < policy.maxRequests && row.unresolved < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.admissionIntervalMs);
+      exhausted = attemptLimitReached(policy, row.attempts);
+      available = !exhausted && row.unresolved < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.admissionIntervalMs);
     }
     if (!available) return openRouterJSON(200, { ...base, capacity: exhausted ? 'exhausted' : 'busy', detail: exhausted ? (service !== 'soniox' && policy.windowMs ? `The shared attempt limit for the last ${policy.windowMs / 3_600_000} hours has been reached.` : 'The shared attempt limit has been reached.') : 'A request is active or the short admission interval has not elapsed.' });
     // Each request owns a deadline even when an originating request disappears.
