@@ -15,7 +15,9 @@ let modelsParent = URL(fileURLWithPath: NSHomeDirectory())
     .appendingPathComponent("Library/Application Support/FluidAudio/Models")
 let modelDir = modelsParent.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml")
 
-let port: UInt16 = 5096
+/// Port 5096 unless FLUIDAUDIO_STT_PORT names another (used to run a second
+/// copy beside the live service when checking a change).
+let port: UInt16 = ProcessInfo.processInfo.environment["FLUIDAUDIO_STT_PORT"].flatMap { UInt16($0) } ?? 5096
 let engineName = "fluidaudio-parakeet"
 let modelName = "parakeet-tdt-0.6b-v3"
 
@@ -241,11 +243,72 @@ func jsonResponse(_ code: Int, _ reason: String, data: Data) -> HttpResponse {
     return .raw(code, reason, headers) { try $0.write(data) }
 }
 
+// MARK: - CORS
+
+/// A browser page on another origin (https://threads.adityaarpitha.com, or a
+/// local preview) calls this server directly over Tailscale Serve HTTPS. The
+/// browser discards the reply unless it carries CORS headers, and it sends an
+/// OPTIONS preflight first whenever the request has an Authorization header.
+///
+/// LOCAL_STT_CORS_ORIGINS matches the Python server (`local_stt/server.py`):
+/// "*" (the default) allows any origin; otherwise a comma-separated allowlist.
+/// This governs who may READ a reply. It is not access control: a page can
+/// still send a plain multipart POST that the server will run.
+let corsOriginsSetting = (ProcessInfo.processInfo.environment["LOCAL_STT_CORS_ORIGINS"] ?? "*")
+    .trimmingCharacters(in: .whitespaces)
+let corsAllowAnyOrigin = corsOriginsSetting == "*"
+let corsAllowlist = Set(
+    corsOriginsSetting.split(separator: ",")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }
+)
+
+/// CORS headers for a reply to `request`; empty when the request has no
+/// Origin (curl, the backend) or its origin is not allowed.
+func corsHeaders(for request: HttpRequest) -> [String: String] {
+    guard let origin = request.headers["origin"], !origin.isEmpty else { return [:] }
+    if corsAllowAnyOrigin {
+        return ["Access-Control-Allow-Origin": "*"]
+    }
+    guard corsAllowlist.contains(origin) else { return [:] }
+    return ["Access-Control-Allow-Origin": origin, "Vary": "Origin"]
+}
+
+/// Wrap a route so every reply it builds carries the CORS headers.
+func withCORS(_ handler: @escaping (HttpRequest) -> HttpResponse) -> (HttpRequest) -> HttpResponse {
+    return { request in
+        let response = handler(request)
+        let cors = corsHeaders(for: request)
+        guard !cors.isEmpty, case .raw(let code, let reason, let headers, let writer) = response else {
+            return response
+        }
+        return .raw(code, reason, (headers ?? [:]).merging(cors) { _, new in new }, writer)
+    }
+}
+
 // MARK: - HTTP server
 
 let server = HttpServer()
 
-server["/health"] = { _ in
+// Answer every preflight before routing. A disallowed origin gets a 204 with
+// no Access-Control-Allow-Origin, which the browser treats as a refusal.
+server.middleware.append { request in
+    guard request.method == "OPTIONS" else { return nil }
+    var headers = corsHeaders(for: request)
+    if !headers.isEmpty {
+        headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        headers["Access-Control-Max-Age"] = "600"
+        // Chrome asks this when a public page calls a private (tailnet) address.
+        if request.headers["access-control-request-private-network"] == "true" {
+            headers["Access-Control-Allow-Private-Network"] = "true"
+        }
+    }
+    headers["Connection"] = "close"
+    return .raw(204, "No Content", headers, nil)
+}
+
+server["/health"] = withCORS { _ in
     let ready = holder.service != nil
     let hasDiarizer = diarizerHolder.service != nil
     let body: [String: Any] = [
@@ -257,7 +320,7 @@ server["/health"] = { _ in
     return jsonResponse(ready ? 200 : 503, ready ? "OK" : "Service Unavailable", body)
 }
 
-server.POST["/v1/audio/transcriptions"] = { request in
+server.POST["/v1/audio/transcriptions"] = withCORS { request in
     let reqStart = Date()
 
     guard let service = holder.service else {
@@ -380,7 +443,7 @@ server.POST["/v1/audio/transcriptions"] = { request in
 // Start the HTTP server immediately so /health is reachable while models load.
 do {
     try server.start(port, forceIPv4: true)
-    log("fluidaudio-stt listening on http://localhost:\(port)  (engine=\(engineName) model=\(modelName))")
+    log("fluidaudio-stt listening on http://localhost:\(port)  (engine=\(engineName) model=\(modelName) cors_origins=\(corsOriginsSetting))")
 } catch {
     log("FATAL: failed to bind port \(port): \(error)")
     exit(1)

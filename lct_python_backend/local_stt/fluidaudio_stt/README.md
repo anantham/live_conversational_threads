@@ -33,6 +33,36 @@ mlx-whisper STT server, but backed by **FluidAudio's Parakeet TDT 0.6b v3** ASR
   timings (grouped into sentences at sentence-ending punctuation). If timings are
   ever absent, a single segment with the whole text and null start/end is returned.
 
+## Browser access (CORS)
+
+The app's browser page calls this server directly through Tailscale Serve
+(`https://<host>.ts.net:5443` → `127.0.0.1:5096`), which is a cross-origin
+request. The server therefore:
+
+- answers every `OPTIONS` preflight with `204` and the allow-origin, methods
+  (`GET, POST, OPTIONS`) and headers (`Authorization, Content-Type`) headers;
+- adds `Access-Control-Allow-Origin` to `/health` and transcription replies,
+  errors included, when the request carries an `Origin`.
+
+`LOCAL_STT_CORS_ORIGINS` (same variable as `../server.py`) sets who may read
+replies: `*` (default) for any origin, or a comma-separated allowlist such as
+`https://threads.adityaarpitha.com,http://127.0.0.1:4173`. It is not access
+control: a page can still send a plain multipart POST that the server runs.
+
+`FLUIDAUDIO_STT_PORT` overrides port 5096, to run a second copy beside the live
+service. Check a build with:
+
+```sh
+curl -si -X OPTIONS http://localhost:5096/v1/audio/transcriptions \
+  -H 'Origin: https://threads.adityaarpitha.com' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization'   # 204 + Access-Control-Allow-*
+curl -si http://localhost:5096/health -H 'Origin: https://threads.adityaarpitha.com'
+```
+
+There is no Swift test target (the server is one `main.swift` executable), so
+this curl check is the written exception to the regression-test rule.
+
 ## Build
 
 ```sh
