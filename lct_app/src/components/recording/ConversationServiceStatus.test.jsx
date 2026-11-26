@@ -111,3 +111,11 @@ it('reports a fresh shared limit even right after a failed attempt', async () =>
   // The indicator itself still describes the failed attempt.
   expect(host.querySelector('button[aria-label="Live transcription: Last attempt failed"]')).toBeTruthy();
 });
+it('lets a newer successful attempt outrank an older exhausted check', async () => {
+  const onVoiceState = vi.fn();
+  fetch.mockImplementation(async path => new Response(JSON.stringify(path.includes('soniox')
+    ? { service: 'soniox', enabled: true, available: false, reachable: false, allowance: 'exhausted', checked_at: Date.now() }
+    : { service: 'openrouter', enabled: true, available: true, reachable: true, allowance: 'unknown', checked_at: Date.now() })));
+  await render({ onVoiceState, voice: { service: 'soniox', ok: true, at: Date.now() + 5_000, detail: 'Words arrived.' } });
+  expect(onVoiceState).toHaveBeenLastCalledWith('ready');
+});

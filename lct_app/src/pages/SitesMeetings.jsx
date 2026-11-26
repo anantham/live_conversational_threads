@@ -16,11 +16,13 @@ function MeetingEntry() {
   const [url, setURL] = useState(''), [consent, setConsent] = useState(false), [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null), [meetings, setMeetings] = useState([]), [error, setError] = useState(null), [checking, setChecking] = useState(true);
   const [attempt, setAttempt] = useState(0);
-  const publicCheck = useMeetingsOpen(true);
-  // Closed means the server said so. This browser's status is the fresher answer (Check connection
-  // refreshes it), so it wins once it arrives; the public check, which needs no sign-in, covers the
-  // time before that or a status request that failed. Only an explicit false counts as closed.
-  const closed = status ? status.canJoin === false : publicCheck === 'closed';
+  const publicCheck = useMeetingsOpen(true, attempt);
+  // Closed means the server said so. This browser's status is the more specific answer, so a
+  // definite canJoin wins; the public check, which needs no sign-in, covers the time before it,
+  // a failed status request, or a status without canJoin. Check connection refreshes both. The
+  // server refuses a join while closed in any case (sites/meetings.js), so a stale "open" here
+  // cannot send a bot.
+  const closed = typeof status?.canJoin === 'boolean' ? !status.canJoin : publicCheck === 'closed';
   // While closed, "switched off" repeats the closed line, and a sign-in refusal only matters for
   // earlier recordings, so both get a quieter replacement. Any other failure stays an alert.
   const closedError = closed && error && (error.code === 'inactive' || (error.status === 401 && error.code === 'sign_in'));

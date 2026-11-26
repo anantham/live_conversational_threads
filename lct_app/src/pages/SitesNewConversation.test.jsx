@@ -800,6 +800,19 @@ for (const voiceState of ['limited', 'idle']) it(`says transcription is closed f
   }
 });
 
+it('records audio only at the shared limit even after the visitor chose transcription', async () => {
+  transcribe = true;
+  await mount();
+  // Off then on, so the choice is the visitor's own rather than the default.
+  await chooseTranscription(false); await chooseTranscription(true);
+  await act(async () => fixture.report('limited'));
+  expect(container.textContent).toContain('You can still record audio.');
+  await click('Start session');
+  expect(container.querySelector('dialog').textContent).toContain('Record audio locally');
+  await consent(); await click('Start recording');
+  expect(fixture.sessions.at(-1).options.transcribe).toBe(false);
+});
+
 it('closes a transcription consent dialog when the shared limit arrives while it is open', async () => {
   transcribe = true;
   await mount();

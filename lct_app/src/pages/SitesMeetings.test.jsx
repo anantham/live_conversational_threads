@@ -140,6 +140,18 @@ describe('Cloud meeting journey', () => {
     await inputURL();
     expect(button('Join and record').disabled).toBe(true);
   });
+  it('keeps a public closure when the status leaves out whether it can join', async () => {
+    server.publicAvailable = false; server.omitCanJoin = true; await mount();
+    expect(container.querySelector('[role="status"]').textContent).toContain('Meetings are closed for now');
+    expect(container.querySelector('#meet-url').disabled).toBe(true);
+  });
+  it('asks the public check again on Check connection', async () => {
+    server.publicAvailable = false; server.failStatus = true; await mount();
+    expect(container.querySelector('[role="status"]').textContent).toContain('Meetings are closed for now');
+    server.publicAvailable = true; await click('Check connection'); await tick(0);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('#meet-url').disabled).toBe(false);
+  });
   it.each([401, 403, 503])('offers account recovery only for authentication refusal (%i)', async status => {
     server.status = status; await mount(); await inputURL();
     expect(Boolean(container.querySelector('a[href$="#site-access"]'))).toBe(status === 401);

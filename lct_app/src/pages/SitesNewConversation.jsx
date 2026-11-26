@@ -185,7 +185,8 @@ export default function SitesNewConversation() {
     ? capabilities?.transcription?.personal_enabled : capabilities?.transcription?.enabled);
   // A fast check stays silent; only one that runs past two seconds says so.
   const slowSetup = Boolean(setup && elapsed >= 2);
-  const transcribe = transcriptionChoice ?? Boolean(live);
+  // At the shared limit the page records audio only; the visitor's own choice returns when it lifts.
+  const transcribe = voiceLimited ? false : transcriptionChoice ?? Boolean(live);
   // If transcription closes while its consent dialog is open, Confirm would do nothing; close the
   // dialog so the page can say why and offer audio only.
   useEffect(() => { if (pendingRecording?.transcribe && !live) setPendingRecording(null); }, [pendingRecording, live]);
@@ -223,7 +224,7 @@ export default function SitesNewConversation() {
         {restoring && <p role="status">Opening saved conversation…</p>}
         {!supported && <p className="text-rose-800">This browser needs HTTPS, microphone access and audio-recording support.</p>}
         {(slowSetup || activity || saving) && <><p role="status">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : slowSetup ? 'Checking connections' : activity.message}</p>{(slowSetup || active || saving) && <p className="tabular-nums">{elapsed} s elapsed · Time remaining unknown</p>}{slowSetup && <button className="min-h-8 underline underline-offset-2" onClick={() => setupRequest.current?.abort()}>Cancel connection check</button>}{saving && <button className="min-h-8 underline underline-offset-2" onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</>}
-        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{voiceLimited ? <>Live transcription is closed for now. It has reached its shared limit. {transcribe ? <>Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'You can still record audio.'}</> : transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
+        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{voiceLimited ? 'Live transcription is closed for now. It has reached its shared limit. You can still record audio.' : transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
         {active && <p>Keep this tab open while recording.</p>}
       </div>
       {error && <p role="alert" className="shrink-0 bg-rose-50 px-5 py-2 text-xs text-rose-900">{error}</p>}

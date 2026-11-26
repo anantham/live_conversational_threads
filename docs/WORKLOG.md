@@ -1,3 +1,12 @@
+## 2026-11-27 02:50 IST — Second Codex round on the #270 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings (packet sha256 `94b1dd3b…`). Taken:
+- `pages/SitesNewConversation.jsx`: at the shared limit the page records audio only, even if the visitor had switched transcription on (their choice returns when the limit lifts). Before, Start did nothing until they found Settings.
+- `pages/SitesMeetings.jsx` + `hooks/useMeetingsOpen.js`: only a boolean `canJoin` from this browser's status overrides the public check; a status without it falls back to the public answer. Check connection asks the public check again; a failed or unreadable re-check keeps the last well-formed answer.
+- `components/recording/ConversationServiceStatus.jsx`: a newer successful attempt (ready) outranks an older exhausted check in what the page is told.
+- Declined: ordering a private "open" against a later public "closed" by observation time. The server refuses a join while closed (`sites/meetings.js`), so a stale open form cannot send a bot. Also kept: for `inactive` the top "closed for now" line is the replacement, so no second line is added.
+- Tests: 4 new, all red on the previous commit's sources. Suites pass with a 60 s timeout; at the default 5 s two unrelated tests timed out while the machine's load average was ~220.
+
 ## 2026-11-27 01:00 IST — Codex review fixes for "closed for now" (PR #270)
 
 Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved Codex for #270/#272/#273 on 2026-11-27), read-only, packet = code-only diff `e3936dc8...7d24eabb` without the worklog, sha256 `adaf34d8…71`. 7 findings; 6 confirmed and fixed, 1 partly right.
