@@ -11,29 +11,17 @@
  * Pure-ish: pass `search` + a `storage` shim for tests.
  */
 
+import { DEFAULT_TAILNET_STT_URL, isAllowedTailnetUrl } from "../../services/tailnetEndpoint.js";
+
 const LS = "lct_stt_edge";
-const DEFAULT_URL =
-  import.meta.env.VITE_STT_EDGE_URL ||
-  "https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions";
+const DEFAULT_URL = DEFAULT_TAILNET_STT_URL;
 
 // Only accept a runtime url override that is HTTPS, credential-free, and on the
-// tailnet (*.ts.net). A free-form ?edge_url= would otherwise let a crafted link
-// send mic audio to an attacker endpoint (the M5 sends permissive CORS). Parse
-// with URL() rather than a regex — robust against host-confusion (userinfo @,
-// trailing-dot, evil.ts.net.attacker.com, etc.).
-function isAllowedUrl(u) {
-  try {
-    const parsed = new URL(u);
-    return (
-      parsed.protocol === "https:" &&
-      !parsed.username &&
-      !parsed.password &&
-      parsed.hostname.toLowerCase().endsWith(".ts.net")
-    );
-  } catch {
-    return false;
-  }
-}
+// build's own tailnet (see services/tailnetEndpoint.js). A free-form ?edge_url=
+// would otherwise let a crafted link send mic audio to an attacker endpoint (the
+// M5 sends permissive CORS), and any *.ts.net host is not enough: Tailscale
+// Funnel publishes every tailnet's machines as public *.ts.net names.
+const isAllowedUrl = isAllowedTailnetUrl;
 
 function resolveStorage(storage) {
   if (storage) return storage;

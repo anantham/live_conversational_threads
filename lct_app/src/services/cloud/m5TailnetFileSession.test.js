@@ -17,6 +17,7 @@ describe('m5TailnetFileSession', () => {
     expect(isAllowedTailnetUrl('http://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions')).toBe(false);
     expect(isAllowedTailnetUrl('https://evil.example.com/v1/audio/transcriptions')).toBe(false);
     expect(isAllowedTailnetUrl('https://user:pass@adityas-macbook-pro.tail4741ad.ts.net/v1')).toBe(false);
+    expect(isAllowedTailnetUrl('https://attacker-box.tailEVIL.ts.net/v1/audio/transcriptions')).toBe(false);
   });
 
   it('parses diarized M5 segments into timed finalTokens', () => {
