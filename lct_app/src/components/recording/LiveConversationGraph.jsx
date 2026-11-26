@@ -6,7 +6,7 @@ import { indexExplicitEdges } from '../../services/edgeContract.js';
 import { enrichGraphNodesWithProvenance } from '../graphProvenance.js';
 import { withThreadLanes } from '../threads/threadPresentation.js';
 
-export default function LiveConversationGraph({ bundle, transcriptVisible, onConfigure, recording }) {
+export default function LiveConversationGraph({ bundle, transcriptVisible, recording }) {
   const [selected, setSelected] = useState(null), [focus, setFocus] = useState(null), [focusKey, setFocusKey] = useState(0);
   const nodes = useMemo(() => bundle ? withThreadLanes(enrichGraphNodesWithProvenance(indexExplicitEdges(flattenThreadsGraph(bundle.graph_data), bundle.edges, true), bundle.utterances || []), bundle.conversation_threads || []) : [], [bundle]);
   const chosen = nodes.find(n => n.id === selected);
@@ -29,11 +29,10 @@ export default function LiveConversationGraph({ bundle, transcriptVisible, onCon
         {chosen.summary && <p className="mt-2 text-slate-600">{chosen.summary}</p>}
         <details className="mt-3"><summary className="min-h-11 cursor-pointer py-3">Source words</summary>{(chosen.source_ref?.utterance_ids || []).map(id => <blockquote className="mb-3 whitespace-pre-wrap text-xs leading-6" key={id}>{bundle.utterances.find(u => u.id === id)?.text}</blockquote>)}</details>
       </aside>}
-    </> : <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-      <p className="text-sm font-medium text-slate-700">{recording ? 'Your threads will take shape here' : 'A conversation, with room for tangents'}</p>
-      <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{recording ? 'Open AI map to turn your words into connected ideas while you speak.' : 'Record without signing in. Start recording below. Follow the transcript and explore the threads as they develop.'}</p>
-      {recording && <button className="mt-3 min-h-11 px-3 text-xs underline underline-offset-4" onClick={onConfigure}>Set up live map</button>}
+    </> : recording ? null : <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+      <p className="text-sm font-medium text-slate-700">A conversation, with room for tangents</p>
+      <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">Record without signing in. Start recording below. Follow the transcript and explore the threads as they develop.</p>
     </div>}
   </div>;
 }
-LiveConversationGraph.propTypes = { bundle: PropTypes.object, transcriptVisible: PropTypes.bool, onConfigure: PropTypes.func.isRequired, recording: PropTypes.bool };
+LiveConversationGraph.propTypes = { bundle: PropTypes.object, transcriptVisible: PropTypes.bool, recording: PropTypes.bool };

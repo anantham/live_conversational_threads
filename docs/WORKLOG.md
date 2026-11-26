@@ -1,3 +1,7 @@
+## 2026-11-26 — Recording screen: no consent step, one Stop, quieter
+
+Owner request (screenshots, 2026-11-25). Removed the "Record audio locally" dialog and checkbox (`RecordingConsentDialog.jsx` deleted), "Cancel session", the visible status/timer/"Keep this tab open", the recording-time map placeholder and the Privacy link beside Sign in. `SitesNewConversation.jsx` now starts in `start()` and keeps only the replace-an-unsaved-recording confirm; Settings gained a short disclosure with a /privacy link. `onConfigure` dropped from `LiveConversationGraph` and its three callers. ADR `2026-11-26-recording-screen-without-consent-step.md`, intent `tests/intent/recording-screen-clean.md`. Tests: SitesNewConversation rewritten around direct start (43/43), panel and shell tests updated. Full suite 1531/1535: the 4 failures are environmental (a sandbox port bind, which passes unsandboxed, and a symlinked node_modules in the search-worker test), none in changed files. Not done: no independent-family review yet; not merged or published.
+
 ## 2026-11-05 16:40 IST — Merge origin/main (ecad4002) into codex/lct-inference-choice (a354a33b)
 
 Executes docs/plans/2026-11-03-main-consolidation.md (intent: tests/intent/main-consolidation.md). True merge, no squash/rebase/force. 9 textual conflicts, all resolved by keeping both sides' behaviour:

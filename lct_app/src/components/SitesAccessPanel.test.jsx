@@ -94,7 +94,7 @@ describe("SitesAccessPanel", () => {
     expect(panel.hidden).toBe(true);
     await act(async () => navigate('/public'));
     expect(panel.querySelector('[aria-label="Close site access"]')).toBeNull();
-    expect(container.textContent).toBe("Sign inPrivacy");
+    expect(container.textContent).toBe("Sign in");
     await act(async () => navigate('/new#site-access'));
     expect(panel.hidden).toBe(false);
   });
@@ -103,7 +103,7 @@ describe("SitesAccessPanel", () => {
     fetch.mockResolvedValue(sessionResponse(401));
     for (const path of ["/", "/public", "/view"]) {
       await mount(path);
-      expect(container.textContent).toBe("Sign inPrivacy");
+      expect(container.textContent).toBe("Sign in");
       expect(container.querySelector('[aria-label="Close site access"]')).toBeNull();
       await act(async () => root.unmount()); root = null; container.remove();
     }
@@ -126,14 +126,14 @@ describe("SitesAccessPanel", () => {
     expect(document.activeElement).toBe(container.querySelector("#site-access"));
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
     expect(document.activeElement).toBe(container.querySelector("button"));
-    expect(container.textContent).toBe("Sign inPrivacy");
+    expect(container.textContent).toBe("Sign in");
   });
 
   it('uses neutral Account wording while the compact session check is pending or failed', async () => {
     vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {}));
-    await mount("/"); expect(container.textContent).toBe("AccountPrivacy");
+    await mount("/"); expect(container.textContent).toBe("Account");
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
-    expect(container.textContent).toBe("AccountPrivacy");
+    expect(container.textContent).toBe("Account");
     await act(async () => container.querySelector("button").click());
     expect(container.textContent).toContain("Retry connection");
   });
@@ -143,14 +143,14 @@ describe("SitesAccessPanel", () => {
     await mount();
     expect(container.textContent).toContain("Without signing in, new conversations save in this browser unless you choose ephemeral mode.");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(container.textContent).toBe("Sign inPrivacy");
+    expect(container.textContent).toBe("Sign in");
     expect(fetch.mock.calls.filter(([path]) => path === "/api/auth/session")).toHaveLength(1);
     expect(fetch.mock.calls.some(([path]) => path === "/api/auth/logout")).toBe(false);
     await act(async () => root.unmount());
     root = null;
     container.remove();
     await mount("/");
-    expect(container.textContent).toBe("Sign inPrivacy");
+    expect(container.textContent).toBe("Sign in");
     await act(async () => container.querySelector("button").click());
     expect(container.textContent).toContain("Browsing as guest");
     expect(document.activeElement).toBe(container.querySelector("#site-access"));
@@ -186,11 +186,11 @@ describe("SitesAccessPanel", () => {
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(container.textContent).toBe("Sign inPrivacy");
+    expect(container.textContent).toBe("Sign in");
     await act(async () => navigate('/new'));
     expect(container.querySelector('#site-access').hidden).toBe(true);
     await act(async () => navigate('/public'));
-    expect(container.textContent).toBe("Sign inPrivacy");
+    expect(container.textContent).toBe("Sign in");
     vi.restoreAllMocks();
   });
   it("keeps Google sign-in inactive until the runtime config is enabled and configured", async () => {
@@ -442,7 +442,7 @@ describe("SitesAccessPanel", () => {
     expect(container.querySelector('[role="status"]').classList.contains("sr-only")).toBe(true);
     expect(container.textContent).not.toContain("Sign in to save");
     await act(async () => container.querySelector('[aria-label="Close site access"]').click());
-    expect(container.textContent).toBe("AccountPrivacy");
+    expect(container.textContent).toBe("Account");
   });
 
   it("offers retry after a malformed successful response and recovers to guest", async () => {
@@ -525,7 +525,7 @@ describe("SitesAccessPanel", () => {
   it('keeps meeting entry quiet until the account panel is explicitly requested', async () => {
     fetch.mockRejectedValue(new TypeError('Failed to fetch'));
     await mount('/meeting');
-    expect(container.textContent).toBe('AccountPrivacy');
+    expect(container.textContent).toBe('Account');
     expect(container.querySelector('a[href^="/signin"]')).toBeNull();
     await act(async () => navigate('/meeting#site-access'));
     expect(container.querySelector('#site-access').hidden).toBe(false);
