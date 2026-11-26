@@ -464,7 +464,7 @@ groups:
           domain: outside-watch
         annotations:
           summary: "The outside watcher on the M5 has not answered for 30 minutes"
-          description: "Everything that watches the Asus runs on the Asus, so a freeze or an outage here silences its own alerts. The watcher on the M5 (IndrasNet scripts/ops/m5/asus_watch.py, port 5097) is the only thing that would notice. While it is unreachable nobody is told if this machine goes down. Usually the M5 is asleep or off; if it is awake, check the com.aditya.asus-watch LaunchAgent and the macOS firewall. This also fires when the watcher was never installed or the telemetry exporter is older than this metric."
+          description: "Everything that watches the Asus runs on the Asus, so a freeze or an outage here silences its own alerts. The watcher on the M5 (IndrasNet scripts/ops/m5/asus_watch.py, port 5093; 5097 on the M5 is a different service) is the only thing that would notice. While it is unreachable nobody is told if this machine goes down. Usually the M5 is asleep or off; if it is awake, check the com.aditya.asus-watch LaunchAgent and the macOS firewall. This also fires when the watcher was never installed or the telemetry exporter is older than this metric."
       - alert: OutsideWatcherNotReceivingBeats
         expr: indras_m5_watch_beat_age_seconds > 900
         for: 10m

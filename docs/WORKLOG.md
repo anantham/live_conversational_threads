@@ -11126,3 +11126,90 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - Verification: changed suites pass; full vitest failure set identical to base (Node 26 environment); `build:sites` passes after `npm ci` in the worktree; lint clean on changed files.
 - Not done: nothing pushed or merged; branch awaits owner go-ahead.
 
+## 2026-11-25 20:45 IST — Remove unreferenced code and tracked clutter (branch chore/remove-unreferenced-code)
+
+- Scope: deletion only, no behaviour change. Base origin/main 04b85f67.
+- Method: Python import graph over lct_python_backend plus a frontend reachability
+  walk from src/main.jsx, then a repo-wide `git grep` of every candidate name
+  (code, scripts, workflows, docs) on main and on the Sites branches
+  (codex/lct-inference-choice, codex/anthropic-sites).
+- Removed (19 files, 1,607 lines): lct_python_backend/cost_api.py (router never
+  mounted; the dashboard uses factcheck_api.py /api/cost-tracking/stats),
+  db_helpers.py, create_bookmarks_table.py; lct_app/src/utils/contextLoading.js,
+  utils/nodeTransitions.js, components/SttFallbackOrderFields.jsx,
+  components/settings/LlmModelsCard.jsx, components/threads/SourcePlaybackControls.jsx;
+  scripts/legacy_commands/ (7); tracked files under the gitignored .tmp/ and
+  prompts_and_transcripts/ (4).
+- Docs touched: docs/LOCAL_SETUP.md (legacy archive section), docs/PROJECT_STRUCTURE.md
+  (cost_api and db_helpers rows), lct_python_backend/INSTRUMENTATION.md (removal note),
+  docs/TECH_DEBT.md (candidates deliberately kept).
+- The grep pass overturned the import-graph result for four files, which stay:
+  services/threads_semantic_authoring.py (scripts/author_thread_experiment.py),
+  conversationSearch.worker.js (loaded with new Worker(new URL(...))),
+  debateSnapshotEdges.js (lct_app/scripts/export-debate-snapshot.mjs),
+  discussionFixtures.js (test fixture).
+- Checks on the branch: vite build passes with a fresh npm ci. Backend unit suite
+  2091 passed / 13 failed; vitest 22 files failed; eslint 150 problems. The same
+  tests fail on an untouched copy of main in this environment (sandboxed network,
+  no pwsh, Node 26) and eslint reports 152 there, so CI is the authoritative run.
+  The ISSUES.md entry added here is a separate finding from that run, not part of
+  the deletion.
+- Independent review: Gemini 4 Hydrogen (High) via agy plan mode, packet sha256
+  97269b17fb84734f…; it found no live reference to a removed file. Its doc and
+  evidence findings were applied (PROJECT_STRUCTURE row, TESTING.md noted in
+  TECH_DEBT, per-filename greps for the legacy scripts and prompt files: 0 hits).
+- Not deployed. auth_policy.py still lists the /api/costs prefix; left alone
+  because it is an auth file.
+## 2026-11-25 21:01 IST — Archive stale docs (branch docs/archive-stale-docs)
+
+- Scope: documentation only. Base origin/main 04b85f67.
+- Method: for each candidate, last commit date, how many of the source files it names
+  still exist, and inbound links from code, ADRs and other docs.
+- Moved to docs/archive/ (10 files, about 9,150 lines): docs/ROADMAP.md,
+  FEATURE_ROADMAP.md, ROADMAP_ADVANCED_ANALYSIS.md, ROADMAP_INSTRUMENTATION_METRICS.md,
+  TIER_2_FEATURES.md, FEATURE_SIMULACRA_LEVELS.md, TESTING.md;
+  lct_app/ZOOM_SYSTEM.md, lct_app/NODE_DETAIL_PANEL.md;
+  lct_python_backend/GRAPH_GENERATION.md. Reasons are tabled in docs/archive/README.md.
+- The roadmaps were not merged into a new one: all five are roadmaps or feature specs written in Nov 2025
+  (FEATURE_ROADMAP.md last revised 2026-03-20), and writing a current roadmap is an owner decision. docs/README.md now says there is no
+  current roadmap and points at VISION.md, adr/INDEX.md and plans/.
+- Links repointed in README.md, CONTRIBUTING.md, docs/README.md,
+  docs/PROJECT_STRUCTURE.md and four backend guides. ADRs, audits, handovers and plans
+  were not edited. Stale candidates left in place are listed in docs/TECH_DEBT.md.
+
+## 2026-11-25 23:25 IST — Browse drop smoke test no longer depends on a non-Sites heading (branch fix/smoke-browse-drop-sites-mode)
+
+- Why: once PR #260 let the live prod smoke run again (run 45652539884, main 835a74a8), 8 of 9 tests
+  passed and "Browse accepts a .threads file dropped anywhere on the page" timed out waiting for the
+  "Recorded conversations" heading. `Browse.jsx` renders that heading only when `VITE_SITES_MODE` is
+  off; the production domain serves a Sites-mode build.
+- Change: `lct_app/tests/e2e/prod-threads-opener.spec.js` (the drop test, ~lines 204-213) now
+  dispatches dragenter/drop on the "Opened conversations" heading, which `Browse.jsx:355` renders in
+  both modes. Test-only; no product code changed. `ISSUES.md` gets a new entry for the wider finding below.
+- Verified: the seven non-deploy-only tests in the spec pass against a local Vite server of this
+  branch with `VITE_SITES_MODE=true` and again with `VITE_SITES_MODE=false` (system Chrome; the
+  locked Playwright's bundled Chromium is not installed on this Mac).
+- NOT verified against production, and it cannot be from main: between the CI run (21:49 IST) and
+  my run (~23:15 IST) the live domain started serving a different UI (icon-only Home, viewer title
+  as a "Landscape breadcrumb" button). Those strings exist on `origin/integ/sites-combined`
+  (7662bb07, 23:15 IST) and not on main. Against that build 6 of 9 smoke tests fail, with or
+  without this change; with it, the drop itself opens the fixture and only the final title
+  assertion fails. See the ISSUES.md entry of the same date.
+
+## 2026-11-25 23:49 IST — Production smoke trimmed to checks that hold on any healthy build (branch test/trim-prod-smoke)
+
+- Why: owner chose to trim. After PR #262 the smoke on main 59404d6a failed 6 of 9 (run
+  45671560851) because the domain serves a Sites-branch build whose Home and viewer differ from
+  main's. See the two 2026-11-25 ISSUES.md entries.
+- Change: `lct_app/playwright.prod.config.ts` adds `grep: /@prod-smoke/`. Tagged: the boot test in
+  `prod-smoke.spec.js` and three tests in `prod-threads-opener.spec.js` (Drive-link handoff, real
+  deploy /browse stays the library, non-.threads file rejected). The boot test identifies Home by
+  its "Threads" heading instead of the visible text "New", which the icon-only Home lacks. Header
+  comments in both specs, the config and `post-deploy-smoke.yml` updated. No product code.
+- What production loses: five opener journeys (remembered Drive artifact, open/remember/reopen,
+  accessible card names, drop on Browse, drop on /view) no longer run against the live domain.
+  They still run untagged in `e2e.yml` against the local dev server.
+- Verified (system Chrome): tagged run against the live domain 4/4; tagged run against local Vite
+  with `VITE_SITES_MODE=true` and `false`, 3 passed + 1 skipped each (the real-deploy test skips
+  off the public domain); full untagged spec + smoke against local non-Sites, 8 passed + 1 skipped.
+- Not done: the Site's own publish step still has no browser check of the build it ships.
