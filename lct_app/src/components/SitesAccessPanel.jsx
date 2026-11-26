@@ -81,6 +81,24 @@ export default function SitesAccessPanel() {
     setExpanded(false);
   }
 
+  // Escape does what the close button does, but only for a key pressed inside the panel.
+  // It listens on window in the capture phase, the first stop of every keydown, so the
+  // node-detail drawer (document, capture) and the map's "go back a level" (window,
+  // bubble) never see an Escape meant for this panel.
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) return;
+      if (!panelRef.current?.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      focusOnDismiss.current = true;
+      setExpanded(false);
+    };
+    window.addEventListener("keydown", closeOnEscape, { capture: true });
+    return () => window.removeEventListener("keydown", closeOnEscape, { capture: true });
+  }, [expanded]);
+
   useEffect(() => {
     if (hash === "#site-access") openPanel();
     else if (inRecording || inMeetingEntry) {

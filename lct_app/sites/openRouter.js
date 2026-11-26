@@ -1,6 +1,6 @@
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from '../src/services/cloud/openRouterGeneration.js';
 import { resolveIdentity } from './auth.js';
-import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, anthropicPolicy, mapPolicies, personalMapPolicy, readOpenRouterAdmission, admissionCutoffs, outputCapFor } from './openRouterPolicy.js';
+import { OpenRouterError, openRouterJSON, openRouterPolicy, geminiPolicy, anthropicPolicy, mapPolicies, personalMapPolicy, readOpenRouterAdmission, admissionCutoffs, attemptLimitReached, outputCapFor } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
 import { mapStructure } from '../src/services/cloud/mapStructure.js';
@@ -39,9 +39,11 @@ export function refusalReason(status) {
   return 'the provider sent an unexpected response';
 }
 
-function limitText(policy) {
-  return policy.windowMs ? `the limit of ${policy.maxRequests} attempts per ${policy.windowMs / 3_600_000} hours`
+function admissionUnavailableMessage(policy) {
+  if (!policy.attemptLimitEnabled) return 'The Site is busy or another request just started.';
+  const limit = policy.windowMs ? `the limit of ${policy.maxRequests} attempts per ${policy.windowMs / 3_600_000} hours`
     : `the lifetime limit of ${policy.maxRequests} attempts`;
+  return `The shared generation limit is reached (${limit}) or another attempt is starting.`;
 }
 
 // Always logged: a dead primary is an owner-visible degradation, not a debug detail.
@@ -276,14 +278,17 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
 
   const id = crypto.randomUUID(), now = Date.now();
   const { countSince, liveSince } = admissionCutoffs(policy, now);
+  const countGuard = policy.attemptLimitEnabled
+    ? '(SELECT COUNT(*) FROM lct_openrouter_attempts WHERE created_at > ?) < ? AND '
+    : '';
+  const countArgs = policy.attemptLimitEnabled ? [countSince, policy.maxRequests] : [];
   let admitted;
   try {
     admitted = await env.DB.prepare(`INSERT INTO lct_openrouter_attempts (id, created_at, max_output_tokens)
-    SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_openrouter_attempts WHERE created_at > ?) < ?
-      AND NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
+    SELECT ?, ?, ? WHERE ${countGuard}NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
       AND (SELECT COUNT(*) FROM lct_openrouter_attempts
            WHERE completed_at IS NULL AND recovery_released_at IS NULL AND created_at > ?) ${env.LCT_REPLAY_TEST_RECORDING_ID ? "+ (SELECT COUNT(*) FROM lct_audio_replay_attempts WHERE kind = 'map' AND state IN ('reserved','dispatching','uncertain'))" : ''} < ?
-    RETURNING id`).bind(id, now, maxTokens, countSince, policy.maxRequests, now - policy.admissionIntervalMs, liveSince, policy.maxConcurrent).first();
+    RETURNING id`).bind(id, now, maxTokens, ...countArgs, now - policy.admissionIntervalMs, liveSince, policy.maxConcurrent).first();
   } catch (error) {
     // A long cap set before migration 0019 widened the ledger: fail clearly, before any provider call.
     if (/CHECK constraint failed/i.test(String(error?.message))) {
@@ -291,7 +296,7 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
     }
     throw error;
   }
-  if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting. Wait before retrying.`);
+  if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `${admissionUnavailableMessage(policy)} Wait before retrying.`);
 
 function extractResponseUsage(completion, anthropic) {
   const raw = completion?.usage;
@@ -510,10 +515,10 @@ async function handleMapSettings(request, env, path) {
     const shared = policies[0][1];
     let admission;
     try { admission = await readOpenRouterAdmission(env, shared); } catch { /* Capacity is unavailable. */ }
-    const ready = Boolean(admission && shared.audience && shared.maxRequests && shared.windowValid && shared.longMaxTokens
-      && admission.attempts < shared.maxRequests && admission.unresolved < shared.maxConcurrent
+    const ready = Boolean(admission && shared.audience && shared.attemptLimitConfigured && shared.longMaxTokens
+      && !attemptLimitReached(shared, admission.attempts) && admission.unresolved < shared.maxConcurrent
       && (admission.latest == null || admission.latest <= Date.now() - shared.admissionIntervalMs));
-    return openRouterJSON(200, { available: ready, audience: shared.audience,
+    return openRouterJSON(200, { available: ready, audience: shared.audience, attempt_limit_enabled: shared.attemptLimitEnabled,
       personal: env.LCT_PERSONAL_PROVIDERS_ENABLED === 'true',
       providers: Object.fromEntries(policies.map(([id, policy]) => [id, { enabled: policy.enabled, model: policy.model,
         provider: policy.provider, fallback_models: policy.fallbackModels }])) });
@@ -535,15 +540,15 @@ export async function handleOpenRouter(request, env) {
       let admission = null;
       if (policy.configured) { try { admission = await readOpenRouterAdmission(env, policy); } catch { /* Disabled readiness, no provider access. */ } }
       const enabled = policy.enabled && Boolean(admission);
-      const available = enabled && admission.attempts < policy.maxRequests && admission.unresolved < policy.maxConcurrent
+      const available = enabled && !attemptLimitReached(policy, admission.attempts) && admission.unresolved < policy.maxConcurrent
         && (admission.latest == null || admission.latest <= Date.now() - policy.admissionIntervalMs);
       return openRouterJSON(200, { enabled, available, configured: policy.configured, schema_ready: Boolean(admission),
         backend: policy.backend, audience: policy.audience, model: policy.model, fallback_models: policy.fallbackModels,
         provider: policy.provider, max_output_tokens: policy.maxTokens, long_max_output_tokens: policy.longMaxTokens,
-        attempt_window_hours: policy.windowMs ? policy.windowMs / 3_600_000 : null,
+        attempt_limit_enabled: policy.attemptLimitEnabled, attempt_window_hours: policy.windowMs ? policy.windowMs / 3_600_000 : null,
         message: !enabled ? 'Generation is waiting for provider, admission storage and spending-limit setup.'
-          : available ? 'Generation is available within shared attempt and token limits.'
-            : `The shared generation limit is reached (${limitText(policy)}) or another attempt is starting.` });
+          : available ? 'Generation is available.'
+            : admissionUnavailableMessage(policy) });
     }
     if (path !== prefix + '/generate') throw new OpenRouterError(404, 'route', 'This generation endpoint does not exist.');
     if (request.method !== 'POST') throw new OpenRouterError(405, 'method', 'Use POST to generate a conversation map.');

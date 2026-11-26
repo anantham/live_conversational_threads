@@ -11157,3 +11157,112 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - Verification: changed suites pass; full vitest failure set identical to base (Node 26 environment); `build:sites` passes after `npm ci` in the worktree; lint clean on changed files.
 - Not done: nothing pushed or merged; branch awaits owner go-ahead.
 
+## 2026-11-25 20:45 IST — Remove unreferenced code and tracked clutter (branch chore/remove-unreferenced-code)
+
+- Scope: deletion only, no behaviour change. Base origin/main 04b85f67.
+- Method: Python import graph over lct_python_backend plus a frontend reachability
+  walk from src/main.jsx, then a repo-wide `git grep` of every candidate name
+  (code, scripts, workflows, docs) on main and on the Sites branches
+  (codex/lct-inference-choice, codex/anthropic-sites).
+- Removed (19 files, 1,607 lines): lct_python_backend/cost_api.py (router never
+  mounted; the dashboard uses factcheck_api.py /api/cost-tracking/stats),
+  db_helpers.py, create_bookmarks_table.py; lct_app/src/utils/contextLoading.js,
+  utils/nodeTransitions.js, components/SttFallbackOrderFields.jsx,
+  components/settings/LlmModelsCard.jsx, components/threads/SourcePlaybackControls.jsx;
+  scripts/legacy_commands/ (7); tracked files under the gitignored .tmp/ and
+  prompts_and_transcripts/ (4).
+- Docs touched: docs/LOCAL_SETUP.md (legacy archive section), docs/PROJECT_STRUCTURE.md
+  (cost_api and db_helpers rows), lct_python_backend/INSTRUMENTATION.md (removal note),
+  docs/TECH_DEBT.md (candidates deliberately kept).
+- The grep pass overturned the import-graph result for four files, which stay:
+  services/threads_semantic_authoring.py (scripts/author_thread_experiment.py),
+  conversationSearch.worker.js (loaded with new Worker(new URL(...))),
+  debateSnapshotEdges.js (lct_app/scripts/export-debate-snapshot.mjs),
+  discussionFixtures.js (test fixture).
+- Checks on the branch: vite build passes with a fresh npm ci. Backend unit suite
+  2091 passed / 13 failed; vitest 22 files failed; eslint 150 problems. The same
+  tests fail on an untouched copy of main in this environment (sandboxed network,
+  no pwsh, Node 26) and eslint reports 152 there, so CI is the authoritative run.
+  The ISSUES.md entry added here is a separate finding from that run, not part of
+  the deletion.
+- Independent review: Gemini 4 Hydrogen (High) via agy plan mode, packet sha256
+  97269b17fb84734f…; it found no live reference to a removed file. Its doc and
+  evidence findings were applied (PROJECT_STRUCTURE row, TESTING.md noted in
+  TECH_DEBT, per-filename greps for the legacy scripts and prompt files: 0 hits).
+- Not deployed. auth_policy.py still lists the /api/costs prefix; left alone
+  because it is an auth file.
+## 2026-11-25 21:01 IST — Archive stale docs (branch docs/archive-stale-docs)
+
+- Scope: documentation only. Base origin/main 04b85f67.
+- Method: for each candidate, last commit date, how many of the source files it names
+  still exist, and inbound links from code, ADRs and other docs.
+- Moved to docs/archive/ (10 files, about 9,150 lines): docs/ROADMAP.md,
+  FEATURE_ROADMAP.md, ROADMAP_ADVANCED_ANALYSIS.md, ROADMAP_INSTRUMENTATION_METRICS.md,
+  TIER_2_FEATURES.md, FEATURE_SIMULACRA_LEVELS.md, TESTING.md;
+  lct_app/ZOOM_SYSTEM.md, lct_app/NODE_DETAIL_PANEL.md;
+  lct_python_backend/GRAPH_GENERATION.md. Reasons are tabled in docs/archive/README.md.
+- The roadmaps were not merged into a new one: all five are roadmaps or feature specs written in Nov 2025
+  (FEATURE_ROADMAP.md last revised 2026-03-20), and writing a current roadmap is an owner decision. docs/README.md now says there is no
+  current roadmap and points at VISION.md, adr/INDEX.md and plans/.
+- Links repointed in README.md, CONTRIBUTING.md, docs/README.md,
+  docs/PROJECT_STRUCTURE.md and four backend guides. ADRs, audits, handovers and plans
+  were not edited. Stale candidates left in place are listed in docs/TECH_DEBT.md.
+
+## 2026-11-25 23:25 IST — Browse drop smoke test no longer depends on a non-Sites heading (branch fix/smoke-browse-drop-sites-mode)
+
+- Why: once PR #260 let the live prod smoke run again (run 45652539884, main 835a74a8), 8 of 9 tests
+  passed and "Browse accepts a .threads file dropped anywhere on the page" timed out waiting for the
+  "Recorded conversations" heading. `Browse.jsx` renders that heading only when `VITE_SITES_MODE` is
+  off; the production domain serves a Sites-mode build.
+- Change: `lct_app/tests/e2e/prod-threads-opener.spec.js` (the drop test, ~lines 204-213) now
+  dispatches dragenter/drop on the "Opened conversations" heading, which `Browse.jsx:355` renders in
+  both modes. Test-only; no product code changed. `ISSUES.md` gets a new entry for the wider finding below.
+- Verified: the seven non-deploy-only tests in the spec pass against a local Vite server of this
+  branch with `VITE_SITES_MODE=true` and again with `VITE_SITES_MODE=false` (system Chrome; the
+  locked Playwright's bundled Chromium is not installed on this Mac).
+- NOT verified against production, and it cannot be from main: between the CI run (21:49 IST) and
+  my run (~23:15 IST) the live domain started serving a different UI (icon-only Home, viewer title
+  as a "Landscape breadcrumb" button). Those strings exist on `origin/integ/sites-combined`
+  (7662bb07, 23:15 IST) and not on main. Against that build 6 of 9 smoke tests fail, with or
+  without this change; with it, the drop itself opens the fixture and only the final title
+  assertion fails. See the ISSUES.md entry of the same date.
+
+## 2026-11-25 23:49 IST — Production smoke trimmed to checks that hold on any healthy build (branch test/trim-prod-smoke)
+
+- Why: owner chose to trim. After PR #262 the smoke on main 59404d6a failed 6 of 9 (run
+  45671560851) because the domain serves a Sites-branch build whose Home and viewer differ from
+  main's. See the two 2026-11-25 ISSUES.md entries.
+- Change: `lct_app/playwright.prod.config.ts` adds `grep: /@prod-smoke/`. Tagged: the boot test in
+  `prod-smoke.spec.js` and three tests in `prod-threads-opener.spec.js` (Drive-link handoff, real
+  deploy /browse stays the library, non-.threads file rejected). The boot test identifies Home by
+  its "Threads" heading instead of the visible text "New", which the icon-only Home lacks. Header
+  comments in both specs, the config and `post-deploy-smoke.yml` updated. No product code.
+- What production loses: five opener journeys (remembered Drive artifact, open/remember/reopen,
+  accessible card names, drop on Browse, drop on /view) no longer run against the live domain.
+  They still run untagged in `e2e.yml` against the local dev server.
+- Verified (system Chrome): tagged run against the live domain 4/4; tagged run against local Vite
+  with `VITE_SITES_MODE=true` and `false`, 3 passed + 1 skipped each (the real-deploy test skips
+  off the public domain); full untagged spec + smoke against local non-Sites, 8 passed + 1 skipped.
+- Not done: the Site's own publish step still has no browser check of the build it ships.
+
+## 2026-11-27 — Sites CI runs on integ/sites-combined
+
+- `.github/workflows/sites-ci.yml` on `integ/sites-combined` triggered only on the Codex Sites branches, so PRs into this branch (e.g. #263) ran no frontend unit tests, Sites lint or Sites build; only Vercel reported.
+- Change: `main` and `integ/sites-combined` added to the `pull_request` and `push` triggers, with the per-commit push concurrency group from PR #258 (same edit as #258 plus this branch), so a later merge with `main` resolves to one trigger list.
+
+## 2026-11-26 — Sites-mode e2e tests (branch `test/sites-e2e` from `main` @ e5f9f5ae)
+- Context found first: `codex/lct-inference-choice` was merged into `main` (#238) and has been quiet since 9 Nov; the live Site is built from `integ/sites-combined` (#261, open into `main`). Neither ran any browser test of the Sites build.
+- Added `lct_app/playwright.sites.config.ts` (builds `build:sites`, serves `dist/client` with `vite preview`), `lct_app/tests/e2e-sites/` (siteApi stand-in + 3 specs, 6 tests), `npm run test:e2e:sites`, `.github/workflows/sites-e2e.yml` (PRs and pushes on main, integ/sites-combined, codex/lct-inference-choice), `tests/intent/sites-e2e.md`, and a section in `lct_app/docs/E2E-TESTING.md`.
+- Red-proved: 8 mutations of the fixes these tests guard, all caught. One survived at first: `toHaveCount(0)` retries until the element disappears, so a flashing "Checking connections" passed; the test now samples every 100 ms while the check is in flight.
+- Passes on `main` and on `integ/sites-combined` (temp detached worktree, removed after).
+- Needed `npx playwright install chromium`: the project pins Playwright 1.5x with Chromium build 1194.
+- Gemini 4 Argon (High) review round 1 (agy `--mode plan`, packet on stdin, sha256 383a8a4a…): NO-GO. Adopted: the slow-check test stopped sampling at 0.9 s (now a MutationObserver watch from first paint, 1.5 s delay, watching until 0.7 s after the answer; a 1 s threshold is now caught); `**/api/**` also matched other hosts (now origin-scoped, and every other origin, including other localhost ports, is refused and fails the test); the unauthenticated test could pass through the "check broke" fallback (now asserts the authentication detail); the Home panel check now watches for any flash and anchors on Home having rendered; the trivially true share-link negative check was removed; positive ring class and single-argument `not.toHaveAttribute('open')`; methods checked; CI workers 1; webServer stdout piped. Found while red-proving the origin guard: the test's own `**/shared/...` route would have answered a fetch to production, so test routes are origin-scoped too. Declined: duplicate push+PR runs on `integ/sites-combined` (the same pattern as sites-ci.yml, a two-minute job) and dropping `codex/lct-inference-choice` (#264 and #267 still target it). 11 mutations caught; 30/30 on a 5x repeat.
+- Round 2 (Gemini 4 Argon (High), packet sha256 f5093308…): GO; it confirmed findings 1-6, 8 (origin/method) and 9 fixed and agreed with the declines. Adopted two P3s: `recordAppearances` reads `innerText` only when a text watch needs it, and the slow-check delay is 1.25 s (≈0.75 s margin under the 2 s tick; a 1 s threshold is still caught). Declined P3 #3 (config sets SITES_E2E_BASE_URL; internal name only). CI: first two runs failed at "Install Playwright browser" because ubuntu-latest is 26.04; pinned ubuntu-24.04 like e2e.yml, then green. 30/30 on a 5x repeat.
+
+## 2026-11-27 — Escape closes the account panel; backend share links omit cookies (branch `fix/panel-escape-share-credentials` from `main` @ 2bc1a0b2)
+- `lct_app/src/components/SitesAccessPanel.jsx`: while the panel is open, a `window` capture-phase `keydown` listener closes it on Escape, as the × does (same focus return), only when the key was pressed inside the panel (`panelRef.contains(event.target)`), skipping IME composition and already-handled events. Capture on `window` is the first stop of every keydown, so neither NodeDetail's `document` capture listener nor the map's `window` bubble listeners ("go back a level") see that Escape. The map's own `window` capture listeners handle arrow keys only. Other keys pass through. Closes the 2026-11-05 ISSUES.md entry.
+- `lct_app/src/services/BackendDataProvider.js`: `fetchThreadsFile` now sends `credentials: 'omit'`, as the serverless provider has since #232. A `?src=` link is a public file; the full-backend build sent this site's cookies to a same-origin `src`.
+- Tests: `SitesAccessPanel.test.jsx` adds one Escape case: opened by clicking the chip (the panel takes focus) and from a link inside, Escape closes it, returns focus to the chip, and neither a `window` bubble nor a `document` capture listener sees it; once closed, and while open with focus elsewhere, both see Escape and the panel stays; Enter passes through. `ThreadsViewer.sitesSrc.test.jsx` now runs its six cases under both providers (`describe.each`).
+- Red-proved: removing the backend `credentials: 'omit'` fails the backend case only; seven Escape mutations (no listener, bubble phase, no stopPropagation, focus anywhere closes, any key closes, no preventDefault, no focus return) each fail the new case.
+- Local note: Node 26 defines a global `localStorage` that is undefined without `--localstorage-file`, which breaks every jsdom test that touches it (fails identically on unchanged `main`). Run vitest locally with `NODE_OPTIONS=--no-experimental-webstorage`; CI uses Node 20/24 and is unaffected.
+- Gemini 4 Argon (High) review round 1 (agy `--mode plan`, packet on stdin, sha256 a55bee2c…): NO-GO. Adopted: (P1) a React `onKeyDown` runs after NodeDetail's `document` capture listener, so Escape in the panel also closed the drawer → moved to a `window` capture listener; (P2) the test never pressed Escape with the panel open and focus outside it, and counted non-Escape keys → both fixed; (P3) skip `isComposing`/`defaultPrevented`. Declined: (P1) "focus is left outside the panel after opening": `openPanel` focuses the panel (asserted by the existing Profile test and now by this one); (P1/P2) `credentials: 'omit'` breaks an authenticated same-origin `src`: a `?src=` link is by definition a public share, private files have their own route (`privateThreads.js`), the Vercel origin's only dynamic routes are `/api/public-drive` and `/api/proxy/*`, nothing in the app or `lct_python_backend` sets a cookie, and the backend authenticates with a bearer header (`apiHeaders`); (P2) focus lost on dismiss in recording routes: the focus effect targets the More button there, covered by the existing Profile test; (P3) a second Escape before React commits: a discrete-event update commits before the next key event.

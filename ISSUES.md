@@ -3305,3 +3305,38 @@ Found by five read-only reviewers over 9f047a1e..173f8f2c plus main/CI commits; 
 - Tests: credential store (AES-GCM/IndexedDB) fully mocked; `runLongTranscriptPipeline` no longer used by the app but still tested; Privacy page says keys are "encrypted" while the wrapping key sits beside them.
 - Minor: e49764db broke ~4 links inside moved docs; `nightly-stt-e2e.yml` still `ubuntu-latest`; the post-deploy smoke may target the ChatGPT Site rather than the Vercel deploy; usage parsing duplicated in `sites/openRouter.js`; edge validation rules dropped from client messages; key-check endpoint has no rate limit; comments claim the model name stays private on server routes.
 - Environment: under Node 26, 243 frontend test lines fail identically before and after these fixes (Node's global localStorage shadows jsdom's); CI uses Node 24. The main checkout's node_modules lacks pdfjs-dist, so `build:sites` from a worktree symlinked to it fails until `npm ci`.
+
+### 2026-11-25 — Unit suite attempts real network connections
+
+- **What:** running `pytest lct_python_backend/tests/unit tests` on a Mac inside a network sandbox, the sandbox reported blocked outbound connections to `api.openai.com:443` (twice), `stt.example:443`, and the Asus tailnet address on port 7777. Which tests open them was not traced. Seen on untouched `main` (04b85f67) as well as on `chore/remove-unreferenced-code`.
+- **Impact:** outside a sandbox the unit suite can reach a live service or spend on a provider if credentials are in the environment. Also: `test_speaker_correction_api.py` fails at collection when `/tmp/lct_recordings` is not writable, and 13 tests fail locally for environment reasons (network, missing `pwsh`).
+- **Blocker:** no.
+- **Next step:** trace the callers with a socket-blocking fixture in `tests/conftest.py`, then stub them.
+
+
+### 2026-11-25 — Live prod smoke has not run since the runner image moved to Ubuntu 26.04
+
+- **What:** `post-deploy-smoke.yml` ran on `ubuntu-latest`. On 26.04 the locked `@playwright/test` 1.56.1 fails at "Install Playwright browser" ("Playwright does not support chromium on ubuntu26.04-x64"), so the smoke itself never starts. Read from the logs of runs 45648475149 (2026-11-25, after the PR #257 merge) and 45475469466 (2026-11-24 scheduled, previous main). Last successful run in the most recent 100: 2026-11-04. `e2e.yml` was pinned to `ubuntu-24.04` for this on 2026-11-15; this workflow was missed.
+- **Impact:** production deploys and the daily canary have had no passing browser check for about three weeks; a red status on main looks like the merge broke production when the test never ran.
+- **Fix in this change:** pin `post-deploy-smoke.yml` to `ubuntu-24.04`. Not yet proven: the workflow only fires from the default branch, so the first real run is after merge (or a manual dispatch).
+- **Next step:** `nightly-stt-e2e.yml` uses the same install step on `ubuntu-latest` and has no listed runs; pin it or upgrade Playwright once and unpin all three.
+
+
+### 2026-11-25 — Live prod smoke asserts main's UI against a build that does not come from main
+
+- **What:** `post-deploy-smoke.yml` fires on Vercel's Production `deployment_status` for a push to `main` and runs main's spec against `threads.adityaarpitha.com`. That domain answers through Cloudflare and serves the Site, which is published from Sites branches. On 2026-11-25 around 23:15 IST it was serving UI that exists on `origin/integ/sites-combined` (7662bb07) and not on main: Home has icon-only buttons (no visible "New" text), and the viewer shows the conversation title as a breadcrumb button rather than a heading. Evidence: local run of main's `playwright.prod.config.ts` against the domain (6 of 9 failed), the failure page snapshots, and `git grep` of "Landscape breadcrumb" / "New recording" on both refs. The same spec had passed 8 of 9 against the domain at 21:49 IST (run 45652539884).
+- **Impact:** the smoke goes red or green with whatever branch the Site was last published from, not with the merge that triggered it. A red status on main says nothing about that merge, and a green Vercel deploy says nothing about what the domain serves. The workflow's header comment ("git-connected ... a push to main triggers a Vercel PRODUCTION build" of this domain) is out of date. The next scheduled canary (09:00 UTC) is expected to fail on 6 tests unless the Site changes again.
+- **Also fixed here:** the Browse drop test waited for "Recorded conversations", a heading that only non-Sites builds render; it now uses "Opened conversations", present in both.
+- **Blocker:** no for merges; yes for trusting the smoke as a production signal.
+- **Next step (owner's call):** decide what the smoke should test. Options: run it from the Site's own publish step with that branch's spec; point this workflow at the Vercel production URL so it tests main's build; or cut the spec down to build-health assertions that hold across both UIs.
+
+
+### 2026-11-25 — Follow-up: production smoke trimmed; the Site still ships without its own browser check
+
+- **What changed:** the live prod smoke now runs only tests tagged `@prod-smoke` (boot, Drive-link handoff, backendless /browse, bad-file rejection), which pass on both main's build and the Sites-branch build seen on 2026-11-25.
+- **What is still open:** the five opener journeys that walk into the viewer are no longer checked on the live domain, and nothing runs a Sites branch's own spec against the build that branch publishes. A viewer regression in a published Site would not be caught by CI.
+- **Blocker:** no.
+- **Next step (owner's call):** add a browser check to the Site publish path, using the publishing branch's spec.
+
+## 2026-11-27 — Resolved: the account panel has no Escape-to-close (entry of 2026-11-05)
+- **Fix:** branch `fix/panel-escape-share-credentials`. Escape pressed inside the panel closes it and returns focus as the × does; neither the map nor the node-detail drawer sees that Escape. See WORKLOG 2026-11-27.
