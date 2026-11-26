@@ -3,6 +3,8 @@ import PropTypes from "prop-types";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import ConversationTimelineView from "./ConversationTimelineView";
+import KeyLines from "./KeyLines";
+import { rankNodeEvidence } from "./rankedEvidence";
 import {
   breadcrumbTrailFor,
   buildSpatialLandscape,
@@ -349,6 +351,12 @@ export default function SpatialLandscapeCanvas({
   const page = useMemo(
     () => paginateNodes(orderedSiblingIds, pageIndex, PAGE_SIZE),
     [orderedSiblingIds, pageIndex],
+  );
+
+  // Ranked only for the cards on screen: an arc can cite the whole transcript.
+  const keyLinesById = useMemo(
+    () => new Map(page.visibleIds.map((id) => [id, rankNodeEvidence(id, landscape, { speakerDisplayNames })])),
+    [page.visibleIds, landscape, speakerDisplayNames],
   );
 
   const breadcrumbs = useMemo(
@@ -727,6 +735,8 @@ export default function SpatialLandscapeCanvas({
                           </p>
                         </div>
                       )}
+
+                      <KeyLines lines={keyLinesById.get(id)} nodeId={id} nodeTitle={nodeTitle} onOpenVisit={onOpenVisit} />
 
                       <IslandVisits visits={visits} onOpenVisit={onOpenVisit} nodeId={id} />
 
