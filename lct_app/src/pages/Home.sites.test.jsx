@@ -80,7 +80,8 @@ describe("Meet door on Home", () => {
   it.each([
     ["a failed check", async () => { throw new TypeError("offline"); }],
     ["an unreadable answer", async () => new Response(JSON.stringify({ service: "soniox", available: false }))],
-    ["a server error", async () => new Response("{}", { status: 503 })],
+    // A well-formed "closed" body on an error status: only response.ok keeps this from counting.
+    ["a server error", async () => new Response(JSON.stringify({ service: "meetings", enabled: true, available: false, checked_at: 1 }), { status: 503 })],
   ])("does not claim Meet is closed after %s", async (_label, reply) => {
     await renderWith(reply);
     expect(meetTile().getAttribute("aria-label")).toBe("Join Google Meet");

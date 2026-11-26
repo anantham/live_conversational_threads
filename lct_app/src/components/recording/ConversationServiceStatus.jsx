@@ -58,8 +58,11 @@ function ServiceIndicator({ service, label, Icon, evidence, personal, onState })
   const limited = current?.capacity === 'exhausted' || current?.allowance === 'exhausted';
   const state = failed ? 'error' : verified ? 'ready' : !current ? 'checking' : !current.enabled ? 'off' : limited ? 'limited' : stale || current.capacity === 'busy' ? 'uncertain' : !current.available || (!current.reachable && !listingOnly) ? 'error' : 'idle';
   const busy = state === 'uncertain' && !stale;
-  // The page uses this to stop promising a transcript once the shared limit is reached.
-  useEffect(() => { onState?.(state); }, [state, onState]);
+  // The page uses this to stop promising a transcript once the shared limit is reached. A failed
+  // attempt says nothing about the allowance, so a fresh "exhausted" check is reported even while
+  // the headline still describes that failure.
+  const reported = current?.enabled && limited ? 'limited' : state;
+  useEffect(() => { onState?.(reported); }, [reported, onState]);
   const headline = failed ? 'Last attempt failed' : personal && !verified ? 'Personal key set' : state === 'uncertain' ? (busy ? 'Busy' : 'Check is out of date') : headlines[state];
   const copy = plain[service === 'soniox' ? 'soniox' : 'map'];
   const summary = failed || verified ? result.detail || (failed ? 'The last attempt did not finish.' : 'Working this session.') : personal ? 'Check this key from Providers in Settings.' : copy[state === 'uncertain' ? (busy ? 'busy' : 'stale') : state];

@@ -1,3 +1,13 @@
+## 2026-11-27 01:00 IST — Codex review fixes for "closed for now" (PR #270)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved Codex for #270/#272/#273 on 2026-11-27), read-only, packet = code-only diff `e3936dc8...7d24eabb` without the worklog, sha256 `adaf34d8…71`. 7 findings; 6 confirmed and fixed, 1 partly right.
+
+- `pages/SitesMeetings.jsx`: this browser's status now decides once it arrives (`status.canJoin === false`), the public check covers the time before it or a failed request. Before, a stale public "closed" kept the form locked after Check connection said it could join, and a status without `canJoin` read as closed. The quieter replacement now covers exactly `inactive` and 401 `sign_in`; any other 401 stays an alert (it used to vanish).
+- `components/recording/ConversationServiceStatus.jsx`: the page is told `limited` whenever a fresh check says the allowance is exhausted, even within 2 minutes of a failed attempt (the failure used to mask it). The indicator's headline is unchanged.
+- `pages/SitesNewConversation.jsx`: partly right. Starting with transcription after the limit was already blocked by the `transcribe && !live` guard, but a consent dialog open when the limit arrived kept a Confirm that did nothing. It now closes so the page can explain and offer audio only.
+- `pages/Home.jsx`: rows of primary tiles sit 36px apart when they wrap, so the "Closed for now" caption never meets the next row.
+- Tests: 4 new (all fail on the old sources), the /new limited test now confirms consent and asserts the session starts without transcription, the Home 503 case now sends a well-formed `available:false` body. Also fixed a rules-of-hooks lint error my original commit put in the /new test mock.
+
 ## 2026-11-26 22:45 IST — Closed features say "closed for now" (critique issue 3)
 
 Owner ruling 2026-11-26: a feature that is closed today stays visible, marked "closed for now". Branch `fix/closed-for-now` from `integ/sites-combined` (`e3936dc8`).

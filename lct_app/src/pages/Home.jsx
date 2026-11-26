@@ -66,7 +66,8 @@ export default function Home() {
       </h1>
 
       <nav aria-label="Home actions" className="relative flex flex-col items-center gap-8 sm:gap-10">
-        <div className="flex flex-wrap justify-center gap-3 sm:gap-6">
+        {/* Rows sit far enough apart that the "Closed for now" caption under a tile never meets the next row. */}
+        <div className="flex flex-wrap justify-center gap-x-3 gap-y-9 sm:gap-x-6">
           <TooltipButton compact align="center" aria-label="New recording"
             tooltip={draftSummary ? "New recording · Draft available" : "New recording"}
             onClick={() => navigate(getAutostartOnNew() ? "/new?autostart=true" : "/new")}

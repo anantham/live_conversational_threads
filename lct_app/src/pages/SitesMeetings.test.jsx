@@ -28,9 +28,9 @@ beforeEach(() => {
     calls.push({ path, options });
     if (path === BASE + '/guest-session') { server.guestStarted = true; return json({ mode: 'guest' }); }
     if (path === '/api/auth/session') return json({ authenticated: false }, 401);
-    if (path === '/api/cloud/health/meetings') return json({ service: 'meetings', enabled: server.canJoin, available: server.canJoin, checked_at: 1 });
+    if (path === '/api/cloud/health/meetings') return json({ service: 'meetings', enabled: server.canJoin, available: server.publicAvailable ?? server.canJoin, checked_at: 1 });
     if (path === BASE + '/status' && server.failStatus) throw new TypeError('Failed to fetch');
-    if (path === BASE + '/status') return json(server.status === 200 ? { enabled: true, canJoin: server.canJoin } : { error: server.status === 401 ? 'Sign in to use private meeting recordings.' : 'The recorder is unavailable.', code: server.errorCode || (server.status === 401 ? 'sign_in' : 'inactive') }, server.status);
+    if (path === BASE + '/status') return json(server.status === 200 ? (server.omitCanJoin ? { enabled: true } : { enabled: true, canJoin: server.canJoin }) : { error: server.status === 401 ? 'Sign in to use private meeting recordings.' : 'The recorder is unavailable.', code: server.errorCode || (server.status === 401 ? 'sign_in' : 'inactive') }, server.status);
     if (path === BASE && options.method === 'POST') {
       const input = JSON.parse(options.body); server.id = input.requestId;
       if (server.createStatus === 503) throw new Error('Synthetic lost response');
@@ -121,6 +121,24 @@ describe('Cloud meeting journey', () => {
     expect(container.textContent).toContain('to see recordings you made before');
     expect(container.querySelector('#meet-url').disabled).toBe(true);
     expect(creates()).toHaveLength(0);
+  });
+  it('keeps other failures visible while closed', async () => {
+    server.canJoin = false; server.status = 401; server.errorCode = 'synthetic_expired'; await mount();
+    expect(container.querySelector('[role="status"]').textContent).toContain('Meetings are closed for now');
+    expect(container.querySelector('[role="alert"]').textContent).toContain('Sign in to use private meeting recordings.');
+  });
+  it("lets this browser's fresh status reopen the form over an older public answer", async () => {
+    server.publicAvailable = false; server.canJoin = true; await mount();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('#meet-url').disabled).toBe(false);
+    expect(container.querySelector('input[type="checkbox"]').disabled).toBe(false);
+  });
+  it('does not call Meet closed when the status leaves out whether it can join', async () => {
+    server.publicAvailable = 'unreadable'; server.omitCanJoin = true; await mount();
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(container.querySelector('#meet-url').disabled).toBe(false);
+    await inputURL();
+    expect(button('Join and record').disabled).toBe(true);
   });
   it.each([401, 403, 503])('offers account recovery only for authentication refusal (%i)', async status => {
     server.status = status; await mount(); await inputURL();

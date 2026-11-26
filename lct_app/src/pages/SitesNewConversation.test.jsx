@@ -7,7 +7,7 @@ const fixture = vi.hoisted(() => ({ sessions: [], restored: null, waitingForMic:
 // The real indicator is tested on its own; this stand-in reports the voice state a test chooses.
 vi.mock('../components/recording/ConversationServiceStatus.jsx', async () => {
   const { useEffect } = await import('react');
-  return { default: ({ onVoiceState }) => { useEffect(() => { if (fixture.voiceState) onVoiceState?.(fixture.voiceState); }, [onVoiceState]); return <div aria-label="Service status" />; } };
+  return { default: function ServiceStatusStub({ onVoiceState }) { useEffect(() => { fixture.report = onVoiceState; if (fixture.voiceState) onVoiceState?.(fixture.voiceState); }, [onVoiceState]); return <div aria-label="Service status" />; } };
 });
 vi.mock('../services/cloud/localConversationStore.js', () => ({ readLocalConversation: async () => fixture.restored, saveLocalConversation: async () => {} }));
 vi.mock('../components/MinimalGraph.jsx', () => ({ default: ({ graphData }) => <div aria-label="Rendered graph">{graphData.map(n => <span key={n.id}>{n.node_name}</span>)}</div> }));
@@ -795,5 +795,18 @@ for (const voiceState of ['limited', 'idle']) it(`says transcription is closed f
     // Audio-only still starts, and the consent dialog promises no transcript.
     await click('Start session');
     expect(container.querySelector('dialog').textContent).toContain('Record audio locally');
+    await consent(); await click('Start recording');
+    expect(fixture.sessions.at(-1).options.transcribe).toBe(false);
   }
+});
+
+it('closes a transcription consent dialog when the shared limit arrives while it is open', async () => {
+  transcribe = true;
+  await mount();
+  await chooseTranscription(true); await click('Start session');
+  expect(container.querySelector('dialog')).toBeTruthy();
+  await act(async () => fixture.report('limited'));
+  expect(container.querySelector('dialog')).toBeNull();
+  expect(container.textContent).toContain('Live transcription is closed for now');
+  expect(fixture.sessions).toHaveLength(0);
 });

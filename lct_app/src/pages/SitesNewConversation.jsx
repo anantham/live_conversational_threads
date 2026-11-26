@@ -186,6 +186,9 @@ export default function SitesNewConversation() {
   // A fast check stays silent; only one that runs past two seconds says so.
   const slowSetup = Boolean(setup && elapsed >= 2);
   const transcribe = transcriptionChoice ?? Boolean(live);
+  // If transcription closes while its consent dialog is open, Confirm would do nothing; close the
+  // dialog so the page can say why and offer audio only.
+  useEffect(() => { if (pendingRecording?.transcribe && !live) setPendingRecording(null); }, [pendingRecording, live]);
   useEffect(() => { if (active) stopControl.current?.focus(); }, [active]);
   useEffect(() => { if (activity?.stage === 'paused') resumeControl.current?.focus(); }, [activity?.stage]);
   const privateSaving = capabilities?.storage?.enabled && capabilities?.storage?.configured && !capabilities?.storage?.synthetic_only;

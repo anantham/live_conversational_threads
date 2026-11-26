@@ -101,3 +101,13 @@ it('reports the live transcription state to the page, including the shared limit
   expect(onVoiceState).toHaveBeenLastCalledWith('limited');
   expect(host.querySelector('button[aria-label="Live transcription: Not available right now"]')).toBeTruthy();
 });
+it('reports a fresh shared limit even right after a failed attempt', async () => {
+  const onVoiceState = vi.fn();
+  fetch.mockImplementation(async path => new Response(JSON.stringify(path.includes('soniox')
+    ? { service: 'soniox', enabled: true, available: false, reachable: false, allowance: 'exhausted', checked_at: Date.now() }
+    : { service: 'openrouter', enabled: true, available: true, reachable: true, allowance: 'unknown', checked_at: Date.now() })));
+  await render({ onVoiceState, voice: { service: 'soniox', ok: false, at: Date.now(), detail: 'Transcription stopped with an error.' } });
+  expect(onVoiceState).toHaveBeenLastCalledWith('limited');
+  // The indicator itself still describes the failed attempt.
+  expect(host.querySelector('button[aria-label="Live transcription: Last attempt failed"]')).toBeTruthy();
+});
