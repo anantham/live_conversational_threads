@@ -22,6 +22,8 @@ const defaults = () => ({
   '/api/cloud/gemini/status': { body: { enabled: false, available: false, configured: false } },
   '/api/cloud/health/soniox': { body: health.sonioxListingRefused, stamp: true },
   '/api/cloud/health/openrouter': { body: health.openrouterExhausted, stamp: true },
+  // Public "is Meet open?" check (no session). Closed, as on the live Site while no test window is open.
+  '/api/cloud/health/meetings': { body: { service: 'meetings', enabled: false, available: false }, stamp: true },
   '/api/cloud/health/gemini': { body: { service: 'gemini', enabled: false, available: false, reachable: false, allowance: 'unknown', detail: 'This service is switched off or not configured.' }, stamp: true },
 });
 
