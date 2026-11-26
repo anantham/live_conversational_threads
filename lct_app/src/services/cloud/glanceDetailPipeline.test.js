@@ -445,9 +445,21 @@ describe('lower-tier review findings (2026-11-27)', () => {
 
   it('gives each half of a split segment a fresh admission budget', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
-    const generate = scripted({ 1: admission, 2: admission, 3: admission, 4: admission, 5: admission, 6: truncated, 7: admission });
-    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, admissionRetryMs: 1 });
+    // A 1 ms first wait and a 5 ms budget allow exactly three retries (1, 2, 4 ms): the parent uses all of
+    // them, so the first half's own refusal is retried only if the split did not carry the count over.
+    const generate = scripted({ 1: admission, 2: admission, 3: admission, 4: truncated, 5: admission });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, admissionRetryMs: 1, admissionBudgetMs: 5 });
     expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  it('stops waiting out an admission backoff as soon as another call fails', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scripted({ 1: admission, 2: () => new Error('synthetic failure') });
+    const t0 = Date.now();
+    const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6,
+      admissionRetryMs: 20_000 }).catch(e => e);
+    expect(error.message).toMatch(/synthetic failure/);
+    expect(Date.now() - t0).toBeLessThan(2_000);
   });
 
   // Finding 2: a topic nested inside another is offered to the segment that details its turns, never re-detailed.

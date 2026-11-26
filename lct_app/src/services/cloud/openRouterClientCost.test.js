@@ -40,6 +40,12 @@ describe('cost ledger entries count every billed attempt', () => {
     expect(entry).toMatchObject({ inputTokens: 1000, outputTokens: 8192, totalTokens: 9192 });
   });
 
+  it('counts the accepted attempt when the call failed after acceptance and carries no reply usage', () => {
+    const entry = recordSitesCostEntry({ provider: 'anthropic', model: 'claude-fixture', outcome: 'error', errorCode: 'completion_unknown',
+      attempts: [rejected, accepted] });
+    expect(entry).toMatchObject({ inputTokens: 2000, outputTokens: 8592, totalTokens: 10_592 });
+  });
+
   it('marks a provider cost incomplete when an earlier billed attempt has no reported cost', () => {
     recordSitesCostEntry({ provider: 'openrouter', model: 'fixture/a', usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.01 } });
     recordSitesCostEntry({ provider: 'openrouter', model: 'fixture/a', usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.02 },

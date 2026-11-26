@@ -22,14 +22,15 @@ export function readSitesCostEntries() {
 }
 
 /**
- * Tokens billed by attempts other than the accepted one (rejected replies, attempts before a fallback,
- * every attempt of a failed call). The accepted attempt's tokens arrive through the reply's usage, so
- * counting it here too would double it.
+ * Tokens billed by attempts the reply's usage does not cover: rejected replies, attempts before a
+ * fallback, every attempt of a failed call. The accepted attempt is skipped only when the reply's usage
+ * is present (counting it twice would double it); a call that failed after acceptance (the completion
+ * could not be acknowledged) carries no usage, so its accepted attempt is counted here.
  */
-function unacceptedAttemptTokens(attempts) {
+function attemptTokensBeyondUsage(attempts, haveUsage) {
   let input = 0, output = 0;
   for (const attempt of Array.isArray(attempts) ? attempts : []) {
-    if (!attempt || attempt.outcome === 'accepted') continue;
+    if (!attempt || (haveUsage && attempt.outcome === 'accepted')) continue;
     input += safeNumber(attempt.input_tokens);
     output += safeNumber(attempt.output_tokens);
   }
@@ -51,7 +52,7 @@ export function recordSitesCostEntry({
   coveragePct = null,
 } = {}) {
   try {
-    const extra = unacceptedAttemptTokens(attempts);
+    const extra = attemptTokensBeyondUsage(attempts, usage != null);
     const replyInput = safeNumber(usage?.input_tokens);
     const replyOutput = safeNumber(usage?.output_tokens);
     const inputTokens = replyInput + extra.input;

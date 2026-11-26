@@ -46,13 +46,16 @@ function log(event, details) {
   try { console.info(`[lct-pipeline] ${event}`, details); } catch { /* Logging never changes the result. */ }
 }
 
-function sleep(ms, signal) {
+/** Waits `ms`, rejecting with AbortError as soon as any of the given signals aborts. */
+function sleep(ms, ...signals) {
   if (ms <= 0) return Promise.resolve();
+  const live = signals.filter(Boolean);
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
-    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
-    const onAbort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    if (live.some(s => s.aborted)) { reject(new DOMException('Aborted', 'AbortError')); return; }
+    const detach = () => live.forEach(s => s.removeEventListener('abort', onAbort));
+    const timer = setTimeout(() => { detach(); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(timer); detach(); reject(new DOMException('Aborted', 'AbortError')); };
+    live.forEach(s => s.addEventListener('abort', onAbort, { once: true }));
   });
 }
 
@@ -329,8 +332,11 @@ export function mergeDetail(source, base, results) {
  * order calls finish in.
  */
 async function runSegments({ source, base, segments, routes, guidance, signal, onProgress, generate, intervalMs, utteranceById,
-  waitFirst, concurrency = 1, admissionRetryMs = ADMISSION_RETRY_MS }) {
-  const admissionDelays = admissionRetryDelays(admissionRetryMs);
+  waitFirst, concurrency = 1, admissionRetryMs = ADMISSION_RETRY_MS, admissionBudgetMs = STALE_ATTEMPT_MS }) {
+  const admissionDelays = admissionRetryDelays(admissionRetryMs, admissionBudgetMs);
+  // Aborted when any call fails, so a worker waiting out a pacing gap or an admission backoff (up to
+  // 30 s) stops waiting at once instead of holding the partial map back.
+  const stopped = new AbortController();
   const queue = segments.map((segment, order) => ({ ...segment, order: String(order).padStart(4, '0') }));
   const results = [];
   const used = [];
@@ -343,13 +349,13 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
   const nextStart = async () => {
     const wait = lastStart + intervalMs - Date.now();
     lastStart = Math.max(Date.now(), lastStart + intervalMs);
-    if (wait > 0) await sleep(wait, signal);
+    if (wait > 0) await sleep(wait, signal, stopped.signal);
   };
   // Wakes idle workers when a call finishes (it may have requeued a retry or two halves).
   const waiters = [];
   const wake = () => { while (waiters.length) waiters.shift()(); };
   const changed = () => new Promise(resolve => { waiters.push(resolve); });
-  const stopWith = error => { failure = failure || error; };
+  const stopWith = error => { failure = failure || error; stopped.abort(); };
 
   async function runOne(segment) {
     const n = ++started;
@@ -379,7 +385,7 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
         const tries = (segment.admissionRetries || 0) + 1, wait = admissionDelays[tries - 1];
         activity(onProgress, 'warn', `${name} was not admitted yet (every slot is busy or another call was starting); retrying in ${seconds(wait)} (try ${tries} of ${admissionDelays.length}).`);
         log('detail admission retry', { ...details, tries, wait });
-        await sleep(wait, signal);
+        try { await sleep(wait, signal, stopped.signal); } catch { if (signal?.aborted) stopWith(new DOMException('Aborted', 'AbortError')); return; }
         queue.unshift({ ...segment, admissionRetries: tries });
         return;
       }
@@ -399,7 +405,7 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
       activity(onProgress, halves ? 'warn' : 'error', halves
         ? `${name} hit the output limit after ${seconds(Date.now() - t0)}; splitting it into two halves and retrying.`
         : `${name} failed after ${seconds(Date.now() - t0)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
-      if (!halves) { failure = failure || error; return; }
+      if (!halves) { stopWith(error); return; }
       queue.unshift(...halves.map((half, k) => ({ ...half, order: `${segment.order}${k ? 'b' : 'a'}` })));
       return;
     }
@@ -466,7 +472,7 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
  */
 export async function runGlanceDetailPipeline({ source, routes, guidance = '', title = '', meetingMetadata = null, mediaRefs = [],
   signal, onProgress, generate = generateOrderedRecordingMap, intervalMs = null, concurrency = null, detail = 'all',
-  maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS, admissionRetryMs = ADMISSION_RETRY_MS }) {
+  maxSegmentWords = DEFAULT_SEGMENT_MAX_WORDS, admissionRetryMs = ADMISSION_RETRY_MS, admissionBudgetMs = STALE_ATTEMPT_MS }) {
   const utterances = createRecordingTranscript(source).document.utterances;
   const utteranceById = new Map(utterances.map(u => [u.id, u]));
   const totalWords = utterances.reduce((s, u) => s + countWords(u.text), 0);
@@ -502,7 +508,7 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   activity(onProgress, 'info', `Detail plan: ${segments.length} topic group${segments.length === 1 ? '' : 's'} of up to ${number(maxSegmentWords)} words, `
     + `${pace.concurrency > 1 ? `up to ${pace.concurrency} at a time, starts ${seconds(pace.intervalMs)} apart (personal key)` : `one at a time, ${seconds(pace.intervalMs)} apart (provider pacing)`}.`);
   const run = await runSegments({ source, base: skeleton, segments, routes, guidance, signal, onProgress, generate,
-    intervalMs: pace.intervalMs, concurrency: pace.concurrency, admissionRetryMs, utteranceById, waitFirst: true });
+    intervalMs: pace.intervalMs, concurrency: pace.concurrency, admissionRetryMs, admissionBudgetMs, utteranceById, waitFirst: true });
   onProgress?.({ phase: 'done', partialBundle: run.bundle, completedSegments: run.segments, totalSegments: run.segments });
   const bundle = withBuilders(run.bundle, run.used);
   return { bundle, json: JSON.stringify(bundle, null, 2), backend: glance.backend, model: glance.model,
