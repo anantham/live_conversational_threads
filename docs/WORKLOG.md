@@ -11213,3 +11213,8 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   with `VITE_SITES_MODE=true` and `false`, 3 passed + 1 skipped each (the real-deploy test skips
   off the public domain); full untagged spec + smoke against local non-Sites, 8 passed + 1 skipped.
 - Not done: the Site's own publish step still has no browser check of the build it ships.
+
+## 2026-11-27 — Sites CI runs on integ/sites-combined
+
+- `.github/workflows/sites-ci.yml` on `integ/sites-combined` triggered only on the Codex Sites branches, so PRs into this branch (e.g. #263) ran no frontend unit tests, Sites lint or Sites build; only Vercel reported.
+- Change: `main` and `integ/sites-combined` added to the `pull_request` and `push` triggers, with the per-commit push concurrency group from PR #258 (same edit as #258 plus this branch), so a later merge with `main` resolves to one trigger list.
