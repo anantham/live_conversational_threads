@@ -556,16 +556,16 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
           : { bundle, correction: null };
     if (!outcome.correction) return;
     setBundle(outcome.bundle);
-    if (!privateMode && !publicId) {
-      recordBoundaryCorrection(outcome.correction);
-      recordQualitySnapshot(outcome.bundle);
-    }
+    if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
+    if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
+    // An unsaved map leaves nothing on this device: no quality-ledger row (it holds the title), and no
+    // learned preferences, whose node titles later imports would otherwise send to the map provider.
+    if (ephemeral) { setLibraryStatus({ state: "memory", message: "Boundary updated in this view only · not saved, not learned" }); return; }
+    recordQualitySnapshot(outcome.bundle);
+    recordBoundaryCorrection(outcome.correction);
     const label = kind === "split"
       ? `Split "${outcome.correction.source_title}" · preference learned`
       : `Linked "${outcome.correction.source_title}" → "${outcome.correction.target_title}" · preference learned`;
-    if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
-    if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
-    if (ephemeral) { setLibraryStatus({ state: "memory", message: label }); return; }
     setLibraryStatus({ state: "saving", message: label });
     void rememberThreadsArtifact(outcome.bundle).then((record) => {
       setLibraryStatus({ state: "saved", message: label, recordId: record.id });
@@ -576,8 +576,8 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     if (!bundle) return;
     const { bundle: updated } = addReactionMarker(bundle, payload);
     setBundle(updated);
-    if (!privateMode && !publicId) recordQualitySnapshot(updated);
     if (privateMode || publicId || ephemeral) return;
+    recordQualitySnapshot(updated);
     void rememberThreadsArtifact(updated).then((record) => {
       setLibraryStatus({ state: "saved", message: "Reaction saved on this device", recordId: record.id });
     }).catch(() => {});
@@ -588,9 +588,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     try {
       const updated = recordUserFlag(bundle, nodeId, kind);
       setBundle(updated);
-      if (!privateMode && !publicId) recordQualitySnapshot(updated);
       const msg = `Flagged node as ${kind}`;
       if (privateMode || publicId || ephemeral) { setLibraryStatus({ state: privateMode ? "private" : publicId ? "public" : "memory", message: msg }); return; }
+      recordQualitySnapshot(updated);
       void rememberThreadsArtifact(updated).then((record) => {
         setLibraryStatus({ state: "saved", message: `${msg} · saved on this device`, recordId: record.id });
       }).catch(() => {});

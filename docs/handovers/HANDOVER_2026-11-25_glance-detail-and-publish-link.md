@@ -5,7 +5,7 @@
   (git dir: the local clone `/private/tmp/lct-sites-anthropic`). **Local only, nothing pushed, nothing deployed.**
 - It is `codex/anthropic-sites` @ `1ee16649` (Antigravity's streaming/live canvas/observability/costs/prompts work)
   **plus 13 commits** (six live-run fixes, integration fixes, unlisted publish links, three review rounds of fixes).
-- Proven: a live run of the 93-minute "Andre Catch up" Gemini Notes PDF on this branch (owner's Anthropic key, Claude
+- Proven: a live run of the owner's 93-minute Gemini Notes PDF on this branch (owner's Anthropic key, Claude
   Sonnet 5.5) → overview + 7 detail calls all accepted first time, 196 validated nodes, 3 threads, every turn covered.
 - **Not done yet:** branches diverged again (below), nothing published live yet, no deploy.
 
@@ -77,7 +77,7 @@ Design record: `docs/adr/ADR-073-glance-detail-laminar-maps.md`.
 - Logs and artifacts from this session (session scratchpad, may be cleared on reboot):
   `/private/tmp/claude-501/-Users-aditya-Documents-Ongoing-Local-code-live-conversational-threads/8e361594-4042-4e33-9b52-1fec50d58952/scratchpad/`
   — `preview-4175.log` (per-call lines for every live run), `review*/` (packets + reviews).
-- Owner's files: `~/Downloads/andre catch up.threads` (639 KiB, final run), `… (shareable).threads` (491 KiB),
+- Owner's files: the owner's final-run `.threads` file in Downloads (639 KiB, final run), `… (shareable).threads` (491 KiB),
   `… (public-safe).threads` (475 KiB, no emails/links/notes; recommended for sharing).
 - macOS denied this session access to `~/Documents` mid-session, so the main checkout
   (`…/code/live_conversational_threads`, branch `deploy/origin-main`) was not inspected at the end.

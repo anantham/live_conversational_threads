@@ -126,8 +126,8 @@ export function detailPacing(routes, intervalMs = null, concurrency = null) {
 
 // What to fix, by the check that refused the previous reply (nested detail has no parent_id field).
 const RETRY_ADVICE = {
-  hierarchy: 'every idea topic_id must be one of the segment_topics ids, copied exactly, or null',
-  required_shape: 'return hierarchy_format detail-nested-v2 with an ideas array and a boundary_notes array',
+  hierarchy: 'every idea topic_id must be one of the segment_topics ids, copied exactly, or null; every topic_chunks topic_id must be one of the segment_topics ids',
+  required_shape: 'return hierarchy_format detail-nested-v2 with ideas, topic_chunks and boundary_notes arrays, and at least one idea or topic chunk',
   node_shape: 'every idea needs id, node_name, summary, topic_id and at least one chunk; every chunk needs id, node_name, summary and source_range',
   node_evidence: 'every chunk source_range must use utterance ids copied exactly from the supplied utterances, with from before to',
   edges: 'return no edges',

@@ -7,12 +7,12 @@ import {
 } from "./spatialLandscapeModel";
 
 const utterances = [
-  { id: "u1", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 0, text: "First visit turn one." },
-  { id: "u2", speaker_id: "s2", speaker_name: "Aditya", timestamp_start: 10, text: "First visit turn two." },
-  { id: "u3", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 20, text: "Short 1-turn tangent." },
-  { id: "u4", speaker_id: "s2", speaker_name: "Aditya", timestamp_start: 30, text: "Back to topic immediately." },
-  { id: "u5", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 40, text: "Another uncited turn." },
-  { id: "u6", speaker_id: "s1", speaker_name: "Andre", timestamp_start: 3065, text: "Third visit at 51:05." },
+  { id: "u1", speaker_id: "s1", speaker_name: "Mirela", timestamp_start: 0, text: "First visit turn one." },
+  { id: "u2", speaker_id: "s2", speaker_name: "Sam", timestamp_start: 10, text: "First visit turn two." },
+  { id: "u3", speaker_id: "s1", speaker_name: "Mirela", timestamp_start: 20, text: "Short 1-turn tangent." },
+  { id: "u4", speaker_id: "s2", speaker_name: "Sam", timestamp_start: 30, text: "Back to topic immediately." },
+  { id: "u5", speaker_id: "s1", speaker_name: "Mirela", timestamp_start: 40, text: "Another uncited turn." },
+  { id: "u6", speaker_id: "s1", speaker_name: "Mirela", timestamp_start: 2400, text: "Third visit at 40:00." },
 ];
 
 describe("spatialLandscapeModel", () => {
@@ -21,15 +21,15 @@ describe("spatialLandscapeModel", () => {
     const node = {
       id: "arc-1",
       semantic_level: 5,
-      node_name: "Co-living",
+      node_name: "Community garden",
       source_ref: { utterance_ids: ["u1", "u2", "u4", "u6"] },
     };
     const visits = computeNodeVisits(node, utterances, idx);
     expect(visits).toHaveLength(3);
-    expect(visits.map((v) => v.label)).toEqual(["00:00", "00:30", "51:05"]);
+    expect(visits.map((v) => v.label)).toEqual(["00:00", "00:30", "40:00"]);
     expect(visits.map((v) => v.turnCount)).toEqual([2, 1, 1]);
     expect(visits[2].startUtteranceId).toBe("u6");
-    expect(visits[2].speaker).toBe("Andre");
+    expect(visits[2].speaker).toBe("Mirela");
   });
 
   it("rolls descendant citations up into source visits without changing a node's own visits", () => {
@@ -110,7 +110,7 @@ describe("spatialLandscapeModel", () => {
         cruxes: [],
       },
     };
-    const landscape = buildSpatialLandscape(nodes, bundle, { s1: "Andre Vacha" });
+    const landscape = buildSpatialLandscape(nodes, bundle, { s1: "Mirela Vacha" });
     expect(landscape.lenses.audit.status).toBe("ready");
     expect(landscape.lenses.audit.count).toBe(1);
     const rolled = landscape.lenses.audit.rolled.get("arc-1");
@@ -119,9 +119,9 @@ describe("spatialLandscapeModel", () => {
     expect(rolled[0].provenance).toBe("map_vs_source");
     expect(rolled[0].quote).toMatchObject({
       utteranceId: "u6",
-      speaker: "Andre Vacha",
-      text: "Third visit at 51:05.",
-      label: "51:05",
+      speaker: "Mirela Vacha",
+      text: "Third visit at 40:00.",
+      label: "40:00",
     });
 
     // Explicitly distinguishes analyzed-with-0 ("none") vs unrun ("not_analyzed")

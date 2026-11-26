@@ -262,6 +262,40 @@ describe('nested detail replies', () => {
     }
   });
 
+  // Detail stopping rule: a chunk that stands on its own files directly under its topic, with no wrapper idea.
+  it('files a topic chunk directly under its segment topic, alongside ideas', () => {
+    const reply = JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [],
+      ideas: [{ id: 'boats', node_name: 'Boats', summary: '', topic_id: 'sea', chunks: [chunk(1, 2)] }],
+      topic_chunks: [{ id: 'cut~it', node_name: 'Cut the budget', summary: '', source_range: { from: u(3), to: u(3) }, topic_id: 'money' }] });
+    const result = recordingThreadsFromGeneratedText(segment, reply, { task: 'detail', topics });
+    const byId = new Map(result.bundle.graph_data.map(n => [n.id, n]));
+    expect(byId.get('1:cut-it').parent_id).toBe('3:money');
+    expect(byId.get('3:money').children_ids).toContain('1:cut-it');
+    expect(result.coverage).toMatchObject({ chunks: 2, uncoveredTurns: 0 });
+    const onlyTopicChunks = JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], ideas: [],
+      topic_chunks: [{ id: 'all', node_name: 'All', summary: '', source_range: { from: u(1), to: u(3) }, topic_id: 'sea' }] });
+    expect(recordingThreadsFromGeneratedText(segment, onlyTopicChunks, { task: 'detail', topics }).coverage).toMatchObject({ chunks: 1 });
+  });
+
+  it('never emits two nodes with one id when an idea is named like another idea\'s chunk', () => {
+    const reply = JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], topic_chunks: [],
+      ideas: [{ id: 'a', node_name: 'A', summary: '', topic_id: 'sea', chunks: [chunk(1, 1)] },
+        { id: 'a~1', node_name: 'B', summary: '', topic_id: 'sea', chunks: [chunk(2, 3)] }] });
+    const ids = recordingThreadsFromGeneratedText(segment, reply, { task: 'detail', topics }).bundle.graph_data.map(n => n.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('refuses a topic chunk without a segment topic, and a reply with neither ideas nor topic chunks', () => {
+    const withTopicChunks = topicChunks => JSON.stringify({ hierarchy_format: 'detail-nested-v2', boundary_notes: [], ideas: [], topic_chunks: topicChunks });
+    const loose = topicId => ({ id: 'x', node_name: 'X', summary: '', source_range: { from: u(1), to: u(3) }, topic_id: topicId });
+    expect(() => recordingThreadsFromGeneratedText(segment, withTopicChunks([loose('elsewhere')]), { task: 'detail', topics }))
+      .toThrow(expect.objectContaining({ validationStage: 'hierarchy' }));
+    for (const topicChunks of [[], [loose(null)]]) {
+      expect(() => recordingThreadsFromGeneratedText(segment, withTopicChunks(topicChunks), { task: 'detail', topics }))
+        .toThrow(expect.objectContaining({ validationStage: 'required_shape' }));
+    }
+  });
+
   // A 429 admission refusal spends nothing, so the segment waits and is requeued instead of stopping the run.
   it('requeues a detail segment refused at admission and completes the map', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
