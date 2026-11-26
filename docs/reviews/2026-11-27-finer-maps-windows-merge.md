@@ -13,9 +13,18 @@ Two runs with all three gave 21 and 22 chunks (median 155 words, range 25–417)
 - smaller utterances alone left a single call as coarse;
 - windows without a merge pass broke speaker names and repeated the arc.
 
-The design never separated "map finely" from the 60-word split. Windows + merge was not run at 60 words without "map finely", and a single call was never run with it. So how much of the gain each change gives is unknown.
+The design never separated "map finely" from the 60-word split. Windows + merge was not run at 60 words without "map finely", and a single call was never run with it. So how much of the gain each change gives was unknown. The follow-up filled both cells. Neither change alone took windows + merge past 13–18 chunks (13 and 15 at 60 words without "map finely"; 13–18 with it at today's split). Together they gave 21 and 22.
 
-This measures `main`'s single-call code path, from a local harness. The live Site's source branch already generates long imports in two stages (ADR-073, glance then detail), and that was not measured. The proposal is to measure that pipeline on this transcript, not to build windows plus a merge.
+This first part measures `main`'s single-call code path, from a local harness.
+
+**Follow-up (same day, see "Follow-up: the live pipeline and the missing cells"):**
+
+- **The live branch's own pipeline is already finer than one call and cheaper.** That pipeline is ADR-073 glance → detail, on `integ/sites-combined`, run with no harness repairs. At its defaults it gave 20, 17 and 12 chunks for $0.010–0.012 per map.
+- **Smaller utterances and smaller segments did not make it clearly finer.** They did remove the filler chunks and the missing introduction that appeared at the defaults.
+- **The two missing cells were filled.** Without "map finely", windows + merge at 60 words gave 15 and 13 chunks. With it at today's split it gave 13–18. The 21–22 needed both changes together. In a single call, "map finely" gave 9, 10 and then a degenerate one-chunk-per-utterance map.
+- **The glance often writes more than one arc:** 2 or 5 arcs in 5 of 11 glance-detail maps. ADR-073 allows several arcs, so whether that is a defect is a product question.
+
+The revised proposal is a small detail-prompt test, not an architecture change.
 
 ## Method
 
@@ -71,7 +80,7 @@ Total billed for this study: **$0.47**, inside the standing $1 per-task test bud
 **Smaller utterances alone did nothing for one call.** At 60 and 40 words a single call still drew 8–10 chunks, each covering more of the smaller utterances. Output grew (up to 9,041 tokens) and so did latency. The model's own grouping set the grain, not the utterance size.
 
 **Plain windows gave finer maps but broke the map's structure:**
-- Speaker names were lost after the first window. Windows 2–4 never saw the introduction. 3 and 6 summaries per run say "the speaker" instead of the guest's name.
+- Speaker names were lost after the first window. Windows 2–4 never saw the introduction. 3 and 5 summaries per run say "the speaker" instead of the guest's name (counted as "the speaker" not followed by "s").
 - Each window wrote its own arc, so each run had four near-identical "personal background" arcs.
 - The same topic appeared on both sides of a boundary: the move to programming ends window 3 and starts window 4.
 - Grain varied widely: the same window gave 2 chunks in one run and 9 in the next.
@@ -99,35 +108,74 @@ Total billed for this study: **$0.47**, inside the standing $1 per-task test bud
 
 The ADR rejected fixed windows because "the top tiers (arcs, themes) described windows, not the conversation". Plain windows here showed the same thing. What carries over:
 
-- **The utterance floor applies to detail calls.** `segmentSource` sends a detail call the bundle's own utterances, one token each, and maps the reply back by position. A detail chunk can therefore be no smaller than a stored utterance. The finer chunks here needed a 60-word split (together with windows, merge and "map finely"). Whether detail calls would gain the same way is untested.
+- **The utterance floor applies to detail calls.** `segmentSource` sends a detail call the bundle's own utterances, one token each, and maps the reply back by position. A detail chunk can therefore be no smaller than a stored utterance. The finer chunks here needed a 60-word split (together with windows, merge and "map finely"). The follow-up tested this: at a 60-word split, glance → detail was not clearly finer (13–17 chunks against 12–20).
 - **On this transcript, detail is close to a single call.** At 3,492 words and a 2,800-word budget, planSegments makes one or two detail segments. The windows here were about 870 words. A fair test of whether glance-detail can be as fine needs a smaller segment budget as well as the default.
-- **Names in detail calls are untested.** Here, names survived because each window got a note naming the people. A detail call gets segment topics (id, name, summary), and `segmentSource` labels each turn `turn-N`, so "the model never sees speakers". Whether detail summaries drift to "the speaker" is worth counting. The ADR does not report it either way.
+- **Names in detail calls.** Here, names survived because each window got a note naming the people. A detail call gets only segment topics (id, name, summary), and `segmentSource` labels each turn `turn-N`, so "the model never sees speakers". In the follow-up, names held anyway: 1 "the speaker" summary across 11 glance-detail maps. A likely reason is that the topic names and summaries passed to each detail call already name the guest; that was not checked.
 - **Bottom-up merging did not join topics across boundaries.** ADR-073 decides topics before detail. That should avoid the problem when a topic fits in one segment. A topic split by turns across segments is not covered by that argument. Neither case is measured here.
 
 **Changing the utterance split is a transcript decision, not a generation setting.** Maps cite utterance ids and keep `source_excerpt` empty, so a map is only meaningful against the utterances it cited. Detail maps back to stored utterances by position. A finer split therefore has to become the stored transcript's split. `createRecordingTranscript` builds utterances for live recordings, saved files, glance and detail alike, and decides ids only from tokens already seen. Changing the constants changes ids for any transcript rebuilt from its tokens. Whether any saved artifact is rebuilt that way was not checked. The safe options are a finer split for new recordings and imports only, or a recorded split version per transcript.
 
 Pacing, from the code: server-key routes admit one attempt per 10 s with at most two in flight (`openRouterPolicy.js`). Detail calls on server-key routes run one at a time, 10.5 s apart (`detailPacing`). On personal-key routes they run up to three at once, 1.6 s apart, under the Worker's personal pacing (six in flight, 0.5 s guard). Windows plus merge here was six calls, measured without any admission limit.
 
-## Proposal
+## Follow-up: the live pipeline and the missing cells (2026-11-27)
 
-Do not build windows plus merge. Measure the pipeline the Site's branch already has, and fill in the cells this study left out.
+The owner approved the measurement proposed in the first version of this note.
 
-1. **Run glance-detail on this transcript** with the same validator, and no harness repairs:
-   - at today's split and at a 60-word split;
-   - with the default 2,800-word segments and with segments of about 900 words;
-   - 3 runs per cell to start.
+### Method
 
-   Record per map: chunks with median and range; how many chunks are one utterance; tier counts and single-child counts; summaries saying "the speaker"; whether topics hold across segment boundaries; valid rate; wall time without admission; and billed cost with cached tokens logged.
-2. **Fill in the missing cells** in the same batch: windows + merge at 60 words without "map finely", and one call with "map finely" at today's split. This separates the prompt from the split.
-3. **If smaller utterances matter**, decide how transcripts adopt them: for new recordings and imports only, or with a stored split version. This is a product decision because it changes utterance ids.
+- **Glance → detail** is `runGlanceDetailPipeline` from `integ/sites-combined` e5f2c74c, bundled with esbuild and run unchanged: its prompts, schemas, segment planning, retry and halving rules, merge and placeholders. Only the transport was replaced. The `generate` function builds each request with the branch's own `buildOpenRouterGenerationRequest` (task `skeleton` or `detail`). It calls OpenRouter on the production route with the Worker's token-cap rule (16,384 when a call's source spans more than 5 minutes, else 8,192) and validates with the branch's own `recordingThreadsFromOpenRouterResponse`. There are no harness repairs.
+- **Pacing:** detail calls ran under the personal-key setting, up to three at once with starts 1.6 s apart. Server-key routes run them one at a time, 10.5 s apart. From the code, that would add roughly 21 s with two segments and 50 s with five; this was not measured.
+- **Grid:** the same 20-minute source, at today's split and the 60-word split, with 2,800-word segments (the default) and 900-word segments, 3 runs per cell. Cached tokens were logged.
+- **The two missing cells** used the first study's harnesses: windows + merge at 60 words without "map finely" (2 runs), and one call with "map finely" at today's split (3 runs, with the sentence reworded for a whole conversation).
+- **Counting:**
+  - "Filler chunks" are chunks of 10 words or fewer.
+  - The pipeline never drops a turn silently, and it uses placeholders at two levels:
+    - a placeholder **topic**, when the glance leaves turns out of every topic (detail may still turn those turns into ordinary chunks);
+    - placeholder **chunks**, when a detail call leaves turns unfiled.
 
-Expected cost for steps 1–2 is about $0.30–0.50, inside the weekly test budget. The only decision this needs now is go or no-go on that spend.
+    "Placeholder turns" in the table counts turns that are only in placeholder chunks.
+  - "The speaker" counts summaries with that phrase not followed by "s".
+
+### Results
+
+| Approach | Split / segment | Valid | Seconds | Billed per map | Chunks | Median chunk (min–max) | Filler chunks | Placeholder turns | "The speaker" |
+|---|---|---|---|---|---|---|---|---|---|
+| Glance → detail | 150 w / 2,800 | 3/3 | 12.0, 13.3, 10.1 | $0.010–0.012 | 20, 17, 12 | 136 (2–789), 162 (2–533), 251 (2–805) w | 4, 3, 1 | 0, 2, 1 | 0, 0, 0 |
+| Glance → detail | 150 w / 900 | 3/3 | 19.5, 14.7, 14.9 | $0.011–0.014 | 16, 16, 9 | 154, 199, 336 w | 0, 0, 0 | 1, 0, 0 | 0, 0, 1 |
+| Glance → detail | 60 w / 2,800 | 3/3 | 14.0, 15.3, 15.9 | $0.013 | 17, 15, 13 | 209, 197, 256 w | 0, 0, 0 | 1, 3, 0 | 0, 0, 0 |
+| Glance → detail | 60 w / 900 | 2/3 | 16.4, 19.1 | $0.015, $0.013 | 17, 15 | 187, 155 w | 0, 0 | 1, 0 | 0, 0 |
+| Windows + merge, no "map finely" | 60 w | 2/2 | 18.4, 14.1 | $0.026, $0.024 | 15, 13 | 197 (67–639), 166 (118–643) w | 0, 0 | 0, 0 | 0, 0 |
+| One call, "map finely" | 150 w | 3/3 | 11.1, 9.9, 20.4 | $0.010–0.023 | 9, 10, 41 | 306, 271, 40 w | 0, 0, 8 | 0, 0, 0 | 0, 0, 0 |
+
+The rejected glance-detail run failed at the glance (`hierarchy`, 6.0 s, $0.003). The pipeline does not re-ask the glance, so that map failed whole. Every detail call in the 11 valid maps was accepted first time. Billed cost for this follow-up: **$0.25**. The study total is now **$0.72**.
+
+### What it shows (3 runs per cell; one transcript)
+
+- **At its defaults, glance → detail is finer than one call and cheaper.** It made 12–20 chunks against 7 and 11, at $0.010–0.012 against $0.014–0.019 billed. Leaving out filler chunks (10 words or fewer), that is 11–16 against 7 and 11. It was about as fine as windows + merge at today's split (10–18), at half the cost and without harness repairs. Names held in every glance-detail map but one, which has a single "the speaker" summary.
+- **Smaller utterances and smaller segments did not make it clearly finer:** 13–17 chunks at 60 words, 9–16 with 900-word segments. The glances wrote 3–7 topics (median 4), often as broad as the intro (about 350 words), childhood (about 1,650) and programming and AI safety (about 1,500).
+- **Two quality defects:**
+  - **Filler chunks** (a detail-call defect) appeared only at the defaults: 1–4 per map, such as "Awesome." and "Right." filed as their own chunks, against the prompt's fold rule. With 3 runs per cell this is suggestive, and the data cannot say whether the split or the segment size is responsible.
+  - **A missing introduction** is a glance defect. The glance runs before segment planning and never sees the segment size, so the 2,800- and 900-word cells share one glance request at each split. At today's split the glance left the introduction out of every topic in 2 of 6 runs; at 60 words, in 0 of 5. Detail then still mapped those turns, but under a placeholder topic.
+
+  Placeholder chunks holding 1–3 turns appeared at every setting (in 6 of 11 maps).
+- **"Map finely" and the 60-word split worked only together in windows + merge.** At 60 words without the sentence: 15 and 13 chunks. With the sentence at today's split: 16, 18 and 13, held back by long single-utterance chunks. With both: 21 and 22. In a single call the sentence was unstable: 9, 10, then 41 chunks with exactly one per utterance (8 of them filler), the same degenerate style the 2026-11-03 study saw in 6 of 28 maps.
+
+## Proposal (revised after the follow-up)
+
+Keep ADR-073 glance → detail; build neither windows plus merge nor a different utterance split now.
+
+1. **Test one detail-prompt change at the defaults.** Add a finer-grain instruction to `DETAIL_PROMPT` that keeps the fold rule explicit, for example "start a new chunk whenever the point, story or question changes; fold one-line acknowledgements into a neighbouring chunk". Run 5 maps at today's split with 2,800-word segments and compare chunk count, filler chunks and placeholder turns with the table above. About $0.06.
+2. **Look at why the glance can miss the introduction** (2 of 6 glances at today's split). It may be a skeleton-prompt fix (every utterance belongs to a topic, including an opening) or a planning fix. Either way it is a separate small change, with a regression test built from these maps.
+3. **Leave the utterance split alone for now.** It did not clearly help glance → detail, and changing it changes utterance ids (see above). Revisit only if step 1 still leaves long single-utterance chunks.
+4. **Segment size** (900 vs 2,800 words) is a cost-and-time trade, not a grain lever, on this evidence. Smaller segments mean more detail calls: about 30 s more per map on server-key pacing. Keep the default unless the filler chunks turn out to depend on it. (The missing introduction cannot: it happens in the glance, before segments exist.)
+
+The only spend this needs is step 1, about $0.06.
 
 ## Limits
 
 - One transcript, a two-person podcast that is mostly long answers from the guest. Conversations with short turns may already be finer with one call.
 - Two or three runs per setting. Chunk counts are examples, not estimates of a distribution.
-- Three changes were combined in the best runs, and their effects were not separated.
+- The best windows + merge runs combined three changes. The follow-up's two extra cells show that the prompt and the split mattered together, but with 2–3 runs per cell the size of each effect is not estimated.
 - Windows + merge maps were validated after harness repairs. Single calls were not repaired.
 - Window boundaries were cut by time (every 5 minutes), not by topic.
 - Quality was judged by counts and by reading some maps against the transcript, not by a blind comparison or a second reader.
@@ -152,4 +200,11 @@ Gemini 4 Argon (High) via Antigravity (`agy --mode plan --model gemini-4-argon-h
 
 Round 2 (packet sha256 b189b9dd…): GO. It confirmed all round-1 findings fixed and raised two low items, both adopted: the run order in the first table row, and counting dropped thread steps (none) instead of calling them unknown.
 
-Also fixed: two counts from the first draft (13 of 18 chunks, not 15; "the speaker" in 3 and 6 summaries per plain-window run, not up to 10).
+Round 3 (packet sha256 3b4971fe…), on the added follow-up: NO-GO, all findings adopted:
+- the missing introduction is a glance defect, independent of segment size;
+- the glance wrote 2 or 5 arcs in 5 of 11 maps;
+- the stale Limits line, and the prompt-and-split interaction;
+- placeholder topic vs placeholder chunks;
+- the chunk range without filler chunks.
+
+Also fixed: two counts from the first draft (13 of 18 chunks, not 15; "the speaker" in 3 and 5 summaries per plain-window run, not up to 10; a looser count that also matched "the speakers" gave 3 and 6).
