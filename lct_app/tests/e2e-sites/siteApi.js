@@ -78,9 +78,10 @@ export async function recordAppearances(page, watch) {
     window.__lctSeen = seen;
     const start = performance.now();
     const check = () => {
-      const text = document.body?.innerText || '';
+      let text; // read only when a text watch needs it: innerText forces a layout
       for (const item of list) {
         if (seen.some(entry => entry.name === item.name)) continue;
+        if (item.text) text ??= document.body?.innerText || '';
         if ((item.text && text.includes(item.text)) || (item.selector && document.querySelector(item.selector))) {
           seen.push({ name: item.name, atMs: Math.round(performance.now() - start) });
         }

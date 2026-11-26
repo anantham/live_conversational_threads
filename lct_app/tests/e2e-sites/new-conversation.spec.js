@@ -11,9 +11,9 @@ import { health, mockSiteApi, recordAppearances } from './siteApi.js';
 const dot = button => button.locator('span[aria-hidden="true"]').last();
 
 test('a connection check that answers within two seconds shows no status block', async ({ page }) => {
-  // 1.5 s: past the one-second tick (catches a threshold lowered to 1 s) and under two seconds,
-  // with half a second of margin for slow CI.
-  const slow = { body: { enabled: true, audience: 'public', max_session_seconds: 300, synthetic_only: false, configured: true }, delayMs: 1500 };
+  // 1.25 s: past the one-second tick (catches a threshold lowered to 1 s) and under two seconds,
+  // with about 0.75 s of margin for slow CI.
+  const slow = { body: { enabled: true, audience: 'public', max_session_seconds: 300, synthetic_only: false, configured: true }, delayMs: 1250 };
   const site = await mockSiteApi(page, { '/api/cloud/soniox/status': slow, '/api/cloud/files/status': slow });
   const seen = await recordAppearances(page, [
     { name: 'status block', text: 'Checking connections' },

@@ -25,7 +25,7 @@ Nothing reaches a provider, spends a generation attempt or signs anyone in.
 Things that must never appear, even briefly, are watched with `recordAppearances` (a
 MutationObserver from first paint), not a retrying assertion: `toHaveCount(0)` waits for a flashing
 element to go away and so passes anyway (found while red-proving). The slow-check test delays the
-status answers 1.5 s (past the 1 s tick, under the 2 s threshold) and keeps watching until 0.7 s
+status answers 1.25 s (past the 1 s tick, under the 2 s threshold) and keeps watching until 0.7 s
 after they answer.
 
 Red-proved on 2026-11-26 by removing or weakening each guarded fix (11 mutations, including a
