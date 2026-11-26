@@ -2,24 +2,25 @@ name: Sites CI
 
 # Checks for the ChatGPT Sites build, which is production (threads.adityaarpitha.com). It is the only
 # workflow that runs the frontend unit tests, the Sites lint and the Sites build. The Sites code has
-# lived on `main` since PR #238 (2026-11-09); the Codex Sites branches stay listed in case they are
-# used again. Before `main` was added here, 16 PRs reached main without these checks.
+# lived on `main` since PR #238 (2026-11-09) and is integrated on `integ/sites-combined`; the Codex
+# Sites branches stay listed in case they are used again.
 #
 # No path filters on purpose: the run takes a few minutes, and a path-filtered check that is later
 # made required stays "expected" forever on PRs that do not touch those paths.
 
 on:
   pull_request:
-    branches: [main, codex/lct-inference-choice, codex/lct-sites-serverless]
+    branches: [main, integ/sites-combined, codex/lct-inference-choice, codex/lct-sites-serverless]
   push:
-    branches: [main, codex/lct-inference-choice, codex/lct-sites-serverless]
+    branches: [main, integ/sites-combined, codex/lct-inference-choice, codex/lct-sites-serverless]
   workflow_dispatch:
 
 concurrency:
-  # A newer push to a PR replaces its older run. Pushes to a branch are grouped per commit, so every
-  # merge to main keeps its own result (a shared group would also drop queued runs, not just cancel).
-  group: sites-ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: true
+  # A newer push to a PR replaces its older run. Every other run (a push to a branch, a manual run)
+  # gets its own group per event, branch and commit and is never cancelled, so each merge keeps its
+  # own result even when the same commit lands on two branches at once.
+  group: sites-ci-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}-{2}', github.event_name, github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
