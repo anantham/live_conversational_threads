@@ -1,28 +1,15 @@
 // Test intent:
-// - Posts audio files directly from the browser to the owner's HTTPS *.ts.net M5 STT server
+// - Posts audio files directly from the browser to the owner's HTTPS tailnet M5 STT server
 //   with diarization enabled and parses timed speaker segments into canonical finalTokens.
-// - Rejects non-HTTPS or non-tailnet URLs.
+// - Rejects non-HTTPS URLs and hosts outside the build's own tailnet (services/tailnetEndpoint.js).
 // - Marks network/unreachable errors with canTryNext=true so Sites falls back cleanly to Soniox
 //   when the browser is off-tailnet.
 
 import { importFileType, importWait } from './audioImportFile.js';
+import { DEFAULT_TAILNET_STT_URL, isAllowedTailnetUrl, normalizeTailnetUrl } from '../tailnetEndpoint.js';
 
-export const DEFAULT_M5_TAILNET_URL = 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions';
-
-export function isAllowedTailnetUrl(value) {
-  if (typeof value !== 'string' || !value.trim()) return false;
-  try {
-    const parsed = new URL(value.trim());
-    return (
-      parsed.protocol === 'https:' &&
-      !parsed.username &&
-      !parsed.password &&
-      parsed.hostname.toLowerCase().endsWith('.ts.net')
-    );
-  } catch {
-    return false;
-  }
-}
+export { isAllowedTailnetUrl };
+export const DEFAULT_M5_TAILNET_URL = DEFAULT_TAILNET_STT_URL;
 
 export function parseM5Segments(payload) {
   const rawSegments = Array.isArray(payload?.segments) ? payload.segments : [];
@@ -48,7 +35,7 @@ export function parseM5Segments(payload) {
 export class M5TailnetFileSession {
   constructor({ url = DEFAULT_M5_TAILNET_URL, token = '', diarize = true, onStage, onAudio, onTranscript } = {}) {
     Object.assign(this, {
-      url: isAllowedTailnetUrl(url) ? url.trim() : DEFAULT_M5_TAILNET_URL,
+      url: normalizeTailnetUrl(url) || DEFAULT_M5_TAILNET_URL,
       token: typeof token === 'string' ? token.trim() : '',
       diarize,
       onStage,
@@ -78,7 +65,8 @@ export class M5TailnetFileSession {
       let response;
       try {
         response = await importWait(
-          fetch(this.url, { method: 'POST', body: form, headers, signal }),
+          // A redirect could forward the POST body off the tailnet; refuse to follow one.
+          fetch(this.url, { method: 'POST', body: form, headers, signal, redirect: 'error' }),
           signal,
           180_000,
         );

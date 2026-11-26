@@ -1,3 +1,6 @@
+import { normalizeTailnetUrl } from '../tailnetEndpoint.js';
+
+
 export const MAP_PROVIDER_IDS = ['openrouter', 'gemini', 'anthropic'];
 export const MAX_MAP_ROUTES = 6;
 export const SPEECH_PROVIDERS = {
@@ -60,8 +63,8 @@ export function normalizeProviderPreferences(value) {
   }));
   const chainProvider = mapChain.find(entry => entry.backend === 'openrouter' && entry.provider)?.provider || '';
   const openrouterProvider = chainProvider || (typeof value?.openrouterProvider === 'string' && providerPattern.test(value.openrouterProvider) ? value.openrouterProvider : '');
-  const m5TailnetUrl = typeof value?.m5TailnetUrl === 'string' && value.m5TailnetUrl.trim().startsWith('https://') && value.m5TailnetUrl.trim().length <= 300
-    ? value.m5TailnetUrl.trim() : '';
+  // normalizeTailnetUrl owns the length cap (on the canonical href), as the settings field does.
+  const m5TailnetUrl = typeof value?.m5TailnetUrl === 'string' ? normalizeTailnetUrl(value.m5TailnetUrl) || '' : '';
   return {
     speech: normalizeOrder(value?.speech, Object.keys(SPEECH_PROVIDERS), 'soniox'),
     map,

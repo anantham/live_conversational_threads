@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Pin the build default so these tests do not depend on a developer's VITE_STT_EDGE_URL.
+vi.hoisted(() => { vi.stubEnv('VITE_STT_EDGE_URL', 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions'); });
 
 import { readEdgeConfig } from "./edgeConfig";
 
@@ -40,9 +43,9 @@ describe("readEdgeConfig", () => {
     expect(cfg.includeEmbeddings).toBe(false);
   });
 
-  it("accepts an https *.ts.net edge_url override and persists it", () => {
+  it("accepts an https edge_url on the build's own tailnet and persists it", () => {
     const store = memStorage();
-    const u = "https://other-host.tailABCD.ts.net:5443/v1/audio/transcriptions";
+    const u = "https://other-host.tail4741ad.ts.net:5443/v1/audio/transcriptions";
     expect(readEdgeConfig(`?edge_url=${u}`, store).url).toBe(u);
     expect(store.getItem("lct_stt_edge_url")).toBe(u);
     expect(readEdgeConfig("", store).url).toBe(u); // sticks
@@ -58,6 +61,12 @@ describe("readEdgeConfig", () => {
     expect(readEdgeConfig("?edge_url=https://evil.ts.net.attacker.com/v1", memStorage()).url).toBe(def);
     // a previously-stored bad value is also ignored
     expect(readEdgeConfig("", memStorage({ lct_stt_edge_url: "https://evil.example/v1" })).url).toBe(def);
+    // another tailnet's machine (e.g. a public Tailscale Funnel name) is not ours
+    const funnel = "https://attacker-box.tailEVIL.ts.net/v1/audio/transcriptions";
+    const store = memStorage();
+    expect(readEdgeConfig(`?edge_url=${funnel}`, store).url).toBe(def);
+    expect(store.getItem("lct_stt_edge_url")).toBeNull();
+    expect(readEdgeConfig("", memStorage({ lct_stt_edge_url: funnel })).url).toBe(def);
   });
 
   it("reads an optional ?edge_token (default empty)", () => {

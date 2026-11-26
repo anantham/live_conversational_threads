@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Pin the build default so these tests do not depend on a developer's VITE_STT_EDGE_URL.
+vi.hoisted(() => { vi.stubEnv('VITE_STT_EDGE_URL', 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions'); });
 import {
   DEFAULT_M5_TAILNET_URL,
   isAllowedTailnetUrl,
@@ -17,6 +20,7 @@ describe('m5TailnetFileSession', () => {
     expect(isAllowedTailnetUrl('http://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions')).toBe(false);
     expect(isAllowedTailnetUrl('https://evil.example.com/v1/audio/transcriptions')).toBe(false);
     expect(isAllowedTailnetUrl('https://user:pass@adityas-macbook-pro.tail4741ad.ts.net/v1')).toBe(false);
+    expect(isAllowedTailnetUrl('https://attacker-box.tailEVIL.ts.net/v1/audio/transcriptions')).toBe(false);
   });
 
   it('parses diarized M5 segments into timed finalTokens', () => {
