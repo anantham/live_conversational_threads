@@ -50,9 +50,9 @@ describe("Sites public shell", () => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     expect(container.querySelector("#site-access")).not.toBeNull();
-    // The panel waits to be asked; the compact control and the disclosure link stay visible.
+    // The panel waits to be asked; only the compact control shows, with no Privacy link beside it.
     expect(container.querySelector("#site-access button")?.textContent).toBe("Account");
-    expect(container.querySelector('#site-access a[href="/privacy"]')).not.toBeNull();
+    expect(container.querySelector('#site-access a[href="/privacy"]')).toBeNull();
     expect(fetch).toHaveBeenCalledWith("/api/auth/session", expect.any(Object));
   });
 
@@ -61,7 +61,7 @@ describe("Sites public shell", () => {
     await act(async () => root.render(<App />));
     expect(container.textContent).toContain("Public route");
     expect(container.querySelector("#site-access button")?.textContent).toBe("Account");
-    expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy");
+    expect(container.querySelector('a[href="/privacy"]')).toBeNull();
     expect(container.textContent).not.toContain("Enter your API key");
     expect(providerKeys).toContain("");
     expect(apiFetch).not.toHaveBeenCalled();

@@ -5,7 +5,7 @@ const circle = 'flex h-14 w-14 items-center justify-center rounded-full transiti
 const caption = 'mt-1 text-[10px] font-semibold uppercase tracking-wide select-none';
 
 export default function CloudRecordingToolbar({
-  active, supported, live, busy, transcribe, stage, stopRef, resumeRef, onStart, onStop, onCancel, onPause, onResume,
+  active, supported, live, busy, transcribe, stage, stopRef, resumeRef, onStart, onStop, onPause, onResume,
 }) {
   return (
     <section aria-label="Recording controls" data-stage={stage || undefined} className="flex min-w-0 items-center justify-end gap-3 sm:gap-4">
@@ -27,10 +27,6 @@ export default function CloudRecordingToolbar({
             </button>
             <span aria-hidden="true" className={`${caption} text-slate-700`}>Stop</span>
           </div>
-          <button type="button" onClick={onCancel}
-            className="min-h-11 shrink-0 rounded-lg border border-slate-300 px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800">
-            Cancel session
-          </button>
         </>
       ) : (
         <>
@@ -61,5 +57,4 @@ CloudRecordingToolbar.propTypes = {
   onStop: PropTypes.func.isRequired,
   onPause: PropTypes.func,
   onResume: PropTypes.func,
-  onCancel: PropTypes.func.isRequired,
 };
