@@ -11105,3 +11105,8 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - Result: at its defaults glance → detail gave 12–20 chunks for $0.010–0.012, finer and cheaper than one call; smaller utterances or segments did not make it clearly finer. Defects: filler chunks only at the defaults, and the glance missed the introduction in 2 of 6 runs at today's split. "Map finely" and the 60-word split worked only together in windows + merge.
 - Note revised: follow-up section and a new proposal (one detail-prompt test, about $0.06; look at the glance's missed introduction; keep the utterance split).
 - Review: Gemini 4 Argon round 3 NO-GO, all five findings adopted. Round 4 (checking those fixes) not run: Antigravity quota reached (resets about 03:23 IST), and Grok returned 402 (usage balance exhausted). Claude cannot serve as the independent reviewer of a Claude-authored note.
+
+## 2026-11-27 02:00 IST — Finer-maps detail-prompt test (same branch)
+- Added one "map finely" sentence after the fold rule in `DETAIL_PROMPT` (scratch copy of `integ/sites-combined` e5f2c74c only; no repo code changed) and ran 5 glance-detail maps at the defaults. 4 valid (one glance rejected). Non-filler chunks 15–26 vs 11–16 at the defaults, fewer chunks over 300 words; filler chunks not fixed (0, 5, 1, 1); name loss in 2 maps (1 and 3 summaries). $0.055 billed (study total $0.78; owner approved).
+- Note's proposal revised: do not ship the sentence as tested; owner to choose a narrower fold-rule prompt, a deterministic fold, or the defaults; glance fixes (missed introduction 3 of 10; re-ask a refused glance, 2 of 17 failed whole maps).
+- Gemini round 4 still pending (Antigravity quota resets about 03:23 IST).

@@ -24,7 +24,7 @@ This first part measures `main`'s single-call code path, from a local harness.
 - **The two missing cells were filled.** Without "map finely", windows + merge at 60 words gave 15 and 13 chunks. With it at today's split it gave 13–18. The 21–22 needed both changes together. In a single call, "map finely" gave 9, 10 and then a degenerate one-chunk-per-utterance map.
 - **The glance often writes more than one arc:** 2 or 5 arcs in 5 of 11 glance-detail maps. ADR-073 allows several arcs, so whether that is a defect is a product question.
 
-The revised proposal is a small detail-prompt test, not an architecture change.
+A detail-prompt test that followed made maps somewhat finer (15–26 non-filler chunks against 11–16 at the defaults) but did not fix the filler chunks, and one map lost the guest's name. The revised proposal keeps glance → detail and leaves the next lever to the owner. The options are a narrower fold-rule prompt, a deterministic fold of acknowledgement chunks, or the defaults, plus two glance fixes.
 
 ## Method
 
@@ -160,16 +160,42 @@ The rejected glance-detail run failed at the glance (`hierarchy`, 6.0 s, $0.003)
   Placeholder chunks holding 1–3 turns appeared at every setting (in 6 of 11 maps).
 - **"Map finely" and the 60-word split worked only together in windows + merge.** At 60 words without the sentence: 15 and 13 chunks. With the sentence at today's split: 16, 18 and 13, held back by long single-utterance chunks. With both: 21 and 22. In a single call the sentence was unstable: 9, 10, then 41 chunks with exactly one per utterance (8 of them filler), the same degenerate style the 2026-11-03 study saw in 6 of 28 maps.
 
-## Proposal (revised after the follow-up)
+## Detail-prompt test (2026-11-27)
+
+The owner approved step 1 of the proposal that follows. `DETAIL_PROMPT` already says to fold short acknowledgements into a neighbouring chunk, so the filler chunks above happened despite an existing rule. The test added one sentence after that rule and changed nothing else:
+
+> Map finely: start a new chunk whenever the point, story or question changes, so a long answer that covers several moments becomes several chunks. A one-line acknowledgement or prompt (for example "Right." or "Awesome.") joins the neighbouring chunk rather than standing alone.
+
+It ran 5 maps at the defaults (today's split, 2,800-word segments) with the same harness, and 4 were valid. The fifth failed at the glance (`hierarchy`, 2.5 s, $0.002), which the sentence does not touch.
+
+| | Chunks | Non-filler chunks | Filler chunks | Chunks over 300 words | "The speaker" | Introduction under a placeholder topic | Billed per map |
+|---|---|---|---|---|---|---|---|
+| Defaults (above) | 20, 17, 12 | 16, 14, 11 | 4, 3, 1 | 5, 6, 4 | 0, 0, 0 | 2 of 3 | $0.010–0.012 |
+| With the sentence | 20, 31, 21, 16 | 20, 26, 20, 15 | 0, 5, 1, 1 | 3, 3, 3, 6 | 0, 0, 1, 3 | 1 of 4 | $0.011–0.015 |
+
+What it showed (4 maps against 3; suggestive only):
+
+- **Somewhat finer, with fewer very large chunks:** 15–26 non-filler chunks against 11–16. Three of the four maps had 3 chunks over 300 words, against 4–6 at the defaults.
+- **The filler chunks were not fixed.** One map split into 31 chunks, 25 of them a single utterance. Its 5 filler chunks were "Awesome.", a one-line host prompt, and three short turns that do carry content (a name, an institute, "a voracious reader."). A prompt sentence alone does not reliably hold the fold rule.
+- **One map lost the guest's name** in 3 summaries, and another in 1. The defaults had none.
+- **The glance is unchanged by design.** Its introduction miss (now 3 of 10 glances at today's split) and its rejections (2 of 17 glance calls across this study, each failing the whole map with no retry) are separate problems.
+
+Billed for this test: $0.055. Study total: $0.78.
+
+## Proposal (revised after the follow-up and the detail-prompt test)
 
 Keep ADR-073 glance → detail; build neither windows plus merge nor a different utterance split now.
 
-1. **Test one detail-prompt change at the defaults.** Add a finer-grain instruction to `DETAIL_PROMPT` that keeps the fold rule explicit, for example "start a new chunk whenever the point, story or question changes; fold one-line acknowledgements into a neighbouring chunk". Run 5 maps at today's split with 2,800-word segments and compare chunk count, filler chunks and placeholder turns with the table above. About $0.06.
-2. **Look at why the glance can miss the introduction** (2 of 6 glances at today's split). It may be a skeleton-prompt fix (every utterance belongs to a topic, including an opening) or a planning fix. Either way it is a separate small change, with a regression test built from these maps.
-3. **Leave the utterance split alone for now.** It did not clearly help glance → detail, and changing it changes utterance ids (see above). Revisit only if step 1 still leaves long single-utterance chunks.
-4. **Segment size** (900 vs 2,800 words) is a cost-and-time trade, not a grain lever, on this evidence. Smaller segments mean more detail calls: about 30 s more per map on server-key pacing. Keep the default unless the filler chunks turn out to depend on it. (The missing introduction cannot: it happens in the glance, before segments exist.)
+1. **Do not ship the detail-prompt sentence as tested.** It made maps somewhat finer but did not fix filler chunks, and it coincided with name loss in one map. Choosing the next lever is the owner's call:
+   - a narrower prompt change aimed only at the fold rule;
+   - a deterministic post-step that folds acknowledgement-only chunks into a neighbour (this edits a model reply after validation, whereas the pipeline's retry rule re-asks a refused segment rather than repairing it);
+   - or accepting the defaults.
+2. **Look at why the glance can miss the introduction** (3 of 10 glances at today's split). The skeleton prompt already asks topics to cover every utterance, so this is a compliance failure. Options are a stronger instruction or a planning fix. Either way it is a separate small change, with a regression test built from these maps.
+3. **Consider re-asking a refused glance once**, as detail calls already are re-asked. Today a rejected glance (2 of 17 here) fails the whole map.
+4. **Leave the utterance split alone for now.** It did not clearly help glance → detail, and changing it changes utterance ids (see above).
+5. **Segment size** (900 vs 2,800 words) is a cost-and-time trade, not a grain lever, on this evidence. Smaller segments mean more detail calls: about 30 s more per map on server-key pacing. Keep the default unless the filler chunks turn out to depend on it. (The missing introduction cannot: it happens in the glance, before segments exist.)
 
-The only spend this needs is step 1, about $0.06.
+Steps 1–3 are product and code decisions for the owner. No further test spend is proposed until one of them is chosen.
 
 ## Limits
 
