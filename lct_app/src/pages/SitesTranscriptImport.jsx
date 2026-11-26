@@ -441,7 +441,8 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
           onBundleChange={bundle => { setCompletedBundle(bundle); onBundleReady(bundle); }} />
       )}
 
-      {completedBundle && !running && <PublishLinkPanel bundle={completedBundle} />}
+      {/* A run that stopped early leaves a partial map: it can be saved or downloaded, not published. */}
+      {completedBundle && !running && !pipelineError && <PublishLinkPanel bundle={completedBundle} />}
     </section>
   );
 }

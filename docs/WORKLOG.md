@@ -11218,3 +11218,10 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 
 - `.github/workflows/sites-ci.yml` on `integ/sites-combined` triggered only on the Codex Sites branches, so PRs into this branch (e.g. #263) ran no frontend unit tests, Sites lint or Sites build; only Vercel reported.
 - Change: `main` and `integ/sites-combined` added to the `pull_request` and `push` triggers, with the per-commit push concurrency group from PR #258 (same edit as #258 plus this branch), so a later merge with `main` resolves to one trigger list.
+
+## 2026-11-27 — Lower-tier review fixes (branch fix/review-lower-tier)
+
+- Fixed the lower-tier findings from the 2026-11-25 review; the list and what stays open is in `ISSUES.md` (2026-11-27 entry). Every fix has a test shown to fail against the old code first.
+- Main changes: `sitesCostStore.js` and `openRouterClient.js` count tokens of every billed attempt; `sites/openRouter.js` + `sites/streamParser.js` classify mid-stream breaks, treat aborts as cancellations, bound the reply text rather than SSE bytes and cancel the provider read when the browser leaves; `glanceDetailPipeline.js`/`rangeGeneration.js` fix split-window state, nested topics, admission retries (now at least `STALE_ATTEMPT_MS`, shared with the Worker from `generationDeadlines.js`) and partial-map merging; `mapAudit.js` audits gap spans first; the import page no longer offers a stopped run's partial map for publishing; `longTranscriptPipeline.js` keeps only window splitting.
+- Tests: `src/test/jsdomStorage.js` puts jsdom's Web Storage back under Node 25+, so the suite no longer needs `--no-experimental-webstorage`.
+- Verification: full suite on Node 26 under a load average of ~320 from other processes. Timeouts varied run to run (3–10 tests, a different set each time); each failing file passed on its own. `build:sites` OK, eslint clean on changed files.

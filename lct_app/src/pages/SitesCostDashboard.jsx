@@ -135,7 +135,9 @@ export default function SitesCostDashboard() {
               {summary.hasReportedCost ? formatUsd(summary.reportedCostUsd) : '—'}
             </p>
             <p className="mt-0.5 text-xs text-slate-500">
-              {summary.hasReportedCost ? 'Reported by provider' : 'Token counts only'}
+              {!summary.hasReportedCost ? 'Token counts only'
+                : summary.costReportedCalls === summary.calls ? `Full cost known for all ${summary.calls} calls`
+                  : `Full cost known for ${summary.costReportedCalls} of ${summary.calls} calls`}
             </p>
           </div>
         </section>

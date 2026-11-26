@@ -4,6 +4,7 @@
 // - Leaving the page cancels a pending epistemic pass.
 // - The consent copy names the extra whole-transcript send when detail runs, and consent is asked again
 //   when the detail choice changes what will be sent.
+// - A run that stops early keeps its partial map for saving, but does not offer it for publishing.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -22,7 +23,7 @@ vi.mock('../services/cloud/epistemicPipeline.js', () => ({ runEpistemicAnalysis:
 vi.mock('../components/recording/RecordingConversationMap.jsx', () => ({ default: () => null }));
 vi.mock('../components/recording/LiveConversationGraph.jsx', () => ({ default: () => null }));
 vi.mock('../components/audit/MapAuditPanel.jsx', () => ({ default: () => null }));
-vi.mock('../components/publish/PublishLinkPanel.jsx', () => ({ default: () => null }));
+vi.mock('../components/publish/PublishLinkPanel.jsx', () => ({ default: () => <p>publish-panel</p> }));
 vi.mock('../services/cloud/pdfTranscriptReader.js', () => ({ readTranscriptFile: vi.fn() }));
 
 const runtime = { preferences: { guidance: '' } };
@@ -100,4 +101,23 @@ it('asks for consent again when the detail choice changes what is sent', async (
   });
   expect(box().checked).toBe(false);
   expect(host.textContent).not.toMatch(/once more with the finished map/);
+});
+
+it('does not offer a partial map from a stopped run for publishing', async () => {
+  pipeline.mockImplementationOnce(async ({ onProgress }) => {
+    onProgress({ phase: 'skeleton', partialBundle: { id: 'partial' } });
+    throw new Error('Detail stopped.');
+  }).mockResolvedValueOnce({ bundle: { id: 'whole' } });
+  epistemic.mockImplementation(() => new Promise(() => {}));
+  const onBundleReady = vi.fn();
+  await render(onBundleReady);
+  await act(async () => { button('Build map').click(); });
+  await flush();
+  expect(onBundleReady).toHaveBeenLastCalledWith({ id: 'partial' });
+  expect(host.textContent).toMatch(/Detail stopped/);
+  expect(host.textContent).not.toMatch(/publish-panel/);
+
+  await act(async () => { button('Regenerate map').click(); });
+  await flush();
+  expect(host.textContent).toMatch(/publish-panel/);
 });

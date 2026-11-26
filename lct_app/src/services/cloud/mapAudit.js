@@ -33,7 +33,13 @@ export function planAuditSpans(bundle, { maxSegments = DEFAULT_AUDIT_SEGMENTS } 
   const gaps = topics.filter(n => n.generated_gap);
   const core = topics.filter(n => n.salience === 'core');
   const chosen = new Set([...gaps, ...(core.length ? core : topics)].map(n => n.id));
-  return planSegments(bundle, utteranceById, { topicIds: chosen }).slice(0, maxSegments);
+  const segments = planSegments(bundle, utteranceById, { topicIds: chosen });
+  // Spans holding uncovered turns take the first slots, wherever they fall in the call; the rest fill in
+  // timeline order. The chosen spans are returned in timeline order.
+  const gapTurns = new Set(gaps.flatMap(n => n.source_ref.utterance_ids));
+  const hasGap = segment => segment.utteranceIds.some(id => gapTurns.has(id));
+  const picked = new Set([...segments.filter(hasGap), ...segments.filter(s => !hasGap(s))].slice(0, maxSegments));
+  return segments.filter(s => picked.has(s));
 }
 
 /** Map nodes whose evidence touches a segment, with their evidence as local ranges. */

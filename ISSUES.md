@@ -3337,3 +3337,14 @@ Found by five read-only reviewers over 9f047a1e..173f8f2c plus main/CI commits; 
 - **What is still open:** the five opener journeys that walk into the viewer are no longer checked on the live domain, and nothing runs a Sites branch's own spec against the build that branch publishes. A viewer regression in a published Site would not be caught by CI.
 - **Blocker:** no.
 - **Next step (owner's call):** add a browser check to the Site publish path, using the publishing branch's spec.
+
+## 2026-11-27 — Lower-tier review findings: status after fix/review-lower-tier
+
+Follow-up to the 2026-11-25 lower-tier list. Fixed on `fix/review-lower-tier`, each with a test that failed first: cost undercount and the "Reported by provider" headline; the double-click publish test; `halve()` retry state, nested topics, admission retries vs the stale-slot hold, a bad `mergeDetail` dropping later successes; the map audit skipping end-of-call gaps; ADR-073 higher-tier overview ranges (now ignored and counted, as the ADR says); all four streaming items; publishing a partial map after a stopped run; the key store tested with real Web Crypto; the unused windowed pipeline removed; the Privacy wording on stored keys; moved-doc links; the nightly STT runner pin; duplicated usage parsing; edge refusals labelled `edge_field` instead of the catch-all; the model-privacy comment; Node 25+ localStorage in tests.
+
+Still open:
+- **Key-check endpoint has no rate limit** (`lct_app/sites/personalProviderCheck.js`). Needs state the Worker does not have yet (a table plus migration, or a Cloudflare rate-limit binding). Impact: a public Site can be used as a key-validation proxy; no provider spend. Owner's call on the mechanism.
+- **Post-deploy smoke target** is an owner decision already recorded above (2026-11-25 entries).
+- **A provider-reported cost covers only the accepted reply**; calls with other billed attempts are flagged partial, and per-model rows on the cost page do not yet say so.
+- **Nested non-core topics under `detail: 'core'`** are still not offered to the segment holding their turns (noted in the ADR-073 addendum).
+- Archived docs keep links to files deleted long before the move (`docs/archive/ZOOM_SYSTEM.md`, `GRAPH_GENERATION.md`, `NODE_DETAIL_PANEL.md`).

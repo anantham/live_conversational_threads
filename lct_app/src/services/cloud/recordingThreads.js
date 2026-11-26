@@ -33,6 +33,8 @@ function edgeRule(rawEdges, nodes) {
   for (const edge of Array.isArray(rawEdges) ? rawEdges : []) {
     if (!object(edge) || !identity(edge.id) || !identity(edge.from_node_id) || !identity(edge.to_node_id) || !identity(edge.relation_type)) return 'edge_malformed';
     if (edge.edge_kind != null && !['semantic', 'temporal'].includes(edge.edge_kind)) return 'edge_kind';
+    if ([edge.explanation, edge.relation_text].some(text => text != null && typeof text !== 'string')
+      || (edge.confidence != null && !(typeof edge.confidence === 'number' && edge.confidence >= 0 && edge.confidence <= 1))) return 'edge_field';
     if (seen.has(edge.id)) return 'edge_duplicate_id';
     if (edge.from_node_id === edge.to_node_id) return 'edge_self_reference';
     if (!nodeIds.has(edge.from_node_id) || !nodeIds.has(edge.to_node_id)) return 'edge_unknown_endpoint';

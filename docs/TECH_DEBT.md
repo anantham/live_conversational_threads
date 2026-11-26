@@ -577,4 +577,4 @@ The request ownership repairs keep coverage on the public pages.
 
 ### 2026-11-25 — Windowed transcript import panel
 
-`lct_app/src/pages/SitesTranscriptImport.jsx` combines local file intake, transcript preview and windowed generation state. If the import flow grows, extract `MultiWindowPipelinePanel` and its readiness and cancellation handling into a focused component. The window splitting and artifact assembly already run independently in `longTranscriptPipeline.js`.
+`lct_app/src/pages/SitesTranscriptImport.jsx` combines local file intake, transcript preview and windowed generation state. If the import flow grows, extract `MultiWindowPipelinePanel` and its readiness and cancellation handling into a focused component. Window splitting already runs independently in `longTranscriptPipeline.js` (the old windowed pipeline was removed on 2026-11-27; generation runs through `glanceDetailPipeline.js`).

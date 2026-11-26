@@ -7,6 +7,7 @@ import { createRecordingThreads } from './recordingThreads.js';
 import { deriveParentEvidence } from './parentEvidence.js';
 import { generateOrderedRecordingMap } from './openRouterClient.js';
 import { MAX_SEGMENT_TOPICS } from './generationTasks.js';
+import { STALE_ATTEMPT_MS } from './generationDeadlines.js';
 
 export const DEFAULT_SEGMENT_MAX_WORDS = 2800;
 export const DEFAULT_INTERVAL_MS = 10_500;
@@ -70,25 +71,40 @@ export function segmentSource(source, segment, utteranceById) {
   return { recordingId: `${source.recordingId}-${segment.label}`.slice(0, 80), startedAt: source.startedAt, finalTokens, complete: true };
 }
 
-/** Group skeleton topics (timeline order) into segments of at most maxWords; oversized topics split by turns. */
+/**
+ * Group skeleton topics (timeline order) into segments of at most maxWords; oversized topics split by turns.
+ *
+ * A turn two overlapping topics both claim is sent once, with the topic that starts first. A topic left
+ * with no turns of its own (nested inside another, or wholly overlapped) still rides along: it is offered
+ * as a segment topic wherever its turns are sent, so the model can file under it, and the merge judges it
+ * on what was filed (turns it loses are recorded as a boundary shift). It is never dropped from the
+ * segments while keeping turns another topic's chunks already cover, and never re-detailed later.
+ */
 export function planSegments(bundle, utteranceById, { maxWords = DEFAULT_SEGMENT_MAX_WORDS, topicIds = null } = {}) {
   const order = new Map(bundle.utterances.map((u, i) => [u.id, i]));
-  const claimed = new Set();
-  const topics = bundle.graph_data.filter(n => n.semantic_level === 3 && n.source_ref.utterance_ids.length
+  const claimedBy = new Map();
+  const toTopic = node => ({ id: localId(node.id), node_name: node.node_name, summary: node.summary || '' });
+  const claimed = bundle.graph_data.filter(n => n.semantic_level === 3 && n.source_ref.utterance_ids.length
     && (!topicIds || topicIds.has(n.id)))
     .map(n => ({ node: n, ids: [...n.source_ref.utterance_ids].sort((a, b) => order.get(a) - order.get(b)) }))
     .sort((a, b) => order.get(a.ids[0]) - order.get(b.ids[0]))
-    // A turn two overlapping topics both claim is detailed once, with the topic that starts first.
-    .map(t => { const ids = t.ids.filter(id => !claimed.has(id)); ids.forEach(id => claimed.add(id)); return { ...t, ids }; })
-    .filter(t => t.ids.length)
-    .map(t => ({ ...t, words: t.ids.reduce((sum, id) => sum + countWords(utteranceById.get(id).text), 0) }))
-    .sort((a, b) => order.get(a.ids[0]) - order.get(b.ids[0]));
+    .map(t => { const ids = t.ids.filter(id => !claimedBy.has(id)); ids.forEach(id => claimedBy.set(id, t.node.id)); return { ...t, all: t.ids, ids }; });
+  const riders = claimed.filter(t => !t.ids.length);
+  // Riders count toward the topic cap of the group holding the topic that claimed their first turn.
+  const ridersOf = new Map();
+  for (const rider of riders) {
+    const owner = claimedBy.get(rider.all[0]);
+    ridersOf.set(owner, (ridersOf.get(owner) || 0) + 1);
+  }
+  const topics = claimed.filter(t => t.ids.length)
+    .map(t => ({ ...t, weight: 1 + (ridersOf.get(t.node.id) || 0),
+      words: t.ids.reduce((sum, id) => sum + countWords(utteranceById.get(id).text), 0) }));
   const segments = [];
   const push = (members, ids) => segments.push({ label: `s${segments.length + 1}`, splitDepth: 0,
-    topics: members.map(({ node }) => ({ id: localId(node.id), node_name: node.node_name, summary: node.summary || '' })),
+    topics: members.map(({ node }) => toTopic(node)),
     utteranceIds: [...new Set(ids)].sort((a, b) => order.get(a) - order.get(b)) });
-  let group = [], words = 0;
-  const flush = () => { if (group.length) push(group, group.flatMap(t => t.ids)); group = []; words = 0; };
+  let group = [], words = 0, weight = 0;
+  const flush = () => { if (group.length) push(group, group.flatMap(t => t.ids)); group = []; words = 0; weight = 0; };
   for (const topic of topics) {
     if (topic.words > maxWords) {
       flush();
@@ -101,17 +117,47 @@ export function planSegments(bundle, utteranceById, { maxWords = DEFAULT_SEGMENT
       if (part.length) push([topic], part);
       continue;
     }
-    if (group.length && (words + topic.words > maxWords || group.length >= MAX_SEGMENT_TOPICS)) flush();
-    group.push(topic); words += topic.words;
+    if (group.length && (words + topic.words > maxWords || weight + topic.weight > MAX_SEGMENT_TOPICS)) flush();
+    group.push(topic); words += topic.words; weight += topic.weight;
   }
   flush();
+  for (const rider of riders) {
+    const turns = new Set(rider.all);
+    for (const segment of segments) {
+      if (!segment.utteranceIds.some(id => turns.has(id))) continue;
+      if (segment.topics.length >= MAX_SEGMENT_TOPICS) {
+        // Only reachable when one rider spans several groups; it then keeps its turns untouched there.
+        log('rider not offered', { segment: segment.label, reason: 'segment topic cap' });
+        continue;
+      }
+      segment.topics.push(toTopic(rider.node));
+    }
+  }
   return segments;
 }
 
 /** Record every provider route that wrote part of the map, so an audit can exclude all their families. */
 export const PERSONAL_DETAIL_CONCURRENCY = 3;
-export const MAX_ADMISSION_RETRIES = 5;
 export const ADMISSION_RETRY_MS = 2_000;
+export const ADMISSION_RETRY_MAX_MS = 30_000;
+
+/**
+ * Waits before each admission retry: doubling from `firstMs`, capped at ADMISSION_RETRY_MAX_MS, until
+ * they add up to at least `budgetMs`. The budget is the Worker's STALE_ATTEMPT_MS: a 429 can mean every
+ * concurrent slot is held by an attempt that will never finish (a refused reply stays unresolved until
+ * it goes stale), and such a slot is released at the latest that long after it was taken, so the run
+ * only gives up once every slot held when it was first refused must have been released. Defaults:
+ * 2, 4, 8, 16 s then 30 s steps, 13 retries over 300 s.
+ */
+export function admissionRetryDelays(firstMs = ADMISSION_RETRY_MS, budgetMs = STALE_ATTEMPT_MS) {
+  const delays = [];
+  let total = 0;
+  for (let step = Math.max(1, firstMs); total < budgetMs; step = Math.min(step * 2, ADMISSION_RETRY_MAX_MS)) {
+    const wait = Math.min(step, ADMISSION_RETRY_MAX_MS);
+    delays.push(wait); total += wait;
+  }
+  return delays;
+}
 export const PERSONAL_INTERVAL_MS = 1_600;
 
 /**
@@ -152,11 +198,17 @@ function withBuilders(bundle, used) {
   return { ...bundle, built_by: unique };
 }
 
+const PER_REQUEST_STATE = ['retryOf', 'admissionRetries'];
+
+// Each half is a new request: it was never refused or held back at admission, so it starts with no
+// re-ask note and its own re-ask and admission budgets (the parent's state describes the parent only).
 function halve(segment) {
   if (segment.splitDepth >= MAX_SEGMENT_SPLIT_DEPTH || segment.utteranceIds.length < 2) return null;
+  const fresh = { ...segment };
+  for (const key of PER_REQUEST_STATE) delete fresh[key];
   const middle = Math.ceil(segment.utteranceIds.length / 2);
   return [segment.utteranceIds.slice(0, middle), segment.utteranceIds.slice(middle)].map((ids, i) => ({
-    ...segment, label: `${segment.label}${i ? 'b' : 'a'}`, splitDepth: segment.splitDepth + 1, utteranceIds: ids }));
+    ...fresh, label: `${segment.label}${i ? 'b' : 'a'}`, splitDepth: segment.splitDepth + 1, utteranceIds: ids }));
 }
 
 /**
@@ -271,12 +323,14 @@ export function mergeDetail(source, base, results) {
 
 /**
  * Run detail segments through a pool of `concurrency` workers, starting calls at least `intervalMs`
- * apart. A refused segment is re-asked once; a truncated one is halved; any other failure stops new
- * starts, lets in-flight calls finish, then throws with the partial map. Results merge in segment
- * order, so the map is the same whatever order calls finish in.
+ * apart. A refused segment is re-asked once; a truncated one is halved; any other failure (including a
+ * result that cannot be merged) stops new starts, lets in-flight calls finish and merges their results,
+ * then throws with the partial map. Results merge in segment order, so the map is the same whatever
+ * order calls finish in.
  */
 async function runSegments({ source, base, segments, routes, guidance, signal, onProgress, generate, intervalMs, utteranceById,
   waitFirst, concurrency = 1, admissionRetryMs = ADMISSION_RETRY_MS }) {
+  const admissionDelays = admissionRetryDelays(admissionRetryMs);
   const queue = segments.map((segment, order) => ({ ...segment, order: String(order).padStart(4, '0') }));
   const results = [];
   const used = [];
@@ -321,11 +375,11 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
       // Once another call has failed, no new retries, splits or waits start; this call just reports.
       if (failure) { log('detail stopped', { ...details, ms: Date.now() - t0, error: error?.message }); return; }
       // An admission refusal (429) happens before any provider call: nothing was spent, so wait and requeue.
-      if (error?.status === 429 && (segment.admissionRetries || 0) < MAX_ADMISSION_RETRIES) {
-        const tries = (segment.admissionRetries || 0) + 1;
-        activity(onProgress, 'warn', `${name} was not admitted yet (another call was starting); retrying in ${seconds(admissionRetryMs * tries)} (try ${tries} of ${MAX_ADMISSION_RETRIES}).`);
-        log('detail admission retry', { ...details, tries });
-        await sleep(admissionRetryMs * tries, signal);
+      if (error?.status === 429 && (segment.admissionRetries || 0) < admissionDelays.length) {
+        const tries = (segment.admissionRetries || 0) + 1, wait = admissionDelays[tries - 1];
+        activity(onProgress, 'warn', `${name} was not admitted yet (every slot is busy or another call was starting); retrying in ${seconds(wait)} (try ${tries} of ${admissionDelays.length}).`);
+        log('detail admission retry', { ...details, tries, wait });
+        await sleep(wait, signal);
         queue.unshift({ ...segment, admissionRetries: tries });
         return;
       }
@@ -349,10 +403,20 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
       queue.unshift(...halves.map((half, k) => ({ ...half, order: `${segment.order}${k ? 'b' : 'a'}` })));
       return;
     }
-    results.push({ segment, result });
-    results.sort((a, b) => (a.segment.order < b.segment.order ? -1 : 1));
+    // Merge with this result before keeping it: a result that cannot be merged fails its own segment
+    // (like any other failure) and is left out, so it never blocks the merge of other segments' details.
+    const candidate = [...results, { segment, result }].sort((a, b) => (a.segment.order < b.segment.order ? -1 : 1));
+    let next;
+    try { next = mergeDetail(source, base, candidate).bundle; }
+    catch (error) {
+      log('detail merge failed', { ...details, ms: Date.now() - t0, error: error?.message });
+      activity(onProgress, 'error', `${name} could not be merged: ${error?.message || 'unknown error'}`, { attempts: (result.attempts || []).map(describeAttempt) });
+      stopWith(error);
+      return;
+    }
+    results.splice(0, results.length, ...candidate);
     if (result.backend) used.push({ backend: result.backend, model: result.model });
-    merged = withBuilders(mergeDetail(source, base, results).bundle, used);
+    merged = withBuilders(next, used);
     finished += 1;
     log('detail done', { ...details, ms: Date.now() - t0, nodes: result.bundle.graph_data.length,
       notes: result.boundaryNotes?.length || 0, model: result.model });
@@ -426,7 +490,8 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   log('glance done', { ms: Date.now() - started, topics: levels[0], themes: levels[1], arcs: levels[2], model: glance.model });
   const gap = skeleton.graph_data.find(n => n.generated_gap);
   activity(onProgress, 'ok', `Overview done in ${seconds(Date.now() - started)}: ${levels[2]} arcs, ${levels[1]} themes, ${levels[0]} topics`
-    + `${glance.glossary?.length ? `, ${glance.glossary.length} glossary entries` : ''}${gap ? `; ${gap.source_ref.utterance_ids.length} turns no topic covered (kept as "Uncovered turns")` : ''}.`,
+    + `${glance.glossary?.length ? `, ${glance.glossary.length} glossary entries` : ''}${gap ? `; ${gap.source_ref.utterance_ids.length} turns no topic covered (kept as "Uncovered turns")` : ''}`
+    + `${glance.coverage?.higherTierRangesIgnored ? `; ${glance.coverage.higherTierRangesIgnored} ranges cited on themes or arcs ignored (their evidence comes from their topics)` : ''}.`,
     { attempts: (glance.attempts || []).map(describeAttempt) });
   onProgress?.({ phase: 'skeleton', partialBundle: skeleton, backend: glance.backend, model: glance.model });
   if (detail === 'none') return { bundle: skeleton, json: JSON.stringify(skeleton, null, 2), backend: glance.backend, model: glance.model, segmentCount: 0 };
@@ -456,6 +521,8 @@ export async function expandTopicDetail({ source, bundle, topicId, routes, guida
   let next = 1;
   const segments = planSegments(bundle, utteranceById, { maxWords: maxSegmentWords, topicIds: new Set([topicId]) })
     .map(segment => { while (taken.has(`t${next}`)) next += 1; taken.add(`t${next}`); return { ...segment, label: `t${next}` }; });
+  // A topic whose turns were all detailed under other topics has nothing left to send: say so, never no-op.
+  if (!segments.length) throw new Error('That topic has no turns left to detail.');
   const run = await runSegments({ source, base: bundle, segments, routes, guidance, signal, onProgress, generate,
     intervalMs, concurrency: 1, utteranceById, waitFirst: false });
   const merged = withBuilders(run.bundle, run.used);

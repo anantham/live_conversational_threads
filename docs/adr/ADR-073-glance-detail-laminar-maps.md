@@ -52,3 +52,22 @@ utterance IDs. Fixed 15-minute windows also produced seven independent readings,
 
 ## Review after one month
 Compare audit recall (represented / independent points) and boundary-shift rates against the windowed maps.
+
+## Addendum — 2026-11-27: review fixes to the detail pipeline (code aligned to this ADR)
+- **Higher-tier ranges in the overview.** Decision 1 says ranges on higher tiers are ignored and counted.
+  The overview path refused a theme or arc that cited a range (`node_evidence/range_shape`), and an overview
+  refusal ends the run, so a cosmetic extra (Claude's schema variant cannot enforce `maxItems: 0`) cost the
+  whole import. The code now follows the decision: such ranges are ignored, counted in the overview's
+  coverage (`higherTierRangesIgnored`) and named in the activity log. Other overview refusals still end the
+  run: without a skeleton there is nothing to detail or keep, so this is unchanged by design.
+- **Nested topics.** A topic whose turns another topic already claims (nested or wholly overlapped) is now
+  offered as a segment topic wherever its turns are sent, and judged on what the model files under it
+  (turns it loses are a `boundary_shift`). Previously it was left out of every segment, kept turns another
+  topic's chunks covered, and could be detailed again on demand. Expanding a topic with no turns left now
+  says so. Limit: under `detail: 'core'`, a non-core topic nested in a core one is not offered.
+- **Split segments** start without the parent's re-ask note and with their own re-ask and admission budgets.
+- **Admission retries** now wait (doubling, capped at 30 s) until they cover the Worker's stale-attempt
+  cutoff (`STALE_ATTEMPT_MS`, 300 s), the longest a stuck or refused attempt can hold a concurrent slot;
+  before, five linear retries gave up after 30 s.
+- **Merging.** A detail result that cannot be merged fails its own segment and is left out; other
+  segments' details, including calls still in flight, stay in the partial map.

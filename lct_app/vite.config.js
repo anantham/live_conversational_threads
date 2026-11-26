@@ -49,6 +49,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    setupFiles: ["./src/test/jsdomStorage.js"],
     // Vitest auto-discovers *.test.{js,jsx,ts,tsx} under src/.
     include: ["src/**/*.{test,spec}.{js,jsx,ts,tsx}"],
     // Keep e2e (Playwright) and unit (vitest) suites separate.

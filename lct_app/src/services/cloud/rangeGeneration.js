@@ -106,16 +106,25 @@ function tile(spans, total) {
 
 /**
  * Glance reply: topics cite one or more ranges (a revisited subject is one topic with several
- * stretches); themes and arcs cite none. Turns no topic covers become an explicit aside topic.
+ * stretches); themes and arcs cite none (any they cite are ignored and counted). Turns no topic
+ * covers become an explicit aside topic.
  */
 function expandSkeleton(graph, utteranceIds) {
   if (!Array.isArray(graph.nodes) || !Array.isArray(graph.conversation_threads)) throw invalid('required_shape');
   const position = new Map(utteranceIds.map((id, index) => [id, index]));
   const topicSpans = [];
+  let higherTierRangesIgnored = 0;
   const nodes = graph.nodes.map(node => {
     if (!object(node) || ![3, 4, 5].includes(node.semantic_level)) throw invalid('node_shape');
     const { source_ranges: ranges, salience, ...rest } = node;
-    if (!Array.isArray(ranges) || (node.semantic_level === 3 ? !ranges.length : ranges.length)) throw invalid('node_evidence', 'range_shape');
+    // ADR-073 decision 1: a theme's or arc's evidence comes only from its primary children, so ranges
+    // cited on those tiers are ignored and counted, never used and never a refusal (as in map replies).
+    if (node.semantic_level !== 3) {
+      if (Array.isArray(ranges)) higherTierRangesIgnored += ranges.length;
+      else if (ranges != null) throw invalid('node_evidence', 'range_shape');
+      return { ...rest, ...(SALIENCE.has(salience) ? { salience } : {}), source_excerpt: '', thread_id: null, source_ref: { utterance_ids: [] } };
+    }
+    if (!Array.isArray(ranges) || !ranges.length) throw invalid('node_evidence', 'range_shape');
     const spans = ranges.map(range => span(range, position, 'node_evidence'));
     topicSpans.push(...spans);
     const indexes = [...new Set(spans.flatMap(([from, to]) => Array.from({ length: to - from + 1 }, (_, k) => from + k)))].sort((a, b) => a - b);
@@ -146,7 +155,7 @@ function expandSkeleton(graph, utteranceIds) {
   return { graph: { ...withoutGlossary, edges: [], hierarchy_format: GENERATION_HIERARCHY_FORMAT, nodes, conversation_threads },
     glossary: sanitizeGlossary(glossary),
     coverage: { totalTurns: utteranceIds.length, topics: nodes.filter(n => n.semantic_level === 3).length,
-      uncoveredTurns, gapRuns: gaps.length, overlapTurns, ignoredEdges } };
+      uncoveredTurns, gapRuns: gaps.length, overlapTurns, ignoredEdges, higherTierRangesIgnored } };
 }
 
 /**

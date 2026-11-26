@@ -412,3 +412,107 @@ describe('detail pool robustness (review findings)', () => {
   });
 });
 
+
+describe('lower-tier review findings (2026-11-27)', () => {
+  const refusal = () => Object.assign(new Error('refused'), { code: 'invalid_completion', validationStage: 'hierarchy', validationRule: 'parent_missing' });
+  const truncated = () => Object.assign(new Error('cut off'), { stopReason: 'max_tokens' });
+  const admission = () => Object.assign(new Error('limit'), { status: 429 });
+  // Throws the scripted error for the n-th detail call (1-based); every other call is answered normally.
+  const scripted = script => {
+    const inner = fakeModel();
+    let n = 0;
+    return vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      n += 1;
+      if (script[n]) throw script[n]();
+      return inner(...args);
+    });
+  };
+
+  // Finding 1: the halves of a split segment were not refused, so they carry no re-ask note and keep their own re-ask.
+  it('starts each half of a split segment with no inherited re-ask note and its own re-ask', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    // 1 refused → 2 re-ask truncated → 3 first half, refused → 4 its own re-ask → 5 second half.
+    const generate = scripted({ 1: refusal, 2: truncated, 3: refusal });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    const details = generate.mock.calls.filter(c => c[4].task === 'detail');
+    expect(details.map(c => c[0].finalTokens.length)).toEqual([8, 8, 4, 4, 4]);
+    expect(details[2][3]).not.toMatch(/refused at/);
+    expect(details[3][3]).toMatch(/refused at hierarchy\/parent_missing/);
+    expect(details[4][3]).not.toMatch(/refused at/);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  it('gives each half of a split segment a fresh admission budget', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scripted({ 1: admission, 2: admission, 3: admission, 4: admission, 5: admission, 6: truncated, 7: admission });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, admissionRetryMs: 1 });
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  // Finding 2: a topic nested inside another is offered to the segment that details its turns, never re-detailed.
+  it('offers a nested topic to the segment holding its turns and does not detail those turns twice', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const nested = () => skeletonReply().replace('"nodes":[', '"nodes":[{"id":"boats","semantic_level":3,"semantic_type":"topic","node_name":"Boats",'
+      + '"summary":"Morning boats.","salience":"aside","source_ranges":[{"from":"utterance-0004","to":"utterance-0004"}],"parent_id":{"semantic_level":4,"id":"life"},"secondary_parent_ids":[]},');
+    const generate = fakeModel({ skeleton: nested });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    const offered = generate.mock.calls.filter(c => c[4].task === 'detail').flatMap(c => c[4].topics.map(t => t.id));
+    expect(offered).toContain('boats');
+    // The model filed turn 4 under the sea: the nested topic gives it up, recorded, instead of overlapping.
+    expect(evidence(bundle, '3:boats')).toEqual([]);
+    expect(bundle.audit_signals).toContainEqual(expect.objectContaining({ kind: 'boundary_shift', node_id: '3:boats', turns_dropped: 1 }));
+    const before = generate.mock.calls.length;
+    await expect(expandTopicDetail({ source, bundle, topicId: '3:boats', routes: [], generate })).rejects.toThrow(/no turns left to detail|already has detail/);
+    expect(generate.mock.calls.length).toBe(before);
+  });
+
+  // Finding 3: admission retries keep going until a slot held by a stuck attempt must have gone stale.
+  it('keeps retrying admission at least until a stale slot is released', async () => {
+    const { STALE_ATTEMPT_MS } = await import('../../../sites/openRouterPolicy.js');
+    const deadlines = await import('./generationDeadlines.js');
+    expect(deadlines.STALE_ATTEMPT_MS).toBe(STALE_ATTEMPT_MS); // the browser's budget tracks the Worker's stale cutoff
+    const { admissionRetryDelays } = await import('./glanceDetailPipeline.js');
+    const delays = admissionRetryDelays();
+    expect(delays.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(STALE_ATTEMPT_MS);
+    expect(Math.max(...delays)).toBeLessThanOrEqual(30_000);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scripted(Object.fromEntries(Array.from({ length: 8 }, (_, i) => [i + 1, admission])));
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, admissionRetryMs: 1 });
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  // Finding 4: one result that cannot be merged fails its own segment only; other windows' details survive.
+  it('keeps other segments’ details in the partial map when one result cannot be merged', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const inner = fakeModel();
+    let n = 0;
+    const generate = vi.fn(async (...args) => {
+      if (args[4].task !== 'detail') return inner(...args);
+      const call = ++n;
+      const result = await inner(...args);
+      if (call === 1) return { ...result, bundle: { ...result.bundle, utterances: [] } };
+      await new Promise(r => setTimeout(r, 20));
+      return result;
+    });
+    const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, concurrency: 3, maxSegmentWords: 6 }).catch(e => e);
+    expect(error.message).toMatch(/was not merged/);
+    expect(error.partialBundle.graph_data.filter(n => n.semantic_level === 1).length).toBeGreaterThan(0);
+  });
+
+  // Finding 5 (ADR-073 decision 1): a range on a theme or arc is ignored and counted, never a refusal.
+  it('ignores and counts a range cited on a higher tier of the overview', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const ranged = () => skeletonReply().replace('"node_name":"Life","summary":"Life.","salience":"core","source_ranges":[]',
+      '"node_name":"Life","summary":"Life.","salience":"core","source_ranges":[{"from":"utterance-0005","to":"utterance-0006"}]');
+    expect(ranged()).not.toBe(skeletonReply());
+    const glance = recordingThreadsFromGeneratedText(source, ranged(), { task: 'skeleton' });
+    expect(glance.coverage.higherTierRangesIgnored).toBe(1);
+    // Life's evidence is its children's (intro + sea), not the cited budget turns.
+    expect(evidence(glance.bundle, '4:life')).toEqual([u(1), u(2), u(3), u(4), u(7), u(8)]);
+    const progress = [];
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel({ skeleton: ranged }), intervalMs: 0, onProgress: e => progress.push(e) });
+    expect(progress.some(e => e.phase === 'log' && /1 ranges cited on themes or arcs ignored/.test(e.entry.text))).toBe(true);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+});

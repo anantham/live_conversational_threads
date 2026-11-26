@@ -27,7 +27,8 @@ concurrency:
 jobs:
   live-recording:
     name: live-recording-stream (xvfb + RUN_STT_E2E=1)
-    runs-on: ubuntu-latest
+    # Pinned like e2e.yml and post-deploy-smoke.yml: the locked Playwright cannot install Chromium on Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     services:
