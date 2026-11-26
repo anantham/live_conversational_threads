@@ -48,7 +48,7 @@ cd lct_app && npm test          # vitest unit tests
 cd lct_app && npm run test:e2e  # Playwright e2e
 ```
 
-More detail (fixtures, DB harness, what to test vs not): [docs/TESTING.md](docs/TESTING.md)
+More detail: [lct_python_backend/tests/README.md](lct_python_backend/tests/README.md) (backend fixtures and invariants) and [lct_app/docs/E2E-TESTING.md](lct_app/docs/E2E-TESTING.md) (browser tests),
 and the TEST_DESIGN_PRINCIPLES section of [AGENTS.md](AGENTS.md).
 
 Honest caveat: running the *entire* backend unit suite in one invocation currently hits

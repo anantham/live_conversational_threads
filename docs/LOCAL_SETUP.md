@@ -64,22 +64,6 @@ Notes:
 - If Docker/daemon/repo is unavailable, startup continues and logs a clear note.
 - To skip STT autostart for one run: `STT_AUTOSTART=0 ./start.command`.
 
-## Legacy Scripts Archive
-
-The old startup/setup scripts were moved to:
-
-```text
-scripts/legacy_commands/
-```
-
-Archived files:
-- `setup-backend.command`
-- `setup-postgres-local.command`
-- `start-backend-local.command`
-- `start-backend.command`
-- `stop-postgres-local.command`
-- `start_server.sh`
-
 ## Local STT Reminder
 
 Live audio transcription now runs through backend-owned STT routing.

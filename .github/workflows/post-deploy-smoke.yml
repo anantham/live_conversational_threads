@@ -14,10 +14,12 @@ name: post-deploy smoke (live prod)
 # NOTE: deployment_status / schedule / workflow_dispatch only fire from the
 # workflow file on the default branch, so this activates once merged to main.
 #
-# The smoke asserts only deployment-agnostic build-health (the SPA boots and
-# reaches its first screen), never version-specific behavior. So the daily
-# canary -- which runs main's spec against whatever prod currently serves --
-# can't drift-fail in the brief window where main is ahead of the live deploy.
+# The smoke asserts only deployment-agnostic build-health, never
+# version-specific behavior: playwright.prod.config.ts runs only the tests
+# tagged @prod-smoke. That matters more than the comment above suggests. As of
+# 2026-11-25 the domain answers through Cloudflare and has served builds
+# published from Sites branches that are not on main, so this job runs main's
+# spec against a build main did not produce. See ISSUES.md (2026-11-25).
 
 on:
   deployment_status:
@@ -32,7 +34,11 @@ concurrency:
 jobs:
   live-smoke:
     name: Live prod smoke
-    runs-on: ubuntu-latest
+    # Pinned for the same reason as e2e.yml: ubuntu-latest moved to 26.04 and the locked
+    # @playwright/test 1.56.1 refuses it ("Playwright does not support chromium on
+    # ubuntu26.04-x64"), so this job failed at "Install Playwright browser" before the
+    # smoke ran. Move back to ubuntu-latest after upgrading Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Run for manual/scheduled triggers, or a SUCCESSFUL PRODUCTION deploy.
     # `environment` is Vercel's own label; verified against this repo's real

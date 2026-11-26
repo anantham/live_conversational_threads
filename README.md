@@ -145,7 +145,6 @@ Threads is part of that governance layer.
 | [docs/plans/](docs/plans/) | Implementation roadmaps - upcoming features and phased approaches |
 | [WORKLOG.md](docs/WORKLOG.md) | Development history - what was built, when, and why |
 | [ISSUES.md](ISSUES.md) | Known issues and technical debt tracking |
-| [FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md) | Feature prioritization - **note: some entries are stale** |
 | [DATA_MODEL_V2.md](docs/DATA_MODEL_V2.md) | Database schema and data models |
 
 ### Quick Paths

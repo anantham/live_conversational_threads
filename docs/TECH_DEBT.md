@@ -1,5 +1,35 @@
 # TECH_DEBT
 
+## 2026-11-25 — Unreferenced-code sweep: candidates kept for an owner decision
+
+A deletion-only sweep removed 19 unreferenced files (see WORKLOG, same date). These
+have no production importer either, but each has a reason not to be deleted without
+a ruling:
+
+- `experimental/consumption_trigger.py` (366) — deliberately mothballed; ADR-033 and two service docstrings point at it. Imported only by its test.
+- `services/embedding_service.py` (320) — imported only by `tests/unit/test_egress_guard_coverage.py`, which uses it to prove egress-guard coverage (ADR-034). Removing it means editing a guard test.
+- `services/intent_signal_persistence.py` (247) — ADR-013/016; imported only by its test.
+- `services/runtime_data_migration.py` (298) — imported only by its test; may be an operator-run migration.
+- `lct_app/src/services/serverless/sttRealtimeClient.js`, `components/audio/audioUpload.js` — unwired, but ADR-060 lists both as pending work.
+- `lct_app/src/components/ImportCanvas.jsx` — unrouted, but ADR-059 says canvas import "stays".
+- `lct_python_backend/performance_benchmark.py` — no importer; `docs/MONITORING_SETUP.md` documents it as a manual tool.
+- `auth_policy.py` still lists the `/api/costs` prefix for the removed, never-mounted `cost_api.py`.
+- `NODE_DETAIL_PANEL.md` and `ZOOM_SYSTEM.md`, which describe the removed `contextLoading.js` / `nodeTransitions.js`, were moved to `docs/archive/` on 2026-11-25.
+- `docs/TESTING.md`, which described a `tests/test_database/test_db_helpers.py` that does not exist, was moved to `docs/archive/` on 2026-11-25. Other historical docs (plans, audits, ADR-011, `cost-dashboard-counterfactual-scoping.md`) still name removed files and were left as records.
+
+## 2026-11-25 — Documentation: stale candidates left in place
+
+Ten docs were archived (see `docs/archive/README.md`). These were scored the same way
+(last edit, share of named files that still exist, inbound links) and left because they
+describe code that still exists or are still linked as the reference:
+
+- `lct_python_backend/DATABASE_MIGRATIONS.md`, `GOOGLE_MEET_IMPORT.md`, `INSTRUMENTATION.md`, `PROMPTS_CONFIGURATION.md`, `SPEAKER_ANALYTICS.md` — last edited 2025-11; each names some files that no longer exist. Need a read against the code, then either a refresh or the archive.
+- `docs/DATA_MODEL_V2.md` (+ `_CORRECTIONS.md`, 968 lines of corrections kept beside the original) — last edited 2025-11-10, still linked from the root README and `models/__init__.py` as the schema reference. Fold the corrections in or regenerate from the models.
+- `docs/FEATURES.md`, `docs/API_DOCUMENTATION.md`, `docs/DEPLOYMENT_CHECKLIST.md`, `docs/MONITORING_SETUP.md` — last edited 2026-06-29; none mentions the Sites deployment.
+- No doc at the root or in `docs/README.md` says which stack is production (the Python backend or the Sites worker).
+- `docs/WORKLOG.md` (11k lines) and `ISSUES.md` (3.3k lines) only grow. Rotating them by quarter was not done here because other sessions append to both continuously.
+- Dated records still cite the archived docs at their old paths and were not edited: ADR-003, ADR-005 and ADR-006 (whose `../ROADMAP.md` link is now broken; ADRs are immutable), the 2026-05-30 and 2026-06-05 audits, one handover, two plans, and the `docs/FEATURE_ROADMAP.md` row in the table below.
+
 ## 2026-10-09 — Sites UI regression suite boundaries
 
 The original-layout restoration keeps production controller under200lines and extracts the81-line pure toolbar. Recording/access tests remain mixed journey suites (>400/>300lines); existing test-only split candidate still applies. Incumbent NewConversation/AudioInput controllers were read for presentation evidence and deliberately not coupled to the cloud lifecycle. No broader refactor belongs to this visual repair.
