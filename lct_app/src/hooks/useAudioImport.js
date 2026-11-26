@@ -30,6 +30,8 @@ export function useAudioImport() {
   const claimLiveMap = useCallback(() => { liveMapClaimed.current = true; }, []);
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
+  // A notice about an earlier run does not describe a newly chosen file or a reopened conversation.
+  useEffect(() => { if (!running.current) setFallbackNotice(''); }, [file, localId]);
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
   const edgeConfig = readEdgeConfig(location.search);
   const configuredSpeech = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
@@ -126,6 +128,10 @@ export function useAudioImport() {
     };
     try {
       let words;
+      // Every provider that failed before the one that worked, said out loud in order.
+      const failures = [];
+      const providerName = id => SPEECH_PROVIDERS[id]?.name || id;
+      const failureText = () => failures.map(({ name, message }) => `${name} could not transcribe this file (${message}).`).join(' ');
       for (const [index, provider] of speechProviders.entries()) {
         const key = runtime?.keys[provider];
         const session = provider === 'm5_tailnet'
@@ -145,13 +151,13 @@ export function useAudioImport() {
         current.current = session;
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
+          if (failures.length && valid()) setFallbackNotice(`${failureText()} It was transcribed by ${providerName(provider)} instead, the next provider in the order you agreed to.`);
           break;
         } catch (error) {
           if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) throw error;
-          const failedName = SPEECH_PROVIDERS[provider]?.name || provider;
-          const nextName = SPEECH_PROVIDERS[speechProviders[index + 1]]?.name || speechProviders[index + 1];
           console.warn(`[useAudioImport] ${provider} failed; trying ${speechProviders[index + 1]}:`, error);
-          setFallbackNotice(`${failedName} could not transcribe this file, so your audio was sent to ${nextName}, the next provider in the order you agreed to. ${failedName} said: ${error.message}`);
+          failures.push({ name: providerName(provider), message: String(error.message || error).replace(/\.$/, '') });
+          setFallbackNotice(`${failureText()} Trying ${providerName(speechProviders[index + 1])} next, the next provider in the order you agreed to.`);
         }
       }
       if (!valid()) return;

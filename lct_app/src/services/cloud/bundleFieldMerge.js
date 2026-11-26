@@ -18,12 +18,14 @@ export function withAuditSignals(latest, auditSignals) {
 
 /**
  * An external claim check owns one claim's `external_evidence`. Returns null when the claim is no
- * longer in the latest bundle (for example, the lenses were re-run), so the caller can say so instead
- * of saving a result attached to nothing.
+ * longer in the latest bundle, or when the claims were re-analysed since the check started (pass the
+ * `analyzed_at` seen then): a new analysis may reuse the id for a different claim. The caller can then
+ * say so instead of saving a result attached to the wrong claim or to nothing.
  */
-export function withClaimEvidence(latest, claimId, evidence) {
+export function withClaimEvidence(latest, claimId, evidence, { analyzedAt } = {}) {
   const claims = latest?.epistemic?.factual_claims;
   if (!Array.isArray(claims) || !claims.some((c) => String(c.id) === String(claimId))) return null;
+  if (latest.epistemic.analyzed_at !== analyzedAt) return null;
   return {
     ...latest,
     epistemic: {

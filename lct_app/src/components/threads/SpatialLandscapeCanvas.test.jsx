@@ -241,7 +241,17 @@ describe("SpatialLandscapeCanvas", () => {
     await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
     expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", longNote);
 
-    // A claim the server would refuse is not offered for checking at all.
+    // While another claim is being checked, this one's confirm button waits and says why.
+    act(() => root.unmount()); root = createRoot(host);
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={claimsBundle({ note: "Tools are shared." })} nodes={nodes} onVerifyClaim={onVerifyClaim}
+        epistemicProviderLabel="Anthropic (claude-test)" verifyingClaimId="claim-elsewhere" />);
+    });
+    openCheck();
+    const waiting = [...host.querySelectorAll("button")].find((b) => b.textContent === "Another check is running…");
+    expect(waiting.disabled).toBe(true);
+
+        // A claim the server would refuse is not offered for checking at all.
     act(() => root.unmount()); root = createRoot(host);
     render({ note: "x".repeat(601) });
     const claimsBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Claims"));

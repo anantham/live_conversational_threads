@@ -100,6 +100,8 @@ function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, ver
   const claimText = String(first.note || first.quote?.text || "").trim();
   const claimTooLong = claimText.length > MAX_CLAIM_CHARS;
   const isVerifying = verifyingClaimId === first.id;
+  // One claim check at a time: another claim's button waits rather than silently doing nothing.
+  const otherCheckRunning = Boolean(verifyingClaimId) && !isVerifying;
 
   return (
     <div className="mt-3 space-y-1.5 border-t border-stone-200/80 pt-2.5 text-xs text-slate-600">
@@ -171,14 +173,13 @@ function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, ver
                 <button type="button" onClick={() => setConfirmingId(null)} className="rounded px-2 py-0.5 text-slate-500 hover:bg-stone-100">Cancel</button>
                 <button
                   type="button"
-                  disabled={isVerifying}
+                  disabled={isVerifying || otherCheckRunning}
                   onClick={async () => {
-                    await onVerifyClaim(first.id, claimText);
-                    setConfirmingId(null);
+                    if (await onVerifyClaim(first.id, claimText)) setConfirmingId(null);
                   }}
                   className="rounded bg-slate-900 px-2.5 py-0.5 font-medium text-white hover:bg-slate-800 disabled:opacity-40"
                 >
-                  {isVerifying ? "Checking…" : "Confirm & check"}
+                  {isVerifying ? "Checking…" : otherCheckRunning ? "Another check is running…" : "Confirm & check"}
                 </button>
               </div>
             </div>

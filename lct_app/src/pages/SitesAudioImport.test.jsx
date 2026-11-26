@@ -462,7 +462,7 @@ it('says out loud when the tailnet provider fails and the audio goes to the next
   expect(fixture.m5Urls).toEqual([DEFAULT_M5_TAILNET_URL]);
   expect(fixture.sessions).toHaveLength(1);
   const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe this file'));
-  expect(notice).toContain(`${m5} could not transcribe this file, so your audio was sent to ${soniox}, the next provider in the order you agreed to.`);
-  expect(notice).toContain('HTTP 503');
+  expect(notice).toBe(`${m5} could not transcribe this file (M5 Tailnet STT returned HTTP 503. Your original audio is preserved). `
+    + `It was transcribed by ${soniox} instead, the next provider in the order you agreed to.`);
   expect(container.textContent).toContain('Garden watering');
 });

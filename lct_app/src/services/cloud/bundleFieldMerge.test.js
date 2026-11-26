@@ -31,6 +31,12 @@ describe('bundleFieldMerge', () => {
     expect(updated.audit_signals).toBe(latest.audit_signals);
   });
 
+  it('returns null when the claims were re-analysed since the check started', () => {
+    const analysed = { ...latest, epistemic: { ...latest.epistemic, analyzed_at: '2026-11-27T01:00:00Z' } };
+    expect(withClaimEvidence(analysed, 'c1', {}, { analyzedAt: '2026-11-27T01:00:00Z' })).not.toBeNull();
+    expect(withClaimEvidence(analysed, 'c1', {}, { analyzedAt: '2026-11-26T09:00:00Z' })).toBeNull();
+  });
+
   it('returns null when the claim is gone', () => {
     expect(withClaimEvidence(latest, 'c9', {})).toBeNull();
     expect(withClaimEvidence({ conversation_id: 'map-1' }, 'c1', {})).toBeNull();

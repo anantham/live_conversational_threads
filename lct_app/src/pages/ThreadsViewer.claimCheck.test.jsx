@@ -2,6 +2,8 @@
 // Test intent:
 // - An external claim check merges its result onto the map as it is when the check finishes, so an edit
 //   made while it ran (here a reaction) is kept on screen and in the saved copy.
+// - The edit is kept even when it happens in the same tick as the result arrives (no render in between).
+// - Opening another file while a check runs cancels it: nothing is saved, nothing reappears, no alert.
 // - A claim check whose save fails says so in a visible alert, not only inside the closed options menu.
 // The landscape canvas is replaced by buttons that call the viewer's own handlers; all content is synthetic.
 import { act } from 'react';
@@ -63,9 +65,11 @@ it('keeps a reaction made while a claim check runs, on screen and in the saved c
   spies.verify.mockImplementation(() => check.promise);
   await act(async () => root.render(<ThreadsViewer />));
   await click('stub verify');
-  await click('stub react');
-  expect(shown('reactions')).toBe('1');
-  await act(async () => { check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' }); });
+  // The reaction and the result land with no render between them.
+  await act(async () => {
+    [...host.querySelectorAll('button')].find(b => b.textContent === 'stub react').click();
+    check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' });
+  });
   expect(shown('evidence')).toBe('supported');
   expect(shown('reactions')).toBe('1');
   const saved = spies.remember.mock.calls.at(-1)[0];
@@ -84,3 +88,19 @@ it('says so when a finished claim check cannot be saved', async () => {
   expect(shown('evidence')).toBe('supported');
   expect(host.querySelector('[role="alert"]').textContent).toContain('The claim check is shown here but could not be saved.');
 });
+
+it('cancels a running claim check when another file is opened, and keeps nothing from it', async () => {
+  const check = deferred();
+  spies.verify.mockImplementation((claim, signal) => { signal.addEventListener('abort', () => check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' })); return check.promise; });
+  await act(async () => root.render(<ThreadsViewer />));
+  const savesBefore = spies.remember.mock.calls.length;
+  await click('stub verify');
+  const { 1: signal } = spies.verify.mock.calls[0];
+  await click('Open another file');
+  expect(signal.aborted).toBe(true);
+  await act(async () => { await check.promise; });
+  expect(host.querySelector('[aria-label="evidence"]')).toBeNull();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(spies.remember.mock.calls.length).toBe(savesBefore);
+});
+
