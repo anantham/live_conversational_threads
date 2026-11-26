@@ -36,6 +36,8 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
 import { SitesRuntimeContext } from '../contexts/SitesRuntimeContext';
 import SitesAudioImport from './SitesAudioImport.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
+import { DEFAULT_M5_TAILNET_URL } from '../services/cloud/m5TailnetFileSession.js';
+import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences.js';
 let root, container, posts, holdMap, finishMap, finishUpload;
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const mapped = source => createRecordingThreads({ ...source, graph: { metadata: { conversation_title: 'Garden plan' },
@@ -60,6 +62,7 @@ beforeEach(() => {
   fixture.signedIn = false; fixture.uploads = []; fixture.holdUpload = false; fixture.badReceipt = false;
   fixture.holdDecode = false; fixture.finishDecode = null; fixture.sessionHTML = false; fixture.storagePatch = {}; fixture.uploadStatus = 201;
   finishUpload = null; fixture.holdTranscript = false; fixture.liveTranscript = null; fixture.finishTranscript = null; fixture.mapFailure = false;
+  fixture.m5Urls = [];
   posts = []; holdMap = false; finishMap = null; localStorage.clear();
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:synthetic-import'; static revokeObjectURL() {} });
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
@@ -75,6 +78,7 @@ beforeEach(() => {
       if (fixture.holdUpload) return new Promise(resolve => { finishUpload = () => resolve(receipt); });
       return fixture.badReceipt ? response({ file: { state: 'staging' } }, 201) : receipt;
     }
+    if (String(url).includes('.ts.net')) { fixture.m5Urls.push(String(url)); return response({ error: 'busy' }, 503); }
     const backend = url.split('/')[3];
     if (url.endsWith('/status')) return response({ backend, enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'synthetic-model', provider: 'synthetic-provider' });
     if (url.endsWith('/generate')) {
@@ -434,4 +438,31 @@ it.each([401, 502])('honors the speech provider order after OpenAI HTTP %i and p
     expect(container.textContent).toContain('OpenAI did not complete transcription (HTTP 502).');
     expect(container.textContent).not.toContain('do not expose this');
   }
+});
+
+it('says out loud when the tailnet provider fails and the audio goes to the next provider instead', async () => {
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    if (path === '/api/cloud/map/generate') {
+      const input = JSON.parse(options.body); posts.push(input);
+      return response({ request_id: '00000000-0000-4000-8000-000000000001', backend: 'anthropic', model: 'claude-test', artifact: mapped(input.source) });
+    }
+    return oldFetch(path, options);
+  });
+  // An old live-recording link stored another machine on the same tailnet. File imports ignore it and
+  // use the address Settings shows: the build default, because Settings is empty here.
+  const stale = new URL(DEFAULT_M5_TAILNET_URL); stale.hostname = 'another-machine.' + stale.hostname.split('.').slice(1).join('.');
+  localStorage.setItem('lct_stt_edge_url', stale.href);
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const m5 = SPEECH_PROVIDERS.m5_tailnet.name, soniox = SPEECH_PROVIDERS.soniox.name;
+  expect(container.textContent).toContain(`${m5} → ${soniox}`);
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  expect(fixture.m5Urls).toEqual([DEFAULT_M5_TAILNET_URL]);
+  expect(fixture.sessions).toHaveLength(1);
+  const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe this file'));
+  expect(notice).toContain(`${m5} could not transcribe this file, so your audio was sent to ${soniox}, the next provider in the order you agreed to.`);
+  expect(notice).toContain('HTTP 503');
+  expect(container.textContent).toContain('Garden watering');
 });

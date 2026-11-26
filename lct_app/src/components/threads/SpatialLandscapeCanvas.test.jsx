@@ -203,4 +203,50 @@ describe("SpatialLandscapeCanvas", () => {
     act(() => energizedBtn.click());
     expect(onAddReaction).toHaveBeenCalledWith(expect.objectContaining({ kind: "energized", nodeId: "arc-1" }));
   });
+
+  // Test intent (2026-11-27 review): the claim-check consent box shows the exact text that is sent,
+  // in full, names who receives it, and says when that text is a verbatim transcript quote.
+  it("shows the exact claim text, its recipient, and whether it is a transcript quote before a claim check", async () => {
+    const onVerifyClaim = vi.fn().mockResolvedValue(undefined);
+    const longNote = "Shared tools cut costs. ".repeat(10).trim();
+    const claimsBundle = (claim) => ({ conversation_title: "Mirela catch-up", utterances,
+      epistemic: { cruxes: [], normative_assumptions: [], factual_claims: [{ id: "claim-1", node_id: "arc-1", utterance_ids: ["u3"], ...claim }] } });
+    const render = (claim) => act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={claimsBundle(claim)} nodes={nodes} onVerifyClaim={onVerifyClaim}
+        epistemicProviderLabel="Anthropic (claude-test)" />);
+    });
+    const openCheck = () => {
+      const claimsBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Claims"));
+      act(() => claimsBtn.click());
+      act(() => [...host.querySelectorAll("button")].find((b) => b.textContent === "Check externally…").click());
+    };
+
+    // No written note: the quote is what is sent, so the box must not claim no transcript text leaves.
+    render({});
+    openCheck();
+    expect(host.textContent).toContain("Only this text is sent, to Anthropic (claude-test):");
+    expect(host.textContent).toContain("“Budget limit turns into shared tools.”");
+    expect(host.textContent).toContain("This is a verbatim quote from the transcript.");
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
+    expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", "Budget limit turns into shared tools.");
+
+    // A written note longer than the old 160-character preview is shown in full, and is what is sent.
+    act(() => root.unmount()); root = createRoot(host);
+    render({ note: longNote });
+    openCheck();
+    expect(longNote.length).toBeGreaterThan(160);
+    expect(host.textContent).toContain(`“${longNote}”`);
+    expect(host.textContent).toContain("No transcript turns and no speaker names are sent.");
+    expect(host.textContent).not.toContain("verbatim quote");
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
+    expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", longNote);
+
+    // A claim the server would refuse is not offered for checking at all.
+    act(() => root.unmount()); root = createRoot(host);
+    render({ note: "x".repeat(601) });
+    const claimsBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Claims"));
+    act(() => claimsBtn.click());
+    expect(host.textContent).toContain("too long to check externally");
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Check externally…")).toBe(false);
+  });
 });

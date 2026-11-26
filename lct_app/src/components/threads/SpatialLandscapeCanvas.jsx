@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import ConversationTimelineView from "./ConversationTimelineView";
+import { MAX_CLAIM_CHARS } from "../../services/cloud/factCheckTask.js";
 import {
   breadcrumbTrailFor,
   buildSpatialLandscape,
@@ -89,11 +90,15 @@ const EXTERNAL_STATUS_STYLES = {
   uncertain: "bg-amber-100 text-amber-900",
 };
 
-function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, verifyingClaimId }) {
+function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, verifyingClaimId, verifyProviderLabel }) {
   const [confirmingId, setConfirmingId] = useState(null);
   if (!findings?.length) return null;
   const first = findings[0];
-  const claimText = first.note || first.quote?.text || "";
+  // The consent box shows exactly this text, in full, because it is exactly what is sent. A claim
+  // without a written note falls back to its quote, which is transcript text, and the box says so.
+  const claimIsQuote = !String(first.note || "").trim() && Boolean(first.quote?.text);
+  const claimText = String(first.note || first.quote?.text || "").trim();
+  const claimTooLong = claimText.length > MAX_CLAIM_CHARS;
   const isVerifying = verifyingClaimId === first.id;
 
   return (
@@ -149,11 +154,19 @@ function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, ver
 
       {first.lens === "claims" && !first.externalEvidence && onVerifyClaim && claimText && (
         <div className="pt-1" onClick={(e) => e.stopPropagation()}>
-          {confirmingId === first.id ? (
+          {claimTooLong ? (
+            <p className="text-[10px] text-slate-400">This claim is longer than {MAX_CLAIM_CHARS} characters, too long to check externally.</p>
+          ) : confirmingId === first.id ? (
             <div className="rounded-lg border border-stone-200 bg-white p-2 text-[11px] text-slate-600">
-              <p className="font-medium text-slate-800">Only this claim leaves your browser:</p>
-              <p className="mt-0.5 italic text-slate-500">“{claimText.slice(0, 160)}”</p>
-              <p className="mt-1 text-[10px] text-slate-400">No transcript turns or speaker names are sent.</p>
+              <p className="font-medium text-slate-800">
+                {verifyProviderLabel ? `Only this text is sent, to ${verifyProviderLabel}:` : "Only this text leaves your browser:"}
+              </p>
+              <p className="mt-0.5 max-h-32 overflow-y-auto whitespace-pre-wrap italic text-slate-500">“{claimText}”</p>
+              <p className="mt-1 text-[10px] text-slate-400">
+                {claimIsQuote
+                  ? "This is a verbatim quote from the transcript. No other turns and no speaker names are sent."
+                  : "No transcript turns and no speaker names are sent."}
+              </p>
               <div className="mt-2 flex items-center justify-end gap-2">
                 <button type="button" onClick={() => setConfirmingId(null)} className="rounded px-2 py-0.5 text-slate-500 hover:bg-stone-100">Cancel</button>
                 <button
@@ -193,6 +206,7 @@ LensFindingsPreview.propTypes = {
   nodeId: PropTypes.string.isRequired,
   onVerifyClaim: PropTypes.func,
   verifyingClaimId: PropTypes.string,
+  verifyProviderLabel: PropTypes.string,
 };
 
 function BoundaryMenu({ nodeId, siblings, visits, nodesById, onBoundaryCorrection, onFlagNode }) {
@@ -756,6 +770,7 @@ export default function SpatialLandscapeCanvas({
                           nodeId={id}
                           onVerifyClaim={onVerifyClaim}
                           verifyingClaimId={verifyingClaimId}
+                          verifyProviderLabel={epistemicProviderLabel}
                         />
                       )}
 

@@ -42,6 +42,7 @@ import { recordUserFlag } from "../services/cloud/mapAudit.js";
 import { recordQualitySnapshot } from "../services/cloud/qualityLedgerStore.js";
 import { addReactionMarker } from "../components/threads/conversationTimelineModel";
 import { runEpistemicAnalysis } from "../services/cloud/epistemicPipeline.js";
+import { withClaimEvidence, withEpistemic } from "../services/cloud/bundleFieldMerge.js";
 import { configuredMapRoutes, MAP_PROVIDERS, verifyFactualClaim } from "../services/cloud/openRouterClient.js";
 import { useSitesRuntime } from "../contexts/SitesRuntimeContext";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
@@ -100,6 +101,16 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const [bundle, setBundle] = useState(null);
   const [historySession, setHistorySession] = useState(0);
   const viewerRoot = useRef(null);
+  // Background passes (epistemic lenses, claim checks) finish after the user may have edited the map or
+  // opened another one. They read the latest bundle and the open map's session from these refs.
+  const bundleRef = useRef(null);
+  const historySessionRef = useRef(0);
+  const verifyControllerRef = useRef(null);
+  useEffect(() => { bundleRef.current = bundle; }, [bundle]);
+  useEffect(() => {
+    historySessionRef.current = historySession;
+    return () => verifyControllerRef.current?.abort();
+  }, [historySession]);
   const [graphNavigation, setGraphNavigation] = useState(null);
   const [graphRevision, setGraphRevision] = useState(0);
   const [discussionExpanded, setDiscussionExpanded] = useState([]);
@@ -572,16 +583,25 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     }).catch(() => setLibraryStatus({ state: "error", message: `${label} (download to save)` }));
   }, [bundle, privateMode, publicId, ephemeral]);
 
+  // Save an edit of a saved map and say what happened either way. Callers handle private, public and
+  // unsaved maps before calling, because each of those keeps edits in this view only.
+  const persistEdit = useCallback((updated, { saved, failed }) => {
+    void rememberThreadsArtifact(updated).then((record) => {
+      setLibraryStatus({ state: "saved", message: saved, recordId: record.id });
+    }).catch((cause) => {
+      console.error("[ThreadsViewer] Could not save the edited map:", cause);
+      setLibraryStatus({ state: "error", message: `${failed} Download the map to keep it.` });
+    });
+  }, []);
+
   const handleAddReaction = useCallback((payload) => {
     if (!bundle) return;
     const { bundle: updated } = addReactionMarker(bundle, payload);
     setBundle(updated);
     if (privateMode || publicId || ephemeral) return;
     recordQualitySnapshot(updated);
-    void rememberThreadsArtifact(updated).then((record) => {
-      setLibraryStatus({ state: "saved", message: "Reaction saved on this device", recordId: record.id });
-    }).catch(() => {});
-  }, [bundle, privateMode, publicId, ephemeral]);
+    persistEdit(updated, { saved: "Reaction saved on this device", failed: "Reaction added here but could not be saved." });
+  }, [bundle, privateMode, publicId, ephemeral, persistEdit]);
 
   const handleFlagNode = useCallback((nodeId, kind) => {
     if (!bundle) return;
@@ -591,11 +611,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       const msg = `Flagged node as ${kind}`;
       if (privateMode || publicId || ephemeral) { setLibraryStatus({ state: privateMode ? "private" : publicId ? "public" : "memory", message: msg }); return; }
       recordQualitySnapshot(updated);
-      void rememberThreadsArtifact(updated).then((record) => {
-        setLibraryStatus({ state: "saved", message: `${msg} · saved on this device`, recordId: record.id });
-      }).catch(() => {});
+      persistEdit(updated, { saved: `${msg} · saved on this device`, failed: `${msg} here but could not save it.` });
     } catch { /* Ignore unknown node/flag. */ }
-  }, [bundle, privateMode, publicId, ephemeral]);
+  }, [bundle, privateMode, publicId, ephemeral, persistEdit]);
 
   const epistemicRoutes = useMemo(() => (sitesRuntime ? configuredMapRoutes(sitesRuntime) : []), [sitesRuntime]);
   const epistemicProviderLabel = useMemo(() => {
@@ -624,12 +642,15 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
           endMs: Number.isFinite(u.timestamp_end) ? Math.round(u.timestamp_end * 1000) : null,
         })),
       };
+      const session = historySessionRef.current;
       const enriched = await runEpistemicAnalysis({ source, bundle, routes: epistemicRoutes });
-      setBundle(enriched.bundle);
+      // Another map was opened meanwhile: these lenses belong to the old one.
+      if (historySessionRef.current !== session || !bundleRef.current) return false;
+      const updated = withEpistemic(bundleRef.current, enriched.epistemic);
+      bundleRef.current = updated;
+      setBundle(updated);
       if (!privateMode && !publicId && !ephemeral) {
-        void rememberThreadsArtifact(enriched.bundle).then((record) => {
-          setLibraryStatus({ state: "saved", message: "Epistemic lenses saved on this device", recordId: record.id });
-        }).catch(() => {});
+        persistEdit(updated, { saved: "Epistemic lenses saved on this device", failed: "Epistemic lenses are shown here but could not be saved." });
       }
       return true;
     } catch (cause) {
@@ -638,13 +659,18 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     } finally {
       setEpistemicRunning(false);
     }
-  }, [bundle, epistemicRoutes, epistemicRunning, privateMode, publicId, ephemeral]);
+  }, [bundle, epistemicRoutes, epistemicRunning, privateMode, publicId, ephemeral, persistEdit]);
 
   const handleVerifyClaim = useCallback(async (claimId, claimText) => {
     if (!bundle || !epistemicRoutes.length || verifyingClaimId) return;
     setVerifyingClaimId(claimId);
+    const session = historySessionRef.current;
+    const controller = new AbortController();
+    verifyControllerRef.current = controller;
     try {
-      const res = await verifyFactualClaim(claimText, undefined, epistemicRoutes);
+      const res = await verifyFactualClaim(claimText, controller.signal, epistemicRoutes);
+      // Another map was opened meanwhile (which aborts this request): the result belongs to the old map.
+      if (controller.signal.aborted || historySessionRef.current !== session) return;
       const external = {
         ...res.factCheck,
         claim_sent: claimText,
@@ -652,27 +678,26 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
         backend: res.backend,
         model: res.model,
       };
-      const updated = {
-        ...bundle,
-        epistemic: {
-          ...(bundle.epistemic || {}),
-          factual_claims: (bundle.epistemic?.factual_claims || []).map((c) =>
-            String(c.id) === String(claimId) ? { ...c, external_evidence: external } : c,
-          ),
-        },
-      };
+      // Merge onto the map as it is now, so edits made while the check ran are kept.
+      const updated = withClaimEvidence(bundleRef.current, claimId, external);
+      if (!updated) {
+        setLibraryStatus({ state: "error", message: "The claim check finished, but that claim is no longer in this map, so the result was not kept." });
+        return;
+      }
+      bundleRef.current = updated;
       setBundle(updated);
       if (!privateMode && !publicId && !ephemeral) {
-        void rememberThreadsArtifact(updated).then((record) => {
-          setLibraryStatus({ state: "saved", message: "External claim check saved", recordId: record.id });
-        }).catch(() => {});
+        persistEdit(updated, { saved: "External claim check saved", failed: "The claim check is shown here but could not be saved." });
       }
-    } catch {
-      setLibraryStatus({ state: "error", message: "External claim check could not finish." });
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      console.error("[ThreadsViewer] External claim check failed:", cause);
+      setLibraryStatus({ state: "error", message: `External claim check could not finish: ${String(cause?.message || cause)}` });
     } finally {
+      if (verifyControllerRef.current === controller) verifyControllerRef.current = null;
       setVerifyingClaimId(null);
     }
-  }, [bundle, epistemicRoutes, verifyingClaimId, privateMode, publicId, ephemeral]);
+  }, [bundle, epistemicRoutes, verifyingClaimId, privateMode, publicId, ephemeral, persistEdit]);
   const openAnother = useCallback(() => {
     if (privateMode) { onPrivateClose(); return; }
     setBundle(null);
@@ -868,6 +893,11 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     return (
       <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden bg-[#fbfaf7] font-sans">
         {sourceNotice}
+        {/* The landscape has no header, and its status line sits inside the closed "More options" menu,
+            so a failure (an unsaved edit, a claim check that did not finish) needs its own visible line. */}
+        {libraryStatus?.state === "error" && (
+          <p role="alert" className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 sm:px-5">{libraryStatus.message}</p>
+        )}
         <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
           {sourceOpen && renderSourcePanel(selectedNodeData || focusNode)}
           <SpatialLandscapeCanvas
