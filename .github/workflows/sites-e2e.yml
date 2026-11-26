@@ -26,7 +26,9 @@ permissions:
 jobs:
   sites-e2e:
     name: Playwright (Sites build)
-    runs-on: ubuntu-latest
+    # Pinned like e2e.yml and post-deploy-smoke.yml: ubuntu-latest is 26.04, where the
+    # project's pinned Playwright cannot install Chromium ("does not support chromium").
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
