@@ -13,7 +13,14 @@ export default function SettingsLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   // Opened directly (a new tab or a typed URL), there is no earlier page to return to, so go Home.
-  const goBack = () => (location.key === "default" ? navigate("/") : navigate(-1));
+  // The browser router keeps its position in history.state.idx, and a replace (/settings →
+  // /settings/runtime) keeps it, so idx 0 means "first page in this tab". Routers without it
+  // (tests' MemoryRouter) fall back to the first entry's "default" key.
+  const goBack = () => {
+    const idx = window.history.state?.idx;
+    const canGoBack = typeof idx === "number" ? idx > 0 : location.key !== "default";
+    if (canGoBack) navigate(-1); else navigate("/");
+  };
   const sites = import.meta.env.VITE_SITES_MODE === "true";
 
   return (

@@ -17,11 +17,11 @@ const backClass = "inline-flex min-h-11 items-center gap-2 text-sm text-slate-60
 export const pageLinkClass = "inline-flex min-h-11 items-center text-sm text-slate-600 underline-offset-4 hover:text-slate-900 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700";
 
 export default function PageHeader({ title, description, back = { to: "/", label: "Home" }, links, actions, embedded = false, children }) {
-  const backControl = back && (back.onClick
+  const backControl = back && (typeof back.onClick === "function"
     ? <button type="button" onClick={back.onClick} className={backClass}><ArrowLeft size={16} aria-hidden="true" />{back.label}</button>
     : <Link to={back.to} className={backClass}><ArrowLeft size={16} aria-hidden="true" />{back.label}</Link>);
   return <>
-    {((!embedded && backControl) || links) && <nav aria-label="Page" className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1">
+    {((!embedded && backControl) || links) && <nav aria-label={embedded ? (typeof title === "string" ? `${title} links` : "Section links") : "Page"} className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1">
       {(!embedded && backControl) || <span />}
       {links && <div className="flex flex-wrap items-center gap-x-5">{links}</div>}
     </nav>}
@@ -44,7 +44,9 @@ function backShape(props, propName, componentName) {
   if (back === undefined || back === null || back === false) return null;
   if (typeof back !== "object") return new Error(`${componentName}: ${propName} must be false, null or an object.`);
   if (typeof back.label !== "string" || !back.label) return new Error(`${componentName}: ${propName}.label is required.`);
-  if (typeof back.onClick !== "function" && (typeof back.to !== "string" || !back.to)) return new Error(`${componentName}: ${propName} needs a "to" destination or an onClick handler.`);
+  if (back.onClick !== undefined && typeof back.onClick !== "function") return new Error(`${componentName}: ${propName}.onClick must be a function.`);
+  if (back.to !== undefined && (typeof back.to !== "string" || !back.to)) return new Error(`${componentName}: ${propName}.to must be a non-empty path.`);
+  if (back.onClick === undefined && back.to === undefined) return new Error(`${componentName}: ${propName} needs a "to" destination or an onClick handler.`);
   return null;
 }
 

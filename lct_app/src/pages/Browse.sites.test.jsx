@@ -7,8 +7,7 @@ const { listSaved, apiFetch, navigate, listLocal, loadDraft } = vi.hoisted(() =>
   listSaved: vi.fn(), apiFetch: vi.fn(), navigate: vi.fn(), listLocal: vi.fn(), loadDraft: vi.fn(),
 }));
 const provider = { conversations: { listSaved } };
-// eslint-disable-next-line react/prop-types
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate, Link: function LinkStub({ to, ...rest }) { return <a href={to} {...rest} />; } }));
+vi.mock("react-router-dom", async (importOriginal) => ({ ...(await importOriginal()), useNavigate: () => navigate }));
 vi.mock("../services/dataProvider", () => ({ useDataProvider: () => provider }));
 vi.mock("../services/apiClient", () => ({ apiFetch, API_BASE_URL: "https://owner.example" }));
 vi.mock("../components/browse/IndrasNetAudioLibrary", () => ({ default: () => <div>Owner audio library</div> }));
@@ -23,6 +22,7 @@ vi.mock("../services/localDraftStore", () => ({
   summarizeLocalDraft: () => ({ title: "Device draft", nodeCount: 2 }),
 }));
 
+import { MemoryRouter } from "react-router-dom";
 import Browse from "./Browse";
 
 let root;
@@ -48,7 +48,7 @@ afterEach(async () => {
 });
 
 async function renderBrowse() {
-  await act(async () => root.render(<Browse />));
+  await act(async () => root.render(<MemoryRouter><Browse /></MemoryRouter>));
 }
 
 describe("Browse Sites access", () => {

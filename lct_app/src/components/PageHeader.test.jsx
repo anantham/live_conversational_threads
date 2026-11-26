@@ -35,6 +35,11 @@ describe("PageHeader", () => {
     try {
       await render(<PageHeader title="Lost" back={{ label: "Back" }} />);
       expect(error.mock.calls.flat().join(" ")).toContain('needs a "to" destination or an onClick handler');
+      error.mockClear();
+      // A valid destination does not excuse a broken handler, and the link is used instead of it.
+      await render(<PageHeader title="Odd" back={{ label: "Back", to: "/", onClick: "oops" }} />);
+      expect(error.mock.calls.flat().join(" ")).toContain("onClick must be a function");
+      expect(host.querySelector('nav[aria-label="Page"] a[href="/"]')).toBeTruthy();
     } finally { error.mockRestore(); }
   });
 
@@ -56,7 +61,9 @@ describe("PageHeader", () => {
 
   it("inside another page, keeps links the caller still passes", async () => {
     await render(<PageHeader embedded title="Public conversations" links={<a href="/x">Only here</a>} />);
-    expect(host.querySelector('nav[aria-label="Page"] a[href="/x"]').textContent).toBe("Only here");
-    expect(host.querySelector('nav[aria-label="Page"] a[href="/"]')).toBeNull();
+    // Named for its own section, so it never repeats the host page's "Page" landmark.
+    expect(host.querySelector('nav[aria-label="Page"]')).toBeNull();
+    expect(host.querySelector('nav[aria-label="Public conversations links"] a[href="/x"]').textContent).toBe("Only here");
+    expect(host.querySelector('a[href="/"]')).toBeNull();
   });
 });

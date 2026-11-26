@@ -1,3 +1,7 @@
+## 2026-11-27 02:10 IST — Second Codex round on the #273 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings (packet sha256 `5c339019…`). Taken: opening `/settings` directly redirects to `/settings/runtime` with replace, which gave the entry a new key, so Back still did nothing; Back now reads the browser router's `history.state.idx` (kept across a replace) and falls back to the key only without it. The `back` validator checks each supplied field (a valid `to` no longer excuses a non-function `onClick`), and the button is used only for a real function. An embedded header's link nav is named for its section, never a second "Page". The Browse test uses the real router `Link` in a `MemoryRouter`. `settings/SettingsLayout.test.jsx` now drives the real `BrowserRouter`; the redirect case fails on the previous version.
+
 ## 2026-11-27 01:20 IST — Codex review fixes for the shared page header (PR #273)
 
 Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved 2026-11-27), read-only, code-only diff `e90f816b...d5a93e85` without the worklog, packet sha256 `0327b22f…d1`. 7 findings, all fixed.
