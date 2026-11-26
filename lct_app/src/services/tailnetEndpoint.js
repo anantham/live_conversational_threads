@@ -12,6 +12,7 @@
 // - Callers store and fetch the normalized href, never the raw input: JS trim() strips
 //   characters (NBSP, U+FEFF) the URL parser keeps, so "validate trimmed, fetch raw" would
 //   let a crafted value become a relative URL on the app's own origin.
+// - The length cap applies to the canonical href, so every consumer agrees on it.
 
 const OWNER_STT_URL = 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions';
 
@@ -33,6 +34,13 @@ const TRUSTED_SUFFIX = tailnetSuffixOf(DEFAULT_TAILNET_STT_URL);
 const TRUSTED_PATH = (() => {
   try { return new URL(DEFAULT_TAILNET_STT_URL).pathname; } catch { return null; }
 })();
+export const MAX_TAILNET_URL_LENGTH = 300;
+
+// What the settings UI may tell the user; tailnet is null when overrides are off.
+export const TAILNET_POLICY = Object.freeze({
+  tailnet: TRUSTED_SUFFIX ? TRUSTED_SUFFIX.slice(1) : null,
+  path: TRUSTED_SUFFIX ? TRUSTED_PATH : null,
+});
 
 // Returns the canonical href of an acceptable endpoint, or null.
 export function normalizeTailnetUrl(value, trustedSuffix = TRUSTED_SUFFIX, trustedPath = TRUSTED_PATH) {
@@ -44,7 +52,7 @@ export function normalizeTailnetUrl(value, trustedSuffix = TRUSTED_SUFFIX, trust
       !parsed.password &&
       tailnetSuffixOf(parsed.href) === trustedSuffix &&
       parsed.pathname === trustedPath;
-    return ok ? parsed.href : null;
+    return ok && parsed.href.length <= MAX_TAILNET_URL_LENGTH ? parsed.href : null;
   } catch {
     return null;
   }

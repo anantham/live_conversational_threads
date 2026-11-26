@@ -6,7 +6,7 @@ import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient';
 import { ANTHROPIC_PRICING_URL, anthropicModelPriceLabel } from '../../services/cloud/anthropicModelPrices';
 import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId } from '../../services/cloud/sitesProviderPreferences';
 import { DEFAULT_M5_TAILNET_URL } from '../../services/cloud/m5TailnetFileSession';
-import { normalizeTailnetUrl } from '../../services/tailnetEndpoint';
+import { TAILNET_POLICY, normalizeTailnetUrl } from '../../services/tailnetEndpoint';
 
 const speechGroup = {
   title: 'Speech-to-text',
@@ -76,8 +76,12 @@ function SpeechOrder() {
 // else is refused out loud rather than silently dropped.
 function TailnetEndpointField({ className, value, onSave }) {
   const [error, setError] = useState('');
+  const { tailnet, path } = TAILNET_POLICY;
+  if (!tailnet) {
+    return <p className="text-xs text-slate-600">This build has no tailnet endpoint to point at, so the address cannot be changed here.</p>;
+  }
   return <label className="grid gap-1 text-xs text-slate-600">
-    Tailnet endpoint (an HTTPS address on {new URL(DEFAULT_M5_TAILNET_URL).hostname.split('.').slice(1).join('.')})
+    Tailnet endpoint (an HTTPS address on {tailnet})
     <input
       className={className}
       defaultValue={value || DEFAULT_M5_TAILNET_URL}
@@ -87,7 +91,7 @@ function TailnetEndpointField({ className, value, onSave }) {
       onBlur={event => {
         const raw = event.target.value.trim();
         const normalized = raw ? normalizeTailnetUrl(raw) : '';
-        if (normalized === null) { setError('Not saved. Use an HTTPS address on this tailnet ending in /v1/audio/transcriptions.'); return; }
+        if (normalized === null) { setError(`Not saved. Use an HTTPS address on ${tailnet} ending in ${path}, under 300 characters.`); return; }
         setError('');
         onSave(normalized);
       }}

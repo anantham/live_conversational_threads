@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Pin the build default so these tests do not depend on a developer's VITE_STT_EDGE_URL.
+vi.hoisted(() => { vi.stubEnv('VITE_STT_EDGE_URL', 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions'); });
 import {
   DEFAULT_M5_TAILNET_URL,
   isAllowedTailnetUrl,

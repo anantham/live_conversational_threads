@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
+// Pin the build default so these tests do not depend on a developer's VITE_STT_EDGE_URL.
+vi.hoisted(() => { vi.stubEnv('VITE_STT_EDGE_URL', 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions'); });
+
 import { DEFAULT_TAILNET_STT_URL, isAllowedTailnetUrl, normalizeTailnetUrl, tailnetSuffixOf } from './tailnetEndpoint.js';
 import { readEdgeConfig } from '../components/audio/edgeConfig.js';
 import { normalizeProviderPreferences } from './cloud/sitesProviderPreferences.js';
@@ -41,8 +44,9 @@ describe('tailnet endpoint allowlist', () => {
       expect(fresh.DEFAULT_TAILNET_STT_URL).toBe('https://stt.example.com/v1/audio/transcriptions');
       expect(fresh.isAllowedTailnetUrl(OWN)).toBe(false);
       expect(fresh.isAllowedTailnetUrl(fresh.DEFAULT_TAILNET_STT_URL)).toBe(false);
+      expect(fresh.TAILNET_POLICY).toEqual({ tailnet: null, path: null });
     } finally {
-      vi.unstubAllEnvs();
+      vi.stubEnv('VITE_STT_EDGE_URL', 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions');
       vi.resetModules();
     }
   });
@@ -52,7 +56,29 @@ describe('tailnet endpoint allowlist', () => {
     // would fetch as a relative URL on the app's origin.
     expect(normalizeTailnetUrl(`\u00A0${OWN}`)).toBe(OWN);
     expect(normalizeTailnetUrl(`\uFEFF${OWN}`)).toBe(OWN);
-    expect(readEdgeConfig(`?edge_url=${encodeURIComponent(`\u00A0${OWN}`)}`, memStorage()).url).toBe(OWN);
+    const store = memStorage();
+    expect(readEdgeConfig(`?edge_url=${encodeURIComponent(`\u00A0${OWN}`)}`, store).url).toBe(OWN);
+    expect(store.getItem('lct_stt_edge_url')).toBe(OWN);
+  });
+
+  it('caps the canonical href, so a value that grows when encoded is refused everywhere', () => {
+    const long = `${OWN}?note=${'é'.repeat(60)}`; // ~140 chars typed, ~420 once percent-encoded
+    expect(long.length).toBeLessThan(300);
+    expect(normalizeTailnetUrl(long)).toBeNull();
+    expect(normalizeProviderPreferences({ m5TailnetUrl: long }).m5TailnetUrl).toBe('');
+  });
+
+  it('uploads to the canonical href, not the decorated input', async () => {
+    const calls = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = async (url) => { calls.push(String(url)); throw new TypeError('offline'); };
+    try {
+      await new M5TailnetFileSession({ url: `\uFEFF${OWN}` })
+        .start({ file: new File([new Uint8Array(8)], 'a.wav', { type: 'audio/wav' }) }).catch(() => {});
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(calls).toEqual([OWN]);
   });
 
   it('drops a stored Funnel address from saved Sites settings and keeps an own-tailnet one', () => {
