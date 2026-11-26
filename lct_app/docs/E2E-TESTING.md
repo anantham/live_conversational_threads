@@ -28,6 +28,14 @@ Playwright and browsers are already configured. To reinstall browsers manually:
 npx playwright install chromium
 ```
 
+## Sites-mode tests (the live Site)
+
+`npm run test:e2e:sites` builds the ChatGPT Site bundle (`build:sites`), serves it with
+`vite preview` and runs `tests/e2e-sites/` against it. The Site's `/api` calls are answered by
+`tests/e2e-sites/siteApi.js`, so no backend, key or sign-in is needed. CI runs it on PRs into
+`main`, `integ/sites-combined` and `codex/lct-inference-choice`. Intent:
+`tests/intent/sites-e2e.md`.
+
 ## Running Tests
 
 ### All Tests (Headless)
