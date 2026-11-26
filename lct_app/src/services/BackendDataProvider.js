@@ -76,9 +76,8 @@ export class BackendDataProvider extends DataProvider {
           ...options
         });
       },
-      fetchThreadsFile: async (src) => {
-        return fetch(src);
-      },
+      // A shared link is a public file: never send this site's cookies to it.
+      fetchThreadsFile: async (src) => fetch(src, { credentials: 'omit' }),
       fetchRevisions: async (id, options = {}) => {
         return fetch(`${API_BASE_URL}/api/conversations/${id}/revisions`, options);
       },
