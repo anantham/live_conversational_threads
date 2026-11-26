@@ -6,7 +6,7 @@
 //   when the browser is off-tailnet.
 
 import { importFileType, importWait } from './audioImportFile.js';
-import { DEFAULT_TAILNET_STT_URL, isAllowedTailnetUrl } from '../tailnetEndpoint.js';
+import { DEFAULT_TAILNET_STT_URL, isAllowedTailnetUrl, normalizeTailnetUrl } from '../tailnetEndpoint.js';
 
 export { isAllowedTailnetUrl };
 export const DEFAULT_M5_TAILNET_URL = DEFAULT_TAILNET_STT_URL;
@@ -35,7 +35,7 @@ export function parseM5Segments(payload) {
 export class M5TailnetFileSession {
   constructor({ url = DEFAULT_M5_TAILNET_URL, token = '', diarize = true, onStage, onAudio, onTranscript } = {}) {
     Object.assign(this, {
-      url: isAllowedTailnetUrl(url) ? url.trim() : DEFAULT_M5_TAILNET_URL,
+      url: normalizeTailnetUrl(url) || DEFAULT_M5_TAILNET_URL,
       token: typeof token === 'string' ? token.trim() : '',
       diarize,
       onStage,
@@ -65,7 +65,8 @@ export class M5TailnetFileSession {
       let response;
       try {
         response = await importWait(
-          fetch(this.url, { method: 'POST', body: form, headers, signal }),
+          // A redirect could forward the POST body off the tailnet; refuse to follow one.
+          fetch(this.url, { method: 'POST', body: form, headers, signal, redirect: 'error' }),
           signal,
           180_000,
         );

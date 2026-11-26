@@ -7,6 +7,11 @@
 //   session, so no entry point can be looser than another.
 // - A build whose default is not a tailnet URL accepts no override (fails closed); the
 //   build-time default itself stays usable because it is not user-controlled.
+// - Only the default's path (the OpenAI-compatible transcription route) is accepted, so a
+//   link cannot aim audio at some other service on the tailnet.
+// - Callers store and fetch the normalized href, never the raw input: JS trim() strips
+//   characters (NBSP, U+FEFF) the URL parser keeps, so "validate trimmed, fetch raw" would
+//   let a crafted value become a relative URL on the app's own origin.
 
 const OWNER_STT_URL = 'https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions';
 
@@ -25,18 +30,26 @@ export function tailnetSuffixOf(value) {
 }
 
 const TRUSTED_SUFFIX = tailnetSuffixOf(DEFAULT_TAILNET_STT_URL);
+const TRUSTED_PATH = (() => {
+  try { return new URL(DEFAULT_TAILNET_STT_URL).pathname; } catch { return null; }
+})();
 
-export function isAllowedTailnetUrl(value, trustedSuffix = TRUSTED_SUFFIX) {
-  if (!trustedSuffix || typeof value !== 'string' || !value.trim()) return false;
+// Returns the canonical href of an acceptable endpoint, or null.
+export function normalizeTailnetUrl(value, trustedSuffix = TRUSTED_SUFFIX, trustedPath = TRUSTED_PATH) {
+  if (!trustedSuffix || !trustedPath || typeof value !== 'string' || !value.trim()) return null;
   try {
     const parsed = new URL(value.trim());
-    return (
-      parsed.protocol === 'https:' &&
+    const ok = parsed.protocol === 'https:' &&
       !parsed.username &&
       !parsed.password &&
-      tailnetSuffixOf(parsed.href) === trustedSuffix
-    );
+      tailnetSuffixOf(parsed.href) === trustedSuffix &&
+      parsed.pathname === trustedPath;
+    return ok ? parsed.href : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isAllowedTailnetUrl(value, trustedSuffix = TRUSTED_SUFFIX, trustedPath = TRUSTED_PATH) {
+  return normalizeTailnetUrl(value, trustedSuffix, trustedPath) !== null;
 }

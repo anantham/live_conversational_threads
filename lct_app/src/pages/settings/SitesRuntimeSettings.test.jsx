@@ -179,3 +179,23 @@ it('edits and restores the map prompt without contacting the legacy prompt servi
   expect(readProviderPreferences().guidance).toBe('');
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it('refuses an M5 endpoint on another tailnet out loud and saves one on the owner tailnet', async () => {
+  localStorage.setItem('lct.sites.provider-preferences.v1', JSON.stringify({ speech: ['m5_tailnet', 'soniox'] }));
+  await mount();
+  const input = field('Tailnet endpoint');
+  expect(input).not.toBeUndefined();
+  const blur = async () => act(async () => { input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
+
+  await type(input, 'https://attacker-box.tailEVIL.ts.net/v1/audio/transcriptions');
+  await blur();
+  expect(container.querySelector('[role="alert"]')?.textContent).toMatch(/Not saved/);
+  expect(input.getAttribute('aria-invalid')).toBe('true');
+  expect(readProviderPreferences().m5TailnetUrl).toBe('');
+
+  const own = 'https://other-host.tail4741ad.ts.net:5443/v1/audio/transcriptions';
+  await type(input, ` ${own} `);
+  await blur();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(readProviderPreferences().m5TailnetUrl).toBe(own);
+});

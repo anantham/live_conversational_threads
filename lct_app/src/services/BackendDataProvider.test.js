@@ -67,3 +67,13 @@ describe("BackendDataProvider protected-share requests", () => {
     );
   });
 });
+describe("BackendDataProvider edge STT upload", () => {
+  // The edge URL can arrive in a link; a 307/308 would re-send the audio to the redirect target.
+  it("never follows a redirect, even if a caller asks to", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new BackendDataProvider();
+    await provider.audio.uploadEdgeStt("https://m5.tail4741ad.ts.net/v1/audio/transcriptions", new FormData(), { redirect: "follow" });
+    expect(fetchMock.mock.calls[0][1].redirect).toBe("error");
+  });
+});

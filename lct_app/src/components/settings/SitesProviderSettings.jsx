@@ -5,7 +5,8 @@ import ProviderKeyForm from './ProviderKeyForm';
 import { MAP_PROVIDERS } from '../../services/cloud/openRouterClient';
 import { ANTHROPIC_PRICING_URL, anthropicModelPriceLabel } from '../../services/cloud/anthropicModelPrices';
 import { MAP_PROVIDER_IDS, MAX_MAP_ROUTES, SPEECH_PROVIDERS, validModelId } from '../../services/cloud/sitesProviderPreferences';
-import { DEFAULT_M5_TAILNET_URL, isAllowedTailnetUrl } from '../../services/cloud/m5TailnetFileSession';
+import { DEFAULT_M5_TAILNET_URL } from '../../services/cloud/m5TailnetFileSession';
+import { normalizeTailnetUrl } from '../../services/tailnetEndpoint';
 
 const speechGroup = {
   title: 'Speech-to-text',
@@ -62,18 +63,7 @@ function SpeechOrder() {
             </div>}
           </div>
           {id === 'm5_tailnet' && index >= 0 && (
-            <label className="grid gap-1 text-xs text-slate-600">
-              Tailnet endpoint (HTTPS *.ts.net)
-              <input
-                className={input}
-                defaultValue={preferences.m5TailnetUrl || DEFAULT_M5_TAILNET_URL}
-                placeholder={DEFAULT_M5_TAILNET_URL}
-                onBlur={event => {
-                  const val = event.target.value.trim();
-                  if (!val || isAllowedTailnetUrl(val)) save({ m5TailnetUrl: val });
-                }}
-              />
-            </label>
+            <TailnetEndpointField className={input} value={preferences.m5TailnetUrl} onSave={m5TailnetUrl => save({ m5TailnetUrl })} />
           )}
           <ProviderKeyForm backend={id} name={name} speech />
         </li>;
@@ -81,6 +71,32 @@ function SpeechOrder() {
     </ol>
   </section>;
 }
+
+// Only an address on the owner's tailnet, at the transcription path, is kept; anything
+// else is refused out loud rather than silently dropped.
+function TailnetEndpointField({ className, value, onSave }) {
+  const [error, setError] = useState('');
+  return <label className="grid gap-1 text-xs text-slate-600">
+    Tailnet endpoint (an HTTPS address on {new URL(DEFAULT_M5_TAILNET_URL).hostname.split('.').slice(1).join('.')})
+    <input
+      className={className}
+      defaultValue={value || DEFAULT_M5_TAILNET_URL}
+      placeholder={DEFAULT_M5_TAILNET_URL}
+      aria-invalid={error ? 'true' : undefined}
+      aria-describedby={error ? 'm5-tailnet-error' : undefined}
+      onBlur={event => {
+        const raw = event.target.value.trim();
+        const normalized = raw ? normalizeTailnetUrl(raw) : '';
+        if (normalized === null) { setError('Not saved. Use an HTTPS address on this tailnet ending in /v1/audio/transcriptions.'); return; }
+        setError('');
+        onSave(normalized);
+      }}
+    />
+    {error && <span id="m5-tailnet-error" role="alert" className="text-red-700">{error}</span>}
+  </label>;
+}
+
+TailnetEndpointField.propTypes = { className: PropTypes.string, value: PropTypes.string, onSave: PropTypes.func.isRequired };
 
 function FallbackRow({ entry, index, total, onUpdate, onMove, onRemove }) {
   const { keys, catalogs } = useSitesRuntime();

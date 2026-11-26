@@ -11,7 +11,7 @@
  * Pure-ish: pass `search` + a `storage` shim for tests.
  */
 
-import { DEFAULT_TAILNET_STT_URL, isAllowedTailnetUrl } from "../../services/tailnetEndpoint.js";
+import { DEFAULT_TAILNET_STT_URL, normalizeTailnetUrl } from "../../services/tailnetEndpoint.js";
 
 const LS = "lct_stt_edge";
 const DEFAULT_URL = DEFAULT_TAILNET_STT_URL;
@@ -21,7 +21,6 @@ const DEFAULT_URL = DEFAULT_TAILNET_STT_URL;
 // would otherwise let a crafted link send mic audio to an attacker endpoint (the
 // M5 sends permissive CORS), and any *.ts.net host is not enough: Tailscale
 // Funnel publishes every tailnet's machines as public *.ts.net names.
-const isAllowedUrl = isAllowedTailnetUrl;
 
 function resolveStorage(storage) {
   if (storage) return storage;
@@ -58,8 +57,9 @@ export function readEdgeConfig(search = "", storage = undefined) {
   // else the trusted default. Anything not HTTPS-on-tailnet is ignored.
   let url = DEFAULT_URL;
   try {
-    const q = params.get("edge_url");
-    if (q && isAllowedUrl(q)) {
+    // Store and use the normalized href, never the raw query string.
+    const q = normalizeTailnetUrl(params.get("edge_url"));
+    if (q) {
       url = q;
       try {
         ls?.setItem(`${LS}_url`, q);
@@ -67,8 +67,8 @@ export function readEdgeConfig(search = "", storage = undefined) {
         /* session-only if storage is unavailable */
       }
     } else {
-      const stored = ls?.getItem(`${LS}_url`);
-      if (stored && isAllowedUrl(stored)) url = stored;
+      const stored = normalizeTailnetUrl(ls?.getItem(`${LS}_url`));
+      if (stored) url = stored;
     }
   } catch {
     /* keep default */
