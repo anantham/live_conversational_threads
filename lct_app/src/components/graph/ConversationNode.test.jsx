@@ -213,10 +213,11 @@ describe("ConversationNode structured-turn fallback", () => {
   it("marks a crux with its dot, not an amber halo, so amber stays with the selection", () => {
     const render = (props) => renderToStaticMarkup(<ReactFlowProvider><ConversationNode selected={false}
       data={{ title: "Pivot", fillColor: "#ccfbf1", borderColor: "#5eead4", ...props }} /></ReactFlowProvider>);
-    const crux = render({ isCrux: true });
-    expect(crux).toContain('title="Crux — what the discussion hinges on"');
-    expect(crux).not.toMatch(/245,\s*158,\s*11/);
-    expect(crux).not.toContain("#f59e0b");
-    expect(render({ isCrux: true })).toContain("background:#fff");
+    const crux = new DOMParser().parseFromString(render({ isCrux: true }), "text/html");
+    const card = crux.querySelector(".lct-conversation-node");
+    // The card itself carries no amber glow; the dot is named for assistive technology.
+    expect(card.style.boxShadow).not.toMatch(/245,\s*158,\s*11|#f59e0b|217,\s*119,\s*6|#d97706/i);
+    expect(card.style.background).toMatch(/#fff|rgb\(255, 255, 255\)/);
+    expect(crux.querySelector('[role="img"][aria-label="Crux"]')?.getAttribute("title")).toBe("Crux — what the discussion hinges on");
   });
 });

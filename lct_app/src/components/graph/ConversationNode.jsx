@@ -554,12 +554,6 @@ function ProgressArrow() {
   );
 }
 
-// Quiet crux marker (ADR-030 §D4): a small amber dot before the title instead
-// of a full-card amber ring + halo. Cruxes are common on the macro view, so a
-// loud per-card treatment floods the canvas and destroys amber's meaning;
-// a single small dot marks "this is load-bearing" without competing for the
-// eye, keeping amber reserved for the selected node + provenance (DESIGN.md
-// One-Amber Rule). Full crux context lives in the detail drawer.
 // The colour mode's key, shown beside the title. Neutral (uncoloured) cards show none.
 const NEUTRAL_SWATCH = new Set(["#f1f5f9", "#cbd5e1"]);
 function ModeSwatch({ fill, border }) {
@@ -584,9 +578,17 @@ function ModeSwatch({ fill, border }) {
 }
 ModeSwatch.propTypes = { fill: PropTypes.string, border: PropTypes.string };
 
+// Quiet crux marker (ADR-030 §D4): a small amber dot before the title instead
+// of a full-card amber ring + halo. Cruxes are common on the macro view, so a
+// loud per-card treatment floods the canvas and destroys amber's meaning;
+// a single small dot marks "this is load-bearing" without competing for the
+// eye, keeping amber reserved for the selected node + provenance (DESIGN.md
+// One-Amber Rule). Full crux context lives in the detail drawer.
 function CruxDot() {
   return (
     <span
+      role="img"
+      aria-label="Crux"
       title="Crux — what the discussion hinges on"
       style={{
         display: "inline-block",

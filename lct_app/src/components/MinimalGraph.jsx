@@ -2225,7 +2225,8 @@ function MinimalGraphInner({
           Native <details> keeps it keyboard-accessible with no extra state. */}
       {!chromeless && placeGraphTools(<div className={toolbarMode
         ? "flex min-w-0 items-center gap-1"
-        : "absolute bottom-2 left-2 z-40 flex items-center gap-2 sm:bottom-4 sm:left-4 sm:gap-1"}>
+        // Floating over the canvas, the quiet pills need their own paper behind them.
+        : "absolute bottom-2 left-2 z-40 flex items-center gap-2 rounded-full border border-stone-200/70 bg-[#fbfaf7]/95 p-0.5 sm:bottom-4 sm:left-4 sm:gap-1"}>
         {ZOOM_PRESETS.map(({ label, action, hint }) => (
           <button
             key={label}

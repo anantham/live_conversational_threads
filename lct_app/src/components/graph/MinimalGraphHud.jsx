@@ -179,6 +179,7 @@ export default function MinimalGraphHud({
               key={label}
               type="button"
               aria-pressed={isLocked}
+              aria-current={isActive ? "true" : undefined}
               onClick={() => {
                 autoFollowRef.current = false;
                 setAutoFollow(false);

@@ -337,7 +337,7 @@ export function clusterMapToRfView(clusters, allNodes, speakerColorMap, prefix) 
       style: {
         background: "#fff",
         border: "1px solid #e2e8f0",
-        boxShadow: "0 1px 3px rgba(15,23,42,0.06)",
+        // No inline box-shadow: it would override React Flow's focus and selection ring.
         borderRadius: "10px",
         padding: "10px 14px",
         fontSize: "11px",

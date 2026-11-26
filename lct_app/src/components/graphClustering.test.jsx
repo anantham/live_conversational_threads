@@ -19,6 +19,8 @@ describe("grouped graph nodes", () => {
     for (const node of clusterNodes) {
       expect(node.style.background).toBe("#fff");
       expect(node.style.border).toBe("1px solid #e2e8f0");
+      // An inline shadow would override React Flow's focus and selection ring.
+      expect(node.style.boxShadow).toBeUndefined();
     }
     const withSpeaker = new DOMParser().parseFromString(renderToStaticMarkup(clusterNodes[0].data.label), "text/html");
     expect(withSpeaker.querySelector("[data-mode-swatch]")?.getAttribute("style")).toContain("hsl(200, 70%, 82%)");
