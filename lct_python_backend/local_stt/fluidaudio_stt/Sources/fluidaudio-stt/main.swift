@@ -251,17 +251,21 @@ func jsonResponse(_ code: Int, _ reason: String, data: Data) -> HttpResponse {
 /// OPTIONS preflight first whenever the request has an Authorization header.
 ///
 /// LOCAL_STT_CORS_ORIGINS matches the Python server (`local_stt/server.py`):
-/// "*" (the default) allows any origin; otherwise a comma-separated allowlist.
+/// "*" (the default) allows any origin; otherwise a comma-separated allowlist of
+/// exact origins (scheme://host[:port]). A list that includes "*" allows any
+/// origin, as it does there. A trailing slash on an entry is ignored, since
+/// browsers never send one. An empty value allows no origin.
 /// This governs who may READ a reply. It is not access control: a page can
 /// still send a plain multipart POST that the server will run.
 let corsOriginsSetting = (ProcessInfo.processInfo.environment["LOCAL_STT_CORS_ORIGINS"] ?? "*")
     .trimmingCharacters(in: .whitespaces)
-let corsAllowAnyOrigin = corsOriginsSetting == "*"
 let corsAllowlist = Set(
     corsOriginsSetting.split(separator: ",")
         .map { $0.trimmingCharacters(in: .whitespaces) }
+        .map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
         .filter { !$0.isEmpty }
 )
+let corsAllowAnyOrigin = corsAllowlist.contains("*")
 
 /// CORS headers for a reply to `request`; empty when the request has no
 /// Origin (curl, the backend) or its origin is not allowed.

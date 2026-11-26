@@ -39,15 +39,27 @@ The app's browser page calls this server directly through Tailscale Serve
 (`https://<host>.ts.net:5443` → `127.0.0.1:5096`), which is a cross-origin
 request. The server therefore:
 
-- answers every `OPTIONS` preflight with `204` and the allow-origin, methods
-  (`GET, POST, OPTIONS`) and headers (`Authorization, Content-Type`) headers;
+- answers every `OPTIONS` preflight with `204`. When the request's `Origin`
+  is allowed, the reply carries the allow-origin, methods (`GET, POST,
+  OPTIONS`) and headers (`Authorization, Content-Type`) headers; when it is
+  not, the reply carries none of them and the browser refuses the call;
 - adds `Access-Control-Allow-Origin` to `/health` and transcription replies,
-  errors included, when the request carries an `Origin`.
+  errors included, when the request carries an allowed `Origin`.
+
+Only `Authorization` and `Content-Type` are allowed as request headers. A
+client that adds another custom header will fail its preflight.
 
 `LOCAL_STT_CORS_ORIGINS` (same variable as `../server.py`) sets who may read
 replies: `*` (default) for any origin, or a comma-separated allowlist such as
-`https://threads.adityaarpitha.com,http://127.0.0.1:4173`. It is not access
-control: a page can still send a plain multipart POST that the server runs.
+`https://threads.adityaarpitha.com,http://127.0.0.1:4173`. Entries are exact
+origins (scheme, host, optional port); a list that includes `*` allows any
+origin, and an empty value allows none. It is not access control: a page can
+still send a plain multipart POST that the server runs.
+
+With `*`, any website open in a browser on the tailnet can call this server
+and read the reply. The server keeps no transcripts, so a reply only ever
+describes the audio that same page sent, but the page can use the M5's
+compute. Set the allowlist in the LaunchAgent to rule that out.
 
 `FLUIDAUDIO_STT_PORT` overrides port 5096, to run a second copy beside the live
 service. Check a build with:
