@@ -1,5 +1,5 @@
 // Test intent: lct_app/tests/intent/map-audit.md
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
@@ -22,6 +22,8 @@ export default function MapAuditPanel({ source, bundle, routes, onBundleChange }
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
   const abortRef = useRef(null);
+  // Leaving the panel (a new run hides it) cancels an audit, so its signals never land on another map.
+  useEffect(() => () => abortRef.current?.abort(), []);
   const turns = spans.reduce((sum, s) => sum + s.utteranceIds.length, 0);
   const spanText = spans.map(s => `${formatClock((timeOf.get(s.utteranceIds[0])?.timestamp_start || 0) * 1000)}–${formatClock((timeOf.get(s.utteranceIds.at(-1))?.timestamp_end || 0) * 1000)}`).join(', ');
   const findings = (bundle.audit_signals || []).filter(s => s.source === 'audit' && s.kind !== 'represented');

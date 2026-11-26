@@ -48,6 +48,7 @@ export default function SitesAudioImport() {
       <div className="shrink-0 px-5 py-2 text-xs leading-5">
         {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}</p>}
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} />}
+        {flow.fallbackNotice && <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-900">{flow.fallbackNotice}</p>}
         {flow.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{flow.error}</p>}
         {privateFiles.message && <p role="status">{privateFiles.message}</p>}
         {privateFiles.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{privateFiles.error}</p>}
