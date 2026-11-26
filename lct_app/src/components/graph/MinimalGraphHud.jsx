@@ -168,8 +168,8 @@ export default function MinimalGraphHud({
         </div>
       )}
 
-      <div className="flex w-full flex-shrink-0 items-center gap-0 overflow-x-auto rounded-md border border-gray-200 bg-white/95 shadow-sm sm:w-auto sm:overflow-hidden">
-        {tierSpecs.map(({ label, level, chip, border, color }) => {
+      <div className="flex w-full flex-shrink-0 items-center gap-0.5 overflow-x-auto rounded-full bg-stone-200/70 p-0.5 sm:w-auto">
+        {tierSpecs.map(({ label, level, color }) => {
           const isActive = displayMode === "semantic"
             ? effectiveSemanticLevel === level
             : legacyClusterLevel === level;
@@ -198,12 +198,13 @@ export default function MinimalGraphHud({
                 }
               }}
               title={isLocked ? `Locked to ${label} — click to unlock` : `Click to lock at ${label} level`}
-              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 px-3 py-1 text-xs font-medium transition-colors cursor-pointer sm:min-h-8 sm:flex-none sm:px-2.5 ${
+              // The Landscape's pill control (critique 2026-11-25 issue 5); the tier hue stays on the active label.
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-full px-3 py-0.5 text-xs transition-colors cursor-pointer sm:min-h-7 sm:flex-none sm:px-2.5 ${
                 isActive
-                  ? `${chip} ${color} border-b-2 ${border}`
+                  ? `bg-white font-medium shadow-xs ${color}`
                   : isLocked
-                  ? `${chip} ${color} border-b-2 border-dashed ${border}`
-                  : "text-gray-500 hover:text-gray-600 hover:bg-gray-50"
+                  ? `font-medium ${color}`
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
               {label}{isLocked ? <LockKeyhole aria-hidden="true" className="h-3 w-3" /> : null}

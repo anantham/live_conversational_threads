@@ -54,7 +54,7 @@ describe("ConversationNode structured-turn fallback", () => {
     expect(markup).not.toContain('aria-label="Expand');
   });
 
-  it("marks the centered node while preserving its authored fill", () => {
+  it("marks the centered node while keeping its mode colour on a white card", () => {
     const markup = renderToStaticMarkup(
       <ReactFlowProvider>
         <ConversationNode
@@ -68,7 +68,10 @@ describe("ConversationNode structured-turn fallback", () => {
       </ReactFlowProvider>,
     );
     expect(markup).toContain('data-neighborhood-focus="true"');
-    expect(markup).toContain("background:#7dd3fc");
+    // Critique 2026-11-25 issue 5: white cards like the Landscape; the colour moves to a swatch.
+    expect(markup).toContain("background:#fff");
+    const swatch = new DOMParser().parseFromString(markup, "text/html").querySelector("[data-mode-swatch]");
+    expect(swatch?.getAttribute("style")).toContain("background:#7dd3fc");
   });
 
   it("shows how much transcript was aggregated and names the source action", () => {
@@ -192,7 +195,8 @@ describe("ConversationNode structured-turn fallback", () => {
     /></ReactFlowProvider>);
     const card = new DOMParser().parseFromString(markup, "text/html");
     expect(card.querySelector(".sr-only")?.textContent).toBe("Speaking time unknown");
-    expect(markup).toContain("background:#f1f5f9");
+    expect(markup).toContain("background:#fff");
+    expect(markup).not.toContain("data-mode-swatch"); // neutral cards carry no swatch
     expect(markup).not.toContain("100%");
   });
 
@@ -204,5 +208,15 @@ describe("ConversationNode structured-turn fallback", () => {
     const badge = [...card.querySelectorAll("div")].find(el => el.textContent === "Synthetic voice");
     expect(badge).toBeTruthy();
     expect(badge.classList.contains("sr-only")).toBe(false);
+  });
+
+  it("marks a crux with its dot, not an amber halo, so amber stays with the selection", () => {
+    const render = (props) => renderToStaticMarkup(<ReactFlowProvider><ConversationNode selected={false}
+      data={{ title: "Pivot", fillColor: "#ccfbf1", borderColor: "#5eead4", ...props }} /></ReactFlowProvider>);
+    const crux = render({ isCrux: true });
+    expect(crux).toContain('title="Crux — what the discussion hinges on"');
+    expect(crux).not.toMatch(/245,\s*158,\s*11/);
+    expect(crux).not.toContain("#f59e0b");
+    expect(render({ isCrux: true })).toContain("background:#fff");
   });
 });

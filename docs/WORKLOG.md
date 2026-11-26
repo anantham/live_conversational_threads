@@ -1,3 +1,14 @@
+## 2026-11-26 23:40 IST — Graph view restyled to match the Landscape (critique issue 5, part 1)
+
+Owner ruling 2026-11-26: the Graph is another way of looking at the Landscape's map, so it is restyled to match. Branch `fix/graph-calm` from `integ/sites-combined` (`e3936dc8`). Page-header unification is the next, separate slice.
+
+- `lct_app/src/components/graph/ConversationNode.jsx`: every card on white; the colour mode's colour is the border plus a small swatch before the title (none for neutral cards). The crux's amber halo is gone (its amber dot stays), so amber stays with the selection (DESIGN.md One-Amber Rule; craft floor: a zero-offset coloured halo is decoration).
+- `lct_app/src/components/graphClustering.jsx`: grouped lowest-level nodes on white with a 1px hairline (were the dominant speaker's colour with a 2px slate border); the speaker colour becomes a swatch.
+- `graph/MinimalGraphHud.jsx`: level tabs use the Landscape's pill control; the tier hue stays on the active label.
+- `MinimalGraph.jsx`, `threads/ThreadsViewerToolbar.jsx`, `threads/ThreadsViewerHeader.jsx`, `pages/ThreadsViewer.jsx`: quiet pill buttons instead of bordered boxes; header and toolbar on the Landscape's paper (`#fbfaf7`) with its stone hairline; one rule line instead of two.
+- Tests: `graphClustering.test.jsx` (new), 3 ConversationNode cases, `tests/e2e/graph-calm.spec.ts` (new, real browser: paper ground equals the Landscape's, white cards at the top and grouped levels, no amber halo). All fail on the old sources. Landscape column e2e still passes.
+- Logged in ISSUES.md: the level tabs rename themselves when "moments" is chosen.
+
 ## 2026-11-26 00:05 IST — Landscape viewer: legible at rest, cited passages marked, one-row phone header
 
 From the 2026-11-25 impeccable critique of the live Site (snapshot `.impeccable/critique/2026-11-25T18-15-42Z__threads-adityaarpitha-com.md`, issues 1, 2 and 4). Branch `fix/viewer-landscape-legibility` off `integ/sites-combined` (27e83a1c), the branch the live Site is built from.
