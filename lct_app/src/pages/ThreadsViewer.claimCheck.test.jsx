@@ -3,7 +3,9 @@
 // - An external claim check merges its result onto the map as it is when the check finishes, so an edit
 //   made while it ran (here a reaction) is kept on screen and in the saved copy.
 // - The edit is kept even when it happens in the same tick as the result arrives (no render in between).
-// - Opening another file while a check runs cancels it: nothing is saved, nothing reappears, no alert.
+// - The edit is also kept when it happens after the result arrives but before a render.
+// - Opening another file while a check runs cancels it, and a late answer never lands on the next map
+//   (which here has a claim with the same id): nothing is shown, saved or announced.
 // - A claim check whose save fails says so in a visible alert, not only inside the closed options menu.
 // The landscape canvas is replaced by buttons that call the viewer's own handlers; all content is synthetic.
 import { act } from 'react';
@@ -89,18 +91,50 @@ it('says so when a finished claim check cannot be saved', async () => {
   expect(host.querySelector('[role="alert"]').textContent).toContain('The claim check is shown here but could not be saved.');
 });
 
-it('cancels a running claim check when another file is opened, and keeps nothing from it', async () => {
+it('keeps a claim result when a reaction is made after it arrives but before the screen re-renders', async () => {
   const check = deferred();
-  spies.verify.mockImplementation((claim, signal) => { signal.addEventListener('abort', () => check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' })); return check.promise; });
+  spies.verify.mockImplementation(() => check.promise);
   await act(async () => root.render(<ThreadsViewer />));
-  const savesBefore = spies.remember.mock.calls.length;
+  await click('stub verify');
+  // This button holds the handlers from the last render, from before the result arrived.
+  const react = [...host.querySelectorAll('button')].find(b => b.textContent === 'stub react');
+  await act(async () => {
+    check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    react.click();
+  });
+  expect(shown('evidence')).toBe('supported');
+  expect(shown('reactions')).toBe('1');
+  const saved = spies.remember.mock.calls.at(-1)[0];
+  expect(saved.reaction_markers).toHaveLength(1);
+  expect(saved.epistemic.factual_claims[0].external_evidence).toMatchObject({ status: 'supported' });
+});
+
+it('drops a claim check from a map that is no longer open, even when another map has the same claim', async () => {
+  const check = deferred();
+  // A request that ignores the abort and still answers.
+  spies.verify.mockImplementation(() => check.promise);
+  await act(async () => root.render(<ThreadsViewer />));
   await click('stub verify');
   const { 1: signal } = spies.verify.mock.calls[0];
   await click('Open another file');
   expect(signal.aborted).toBe(true);
-  await act(async () => { await check.promise; });
-  expect(host.querySelector('[aria-label="evidence"]')).toBeNull();
+  const other = { ...context.bundle, conversation_id: 'fixture-other-map', conversation_title: 'Other map' };
+  await act(async () => {
+    const input = host.querySelector('input[type="file"]');
+    const file = new File([JSON.stringify(other)], 'other.threads');
+    file.text ||= async () => JSON.stringify(other); // jsdom's File has no text()
+    Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  // Reading the file is asynchronous; wait for the other map to be shown.
+  for (let i = 0; i < 50 && !host.querySelector('[aria-label="evidence"]'); i += 1) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  }
+  if (!host.querySelector('[aria-label="evidence"]')) throw new Error(`Other map not shown: ${host.textContent.slice(0, 300)}`);
+  expect(shown('evidence')).toBe('none');
+  await act(async () => { check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' }); await Promise.resolve(); });
+  expect(shown('evidence')).toBe('none');
   expect(host.querySelector('[role="alert"]')).toBeNull();
-  expect(spies.remember.mock.calls.length).toBe(savesBefore);
+  expect(spies.remember.mock.calls.some(([saved]) => saved.epistemic?.factual_claims?.[0]?.external_evidence)).toBe(false);
 });
-

@@ -30,8 +30,6 @@ export function useAudioImport() {
   const claimLiveMap = useCallback(() => { liveMapClaimed.current = true; }, []);
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
-  // A notice about an earlier run does not describe a newly chosen file or a reopened conversation.
-  useEffect(() => { if (!running.current) setFallbackNotice(''); }, [file, localId]);
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
   const edgeConfig = readEdgeConfig(location.search);
   const configuredSpeech = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
@@ -84,6 +82,8 @@ export function useAudioImport() {
     readLocalConversation(localId).then(value => {
       if (cancelled || !alive.current) return;
       if (!value) throw new Error('This import is not saved in this browser.');
+      // A notice about an earlier run does not describe a reopened conversation.
+      setFallbackNotice('');
       setRecording(value.recording); setAudio(value.audio); setTranscript(value.transcript); setMap(value.map);
       if (value.mapUnreadable) {
         const temporary = { ...value.recording, retention: 'ephemeral' };
@@ -154,7 +154,13 @@ export function useAudioImport() {
           if (failures.length && valid()) setFallbackNotice(`${failureText()} It was transcribed by ${providerName(provider)} instead, the next provider in the order you agreed to.`);
           break;
         } catch (error) {
-          if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) throw error;
+          if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) {
+            // The run ends here: replace "Trying X next" with what happened to X (its error shows below).
+            if (failures.length && valid() && error.name !== 'AbortError') {
+              setFallbackNotice(`${failureText()} ${providerName(provider)} was tried next and could not transcribe it either.`);
+            }
+            throw error;
+          }
           console.warn(`[useAudioImport] ${provider} failed; trying ${speechProviders[index + 1]}:`, error);
           failures.push({ name: providerName(provider), message: String(error.message || error).replace(/\.$/, '') });
           setFallbackNotice(`${failureText()} Trying ${providerName(speechProviders[index + 1])} next, the next provider in the order you agreed to.`);
@@ -187,6 +193,8 @@ export function useAudioImport() {
     } finally { running.current = false; }
   }
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
-  return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map, fallbackNotice,
+  // A notice about an earlier run does not describe a newly chosen file.
+  const chooseFile = useCallback(value => { setFallbackNotice(''); setFile(value); }, []);
+  return { archive, file, setFile: chooseFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map, fallbackNotice,
     mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }

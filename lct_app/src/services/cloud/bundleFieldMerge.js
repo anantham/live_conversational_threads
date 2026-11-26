@@ -22,10 +22,10 @@ export function withAuditSignals(latest, auditSignals) {
  * `analyzed_at` seen then): a new analysis may reuse the id for a different claim. The caller can then
  * say so instead of saving a result attached to the wrong claim or to nothing.
  */
-export function withClaimEvidence(latest, claimId, evidence, { analyzedAt } = {}) {
+export function withClaimEvidence(latest, claimId, evidence, options) {
   const claims = latest?.epistemic?.factual_claims;
   if (!Array.isArray(claims) || !claims.some((c) => String(c.id) === String(claimId))) return null;
-  if (latest.epistemic.analyzed_at !== analyzedAt) return null;
+  if (options && 'analyzedAt' in options && latest.epistemic.analyzed_at !== options.analyzedAt) return null;
   return {
     ...latest,
     epistemic: {

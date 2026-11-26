@@ -466,3 +466,23 @@ it('says out loud when the tailnet provider fails and the audio goes to the next
     + `It was transcribed by ${soniox} instead, the next provider in the order you agreed to.`);
   expect(container.textContent).toContain('Garden watering');
 });
+
+it('replaces "Trying the next provider" with the outcome when the next provider fails too', async () => {
+  fixture.fail = true;
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const m5 = SPEECH_PROVIDERS.m5_tailnet.name, soniox = SPEECH_PROVIDERS.soniox.name;
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe'));
+  expect(notice).toBe(`${m5} could not transcribe this file (M5 Tailnet STT returned HTTP 503. Your original audio is preserved). `
+    + `${soniox} was tried next and could not transcribe it either.`);
+  expect(notice).not.toContain('Trying');
+  expect(container.querySelector('[role=alert]').textContent).toContain('Provider refused');
+
+});
+

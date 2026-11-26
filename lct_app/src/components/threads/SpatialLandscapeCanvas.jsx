@@ -90,7 +90,7 @@ const EXTERNAL_STATUS_STYLES = {
   uncertain: "bg-amber-100 text-amber-900",
 };
 
-function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, verifyingClaimId, verifyProviderLabel }) {
+function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, verifyingClaimId, verifyProviderLabel, epistemicRunning = false }) {
   const [confirmingId, setConfirmingId] = useState(null);
   if (!findings?.length) return null;
   const first = findings[0];
@@ -100,8 +100,9 @@ function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, ver
   const claimText = String(first.note || first.quote?.text || "").trim();
   const claimTooLong = claimText.length > MAX_CLAIM_CHARS;
   const isVerifying = verifyingClaimId === first.id;
-  // One claim check at a time: another claim's button waits rather than silently doing nothing.
-  const otherCheckRunning = Boolean(verifyingClaimId) && !isVerifying;
+  // One background pass at a time (another claim check, or the lenses that would replace this claim):
+  // the button waits and says why rather than silently doing nothing.
+  const otherCheckRunning = (Boolean(verifyingClaimId) && !isVerifying) || epistemicRunning;
 
   return (
     <div className="mt-3 space-y-1.5 border-t border-stone-200/80 pt-2.5 text-xs text-slate-600">
@@ -179,7 +180,7 @@ function LensFindingsPreview({ findings, onOpenVisit, nodeId, onVerifyClaim, ver
                   }}
                   className="rounded bg-slate-900 px-2.5 py-0.5 font-medium text-white hover:bg-slate-800 disabled:opacity-40"
                 >
-                  {isVerifying ? "Checking…" : otherCheckRunning ? "Another check is running…" : "Confirm & check"}
+                  {isVerifying ? "Checking…" : epistemicRunning ? "Waiting for the analysis…" : otherCheckRunning ? "Another check is running…" : "Confirm & check"}
                 </button>
               </div>
             </div>
@@ -208,6 +209,7 @@ LensFindingsPreview.propTypes = {
   onVerifyClaim: PropTypes.func,
   verifyingClaimId: PropTypes.string,
   verifyProviderLabel: PropTypes.string,
+  epistemicRunning: PropTypes.bool,
 };
 
 function BoundaryMenu({ nodeId, siblings, visits, nodesById, onBoundaryCorrection, onFlagNode }) {
@@ -772,6 +774,7 @@ export default function SpatialLandscapeCanvas({
                           onVerifyClaim={onVerifyClaim}
                           verifyingClaimId={verifyingClaimId}
                           verifyProviderLabel={epistemicProviderLabel}
+                          epistemicRunning={epistemicRunning}
                         />
                       )}
 

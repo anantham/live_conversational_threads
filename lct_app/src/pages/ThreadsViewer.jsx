@@ -126,7 +126,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     bundleRef.current = next;
     setBundle(next);
   }, []);
+  // Leaving the viewer is a switch to no map: results that arrive afterwards are dropped.
   useEffect(() => () => {
+    mapEpochRef.current += 1;
     verifyControllerRef.current?.abort();
     epistemicControllerRef.current?.abort();
   }, []);
@@ -649,7 +651,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   // The two background passes never run at once: the lenses replace the claims a check would attach to.
   const handleRunEpistemic = useCallback(async () => {
     const current = bundleRef.current;
-    if (!current || !epistemicRoutes.length || epistemicRunning || verifyingClaimId) return false;
+    // Refs as well as state: two clicks in one tick happen before either state change renders.
+    if (!current || !epistemicRoutes.length || epistemicRunning || verifyingClaimId
+      || epistemicControllerRef.current || verifyControllerRef.current) return false;
     const epoch = mapEpochRef.current;
     const controller = new AbortController();
     epistemicControllerRef.current = controller;
@@ -692,7 +696,8 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   // Returns true when a check ran to an outcome the user has been told about, false when none started.
   const handleVerifyClaim = useCallback(async (claimId, claimText) => {
     const current = bundleRef.current;
-    if (!current || !epistemicRoutes.length || verifyingClaimId || epistemicRunning) return false;
+    if (!current || !epistemicRoutes.length || verifyingClaimId || epistemicRunning
+      || verifyControllerRef.current || epistemicControllerRef.current) return false;
     const epoch = mapEpochRef.current;
     // Evidence belongs to this set of claims; re-run lenses may reuse an id for a different claim.
     const analyzedAt = current.epistemic?.analyzed_at;

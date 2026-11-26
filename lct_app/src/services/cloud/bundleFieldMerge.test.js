@@ -35,6 +35,8 @@ describe('bundleFieldMerge', () => {
     const analysed = { ...latest, epistemic: { ...latest.epistemic, analyzed_at: '2026-11-27T01:00:00Z' } };
     expect(withClaimEvidence(analysed, 'c1', {}, { analyzedAt: '2026-11-27T01:00:00Z' })).not.toBeNull();
     expect(withClaimEvidence(analysed, 'c1', {}, { analyzedAt: '2026-11-26T09:00:00Z' })).toBeNull();
+    // Without the option there is nothing to compare against, so no re-analysis check is made.
+    expect(withClaimEvidence(analysed, 'c1', {})).not.toBeNull();
   });
 
   it('returns null when the claim is gone', () => {

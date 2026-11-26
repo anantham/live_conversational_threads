@@ -207,7 +207,8 @@ describe("SpatialLandscapeCanvas", () => {
   // Test intent (2026-11-27 review): the claim-check consent box shows the exact text that is sent,
   // in full, names who receives it, and says when that text is a verbatim transcript quote.
   it("shows the exact claim text, its recipient, and whether it is a transcript quote before a claim check", async () => {
-    const onVerifyClaim = vi.fn().mockResolvedValue(undefined);
+    // Resolves true when a check ran, so the box closes; false (none started) keeps it open.
+    const onVerifyClaim = vi.fn().mockResolvedValue(true);
     const longNote = "Shared tools cut costs. ".repeat(10).trim();
     const claimsBundle = (claim) => ({ conversation_title: "Mirela catch-up", utterances,
       epistemic: { cruxes: [], normative_assumptions: [], factual_claims: [{ id: "claim-1", node_id: "arc-1", utterance_ids: ["u3"], ...claim }] } });
@@ -229,6 +230,7 @@ describe("SpatialLandscapeCanvas", () => {
     expect(host.textContent).toContain("This is a verbatim quote from the transcript.");
     await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
     expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", "Budget limit turns into shared tools.");
+    expect(host.textContent).not.toContain("Only this text is sent");
 
     // A written note longer than the old 160-character preview is shown in full, and is what is sent.
     act(() => root.unmount()); root = createRoot(host);
@@ -240,6 +242,13 @@ describe("SpatialLandscapeCanvas", () => {
     expect(host.textContent).not.toContain("verbatim quote");
     await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
     expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", longNote);
+    expect(host.textContent).not.toContain("Only this text is sent");
+
+    // When no check started, the box stays open with the text still visible.
+    onVerifyClaim.mockResolvedValueOnce(false);
+    act(() => [...host.querySelectorAll("button")].find((b) => b.textContent === "Check externally…").click());
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
+    expect(host.textContent).toContain(`“${longNote}”`);
 
     // While another claim is being checked, this one's confirm button waits and says why.
     act(() => root.unmount()); root = createRoot(host);
@@ -250,6 +259,15 @@ describe("SpatialLandscapeCanvas", () => {
     openCheck();
     const waiting = [...host.querySelectorAll("button")].find((b) => b.textContent === "Another check is running…");
     expect(waiting.disabled).toBe(true);
+
+    // While the lenses are being (re)analysed, a check waits too: they would replace this claim.
+    act(() => root.unmount()); root = createRoot(host);
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={claimsBundle({ note: "Tools are shared." })} nodes={nodes} onVerifyClaim={onVerifyClaim}
+        epistemicProviderLabel="Anthropic (claude-test)" epistemicRunning />);
+    });
+    openCheck();
+    expect([...host.querySelectorAll("button")].find((b) => b.textContent === "Waiting for the analysis…").disabled).toBe(true);
 
         // A claim the server would refuse is not offered for checking at all.
     act(() => root.unmount()); root = createRoot(host);
