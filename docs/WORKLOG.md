@@ -1,3 +1,12 @@
+## 2026-11-27 00:20 IST — One page header for the Site's pages (critique issue 5, part 2)
+
+Branch `fix/one-page-header` from `integ/sites-combined` (`e3936dc8`). Follows the Graph restyle (PR #272).
+
+- New `lct_app/src/components/PageHeader.jsx`: a way back (Home link, or history Back), optional page links on the right, then one h1, a description and optional actions above a single hairline. No eyebrow labels (craft floor ban). Embedded use (library tabs) drops the way back and renders an h2, so a page has one h1.
+- Converted: `pages/Browse.jsx` (was an uppercase grey "LIBRARY" label between "← Back" and the button), `PublicThreads.jsx` (dropped the "Open to everyone" eyebrow into the description), `PrivateFiles.jsx`, `SitesPrivacy.jsx`, `SitesCostDashboard.jsx` (dropped the "Usage, latency & spend" eyebrow; time range is now the Landscape pill control), `SitesTranscriptImport.jsx` (the large icon circles became text links), `settings/SettingsLayout.jsx` (bold grey title on cool grey → the shared header on paper; tabs use the pill control).
+- Not converted: `SitesMeetings.jsx`, because PR #270 edits the lines under its header; it gets the shared header once #270 lands. `SitesAudioImport.jsx` is a recording workspace like `/new`, with its own toolbar, so it is out of scope. The duplicate `/public` route is untouched (removing a route would break shared links; owner call).
+- Tests: `PageHeader.test.jsx` (new, 3 cases). `Browse.sites.test.jsx` router mock gained `Link`. Full suite 1720/1721 (publicDrive needs local port binding). Lint clean; `build:sites` passes. Screenshots of all seven pages at 1280 and 390 px.
+
 ## 2026-11-26 00:05 IST — Landscape viewer: legible at rest, cited passages marked, one-row phone header
 
 From the 2026-11-25 impeccable critique of the live Site (snapshot `.impeccable/critique/2026-11-25T18-15-42Z__threads-adityaarpitha-com.md`, issues 1, 2 and 4). Branch `fix/viewer-landscape-legibility` off `integ/sites-combined` (27e83a1c), the branch the live Site is built from.

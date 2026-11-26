@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
 
 const section = "mt-9 border-t border-slate-200 pt-7";
 const heading = "text-xl font-semibold tracking-[-0.02em] text-slate-800";
@@ -8,12 +8,10 @@ export default function SitesPrivacy() {
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-16 pt-8 font-sans text-slate-800 sm:px-8 sm:pt-12">
       <article className="mx-auto max-w-[72ch]">
-        <Link to="/" className="inline-flex min-h-11 items-center text-sm text-slate-700 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700">Home</Link>
-        <header className="mt-7 border-b border-slate-200 pb-7">
-          <h1 className="text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">Privacy at Threads</h1>
-          <p className={paragraph}>This page describes the public Sites preview, including its optional sign-in and cloud features. The separate local and Tailscale app can work differently.</p>
+        <PageHeader title="Privacy at Threads"
+          description="This page describes the public Sites preview, including its optional sign-in and cloud features. The separate local and Tailscale app can work differently.">
           <p className="mt-2 text-xs text-slate-600">Updated 24 November 2026</p>
-        </header>
+        </PageHeader>
 
         <section className={section}>
           <h2 className={heading}>Browsing and sign-in</h2>

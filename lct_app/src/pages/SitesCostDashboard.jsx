@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import PageHeader, { pageLinkClass } from '../components/PageHeader.jsx';
 import { MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
 import { clearSitesCostEntries, readSitesCostEntries, summarizeSitesCosts } from '../services/cloud/sitesCostStore.js';
 import { clearQualityLedger, readQualityLedger, summarizeQualityLedger } from '../services/cloud/qualityLedgerStore.js';
@@ -61,41 +62,27 @@ export default function SitesCostDashboard() {
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-32 pt-8 font-sans text-slate-800 sm:px-8">
       <div className="mx-auto max-w-4xl space-y-6">
-        <nav className="flex flex-wrap items-center justify-between gap-4 text-sm">
-          <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-slate-600 underline-offset-4 hover:underline">
-            <ArrowLeft size={16} aria-hidden="true" /> Home
-          </Link>
-          <Link to="/settings/runtime" className="inline-flex min-h-11 items-center text-slate-600 underline-offset-4 hover:underline">
-            Providers &amp; keys
-          </Link>
-        </nav>
-
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-6">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">Usage, latency &amp; spend</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-slate-900">Costs &amp; Observability</h1>
-            <p className="mt-2 max-w-[60ch] text-sm leading-6 text-slate-600">
-              Tracks calls, latency, first-token speed, token counts, coverage, and errors from this browser. No transcript text or API keys are stored here; check your provider console for exact billing.
-            </p>
-          </div>
-          <div role="group" aria-label="Time range" className="flex flex-wrap gap-1.5">
+        <PageHeader title="Costs & Observability"
+          links={<Link to="/settings/runtime" className={pageLinkClass}>Providers &amp; keys</Link>}
+          description="Usage, latency and spend from this browser: calls, first-token speed, token counts, coverage and errors. No transcript text or API keys are stored here; check your provider console for exact billing."
+          actions={
+          <div role="group" aria-label="Time range" className="inline-flex flex-wrap rounded-full bg-stone-200/70 p-0.5">
             {RANGES.map(range => (
               <button
                 key={range.id}
                 type="button"
                 aria-pressed={timeRange === range.id}
                 onClick={() => setTimeRange(range.id)}
-                className={`min-h-10 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                className={`min-h-10 rounded-full px-3 py-1 text-xs transition-colors ${
                   timeRange === range.id
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    ? 'bg-white font-medium text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 {range.label}
               </button>
             ))}
-          </div>
-        </header>
+          </div>} />
 
         {siteStatus && (
           <section className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">

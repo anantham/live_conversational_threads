@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
 import { useCloudTask } from "../hooks/useCloudTask";
 import PublicTaskStatus from "../components/PublicTaskStatus";
+import PageHeader, { pageLinkClass } from "../components/PageHeader";
 import { PUBLIC_API, downloadRemovalKey, forgetRemovalKey, newPublication, preparePublicFile, publicRequest, removalKeys, saveRemovalKey } from "../services/publicThreads";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:opacity-50";
@@ -86,8 +87,9 @@ export default function PublicThreads({ embedded = false } = {}) {
 
   const available = status?.enabled === true && status?.configured === true;
   return <main className={embedded ? "px-0 pb-16 pt-2 font-sans text-slate-800" : "min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-52 pt-8 font-sans text-slate-800 sm:px-8"}>
-    <div className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-3xl"}>{!embedded && <nav className="flex flex-wrap gap-5 text-sm"><Link className="inline-flex min-h-11 items-center underline" to="/">Home</Link><Link className="inline-flex min-h-11 items-center underline" to="/browse">On this device</Link><Link className="inline-flex min-h-11 items-center underline" to="/private-files">Private files</Link></nav>}
-      <header className={embedded ? "border-b border-slate-200 pb-4" : "mt-6 border-b border-slate-200 pb-6"}><p className="text-xs uppercase tracking-[0.22em] text-slate-500">Open to everyone</p><h1 className={embedded ? "mt-1 text-xl font-semibold tracking-[-0.02em]" : "mt-2 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl"}>Public conversations</h1><p className="mt-2 text-sm leading-6 text-slate-600">Browse, download and publish a public conversation without signing in. Opening a file locally never publishes it.</p></header>
+    <div className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-3xl"}><PageHeader embedded={embedded} title="Public conversations"
+        links={<><Link className={pageLinkClass} to="/browse">On this device</Link><Link className={pageLinkClass} to="/private-files">Private files</Link></>}
+        description="Open to everyone. Browse, download and publish a public conversation without signing in. Opening a file locally never publishes it." />
       <PublicTaskStatus {...task} />{error && <p role="alert" className="my-5 rounded-lg bg-rose-50 p-4 text-sm leading-6 text-rose-800">{error}</p>}{notice && <p role="status" className="my-5 rounded-lg bg-emerald-50 p-4 text-sm leading-6 text-emerald-900">{notice}</p>}
       {status && !available && <p className="my-6 text-sm text-slate-600">Public publication is not activated yet. You can still open files on this device.</p>}
       {available && <section aria-labelledby="publish-title" className="mt-8 rounded-xl bg-white p-5 shadow-[0_8px_28px_rgba(15,23,42,0.08)] sm:p-6"><h2 id="publish-title" className="text-xl font-semibold">Publish a public copy</h2><p className="mt-2 text-sm leading-6 text-slate-600">Choose a .threads map up to 1.5 MiB. Preview limits: 2,000 nodes, 8,000 edges, 20 publications per 24 hours across this Site and 10 seconds between publications. The shared preview storage has 20 MiB and 200 lifetime creations.</p><label className="mt-5 block text-sm font-medium" htmlFor="public-file">Prepare a file on this device</label><input ref={input} id="public-file" type="file" accept=".threads" disabled={Boolean(task.activity)} onChange={event => { const file = event.target.files?.[0]; if (file) void choose(file); }} className="mt-2 block w-full rounded-lg border border-slate-300 p-2 text-sm file:mr-3 file:border-0 file:bg-transparent file:font-medium" />

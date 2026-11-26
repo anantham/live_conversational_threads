@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
-import { ArrowDownToLine, ArrowLeft, CloudUpload, RotateCw, Trash2 } from "lucide-react";
+import { ArrowDownToLine, CloudUpload, RotateCw, Trash2 } from "lucide-react";
+import PageHeader from "../components/PageHeader";
 import { usePrivateFiles } from "../hooks/usePrivateFiles";
 import { formatBytes, validatePrivateFile } from "../services/privateFiles";
 import { PRIVATE_CONVERSATION_FIXTURE } from "../services/cloud/privateConversationFixture";
@@ -80,11 +81,8 @@ export default function PrivateFiles({ embedded = false } = {}) {
   return (
     <main className={embedded ? "px-0 pb-16 pt-2 font-sans text-slate-800" : "min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-40 pt-8 font-sans text-slate-800 sm:px-8 sm:pt-12"}>
       <div className={embedded ? "mx-auto max-w-2xl" : "mx-auto max-w-3xl"}>
-        {!embedded && <Link to="/" className="inline-flex min-h-11 items-center gap-2 text-sm text-slate-600 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"><ArrowLeft size={16} /> Home</Link>}
-        <header className={embedded ? "border-b border-slate-200 pb-4" : "mt-8 border-b border-slate-200 pb-6"}>
-          <h1 className={embedded ? "text-xl font-semibold tracking-[-0.02em]" : "text-3xl font-semibold tracking-[-0.03em] sm:text-4xl"}>Private cloud files</h1>
-          <p className="mt-2 max-w-[65ch] text-sm leading-6 text-slate-600">Files here belong to your signed-in account. Browser-local files stay on this device unless you choose to upload one.</p>
-        </header>
+        <PageHeader embedded={embedded} title="Private cloud files"
+          description="Files here belong to your signed-in account. Browser-local files stay on this device unless you choose to upload one." />
 
         <SitesAccessPanel />
 

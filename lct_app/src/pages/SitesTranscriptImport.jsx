@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Link, useNavigate } from 'react-router-dom';
-import { Download, ExternalLink, FileText, FolderOpen, HardDrive, House, Layers, Mail, Settings, Users } from 'lucide-react';
+import { Download, ExternalLink, FileText, HardDrive, Layers, Mail, Users } from 'lucide-react';
+import PageHeader, { pageLinkClass } from '../components/PageHeader.jsx';
 import RecordingConversationMap from '../components/recording/RecordingConversationMap.jsx';
 import LiveConversationGraph from '../components/recording/LiveConversationGraph.jsx';
-import TooltipButton from '../components/TooltipButton.jsx';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
 import { configuredMapRoutes, getOrderedMapStatus, MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
 import { recordSitesCostEntry } from '../services/cloud/sitesCostStore.js';
@@ -21,7 +21,6 @@ import PublishLinkPanel from '../components/publish/PublishLinkPanel.jsx';
 import { rememberThreadsArtifact } from '../services/threadsLibraryStore.js';
 import { recordQualitySnapshot } from '../services/cloud/qualityLedgerStore.js';
 
-const navIcon = 'inline-flex size-12 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700';
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
 const primary = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -519,27 +518,8 @@ export default function SitesTranscriptImport() {
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-32 pt-8 font-sans text-slate-800 sm:px-8">
       <div className="mx-auto max-w-3xl space-y-6">
-        <nav aria-label="Transcript import navigation" className="flex items-center justify-between gap-4">
-          <TooltipButton as={Link} to="/" compact align="start" aria-label="Home" tooltip="Home"
-            className="inline-flex size-16 items-center justify-center rounded-full bg-slate-900 text-white transition-colors hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700">
-            <House size={30} aria-hidden="true" />
-          </TooltipButton>
-          <div className="flex items-center gap-3">
-            <TooltipButton as={Link} to="/browse" compact align="end" aria-label="Browse library" tooltip="Browse library" className={navIcon}>
-              <FolderOpen size={23} aria-hidden="true" />
-            </TooltipButton>
-            <TooltipButton as={Link} to="/settings/runtime" compact align="end" aria-label="Providers" tooltip="Providers" className={navIcon}>
-              <Settings size={23} aria-hidden="true" />
-            </TooltipButton>
-          </div>
-        </nav>
-
-        <header className="border-b border-slate-200 pb-6">
-          <h1 className="text-3xl font-semibold tracking-[-0.03em] text-slate-900">Import transcript</h1>
-          <p className="mt-2 max-w-[65ch] text-sm leading-6 text-slate-600">
-            Import a Google Meet notes PDF or a plain transcript.
-          </p>
-        </header>
+        <PageHeader title="Import transcript" description="Import a Google Meet notes PDF or a plain transcript."
+          links={<><Link to="/browse" className={pageLinkClass}>Library</Link><Link to="/settings/runtime" className={pageLinkClass}>Providers</Link></>} />
 
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <label htmlFor="transcript-file-input" className="block text-sm font-medium text-slate-900">

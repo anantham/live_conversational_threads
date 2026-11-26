@@ -7,7 +7,7 @@ const { listSaved, apiFetch, navigate, listLocal, loadDraft } = vi.hoisted(() =>
   listSaved: vi.fn(), apiFetch: vi.fn(), navigate: vi.fn(), listLocal: vi.fn(), loadDraft: vi.fn(),
 }));
 const provider = { conversations: { listSaved } };
-vi.mock("react-router-dom", () => ({ useNavigate: () => navigate }));
+vi.mock("react-router-dom", () => ({ useNavigate: () => navigate, Link: "a" }));
 vi.mock("../services/dataProvider", () => ({ useDataProvider: () => provider }));
 vi.mock("../services/apiClient", () => ({ apiFetch, API_BASE_URL: "https://owner.example" }));
 vi.mock("../components/browse/IndrasNetAudioLibrary", () => ({ default: () => <div>Owner audio library</div> }));
