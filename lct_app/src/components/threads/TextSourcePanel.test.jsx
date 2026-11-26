@@ -78,3 +78,26 @@ it("updates recognized speaker labels twice while selection and source bytes rem
   act(() => host.querySelector('button[aria-pressed="false"]').click());
   expect(host.querySelector("[aria-label='Original source passages']").textContent).toContain("A. RaoFirst  phrase");
 });
+
+it("marks every passage of a cited run with a wash, not a side stripe", () => {
+  const bundle = { utterances: [
+    { id: "a", speaker_name: "Ada", text: "Before" },
+    { id: "b", speaker_name: "Ada", text: "Run starts" },
+    { id: "c", speaker_name: "Bo", text: "Run ends" },
+    { id: "d", speaker_name: "Bo", text: "After" },
+  ] };
+  const selection = { kind: "utterance", utteranceId: "b", endUtteranceId: "c" };
+  act(() => root.render(<TextSourcePanel bundle={bundle} selection={selection} onClose={vi.fn()} />));
+  const cited = [...host.querySelectorAll('[aria-current="true"]')].map((row) => row.textContent);
+  expect(cited).toEqual([expect.stringContaining("Run starts"), expect.stringContaining("Run ends")]);
+  for (const row of host.querySelectorAll('[aria-current="true"]')) expect(row.className).toContain("bg-amber-50");
+  expect(host.querySelector(".border-l-2")).toBeNull();
+  // It scrolls the first passage of the run to the top, not the last one.
+  const scroll = HTMLElement.prototype.scrollIntoView;
+  expect(scroll.mock.contexts.at(-1).textContent).toContain("Run starts");
+  expect(scroll.mock.calls.at(-1)[0]).toEqual({ block: "start" });
+  // Re-rendering with a fresh but equal bundle must not scroll again.
+  const calls = scroll.mock.calls.length;
+  act(() => root.render(<TextSourcePanel bundle={{ utterances: [...bundle.utterances] }} selection={selection} onClose={vi.fn()} />));
+  expect(scroll.mock.calls.length).toBe(calls);
+});

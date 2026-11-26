@@ -716,9 +716,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     const position = { seconds, videoId: video.video_id };
     setSourceTextSelection(null); setSourceOpen(true); setSourcePosition(position); setSourceSeek(position);
   }, [bundle]);
-  const openSourcePassage = useCallback(({ id, seconds }) => {
+  const openSourcePassage = useCallback(({ id, endId, seconds }) => {
     if (selectYouTubeRef(bundle) && validMediaSeconds(seconds)) { seekSourcePassage(seconds); return; }
-    setSourceSeek(null); setSourceTextSelection({kind: "utterance", utteranceId: String(id)}); setTextSourceMode("utterances"); setSourceOpen(true);
+    setSourceSeek(null); setSourceTextSelection({kind: "utterance", utteranceId: String(id), ...(endId != null ? { endUtteranceId: String(endId) } : {})}); setTextSourceMode("utterances"); setSourceOpen(true);
   }, [bundle, seekSourcePassage]);
 
   // Private/public early exits sit after every hook so hook order is stable.
@@ -885,10 +885,10 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             epistemicProviderLabel={epistemicProviderLabel}
             onVerifyClaim={epistemicRoutes.length ? handleVerifyClaim : undefined}
             verifyingClaimId={verifyingClaimId}
-            onOpenVisit={({ utteranceId, seconds }) => {
-              if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
+            onOpenVisit={({ utteranceId, endUtteranceId, seconds }) => {
+              if (utteranceId) openSourcePassage({ id: utteranceId, endId: endUtteranceId, seconds });
               else if (validMediaSeconds(seconds) && selectYouTubeRef(bundle)) seekSourcePassage(seconds);
-              else setSourceOpen(true);
+              else { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen(true); }
             }}
             overflowMenu={landscapeOverflow}
           />

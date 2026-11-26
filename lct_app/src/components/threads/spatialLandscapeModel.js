@@ -265,6 +265,39 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
     visitsById.set(id, computeNodeVisits(node, utterances, utteranceIndex));
   }
 
+  // Upper tiers usually cite no turns of their own; their provenance is the turns
+  // their descendants cite. visitsById stays own-citation only (boundary corrections
+  // and the timeline act on what a node itself claims); sourceVisitsById is what the
+  // reader is shown and opened to. Only ids present in the transcript count as a
+  // citation, so a node whose ids all dangle rolls up from below like an uncited one.
+  // Iterative with a visited set: .threads files are untrusted, so parent links may
+  // form cycles or very deep chains.
+  const resolvedOwnIds = (id) => utteranceIdsOf(nodesById.get(id)).filter((uid) => utteranceIndex.has(uid));
+  const descendantCitations = (rootId) => {
+    const cited = new Set();
+    const visited = new Set([rootId]);
+    const stack = [...(childrenById.get(rootId) || [])];
+    while (stack.length) {
+      const id = stack.pop();
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const own = resolvedOwnIds(id);
+      if (own.length) own.forEach((uid) => cited.add(uid));
+      else for (const childId of childrenById.get(id) || []) if (!visited.has(childId)) stack.push(childId);
+    }
+    return [...cited];
+  };
+  const sourceVisitsById = new Map();
+  for (const id of nodesById.keys()) {
+    const own = visitsById.get(id) || [];
+    if (resolvedOwnIds(id).length) {
+      sourceVisitsById.set(id, own);
+      continue;
+    }
+    const rolled = computeNodeVisits({ utterance_ids: descendantCitations(id) }, utterances, utteranceIndex);
+    sourceVisitsById.set(id, rolled.length ? rolled : own);
+  }
+
   const sortOrder = (aId, bId) => {
     const aFirst = visitsById.get(aId)?.[0]?.startSeconds ?? nodesById.get(aId)?.timestamp_start ?? Number.MAX_SAFE_INTEGER;
     const bFirst = visitsById.get(bId)?.[0]?.startSeconds ?? nodesById.get(bId)?.timestamp_start ?? Number.MAX_SAFE_INTEGER;
@@ -299,6 +332,7 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
     childrenById,
     crossLinksById,
     visitsById,
+    sourceVisitsById,
     rootIds,
     unfiledIds,
     topLevel,
