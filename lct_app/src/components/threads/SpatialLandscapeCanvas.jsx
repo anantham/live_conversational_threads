@@ -625,18 +625,22 @@ export default function SpatialLandscapeCanvas({
       <>
       {/* Open-space stage: ≤3 focal typographic islands */}
       {/* my-auto (not justify-center) centres the stage while letting a tall stage scroll from its top. */}
-      <main className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-5 py-8 sm:px-12 sm:py-10">
+      {/* Columns follow the stage's own width (container queries), not the window's: beside
+          the source panel a wide window still leaves a narrow stage. 2 columns from 32rem and
+          3 from 48rem of stage keep each card at least ~14rem (224px) wide. */}
+      <main className="@container flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-5 py-8 sm:px-12 sm:py-10">
         {page.visibleIds.length === 0 ? (
           <p className="my-auto text-sm text-slate-500">No nodes at this level yet.</p>
         ) : (
           <div
             data-testid="landscape-stage"
-            className={`my-auto grid w-full max-w-6xl gap-6 sm:gap-12 ${
+            className={`my-auto grid w-full gap-6 @lg:gap-12 ${
+              /* exactly one max-w-* per branch: two conflicting ones resolve by CSS order, not intent */
               page.visibleIds.length === 1
                 ? "max-w-xl grid-cols-1"
                 : page.visibleIds.length === 2
-                  ? "max-w-4xl grid-cols-1 md:grid-cols-2"
-                  : "grid-cols-1 md:grid-cols-3"
+                  ? "max-w-4xl grid-cols-1 @lg:grid-cols-2"
+                  : "max-w-6xl grid-cols-1 @lg:grid-cols-2 @3xl:grid-cols-3"
             }`}
           >
             {page.visibleIds.map((id) => {
