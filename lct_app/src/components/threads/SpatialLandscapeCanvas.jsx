@@ -634,12 +634,13 @@ export default function SpatialLandscapeCanvas({
         ) : (
           <div
             data-testid="landscape-stage"
-            className={`my-auto grid w-full max-w-6xl gap-6 @lg:gap-12 ${
+            className={`my-auto grid w-full gap-6 @lg:gap-12 ${
+              /* exactly one max-w-* per branch: two conflicting ones resolve by CSS order, not intent */
               page.visibleIds.length === 1
                 ? "max-w-xl grid-cols-1"
                 : page.visibleIds.length === 2
                   ? "max-w-4xl grid-cols-1 @lg:grid-cols-2"
-                  : "grid-cols-1 @lg:grid-cols-2 @3xl:grid-cols-3"
+                  : "max-w-6xl grid-cols-1 @lg:grid-cols-2 @3xl:grid-cols-3"
             }`}
           >
             {page.visibleIds.map((id) => {
