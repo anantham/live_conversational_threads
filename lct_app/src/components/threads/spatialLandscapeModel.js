@@ -337,6 +337,9 @@ export function buildSpatialLandscape(nodes, bundle, speakerDisplayNames = {}) {
     unfiledIds,
     topLevel,
     lenses,
+    // The canonical transcript, for ranking a node's key lines (rankedEvidence.js).
+    utterances,
+    utteranceIndex,
   };
 }
 
