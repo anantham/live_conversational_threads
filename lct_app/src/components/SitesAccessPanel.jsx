@@ -35,7 +35,7 @@ function recordTiming(durationMs, outcome, retryCount) {
 export default function SitesAccessPanel() {
   const { pathname, search, hash } = useLocation();
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
-  const inRecording = ["/new", "/new/", "/import-audio", "/import-audio/"].includes(pathname) || pathname.startsWith("/meeting/");
+  const inRecording = ["/new", "/new/", "/import-audio", "/import-audio/", "/import-youtube", "/import-youtube/"].includes(pathname) || pathname.startsWith("/meeting/");
   const inMeetingEntry = pathname === "/meeting" || pathname === "/meeting/";
   // Offer, never direct: the panel waits to be asked (the chip, a #site-access link, or a
   // feature that needs an account). Private files show it inline, since they need an account.

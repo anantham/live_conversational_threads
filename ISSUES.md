@@ -3266,3 +3266,11 @@ Found while verifying CPU search: library get_pipeline_files/get_files do not fo
 ## 2026-11-05 23:32 IST — remote CPU binary verification limited by transport
 
 Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received200/application-wasm and69,666correct prefix bytes, then curl56connection reset. Native deployed archive and exact local real-model proof pass; this is transport evidence, not a confirmed application cause. Impact: full served-binary hash and physical-browser runtime acceptance remain unverified. Blocker: no for completed native publication; yes for claiming complete browser/search-download acceptance. Full-download method is stopped, no deployment retry or paid generation. Recommended next step: verify the runtime in a functioning browser/connection within applicable authority. See docs/reviews/2026-11-05-sites-cpu-search-deployment.json; retain the explicit limit at handoff.
+
+## 2026-11-25 — YouTube import: Cloudflare egress not yet verified (OPEN)
+
+- **What:** the import reads YouTube from the Worker. From a residential address it works for all five videos of the owner's playlist; YouTube commonly refuses datacenter addresses. Not testable until the Site is published.
+- **Impact:** if refused, every import shows `youtube_blocked` and the feature is unusable on the hosted Site.
+- **Next step:** after publishing, import one public captioned video on the Site. If blocked, use the fallback in `docs/adr/2026-11-25-youtube-transcript-import.md` (a small service on the M5/Asus).
+- **Also open:** map generation is measured to about 20 minutes; a 107-minute transcript (120 KB request) fits the size caps but its map quality and output cap are untested.
+

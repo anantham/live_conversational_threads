@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video, Cloud } from "lucide-react";
+import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video, Cloud, Link2 } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
@@ -112,6 +112,7 @@ export default function Home() {
           </span>
           <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Import audio</span>
         </button>
+        {import.meta.env.VITE_SITES_MODE === "true" && <button type="button" onClick={() => navigate("/import-youtube")} className="flex flex-col items-center gap-1.5 group" title="Import the transcript of a YouTube video or playlist"><span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition"><Link2 size={16} /></span><span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Import YouTube</span></button>}
 
         {/* Bookmarks is not built yet. The Site hides the door rather than show one that does nothing. */}
         {import.meta.env.VITE_SITES_MODE !== "true" && <button
