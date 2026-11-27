@@ -486,3 +486,24 @@ it('replaces "Trying the next provider" with the outcome when the next provider 
 
 });
 
+it('replaces "Trying the next provider" when the import is stopped while that provider runs', async () => {
+  fixture.holdDecode = true;
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const m5 = SPEECH_PROVIDERS.m5_tailnet.name, soniox = SPEECH_PROVIDERS.soniox.name;
+  const notice = () => [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe'));
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  // The second provider is running, and the notice says so.
+  expect(fixture.sessions).toHaveLength(1);
+  expect(notice()).toContain(`Trying ${soniox} next`);
+  await click('Stop processing'); await flushArchive();
+  expect(notice()).toBe(`${m5} could not transcribe this file (M5 Tailnet STT returned HTTP 503. Your original audio is preserved). `
+    + `The import was stopped before ${soniox} finished, so it may have received part or all of the audio.`);
+  expect(container.querySelector('[role=alert]')).toBeNull();
+});
+

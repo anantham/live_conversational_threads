@@ -3,7 +3,9 @@
 // - An external claim check merges its result onto the map as it is when the check finishes, so an edit
 //   made while it ran (here a reaction) is kept on screen and in the saved copy.
 // - The edit is kept even when it happens in the same tick as the result arrives (no render in between).
-// - The edit is also kept when it happens after the result arrives but before a render.
+// - The edit is also kept when it happens after the result arrives but before a render (the test checks
+//   that no render happened in between, so it cannot pass by accident).
+// - A check that finishes after the viewer has closed is dropped: it is not saved.
 // - Opening another file while a check runs cancels it, and a late answer never lands on the next map
 //   (which here has a claim with the same id): nothing is shown, saved or announced.
 // - A claim check whose save fails says so in a visible alert, not only inside the closed options menu.
@@ -98,9 +100,16 @@ it('keeps a claim result when a reaction is made after it arrives but before the
   await click('stub verify');
   // This button holds the handlers from the last render, from before the result arrived.
   const react = [...host.querySelectorAll('button')].find(b => b.textContent === 'stub react');
+  // Opening the map already saved it; the claim result's save is the next one.
+  const savesBefore = spies.remember.mock.calls.length;
   await act(async () => {
     check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' });
-    await new Promise(resolve => setTimeout(resolve, 0));
+    // Let only promise callbacks run, until the result has been applied (saving starts right after).
+    for (let i = 0; i < 20 && spies.remember.mock.calls.length === savesBefore; i += 1) await Promise.resolve();
+    // The precondition this test depends on: the result is applied, but nothing has re-rendered.
+    expect(spies.remember).toHaveBeenCalledTimes(savesBefore + 1);
+    expect(spies.remember.mock.calls.at(-1)[0].epistemic.factual_claims[0].external_evidence).toBeTruthy();
+    expect(shown('evidence')).toBe('none');
     react.click();
   });
   expect(shown('evidence')).toBe('supported');
@@ -108,6 +117,22 @@ it('keeps a claim result when a reaction is made after it arrives but before the
   const saved = spies.remember.mock.calls.at(-1)[0];
   expect(saved.reaction_markers).toHaveLength(1);
   expect(saved.epistemic.factual_claims[0].external_evidence).toMatchObject({ status: 'supported' });
+});
+
+it('drops a claim check that finishes after the viewer has closed', async () => {
+  const check = deferred();
+  spies.verify.mockImplementation(() => check.promise);
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await act(async () => root.render(<ThreadsViewer />));
+  await click('stub verify');
+  const { 1: signal } = spies.verify.mock.calls[0];
+  await act(async () => root.unmount());
+  expect(signal.aborted).toBe(true);
+  await act(async () => { check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' }); await Promise.resolve(); });
+  // Opening the map saved it once; the late result must not be saved on top.
+  expect(spies.remember.mock.calls.some(([saved]) => saved.epistemic?.factual_claims?.[0]?.external_evidence)).toBe(false);
+  // afterEach unmounts again; give it a fresh root so that is harmless.
+  root = createRoot(host);
 });
 
 it('drops a claim check from a map that is no longer open, even when another map has the same claim', async () => {
