@@ -214,14 +214,17 @@ export function retryGuidance(guidance, rule, task = 'detail') {
   return withNote(guidance, `Your previous ${what} was refused at ${rule}. Fix exactly that: ${advice[stage] || 'follow the schema exactly'}.`);
 }
 
-/** Consecutive runs of the given turns, in transcript order, as "a to b" (or "a" for a single turn). */
+/**
+ * Consecutive runs of the given turns (duplicates and unknown ids dropped), in transcript order, as
+ * "a to b" (or "a" for a single turn); `turns` is how many distinct known turns they hold.
+ */
 function turnRanges(ids, utteranceIds) {
   const order = new Map(utteranceIds.map((id, i) => [id, i]));
   const runs = [];
   for (const id of [...new Set(ids)].filter(id => order.has(id)).sort((a, b) => order.get(a) - order.get(b))) {
     if (runs.length && order.get(id) === order.get(runs.at(-1).at(-1)) + 1) runs.at(-1).push(id); else runs.push([id]);
   }
-  return runs.map(run => (run.length > 1 ? `${run[0]} to ${run.at(-1)}` : run[0]));
+  return Object.assign(runs.map(run => (run.length > 1 ? `${run[0]} to ${run.at(-1)}` : run[0])), { turns: runs.flat().length });
 }
 
 /**
@@ -231,7 +234,7 @@ function turnRanges(ids, utteranceIds) {
 export function coverageGuidance(guidance, uncoveredIds, utteranceIds) {
   const ranges = turnRanges(uncoveredIds, utteranceIds);
   const named = ranges.slice(0, MAX_NAMED_RANGES).join(', ') + (ranges.length > MAX_NAMED_RANGES ? ` and ${ranges.length - MAX_NAMED_RANGES} more range${ranges.length - MAX_NAMED_RANGES === 1 ? '' : 's'}` : '');
-  const count = uncoveredIds.length;
+  const count = ranges.turns;
   return withNote(guidance, `Your previous overview left ${count} utterance${count === 1 ? '' : 's'} in no topic: ${named}. `
     + 'Topics must together cover every utterance: give each of these utterances a topic, as a range on an existing topic or as a new topic. '
     + 'An introduction, greeting or small talk is a topic too (salience aside).');
@@ -525,6 +528,8 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
  */
 async function glanceWithReask({ source, routes, guidance, signal, onProgress, generate, utterances, totalWords, intervalMs, admissionDelays }) {
   const aborted = error => signal?.aborted || error?.name === 'AbortError';
+  // Once the run is cancelled, whatever the call rejected with, the run rejects with an AbortError.
+  const cancelled = error => (signal?.aborted ? new DOMException('Aborted', 'AbortError') : error);
   const stepStarted = Date.now();
   let lastStart = null, started = stepStarted;
   const call = async (note, why) => {
@@ -556,13 +561,13 @@ async function glanceWithReask({ source, routes, guidance, signal, onProgress, g
   let glance;
   try { glance = await call(guidance, null); }
   catch (error) {
-    if (aborted(error)) throw error;
+    if (aborted(error)) throw cancelled(error);
     if (!retriableRefusal(error)) throw failed(error, false);
     const rule = ruleOf(error);
     log('glance retry', { ms: Date.now() - started, rule });
     activity(onProgress, 'warn', `Overview was refused (${rule}) after ${seconds(Date.now() - started)}; asking once more with that rule named.`, attemptsOf(error));
     try { glance = await call(retryGuidance(guidance, rule, 'skeleton'), `refused at ${rule}`); }
-    catch (again) { throw aborted(again) ? again : failed(again, true); }
+    catch (again) { throw aborted(again) ? cancelled(again) : failed(again, true); }
     return { glance, started: stepStarted };
   }
   const missing = uncoveredTurns(glance);
@@ -574,7 +579,7 @@ async function glanceWithReask({ source, routes, guidance, signal, onProgress, g
   let second;
   try { second = await call(coverageGuidance(guidance, missing, utteranceIds), `${plural(missing.length)} in no topic`); }
   catch (error) {
-    if (aborted(error)) throw error;
+    if (aborted(error)) throw cancelled(error);
     log('glance coverage retry failed', { error: error?.message });
     activity(onProgress, 'warn', `The second overview failed (${error?.message || 'unknown error'}); keeping the first, with ${plural(missing.length)} under "Uncovered turns".`, attemptsOf(error));
     return { glance, started: stepStarted };

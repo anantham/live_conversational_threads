@@ -708,6 +708,29 @@ describe('glance re-ask', () => {
     expect(tasks(waiting)).toEqual(['skeleton']);
   });
 
+  it('paces a coverage re-ask from the previous call\'s start, as detail calls are paced', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([noIntro, skeletonReply]);
+    const starts = [];
+    // Each overview call takes 80 ms: paced from its start the re-ask begins ~100 ms later, from its end ~180 ms.
+    const slow = vi.fn(async (...args) => {
+      if (args[4].task === 'skeleton') { starts.push(Date.now()); await new Promise(resolve => setTimeout(resolve, 80)); }
+      return generate(...args);
+    });
+    await runGlanceDetailPipeline({ source, routes: [], generate: slow, intervalMs: 100 });
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(95);
+    expect(starts[1] - starts[0]).toBeLessThan(160);
+  });
+
+  it('rejects with an AbortError when a cancelled call rejects with something else', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const controller = new AbortController();
+    const generate = vi.fn(async () => { controller.abort(); throw new TypeError('network error'); });
+    const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, signal: controller.signal }).catch(e => e);
+    expect(error.name).toBe('AbortError');
+  });
+
   it('names at most eight uncovered ranges and stays within the guidance limit', () => {
     const ids = Array.from({ length: 40 }, (_, i) => `utterance-${String(i + 1).padStart(4, '0')}`);
     const odd = ids.filter((_, i) => i % 2 === 0);
@@ -718,6 +741,8 @@ describe('glance re-ask', () => {
     expect(retryGuidance('', 'threads', 'skeleton')).toMatch(/^Your previous overview was refused at threads\. Fix exactly that: every thread step/);
     const nine = ids.filter((_, i) => i % 2 === 0).slice(0, 9);
     expect(coverageGuidance('', nine, ids)).toMatch(/ and 1 more range\. /);
+    // Duplicates and unknown ids are neither named nor counted.
+    expect(coverageGuidance('', [ids[0], ids[0], 'not-a-turn', ids[1]], ids)).toMatch(/left 2 utterances in no topic: utterance-0001 to utterance-0002\. /);
     // A note that fills the limit leaves no room for guidance and no stray separator.
     expect(retryGuidance('owner', 'x'.repeat(3200))).toHaveLength(3000);
     expect(retryGuidance('owner', 'x'.repeat(3200)).startsWith('Your previous')).toBe(true);

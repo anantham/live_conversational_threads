@@ -1,3 +1,7 @@
+## 2026-11-27 08:15 IST — Second Gemini round on the glance re-ask
+
+agy `gemini-4-hydrogen-high`, packet sha256 `0a52f348…b7b2` (round-1 findings verbatim, fix diff `5e57c17d..e0e5779c`, full pipeline, the new tests). Verdicts: round-1 findings 1, 2, 5 resolved; 3, 4, 6 partly. Taken: `coverageGuidance` counted duplicate or unknown ids that it did not name (now counts what it names); a cancelled call that rejects with another error now rejects the run with an AbortError, as `runSegments` does; tests for coverage re-ask pacing with 80 ms calls (fails on `5e57c17d`, which paced from the end: 190 ms gap) and for the AbortError. Declined: per-call failure lines ("Overview failed again after …") time that call only, by design, like `runSegments`' per-call times; the step total is in "Overview done in". File: 44/44; lint clean.
+
 ## 2026-11-27 07:55 IST — Gemini review fixes for the glance re-ask
 
 Independent review: agy `gemini-4-hydrogen-high` (Google family), plan mode, code-only packet (diff `28a9899b..5e57c17d` of the pipeline, its tests and intent doc, plus the full pipeline file and the `expandSkeleton` excerpt), packet sha256 `00677470…eeb6`. The first send (sha256 `422a67da…`) produced an empty file with exit 0: the model tried a tool, headless mode denied it, and nothing was printed. Re-sent with "use no tools". 6 findings, all taken:
