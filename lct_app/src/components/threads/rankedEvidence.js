@@ -30,23 +30,25 @@ const wordCount = (text) =>
       }).length
     : 0;
 // Plural folding by candidate forms: a title word and a line word match when any of their forms meet.
-// "houses"→house, "buses"→bus, "statuses"→status, "classes"→class, "stories"→story, "rates"→rate.
-// One stem rule cannot cover both "houses" (drop s) and "buses" (drop es); forms do.
+// "houses"→house, "buses"→bus, "statuses"→status, "classes"→class, "boxes"→box, "stories"→story,
+// "rates"→rate. "es" comes off only after s/x/z/ch/sh, so "notes" never reaches "not", nor "rates" "rat".
 const formsOf = (w) => {
   const base = w.replace(/'s$/, "");
   const forms = [base];
   if (/ies$/.test(base)) forms.push(base.replace(/ies$/, "y"));
-  if (/es$/.test(base)) forms.push(base.slice(0, -2));
+  if (/(s|x|z|ch|sh)es$/.test(base)) forms.push(base.slice(0, -2));
   if (/[^s]s$/.test(base)) forms.push(base.slice(0, -1));
   return forms;
 };
 // Two-letter terms count ("AI" is often the point of a title); stopwords don't.
-/** The title and summary terms, as form lists; a plural and its singular in one title count once. */
+/** The title and summary terms as form sets; a plural and its singular count once, whatever their order. */
 const keyTerms = (text) => {
   const terms = [];
   for (const word of new Set(contentWords(text).filter((w) => w.length > 1 && !STOPWORDS.has(w)))) {
     const forms = formsOf(word);
-    if (!terms.some((taken) => taken.some((f) => forms.includes(f)))) terms.push(forms);
+    const group = terms.find((taken) => forms.some((f) => taken.has(f)));
+    if (group) forms.forEach((f) => group.add(f));
+    else terms.push(new Set(forms));
   }
   return terms;
 };
@@ -145,7 +147,7 @@ export function rankNodeEvidence(nodeId, landscape, { limit = KEY_LINE_LIMIT, sp
     if (count <= BACKCHANNEL_WORDS) continue;
     const salience = salienceByUtterance.get(utteranceId) || null;
     let overlap = 0;
-    for (const forms of terms) if (forms.some((f) => lineForms.has(f))) overlap += 1;
+    for (const forms of terms) if ([...forms].some((f) => lineForms.has(f))) overlap += 1;
     candidates.push({
       utteranceId, index, row, salience,
       // Unmarked counts as supporting: an older map says nothing about salience either way.

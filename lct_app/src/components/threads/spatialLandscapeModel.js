@@ -31,8 +31,9 @@ export function formatVisitClock(seconds) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// .threads files are untrusted: only strings and numbers are ids (String() on an object can throw).
-const citationIds = (ids) => ids.filter((uid) => typeof uid === "string" || typeof uid === "number").map(String);
+// .threads files are untrusted: only non-blank strings and numbers are ids (String() on an object can throw).
+const citationIds = (ids) =>
+  ids.filter((uid) => (typeof uid === "string" && uid.trim() !== "") || typeof uid === "number").map(String);
 
 /** The utterance ids a node cites: `source_ref.utterance_ids`, else the legacy top-level `utterance_ids`. */
 export function utteranceIdsOf(node) {

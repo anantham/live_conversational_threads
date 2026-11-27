@@ -125,8 +125,10 @@ describe("rankNodeEvidence", () => {
     const nodes = [{ id: "n", node_name: "Rain", summary: "rainwater", source_ref: { utterance_ids: [] }, utterance_ids: ["u1"] }];
     expect(rank(nodes, utterances, "n").map((l) => l.utteranceId)).toEqual(["u1"]);
     // A modern list holding only invalid ids must not hide valid legacy ones.
-    const invalidModern = [{ ...nodes[0], source_ref: { utterance_ids: [null] } }];
-    expect(rank(invalidModern, utterances, "n").map((l) => l.utteranceId)).toEqual(["u1"]);
+    for (const invalid of [[null], [""], ["   "]]) {
+      const invalidModern = [{ ...nodes[0], source_ref: { utterance_ids: invalid } }];
+      expect(rank(invalidModern, utterances, "n").map((l) => l.utteranceId)).toEqual(["u1"]);
+    }
   });
 
   it("names speakers from the viewer's display-name Map, and renders only string names", () => {
@@ -168,6 +170,25 @@ describe("rankNodeEvidence", () => {
     expect(top("Status", "statuses")).toBe("u10");
     expect(top("Alias", "aliases")).toBe("u10");
     expect(top("Boxes", "box")).toBe("u10");
+  });
+
+  it("does not fold a plural into an unrelated shorter word, and ignores term order", () => {
+    const pair = (match) => [
+      line("u1", `the ${match} part is what this whole conversation kept coming back to`),
+      line("u10", "the weather part is what this whole conversation kept coming back to"),
+    ];
+    const top = (title, match) => rank([{ id: "n", node_name: title, summary: "", source_ref: { utterance_ids: ["u1", "u10"] } }], pair(match), "n", { limit: 1 })[0];
+    // A match would put u1 first anyway (transcript order), so compare overlap through a later rival.
+    const rival = (title, word) => rank([{ id: "n", node_name: title, summary: "", source_ref: { utterance_ids: ["u1", "u10"] } }], [
+      line("u1", "the weather part is what this whole conversation kept coming back to"),
+      line("u10", `the ${word} part is what this whole conversation kept coming back to`),
+    ], "n", { limit: 1 })[0].utteranceId;
+    expect(rival("Notes", "not")).toBe("u1");
+    expect(rival("Rates", "rat")).toBe("u1");
+    expect(rival("Rate Rates", "rates")).toBe("u10");
+    expect(rival("Rates Rate", "rates")).toBe("u10");
+    expect(rival("Rates Rate", "rate")).toBe("u10");
+    expect(top("Notes", "notes").utteranceId).toBe("u1");
   });
 
   it("spreads picks across stretches, returns them in transcript order, and respects the limit", () => {

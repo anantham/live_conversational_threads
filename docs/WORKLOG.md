@@ -11262,3 +11262,4 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   - One-rule plural folding fixed "houses" but broke "buses", "statuses", "aliases". Matching now compares candidate forms (as is, minus s, minus es, ies→y), so both families match; a plural and its singular in one title count once.
   - `source_ref.utterance_ids: [null]` hid valid legacy `utterance_ids`. `utteranceIdsOf` now filters before choosing.
   - Red-proved: 4 tests fail against round-3 commit `8a3ca7e1`. Benchmark 3.0 ms warm.
+- Codex round 4 (packet sha256 `1347c6c4…`): no P1/P2; two P3s, both real and fixed: plural forms let "notes" reach "not" and "rates" reach "rat" (now "es" comes off only after s/x/z/ch/sh, and grouped title terms merge their forms so term order cannot change the pick); blank ids (`""`, `"   "`) in `source_ref` still hid legacy citations (now filtered as invalid). 2 tests fail against round-4 commit `15f16380`.
