@@ -52,6 +52,8 @@ export class CloudConversationSession {
           this.captureStarted = null;
         }
         if (value.stage === 'stopped' && this.pauseRequested) value = { ...value, stage: 'paused', message: 'Paused. Microphone off. Resume to continue this conversation.' };
+        // The open microphone, for a level display only. Every stage outside capture reports it closed.
+        this.callbacks.onMicStream?.(['authorizing', 'connecting', 'recording'].includes(value.stage) ? next.mediaStream || null : null);
         this.stage(value);
       },
       onTranscript: snapshot => {

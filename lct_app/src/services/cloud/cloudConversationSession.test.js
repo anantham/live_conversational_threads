@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { CloudConversationSession } from './cloudConversationSession.js';
 import { RecordingSession } from './recordingSession.js';
 
-function setup() {
+function setup(extra = {}) {
   const recorders = [], connections = [], tracks = [];
   class Recorder extends EventTarget {
     static isTypeSupported(type) { return type === 'audio/webm;codecs=opus'; }
@@ -21,7 +21,7 @@ function setup() {
     constructor(callbacks) { super({ ...callbacks, StreamClass: Stream, MediaRecorderClass: Recorder, requestSession, mediaDevices: { getUserMedia: async () => { const track = { stop: vi.fn() }; tracks.push(track); return { getTracks: () => [track] }; } } }); }
   }
   const onStage = vi.fn(), onAudio = vi.fn(), onTranscript = vi.fn(), onFailure = vi.fn();
-  const session = new CloudConversationSession({ SessionClass: Session, onStage, onAudio, onTranscript, onFailure });
+  const session = new CloudConversationSession({ SessionClass: Session, onStage, onAudio, onTranscript, onFailure, ...extra });
   return { session, recorders, connections, tracks, onStage, onAudio, onTranscript, onFailure, requestSession };
 }
 const snapshot = text => ({ finalTokens: [{ text, speaker: '1', startMs: 100, endMs: 500 }], partialTokens: [], finalText: text, partialText: '' });
@@ -132,4 +132,32 @@ describe('cloud conversation continuity', () => {
     await f.session.stop();
   });
 
+});
+
+describe('open microphone for the level display', () => {
+  it('is reported only while a segment is capturing, and closed across pause, resume and stop', async () => {
+    const onMicStream = vi.fn();
+    const f = setup({ onMicStream });
+    await f.session.start({ transcribe: true, maxSessionSeconds: 60 });
+    const first = onMicStream.mock.calls.at(-1)[0];
+    expect(first).toBeTruthy();
+    // The microphone stage itself reports nothing open: permission may still be pending there.
+    expect(onMicStream.mock.calls[0][0]).toBeNull();
+    await f.session.pause();
+    expect(onMicStream).toHaveBeenLastCalledWith(null);
+    await f.session.resume();
+    const second = onMicStream.mock.calls.at(-1)[0];
+    expect(second).toBeTruthy(); expect(second).not.toBe(first);
+    await f.session.stop();
+    expect(onMicStream).toHaveBeenLastCalledWith(null);
+  });
+
+  it('is reported closed when the conversation is cancelled', async () => {
+    const onMicStream = vi.fn();
+    const f = setup({ onMicStream });
+    await f.session.start({ transcribe: false, maxSessionSeconds: 60 });
+    expect(onMicStream.mock.calls.at(-1)[0]).toBeTruthy();
+    f.session.cancel();
+    expect(onMicStream).toHaveBeenLastCalledWith(null);
+  });
 });

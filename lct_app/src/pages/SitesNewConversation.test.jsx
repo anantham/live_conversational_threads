@@ -172,13 +172,13 @@ describe('Sites recording page', () => {
     expect(canvas.tabIndex).toBe(0);
     expect(canvas.contains(controls)).toBe(false);
     expect(container.querySelector('footer').contains(controls)).toBe(true);
-    expect(canvas.textContent).toContain('Start recording below');
+    expect(canvas.textContent).not.toContain('Start recording below');
     expect(controls.textContent).toContain('Start');
     expect(button('Start session').querySelector('svg')).toBeTruthy();
     expect(container.querySelector('h1').textContent).toBe('New conversation');
     await record();
     expect(container.querySelector('footer').contains(button('Stop recording'))).toBe(true);
-    expect(canvas.textContent).toContain('Your threads will take shape here');
+    expect(canvas.textContent).toContain('Set up live map');
     await click('Stop recording');
     expect(canvas.contains(container.querySelector('audio'))).toBe(true);
     expect(canvas.contains(container.querySelector('a[download$=".webm"]'))).toBe(true);
@@ -203,7 +203,7 @@ describe('Sites recording page', () => {
 
   it('opens publicly without auto microphone/start or legacy backend requests', async () => {
     await mount();
-    expect(container.textContent).toContain('without signing in');
+    expect(container.textContent).not.toContain('without signing in');
     expect(container.textContent).not.toContain('Nothing is published automatically');
     expect(button('Start session').disabled).toBe(false);
     expect(transcriptionSwitch().checked).toBe(false);
@@ -777,4 +777,114 @@ it('starts a fresh ephemeral conversation after opening a saved one without rest
   await record(); await click('Stop recording');
   expect(window.location.search).toBe(''); expect(container.textContent).toContain('Ephemeral · download');
   expect(container.textContent).not.toContain('Opening saved conversation'); expect(button('Start session').disabled).toBe(false);
+});
+
+describe('Sites recording page: canvas map status, speaker names and Explore', () => {
+  const permit = () => act(async () => container.querySelector('[aria-label="Conversation map"] input').click());
+  const calls = () => fetch.mock.calls.filter(call => call[0] === '/api/cloud/openrouter/generate');
+  const beat = () => container.querySelector('[aria-label="Live map"]');
+  const beatButton = name => [...beat().querySelectorAll('button')].find(element => element.textContent === name);
+  const tools = () => container.querySelector('aside[aria-label="Conversation tools"]');
+  const mapJSON = () => JSON.parse(container.querySelector('#recording-map-json').value);
+  const explore = () => container.querySelector('footer button[aria-label="Explore map"]');
+  async function rename(label, name) {
+    await click(`Rename ${label}`);
+    const input = container.querySelector(`input[aria-label="Name for ${label}"]`);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, name); input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
+  }
+
+  it('runs a deliberate map from the canvas while the map panel stays closed', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe');
+    expect(beat()).toBeNull();
+    await deliverTranscript();
+    expect(beat().textContent).toContain('Live map is off');
+    await permit();
+    expect(beat().textContent).toContain('3 new words');
+    await act(async () => beatButton('Map now').click());
+    expect(calls()).toHaveLength(1);
+    expect(container.querySelector('[aria-label="Rendered graph"]').textContent).toContain('Synthetic recorded moment');
+    expect(beat().textContent).toContain('Map is up to date');
+    expect(beat().querySelector('button')).toBeNull();
+    expect(tools().hidden).toBe(true);
+    await deliverTranscript({ ...transcript, finalTokens: [...transcript.finalTokens, { text: ' One more point.', speaker: 'S2', startMs: 4000, endMs: 5000 }] });
+    expect(beat().textContent).toContain('3 new words');
+    expect(beatButton('Map now')).toBeTruthy();
+  });
+
+  it('opens the map panel from the canvas when the map still needs permission, and yields to it', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript();
+    await act(async () => beatButton('Set up').click());
+    expect(tools().hidden).toBe(false);
+    expect(container.querySelector('[aria-label="Conversation map"]').closest('[hidden]')).toBeNull();
+    expect(beat()).toBeNull();
+    expect(calls()).toHaveLength(0);
+  });
+
+  it('counts down to the next automatic update on the canvas', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permit(); vi.useFakeTimers();
+    await act(async () => container.querySelector('[aria-label="Update map while I speak"]').click());
+    expect(beat().textContent).toContain('Listening · 3 new words');
+    const longer = { ...transcript, finalTokens: [...transcript.finalTokens, { text: ' We discuss a synthetic community garden, then a reading group, then the decisions needed to make both work. More source words accumulate while recording continues.', speaker: 'S2', startMs: 4000, endMs: 6000 }] };
+    await deliverTranscript(longer); await act(async () => vi.advanceTimersByTimeAsync(1500));
+    expect(calls()).toHaveLength(1);
+    const more = { ...longer, finalTokens: [...longer.finalTokens, { text: ' A second stretch of synthetic words follows about the garden rota, the reading list and who brings the tea each week, long enough to count.', speaker: 'S1', startMs: 7000, endMs: 9000 }] };
+    await deliverTranscript(more); await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(beat().textContent).toMatch(/Next map in 4\d s · 25 new words/);
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(beat().textContent).toMatch(/Next map in 3\d s · 25 new words/);
+    await act(async () => vi.advanceTimersByTimeAsync(40_000));
+    expect(calls()).toHaveLength(2);
+  });
+
+  it('labels the map with names typed in the transcript, keeps them through Stop, and never sends them with a map request', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permit();
+    await rename('Speaker S1', 'Aditya');
+    expect(container.querySelector('[aria-label="Live transcript"]').textContent).toContain('Aditya');
+    await click('Generate conversation map');
+    expect(mapJSON().utterances[0]).toMatchObject({ speaker_id: 'S1', speaker_name: 'Aditya' });
+    expect(mapJSON().utterances[1].speaker_name).toBeUndefined();
+    await rename('Speaker S2', 'Andre');
+    expect(mapJSON().utterances[1]).toMatchObject({ speaker_id: 'S2', speaker_name: 'Andre' });
+    expect(mapJSON().full_transcript).toBe('Hello there. Again.');
+    await click('Stop recording');
+    expect(mapJSON().transcription_complete).toBe(true);
+    expect(mapJSON().utterances.map(row => row.speaker_name)).toEqual(['Aditya', 'Andre']);
+    expect(calls()).toHaveLength(1);
+    expect(calls()[0][1].body).not.toContain('Aditya');
+  });
+
+  it('restores names from a saved map and starts the next recording without them', async () => {
+    const id = 'synthetic-restored';
+    const bundle = generated({ recordingId: id, startedAt: 1, finalTokens: transcript.finalTokens, complete: true }).bundle;
+    bundle.utterances[0] = { ...bundle.utterances[0], speaker_name: 'Aditya' };
+    fixture.restored = { id, version: 1, recording: { id, startedAt: 1, transcribe: true, retention: 'local' }, transcript, map: bundle, audio: null, stage: 'stopped', updatedAt: 1, segments: [] };
+    transcribe = true; window.history.replaceState(null, '', `/new?local=${id}`); await mount(true);
+    expect(button('Rename Aditya')).toBeTruthy(); expect(button('Rename Speaker S2')).toBeTruthy();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await record('Record and transcribe'); await deliverTranscript();
+    expect(button('Rename Speaker S1')).toBeTruthy(); expect(button('Rename Aditya')).toBeFalsy();
+  });
+
+  it('offers Explore map beside Start once a stopped recording has a map, behind the same leave warning', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permit();
+    await click('Generate conversation map');
+    expect(explore()).toBeNull();
+    await click('Stop recording');
+    expect(explore()).toBeTruthy();
+    expect(explore().closest('footer').querySelector('button[aria-label="Start session"]')).toBeTruthy();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    await act(async () => explore().click());
+    expect(JSON.parse(container.querySelector('[data-testid=location]').textContent)).toBeNull();
+    await act(async () => explore().click());
+    const handoff = JSON.parse(container.querySelector('[data-testid=location]').textContent);
+    expect(handoff.remember).toBe(false);
+    expect(readGeneratedMap(handoff.generatedMapId).conversation_title).toBe('Synthetic generated recording');
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not offer Explore map for a stopped recording that has no map', async () => {
+    transcribe = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await click('Stop recording');
+    expect(explore()).toBeNull();
+  });
 });

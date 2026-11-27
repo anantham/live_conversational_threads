@@ -7,8 +7,10 @@ import { readLocalConversation } from '../services/cloud/localConversationStore.
 import { ConversationStorageSettings, ConversationStorageStatus } from '../components/recording/ConversationStorage.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CloudConversationSession } from '../services/cloud/cloudConversationSession.js';
+import { M5TailnetLiveSession } from '../services/cloud/m5TailnetLiveSession.js';
 import { privateRequest } from '../services/privateFiles.js';
 import { recordRecordingTiming } from '../services/cloud/recordingTiming.js';
+import { readSitesCostEntries, summarizeSitesCosts } from '../services/cloud/sitesCostStore.js';
 import RecordingTranscriptFiles from '../components/recording/RecordingTranscriptFiles.jsx';
 import RecordingAudioFiles from '../components/recording/RecordingAudioFiles.jsx';
 import ConversationTranscriptPanel from '../components/recording/ConversationTranscriptPanel.jsx';
@@ -20,9 +22,17 @@ import ConversationTranscriptionSetting from '../components/recording/Conversati
 import CloudRecordingToolbar from '../components/recording/CloudRecordingToolbar.jsx';
 import ConversationNavigation, { CloseConversationTools } from '../components/recording/ConversationNavigation.jsx';
 import ConversationServiceStatus from '../components/recording/ConversationServiceStatus.jsx';
+import LiveMapHeartbeat from '../components/recording/LiveMapHeartbeat.jsx';
+import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
+import { renameArtifactSpeaker } from '../services/youtubeMedia';
+import { buildSpeakerDisplayNames } from '../services/speakerDisplay';
+import { Compass } from 'lucide-react';
 
 const ACTIVE = new Set(['microphone', 'authorizing', 'connecting', 'recording', 'finalizing']);
 const emptyTranscript = { finalText: '', partialText: '', finalTokens: [], partialTokens: [] };
+const LEAVE_WARNING = 'Leave this conversation? Download or save your audio, transcript and map first. Unsaved copies will be lost.';
+// Names typed on this page label the map's own speaker fields; the source transcript keeps its original ids.
+const withSpeakerNames = (bundle, names) => Object.entries(names).reduce((named, [id, name]) => renameArtifactSpeaker(named, id, name), bundle);
 
 async function abortable(signal, work) {
   let abort;
@@ -48,13 +58,52 @@ export default function SitesNewConversation() {
   const [generating, setGenerating] = useState(false);
   const runtime = useSitesRuntime();
   const [chosenBackend, setBackend] = useState('openrouter'), [voiceHealth, setVoiceHealth] = useState(null), [inferenceHealth, setInferenceHealth] = useState(null);
+  const [voiceMetrics, setVoiceMetrics] = useState(null), [mapMetrics, setMapMetrics] = useState(null);
   const backend = inferenceHealth?.ok && runtime?.preferences.map.includes(inferenceHealth.service)
     ? inferenceHealth.service : runtime?.preferences.map[0] || chosenBackend;
   const voiceStarted = useRef(null), voiceFirst = useRef(false);
 
+  const handleInferenceHealth = useCallback(event => {
+    setInferenceHealth(event);
+    if (event?.ok) {
+      setMapMetrics(prev => {
+        const usage = event.usage || {};
+        const inTok = Number(usage.input_tokens) || 0;
+        const outTok = Number(usage.output_tokens) || 0;
+        const callCost = Number.isFinite(Number(usage.cost_usd)) ? Number(usage.cost_usd) : null;
+        const lastLatencyMs = event.latencyMs ?? prev?.lastLatencyMs ?? null;
+        const tokensPerSec = outTok > 0 && lastLatencyMs > 50 ? Math.round((outTok / (lastLatencyMs / 1000)) * 10) / 10 : prev?.tokensPerSec ?? null;
+        const sevenDay = summarizeSitesCosts(readSitesCostEntries(), '7d');
+        return {
+          provider: event.service || prev?.provider || '',
+          model: event.model || prev?.model || '',
+          lastLatencyMs,
+          tokensPerSec,
+          runs: (prev?.runs || 0) + 1,
+          inputTokens: (prev?.inputTokens || 0) + inTok,
+          outputTokens: (prev?.outputTokens || 0) + outTok,
+          costUsd: callCost != null ? (prev?.costUsd || 0) + callCost : (prev?.costUsd ?? null),
+          sevenDayCostUsd: sevenDay.hasReportedCost ? sevenDay.reportedCostUsd : null,
+        };
+      });
+    }
+  }, []);
+
   const [map, setMap] = useState(null), [panel, setPanel] = useState(null), [mapError, setMapError] = useState('');
   const [transcriptMinimized, setTranscriptMinimized] = useState(false), [transcriptFullscreen, setTranscriptFullscreen] = useState(false);
-  const mapReady = useCallback(bundle => { setMap(bundle); archive.update({ map: bundle }); setNotice('Conversation map updated.'); }, [archive.update]);
+  const [speakerNames, setSpeakerNames] = useState({}), speakerNamesNow = useRef(speakerNames), mapNow = useRef(map);
+  mapNow.current = map;
+  const [mapSchedule, setMapSchedule] = useState(null), [mapNowRequest, setMapNowRequest] = useState(0);
+  const [micStream, setMicStream] = useState(null), [micSilent, setMicSilent] = useState(false);
+  const mapReady = useCallback(bundle => { const named = withSpeakerNames(bundle, speakerNamesNow.current); setMap(named); archive.update({ map: named }); setNotice('Conversation map updated.'); }, [archive.update]);
+  const renameSpeaker = useCallback((speakerId, name) => {
+    speakerNamesNow.current = { ...speakerNamesNow.current, [speakerId]: name };
+    setSpeakerNames(speakerNamesNow.current);
+    // An existing map takes the name at once; later maps take it as they arrive.
+    if (!mapNow.current) return;
+    const named = renameArtifactSpeaker(mapNow.current, speakerId, name);
+    setMap(named); archive.update({ map: named });
+  }, [archive.update]);
   const [transcriptionChoice, setTranscriptionChoice] = useState(null);
   const session = useRef(null), setupRequest = useRef(null), saveRequest = useRef(null), alive = useRef(true), stopControl = useRef(null), resumeControl = useRef(null);
 
@@ -66,6 +115,7 @@ export default function SitesNewConversation() {
       if (cancelled) return;
       if (!value) throw new Error('This conversation is not saved in this browser.');
       setRecording(value.recording); setTranscript(value.transcript); setMap(value.map); setAudio(value.audio);
+      speakerNamesNow.current = Object.fromEntries(buildSpeakerDisplayNames(value.map)); setSpeakerNames(speakerNamesNow.current);
       setActivity({ stage: value.stage === 'stopped' ? 'stopped' : 'recovered', startedAt: value.updatedAt, message: 'Opened from this device. Your microphone is off.' });
       archive.restored(value);
       if (value.mapUnreadable) setNotice('Your audio and transcript are available. This saved map could not be read; its stored copy has not been changed. You can generate another map.');
@@ -136,22 +186,39 @@ export default function SitesNewConversation() {
     const id = globalThis.crypto?.randomUUID?.();
     if (!id) { setError('This browser could not create a recording identifier. Retry in a supported browser.'); return; }
     session.current?.cancel(); setAudio(null); setMap(null); setMapError(''); setPanel(null); setTranscript(emptyTranscript); setError(''); setNotice('');
+    speakerNamesNow.current = {}; setSpeakerNames({}); setMicStream(null); setMicSilent(false);
     const nextRecording = { id, startedAt: Date.now(), transcribe, retention: archive.preference };
     setRecording(nextRecording); archive.begin(nextRecording, archive.preference);
     navigate(archive.preference === 'local' ? `/new?local=${id}` : '/new', { replace: true });
-    setVoiceHealth(null); setInferenceHealth(null); voiceStarted.current = Date.now(); voiceFirst.current = false;
-    const next = new CloudConversationSession({
+    setVoiceHealth(null); setInferenceHealth(null); setVoiceMetrics(null); setMapMetrics(null); voiceStarted.current = Date.now(); voiceFirst.current = false;
+    const useM5Live = transcribe && liveVoiceProvider === 'm5_tailnet';
+    const next = useM5Live ? new M5TailnetLiveSession({
+      url: runtime?.preferences.m5TailnetUrl,
+      token: runtime?.keys.m5_tailnet,
       onStage: value => { if (alive.current && session.current === next) { setActivity(value); archive.update({ stage: value.stage }); } },
       onAudio: value => { if (alive.current && session.current === next) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
       onAudioChunk: chunk => { if (alive.current && session.current === next) archive.append(chunk); },
-      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length || value.partialTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; setVoiceHealth({ service: 'soniox', ok: true, at: Date.now(), detail: firstWords ? `First words received after ${Math.round((Date.now() - voiceStarted.current) / 1000)} s, including setup and waiting for speech.` : 'Transcript is receiving words from Soniox.' }); } } },
+      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const ttftMs = Math.max(0, Date.now() - voiceStarted.current); setVoiceHealth({ service: 'm5_tailnet', ok: true, at: Date.now(), detail: firstWords ? `First words received in ${(ttftMs / 1000).toFixed(1)} s via M5 Tailnet.` : 'Receiving diarized chunks from M5 Tailnet.' }); } } },
+      onMetrics: metrics => { if (alive.current && session.current === next) setVoiceMetrics({ ...metrics, lastWordAt: Date.now() }); },
+      onMicStream: value => { if (alive.current && session.current === next) setMicStream(value); },
+      onFailure: failure => { if (alive.current && session.current === next) { setError(failure.message); setVoiceHealth({ service: 'm5_tailnet', ok: false, at: Date.now(), detail: failure.message }); } },
+    }) : new CloudConversationSession({
+      onMicStream: value => { if (alive.current && session.current === next) setMicStream(value); },
+      onStage: value => { if (alive.current && session.current === next) { setActivity(value); archive.update({ stage: value.stage }); } },
+      onAudio: value => { if (alive.current && session.current === next) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
+      onAudioChunk: chunk => { if (alive.current && session.current === next) archive.append(chunk); },
+      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length || value.partialTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const now = Date.now(); const elapsedMs = Math.max(0, now - voiceStarted.current); setVoiceMetrics(prev => ({ provider: 'soniox', ttftMs: prev?.ttftMs ?? elapsedMs, lastLatencyMs: null, lastWordAt: now, audioSeconds: Math.round(elapsedMs / 1000), costUsd: (elapsedMs / 60_000) * 0.002 })); setVoiceHealth({ service: 'soniox', ok: true, at: now, detail: firstWords ? `First words received after ${Math.round(elapsedMs / 1000)} s, including setup and waiting for speech.` : 'Transcript is receiving words from Soniox.' }); } } },
       onFailure: failure => { if (alive.current && session.current === next) { setError(failure.message); if (transcribe && failure.message.includes('live transcription')) setVoiceHealth({ service: 'soniox', ok: false, at: Date.now(), detail: 'Transcription stopped with an error. Your captured audio remains available.' }); } },
     });
     session.current = next;
     try {
-      const key = runtime?.keys.soniox;
-      await next.start({ transcribe, maxSessionSeconds: transcribe ? capabilities.transcription.max_session_seconds : 300,
-        ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+      if (useM5Live) {
+        await next.start();
+      } else {
+        const key = runtime?.keys.soniox;
+        await next.start({ transcribe, maxSessionSeconds: transcribe ? capabilities.transcription.max_session_seconds : 300,
+          ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+      }
     }
     catch (failure) { if (alive.current && session.current === next) setError(failure.message); }
   }
@@ -178,8 +245,12 @@ export default function SitesNewConversation() {
   }
 
   const active = ACTIVE.has(activity?.stage);
-  const live = runtime?.credentialsReady !== false && (!runtime || runtime.preferences.speech.includes('soniox')) && (runtime?.keys.soniox
+  const speechOrder = runtime?.preferences.speech || ['soniox'];
+  const sonioxLive = (!runtime || speechOrder.includes('soniox')) && Boolean(runtime?.keys.soniox
     ? capabilities?.transcription?.personal_enabled : capabilities?.transcription?.enabled);
+  const m5Live = Boolean(runtime?.preferences.speech?.includes('m5_tailnet'));
+  const liveVoiceProvider = speechOrder.find(id => (id === 'm5_tailnet' && m5Live) || (id === 'soniox' && sonioxLive)) || 'soniox';
+  const live = runtime?.credentialsReady !== false && (sonioxLive || m5Live);
   // A fast check stays silent; only one that runs past two seconds says so.
   const slowSetup = Boolean(setup && elapsed >= 2);
   const transcribe = transcriptionChoice ?? Boolean(live);
@@ -195,6 +266,48 @@ export default function SitesNewConversation() {
     try { return { ...createRecordingTranscript(source), source }; }
     catch { return { error: 'The transcript file could not be prepared within its size or data limits. Your final text is still available to copy on this page.' }; }
   }, [ready, recording, transcript.finalTokens, complete]);
+  const liveVoiceMetrics = useMemo(() => {
+    const finalText = transcript.finalText || '';
+    const words = finalText.trim() ? finalText.trim().split(/\s+/).length : 0;
+    const speakers = new Set((transcript.finalTokens || []).map(t => t.speaker).filter(Boolean)).size;
+    const audioBytes = audio?.blob?.size || (audio?.segments || []).reduce((sum, s) => sum + (s.blob?.size || s.bytes || 0), 0);
+    const secs = voiceMetrics?.audioSeconds ?? (active ? elapsed : 0);
+    const wpm = words >= 5 && secs >= 5 ? Math.round((words / secs) * 60) : null;
+    if (!voiceMetrics && !words && !audioBytes) return null;
+    return {
+      provider: voiceMetrics?.provider || liveVoiceProvider,
+      ttftMs: voiceMetrics?.ttftMs ?? null,
+      lastLatencyMs: voiceMetrics?.lastLatencyMs ?? null,
+      words,
+      speakers: speakers || (words ? 1 : 0),
+      wpm,
+      lastWordAt: voiceMetrics?.lastWordAt ?? null,
+      audioSeconds: secs || null,
+      audioBytes: audioBytes || null,
+      costUsd: voiceMetrics?.costUsd ?? null,
+    };
+  }, [voiceMetrics, transcript.finalText, transcript.finalTokens, audio, active, elapsed, liveVoiceProvider]);
+
+  const liveMapMetrics = useMemo(() => {
+    const finalText = transcript.finalText || '';
+    const wordsReady = finalText.trim() ? finalText.trim().split(/\s+/).length : 0;
+    const configuredModel = runtime?.preferences?.mapChain?.[0]?.model || '';
+    const sevenDay = summarizeSitesCosts(readSitesCostEntries(), '7d');
+    if (!mapMetrics && !configuredModel && !wordsReady && !sevenDay.hasReportedCost) return null;
+    return {
+      provider: mapMetrics?.provider || backend,
+      model: mapMetrics?.model || configuredModel || '',
+      wordsReady,
+      lastLatencyMs: mapMetrics?.lastLatencyMs ?? null,
+      tokensPerSec: mapMetrics?.tokensPerSec ?? null,
+      runs: mapMetrics?.runs || 0,
+      inputTokens: mapMetrics?.inputTokens || 0,
+      outputTokens: mapMetrics?.outputTokens || 0,
+      costUsd: mapMetrics?.costUsd ?? null,
+      sevenDayCostUsd: mapMetrics?.sevenDayCostUsd ?? (sevenDay.hasReportedCost ? sevenDay.reportedCostUsd : null),
+    };
+  }, [mapMetrics, transcript.finalText, runtime?.preferences?.mapChain, backend]);
+
   const showTranscript = Boolean(recording?.transcribe);
   const hasContent = Boolean(audio || map || transcript.finalTokens.length || transcript.partialTokens.length);
   const warnBeforeLeaving = active || (hasContent && archive.status.state !== 'saved');
@@ -207,8 +320,14 @@ export default function SitesNewConversation() {
   function guardNavigation(event) {
     const link = event.target.closest?.('a[href]');
     if (!warnBeforeLeaving || !link || link.hasAttribute('download') || link.target === '_blank') return;
-    if (!window.confirm('Leave this conversation? Download or save your audio, transcript and map first. Unsaved copies will be lost.')) event.preventDefault();
+    if (!window.confirm(LEAVE_WARNING)) event.preventDefault();
   }
+  // Opening the map leaves this page, so it gets the same warning as any other way out.
+  function exploreMap() {
+    if (!map || (warnBeforeLeaving && !window.confirm(LEAVE_WARNING))) return;
+    navigate('/view', { state: { generatedMapId: stageGeneratedMap(map), remember: false } });
+  }
+  const settled = !active && activity?.stage !== 'paused';
   return <main onClickCapture={guardNavigation} className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#fdfdfb] font-sans text-slate-800">
     <ConversationNavigation panel={panel} onPanelChange={setPanel} mapUpdating={generating} mapError={mapError} />
     <section aria-label="Conversation canvas" tabIndex={0} className="relative flex min-h-0 flex-col overflow-hidden focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-slate-400">
@@ -217,13 +336,16 @@ export default function SitesNewConversation() {
         {restoring && <p role="status">Opening saved conversation…</p>}
         {!supported && <p className="text-rose-800">This browser needs HTTPS, microphone access and audio-recording support.</p>}
         {(slowSetup || activity || saving) && <><p role="status">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : slowSetup ? 'Checking connections' : activity.message}</p>{(slowSetup || active || saving) && <p className="tabular-nums">{elapsed} s elapsed · Time remaining unknown</p>}{slowSetup && <button className="min-h-8 underline underline-offset-2" onClick={() => setupRequest.current?.abort()}>Cancel connection check</button>}{saving && <button className="min-h-8 underline underline-offset-2" onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</>}
-        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
+        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && transcribe && <p>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</p>}
         {active && <p>Keep this tab open while recording.</p>}
+        {active && micSilent && <p role="status" className="text-amber-800">No sound is reaching the microphone. Check which input your browser is using.</p>}
       </div>
       {error && <p role="alert" className="shrink-0 bg-rose-50 px-5 py-2 text-xs text-rose-900">{error}</p>}
       {notice && <p role="status" className="shrink-0 px-5 py-2 text-xs">{notice}</p>}
-      <LiveConversationGraph bundle={map} transcriptVisible={showTranscript && !transcriptMinimized} onConfigure={() => setPanel('map')} recording={Boolean(recording)} />
-      {showTranscript && <ConversationTranscriptPanel transcript={transcript} status={activity?.stage === 'paused' ? 'Paused' : active ? 'Live' : 'Finished'} minimized={transcriptMinimized}
+      <LiveConversationGraph bundle={map} transcriptVisible={showTranscript && !transcriptMinimized} onConfigure={() => setPanel('map')} recording={Boolean(recording)}>
+        {showTranscript && panel !== 'map' && <LiveMapHeartbeat schedule={mapSchedule} finalText={transcript.finalText} onMapNow={() => setMapNowRequest(count => count + 1)} onOpenMap={() => setPanel('map')} />}
+      </LiveConversationGraph>
+      {showTranscript && <ConversationTranscriptPanel transcript={transcript} speakerNames={speakerNames} onRenameSpeaker={renameSpeaker} status={activity?.stage === 'paused' ? 'Paused' : active ? 'Live' : 'Finished'} minimized={transcriptMinimized}
         onMinimize={() => { setTranscriptMinimized(v => !v); setTranscriptFullscreen(false); }} fullscreen={transcriptFullscreen} onFullscreen={() => setTranscriptFullscreen(v => !v)} />}
       <aside hidden={!panel} aria-label="Conversation tools" className="absolute right-3 top-3 z-40 max-h-[calc(100%-1.5rem)] w-[28rem] max-w-[calc(100%-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
         <CloseConversationTools onClose={() => setPanel(null)} />
@@ -246,7 +368,7 @@ export default function SitesNewConversation() {
         </div>
         <div hidden={panel !== 'map'}>
           {!recordingArtifact?.source && <p className="pt-12 text-sm text-slate-600">Start transcription to map your conversation. Confirmed words will be available here as you speak.</p>}
-          {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={backend} onBackendChange={setBackend} onHealthChange={setInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
+          {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={backend} onBackendChange={setBackend} onHealthChange={handleInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} onScheduleChange={setMapSchedule} mapNowRequest={mapNowRequest} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
         </div>
         <div hidden={panel !== 'files'}>
           {map && <button className="min-h-11 text-sm underline underline-offset-4" onClick={() => setPanel('map')}>Download or save your map</button>}
@@ -258,9 +380,25 @@ export default function SitesNewConversation() {
     </section>
     <footer className="relative shrink-0 border-t border-gray-100 bg-white/80 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-4">
       <div className={active || activity?.stage === 'paused' ? "flex w-full items-center justify-between gap-2 max-[380px]:flex-col-reverse max-[380px]:items-stretch" : "grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2"}>
-        <ConversationServiceStatus backend={backend} voice={voiceHealth} inference={inferenceHealth}
-          personalVoice={Boolean(runtime?.keys.soniox)} personalInference={Boolean(runtime?.keys[backend])} />
+        <ConversationServiceStatus
+          backend={backend}
+          voiceService={liveVoiceProvider}
+          voice={voiceHealth}
+          inference={inferenceHealth}
+          voiceMetrics={liveVoiceMetrics}
+          mapMetrics={liveMapMetrics}
+          personalVoice={Boolean(runtime?.keys.soniox || liveVoiceProvider === 'm5_tailnet')}
+          personalInference={Boolean(runtime?.keys[backend])}
+          micStream={micStream}
+          onMicSilentChange={setMicSilent}
+        />
         <CloudRecordingToolbar active={active} supported={supported} live={Boolean(live)} busy={restoring || saving || generating} stage={activity?.stage} stopRef={stopControl} resumeRef={resumeControl} transcribe={transcribe} onStart={() => requestRecording(transcribe)} onPause={() => void session.current?.pause()} onResume={() => { setError(''); void session.current?.resume().catch(failure => setError(failure.message)); }} onStop={() => void session.current?.stop()} onCancel={() => session.current?.cancel()} />
+        {settled && map && <div className="flex min-w-0 justify-end">
+          <button type="button" aria-label="Explore map" onClick={exploreMap} disabled={restoring || saving || generating}
+            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+            <Compass size={16} aria-hidden="true" /><span className="sm:hidden">Explore</span><span className="hidden sm:inline">Explore map</span>
+          </button>
+        </div>}
       </div>
     </footer>
     {pendingRecording && <RecordingConsentDialog retention={archive.preference} transcribe={pendingRecording.transcribe} maxSeconds={capabilities?.transcription?.max_session_seconds} onCancel={() => setPendingRecording(null)} onConfirm={() => void start(pendingRecording.transcribe)} />}

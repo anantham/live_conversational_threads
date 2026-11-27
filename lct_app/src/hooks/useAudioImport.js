@@ -7,6 +7,7 @@ import { M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js'
 import { readEdgeConfig } from '../components/audio/edgeConfig.js';
 import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
+import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences';
 import { getRecordingMapStatus, generateRecordingMap, configuredMapRoutes, getOrderedMapStatus, generateOrderedRecordingMap } from '../services/cloud/openRouterClient.js';
 import { readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { useConversationArchive } from './useConversationArchive.js';
@@ -20,6 +21,8 @@ export function useAudioImport() {
   const [recording, setRecording] = useState(null), [audio, setAudio] = useState(null), [transcript, setTranscript] = useState(empty);
   const [map, setMap] = useState(null), [activity, setActivity] = useState(null), [error, setError] = useState('');
   const [setupError, setSetupError] = useState('');
+  // nextSpeech: the provider tried if the current one fails. notice: why the last one was left.
+  const [nextSpeech, setNextSpeech] = useState(null), [notice, setNotice] = useState('');
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
   const [mapStopSignal, setMapStopSignal] = useState(null);
@@ -107,7 +110,7 @@ export function useAudioImport() {
     setMapStopSignal(mapStop.current.signal); liveMapClaimed.current = false;
     const next = { id, startedAt: Date.now(), transcribe: true, retention: archive.preference,
       source: 'audio-import', originalFilename: file.name.slice(0, 240) };
-    setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError('');
+    setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError(''); setNotice('');
     archive.begin(next, next.retention);
     navigate(next.retention === 'local' ? '/import-audio?local=' + id : '/import-audio', { replace: true });
     const valid = () => alive.current && epoch.current === generation;
@@ -137,11 +140,14 @@ export function useAudioImport() {
             : new AudioImportSession({ ...callbacks,
               ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
         current.current = session;
+        const following = speechProviders[index + 1] || null;
+        setNextSpeech(following);
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
           break;
         } catch (error) {
           if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) throw error;
+          setNotice(`${error.message} Trying ${SPEECH_PROVIDERS[following].name} instead.`);
         }
       }
       if (!valid()) return;
@@ -171,6 +177,13 @@ export function useAudioImport() {
     } finally { running.current = false; }
   }
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
+  // While a provider with a deadline is working: seconds left, and the provider that follows it.
+  // `elapsed` re-renders this every second while busy.
+  const wait = busy && Number.isFinite(activity?.deadlineAt) ? {
+    secondsLeft: Math.max(0, Math.ceil((activity.deadlineAt - Date.now()) / 1000)),
+    next: activity.skippable && nextSpeech ? SPEECH_PROVIDERS[nextSpeech].name : null,
+  } : null;
+  function skip() { current.current?.skip?.(); }
   return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
-    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
+    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, wait, notice, skip, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }

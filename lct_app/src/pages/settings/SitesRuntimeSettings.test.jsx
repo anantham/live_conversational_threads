@@ -96,7 +96,7 @@ it('loads live models on save and restores keys, catalogs and fallback order aft
   await act(async () => root.unmount());
   root = createRoot(container);
   await mount();
-  expect(container.textContent).toContain('Personal key saved in this browser');
+  expect(container.textContent).toContain('Anthropic · Personal key saved · 1 model');
   expect(modelSelect('First choice').value).toBe('claude-sonnet-5-5');
   expect(options(modelSelect('First choice'))).toEqual(['', 'claude-sonnet-5-5', '__custom__']);
   expect(JSON.stringify(localStorage)).not.toContain('synthetic-claude-key');
@@ -178,4 +178,145 @@ it('edits and restores the map prompt without contacting the legacy prompt servi
   await click(button('Restore default'));
   expect(readProviderPreferences().guidance).toBe('');
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it('tests the M5 Tailnet STT endpoint from the providers screen', async () => {
+  fetch.mockResolvedValueOnce(Response.json({
+    engine: 'fluidaudio-parakeet',
+    model: 'parakeet-tdt-0.6b-v3',
+    diarization: 'ready',
+    status: 'healthy',
+  }));
+  await mount();
+  const checkbox = [...container.querySelectorAll('label')]
+    .find(el => el.textContent.includes('M5 Tailnet STT'))
+    ?.querySelector('input[type="checkbox"]');
+  await click(checkbox);
+  await click(button('Test endpoint'));
+  expect(fetch).toHaveBeenCalledWith(
+    'https://adityas-macbook-pro.tail4741ad.ts.net:5443/health',
+    expect.objectContaining({ method: 'GET' }),
+  );
+  expect(container.textContent).toContain('fluidaudio-parakeet');
+  expect(container.textContent).toContain('diarization: ready');
+});
+
+it('reorders Speech-to-text and Intelligence fallback chains via drag-and-drop', async () => {
+  await mount();
+  const m5Checkbox = [...container.querySelectorAll('label')]
+    .find(el => el.textContent.includes('M5 Tailnet STT'))
+    ?.querySelector('input[type="checkbox"]');
+  await click(m5Checkbox);
+  expect(readProviderPreferences().speech).toEqual(['soniox', 'm5_tailnet']);
+
+  const speechRows = [...container.querySelectorAll('#speech-to-text ol > li')];
+  await act(async () => {
+    speechRows[1].dispatchEvent(new Event('dragstart', { bubbles: true }));
+    speechRows[0].dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }));
+    speechRows[0].dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+    speechRows[1].dispatchEvent(new Event('dragend', { bubbles: true }));
+  });
+  expect(readProviderPreferences().speech).toEqual(['m5_tailnet', 'soniox']);
+
+  await click(button('+ Add model'));
+  await choose(providerSelect('Fallback 1'), 'anthropic');
+  expect(readProviderPreferences().mapChain.map(r => r.backend)).toEqual(['openrouter', 'anthropic']);
+
+  const mapRows = [...container.querySelectorAll('#intelligence ol > li')];
+  await act(async () => {
+    mapRows[1].dispatchEvent(new Event('dragstart', { bubbles: true }));
+    mapRows[0].dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }));
+    mapRows[0].dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+    mapRows[1].dispatchEvent(new Event('dragend', { bubbles: true }));
+  });
+  expect(readProviderPreferences().mapChain.map(r => r.backend)).toEqual(['anthropic', 'openrouter']);
+});
+
+// Test intent (provider key rows):
+// - At rest each provider is one line: its name, whether a personal key is saved and how many models it loaded.
+//   The key form stays hidden until asked for, and hides again after a save.
+// - Test checks the saved key through the existing no-spend provider check, reports the provider's answer and
+//   the measured round trip, and never offers itself where there is no saved key to check.
+const keyRow = name => [...container.querySelectorAll('#intelligence li')].find(row => row.textContent.includes(name));
+const seedKey = (id, models = []) => { saved.entries[id] = { key: `synthetic-${id}-key`, revision: 'existing', models, modelsFetchedAt: Date.now() }; };
+
+it('shows each provider as one summary line and keeps the key form closed until asked for', async () => {
+  seedKey('anthropic', [{ id: 'claude-a', label: 'Claude A' }, { id: 'claude-b', label: 'Claude B' }]);
+  await mount();
+  const row = keyRow('Anthropic');
+  expect(row.textContent).toContain('Anthropic · Personal key saved · 2 models');
+  const form = row.querySelector('form');
+  expect(form.hidden).toBe(true);
+  const edit = button('Edit Anthropic key');
+  expect(edit.getAttribute('aria-expanded')).toBe('false'); expect(edit.getAttribute('aria-controls')).toBe(form.id);
+  await click(edit);
+  expect(form.hidden).toBe(false);
+  expect(button('Done editing Anthropic key').getAttribute('aria-expanded')).toBe('true');
+  await click(button('Done editing Anthropic key'));
+  expect(form.hidden).toBe(true);
+
+  const gemini = keyRow('Gemini');
+  expect(gemini.textContent).toContain('Site configuration');
+  expect(gemini.textContent).not.toContain('Personal key saved');
+  expect(gemini.querySelector('form').hidden).toBe(true);
+  expect(button('Add Gemini key')).toBeTruthy();
+  expect(button('Test Gemini key')).toBeUndefined();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('closes the key form after a save and reports the save beside the summary', async () => {
+  fetch.mockResolvedValueOnce(providerResponse('claude-sonnet-5'));
+  await mount();
+  await click(button('Add Anthropic key'));
+  const row = await saveKey('Anthropic', 'synthetic-claude-key');
+  expect(row.querySelector('form').hidden).toBe(true);
+  expect(row.textContent).toContain('Key saved in this browser.');
+  expect(row.textContent).toContain('Anthropic · Personal key saved · 1 model');
+});
+
+it('tests a saved key against its provider and reports the answer with the measured round trip', async () => {
+  seedKey('anthropic', [{ id: 'claude-a', label: 'Claude A' }]);
+  let respond;
+  fetch.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+  await mount();
+  await click(button('Test Anthropic key'));
+  expect(button('Test Anthropic key').disabled).toBe(true);
+  expect(button('Test Anthropic key').textContent).toBe('Testing…');
+  const [path, init] = fetch.mock.calls[0];
+  expect(path).toBe('/api/cloud/providers/check');
+  expect(init.method).toBe('POST');
+  expect(JSON.parse(init.body)).toEqual({ backend: 'anthropic', key: 'synthetic-anthropic-key' });
+  await act(async () => respond(Response.json({ message: 'Provider access confirmed. Loaded 2 models. Usage and billing were not tested.',
+    models: [{ id: 'claude-a', label: 'Claude A' }, { id: 'claude-c', label: 'Claude C' }] })));
+  const row = keyRow('Anthropic');
+  const result = [...row.querySelectorAll('[role=status]')].find(el => el.textContent.includes('Provider access confirmed'));
+  expect(result.textContent).toMatch(/Usage and billing were not tested\. Round trip \d+(\.\d)? (ms|s), through this site\./);
+  expect(result.className).toContain('emerald');
+  expect(row.textContent).toContain('Personal key saved · 2 models');
+  expect(button('Test Anthropic key').disabled).toBe(false);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('shows the provider’s refusal when a saved key fails its test, and drops the result once the key is replaced', async () => {
+  seedKey('openrouter');
+  fetch.mockResolvedValueOnce(Response.json({ error: 'The provider’s model check returned HTTP 401. Check the key and its permissions.' }, { status: 502 }));
+  await mount();
+  await click(button('Test OpenRouter key'));
+  const row = keyRow('OpenRouter');
+  const failed = [...row.querySelectorAll('[role=status]')].find(el => el.textContent.includes('HTTP 401'));
+  expect(failed.className).toContain('rose');
+  expect(failed.textContent).toContain('Round trip');
+  expect(row.textContent).toContain('OpenRouter · Personal key saved');
+  fetch.mockResolvedValueOnce(providerResponse('openrouter/model-a'));
+  await saveKey('OpenRouter', 'synthetic-replacement-key');
+  expect(row.textContent).not.toContain('HTTP 401');
+});
+
+it('offers Test for a saved speech key but leaves the M5 endpoint to its own reachability test', async () => {
+  seedKey('soniox'); seedKey('m5_tailnet');
+  localStorage.setItem('lct.sites.provider-preferences.v1', JSON.stringify({ ...readProviderPreferences(), speech: ['soniox', 'm5_tailnet'] }));
+  await mount();
+  expect(button('Test Soniox key')).toBeTruthy();
+  expect(button('Test M5 Tailnet STT key')).toBeUndefined();
+  expect(button('Test endpoint')).toBeTruthy();
 });

@@ -435,3 +435,62 @@ it.each([401, 502])('honors the speech provider order after OpenAI HTTP %i and p
     expect(container.textContent).not.toContain('do not expose this');
   }
 });
+
+const m5 = 'https://adityas-macbook-pro.tail4741ad.ts.net:5443';
+const m5Runtime = { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' } },
+  keys: { anthropic: 'synthetic-map-key' } };
+function withM5(handler) {
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (typeof path === 'string' && path.startsWith(m5)) return handler(path, options);
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    if (path === '/api/cloud/map/generate') {
+      const input = JSON.parse(options.body);
+      return response({ request_id: '00000000-0000-4000-8000-000000000001', backend: 'anthropic', model: 'claude-test', artifact: mapped(input.source) });
+    }
+    return oldFetch(path, options);
+  });
+}
+const m5Calls = suffix => fetch.mock.calls.filter(([path]) => path === m5 + suffix);
+
+it('leaves M5 Tailnet STT at once when its health check fails, sends it no audio, and says why it moved on', async () => {
+  withM5(async () => { throw new TypeError('Failed to fetch'); });
+  await mount('/import-audio', m5Runtime);
+  expect(container.textContent).toContain('M5 Tailnet STT → Soniox');
+  await choose('garden.wav'); await permit(); await click('Create transcript & threads'); await flushArchive();
+  expect(m5Calls('/health')).toHaveLength(1);
+  expect(m5Calls('/v1/audio/transcriptions')).toHaveLength(0);
+  expect(fixture.sessions).toHaveLength(1);
+  expect(container.textContent).toContain('M5 Tailnet STT did not answer this browser.');
+  expect(container.textContent).toContain('Trying Soniox instead.');
+  expect(container.textContent).toContain('Gardens need water.');
+});
+
+it('shows when the M5 wait ends and moves to the next provider when asked', async () => {
+  // Ten minutes of audio: one minute plus a tenth of its length, so a two-minute wait.
+  vi.stubGlobal('Audio', class {
+    addEventListener(type, listener) { if (type === 'loadedmetadata') this.loaded = listener; }
+    removeEventListener() {}
+    removeAttribute() { this.src = ''; }
+    load() { if (this.src) queueMicrotask(() => this.loaded?.()); }
+    get duration() { return 600; }
+  });
+  let upload;
+  withM5(async (path, options) => path.endsWith('/health')
+    ? response({ status: 'healthy', engine: 'fluidaudio-parakeet' })
+    : new Promise((resolve, reject) => {
+        upload = options.signal;
+        options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+  await mount('/import-audio', m5Runtime);
+  await choose('garden.wav'); await permit(); await click('Create transcript & threads');
+  await act(async () => new Promise(resolve => setTimeout(resolve, 50)));
+  expect(container.textContent).toMatch(/Transcribing your audio on M5 Tailnet STT\. · \d+ s elapsed · Falls back to Soniox in (120|119) s/);
+  expect(fixture.sessions).toHaveLength(0);
+  await click('Use Soniox now'); await flushArchive();
+  expect(upload.aborted).toBe(true);
+  expect(fixture.sessions).toHaveLength(1);
+  expect(container.textContent).toContain('Skipped M5 Tailnet STT. Trying Soniox instead.');
+  expect(button('Use Soniox now')).toBeUndefined();
+  expect(container.textContent).toContain('Gardens need water.');
+});

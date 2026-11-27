@@ -3292,3 +3292,31 @@ The local preview received an upstream HTTP 400 on the first window and stopped 
 - Impact: evidence attached to the wrong turns, silently. The import page now uses `glanceDetailPipeline.js`, which gives each
   turn its own speaker label and asserts the count at merge; the old windowed path remains for other callers.
 - Next: apply the same unique-label + count assertion to `splitSourceIntoWindows`, or retire it. Found by Gemini review (ADR-073).
+
+## 2026-11-27 — Viewer playhead sync has no recorded-audio player to follow (decision needed)
+
+- **What:** the UX list asked for the Landscape island, the Timeline visit and the source drawer to follow recorded audio as it plays. `/view` plays YouTube sources only (`YouTubeSourcePanel.jsx`); a recording or an audio import opens with `TextSourcePanel.jsx` and no player. The audio stays on `/new` or `/import-audio`, or in the local conversation store when the owner chose to save in the browser.
+- **Impact:** the item cannot be built as written. Not blocking the other items.
+- **Next step (owner's choice):** (a) read audio from the local store for conversations saved in this browser and add a player to the source drawer; (b) also hand the in-memory audio to the viewer for unsaved recordings, for that visit only; or (c) do YouTube sources first, where a clock already exists. Whichever is chosen, add a Follow playback toggle so scrolling back to an earlier quote is not undone, with one Back to playhead action (Astra's note).
+
+## 2026-11-27 — Feature requests captured from the owner's UX review (Neon's list, Astra's additions)
+
+- **Provider trail per conversation.** Show which provider actually handled a recording or import, in order, with what each received and whether an attempt counted ("M5 timed out → Soniox transcribed → Claude mapped"), plus health-check latency, time to first text and total time. This also covers the latency part of the `/import-audio` live-status request. Decide what, if anything, is stored for an unsaved conversation (2026-11-25 ruling: unsaved maps leave nothing on the device).
+- **Resume a partial map.** After a provider fails partway, offer "Explore what's ready" and "Finish the remaining N" instead of Regenerate map, which starts again.
+- **Pin a tangent while talking.** One tap or key bookmarks the current turn, naming optional, no model call; after the call, show which pins were returned to.
+- **Share the moment being looked at.** Copy link to this passage opens the same visit with the quote visible; for a local-only map, offer to create a shareable copy first.
+- **Save state at the point of editing.** Say "Saved on this device", "Only in this tab" or "Couldn't save · Download copy" beside a rename, split or reaction. The reaction handler currently swallows save failures.
+- **Speaker names in map text.** The generation prompt carries no speaker labels, so a typed name can label the map but cannot appear in a model-written summary. Adding speakers to the prompt changes map output and needs its own evaluation.
+- **Names in transcript copy and download.** Copy transcript and the transcript file still use speaker ids.
+
+## 2026-11-27 — M5 live session keeps the microphone open while paused (pre-existing in uncommitted work)
+
+- **What:** `lct_app/src/services/cloud/m5TailnetLiveSession.js` `pause()` stops the recorder but not the stream's tracks; the Soniox path closes the microphone and says "Paused. Microphone off." Found while wiring the level meter.
+- **Impact:** the browser's microphone indicator stays on during a pause, and the page's wording for the two providers disagrees. No audio is recorded or sent while paused.
+- **Next step:** stop the tracks on pause and reopen the microphone on resume, as the Soniox session does, with a test. Not changed here.
+
+## 2026-11-27 — Live maps start without the permission checkbox when a personal key is set (owner should confirm)
+
+- **What:** in the uncommitted Antigravity batch, `RecordingConversationMap.jsx` treats a configured personal key as consent (`consent = … || (hasPersonalRoute && status.enabled)`) and turns on "Update map while I speak" by itself. The checkbox still reads "I have permission to send these finalized words to …", and it now appears ticked without anyone ticking it. The site-key path is unchanged.
+- **Impact:** confirmed words go to the map provider every 25 s without that explicit step. The recording dialog still asks before capture starts. This was the owner's request ("why are the tangents not forming in real time"), so it is recorded for confirmation and for the next independent review, not reverted.
+- **Next step:** either keep it and reword the checkbox for personal keys, or move the permission into the recording dialog.

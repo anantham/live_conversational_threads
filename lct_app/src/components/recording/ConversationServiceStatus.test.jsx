@@ -90,3 +90,60 @@ it('keeps a live transcript green across a refresh that only says the key cannot
   await act(async () => vi.advanceTimersByTimeAsync(60_000)); // the background refresh lands after the evidence
   expect(host.querySelector('button[aria-label^="Live transcription"]').getAttribute('aria-label')).toBe('Live transcription: Working');
 });
+
+it('displays M5 Tailnet readiness and live TTFT, latency, token, and cumulative cost telemetry', async () => {
+  await render({
+    voiceService: 'm5_tailnet',
+    personalVoice: true,
+    personalInference: true,
+    voiceMetrics: { provider: 'm5_tailnet', ttftMs: 1400, lastLatencyMs: 620, words: 42, speakers: 2, wpm: 140, audioSeconds: 18, audioBytes: 245760, costUsd: 0 },
+    mapMetrics: { provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5', wordsReady: 42, lastLatencyMs: 2800, tokensPerSec: 65.4, runs: 2, inputTokens: 1200, outputTokens: 450, costUsd: 0.0124, sevenDayCostUsd: 0.045 },
+  });
+  const voice = host.querySelector('button[aria-label^="Live transcription"]');
+  const map = host.querySelector('button[aria-label^="Map making"]');
+  expect(voice.getAttribute('aria-label')).toBe('Live transcription: M5 Tailnet ready');
+  await act(async () => voice.focus());
+  expect(host.textContent).toContain('1.4 s');
+  expect(host.textContent).toContain('620 ms');
+  expect(host.textContent).toContain('42 · 2 spk');
+  expect(host.textContent).toContain('140 wpm');
+  expect(host.textContent).toContain('240 KB');
+  expect(host.textContent).toContain('$0.00');
+  await act(async () => map.focus());
+  expect(host.textContent).toContain('anthropic/claude-sonnet-4.5');
+  expect(host.textContent).toContain('2.8 s');
+  expect(host.textContent).toContain('65.4 tok/s');
+  expect(host.textContent).toContain('1,200 in / 450 out');
+  expect(host.textContent).toContain('$0.012');
+  expect(host.textContent).toContain('$0.045');
+});
+
+it('shows the open microphone level on the transcription indicator and says in words when the input is silent', async () => {
+  vi.useFakeTimers({ now: 9_000_000 });
+  let fill = 0.05;
+  vi.stubGlobal('AudioContext', class {
+    createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+    createAnalyser() { return { getFloatTimeDomainData: samples => samples.fill(fill) }; }
+    resume() { return Promise.resolve(); }
+    close() { return Promise.resolve(); }
+  });
+  const micStream = { getAudioTracks: () => [{ label: 'Synthetic Headset Microphone' }] };
+  const onMicSilentChange = vi.fn();
+  await render({ personalVoice: true, personalInference: true, micStream, onMicSilentChange });
+  await act(async () => vi.advanceTimersByTimeAsync(200));
+  const voice = host.querySelector('button[aria-label^="Live transcription"]');
+  expect(voice.querySelector('[data-testid=mic-level]').firstChild.style.width).not.toBe('0%');
+  expect(host.querySelector('button[aria-label^="Map making"] [data-testid=mic-level]')).toBeNull();
+  expect(voice.getAttribute('aria-label')).not.toContain('No sound');
+  fill = 0;
+  await act(async () => vi.advanceTimersByTimeAsync(5200));
+  expect(voice.getAttribute('aria-label')).toContain('No sound is reaching the microphone');
+  expect(onMicSilentChange).toHaveBeenLastCalledWith(true);
+  await act(async () => voice.focus());
+  expect(host.textContent).toContain('Input: Synthetic Headset Microphone');
+  expect(host.textContent).toContain('No sound is reaching this input');
+  await render({ personalVoice: true, personalInference: true, micStream: null, onMicSilentChange });
+  expect(host.querySelector('[data-testid=mic-level]')).toBeNull();
+  expect(onMicSilentChange).toHaveBeenLastCalledWith(false);
+  expect(host.querySelector('button[aria-label^="Live transcription"]').getAttribute('aria-label')).not.toContain('No sound');
+});

@@ -39,6 +39,11 @@ export default function SettingsLayout() {
               <NavLink to="/settings/prompts" className={navLinkClassName}>
                 Prompts
               </NavLink>
+              {sites && (
+                <NavLink to="/privacy" className={navLinkClassName}>
+                  Privacy
+                </NavLink>
+              )}
             </nav>
           </div>
         </div>

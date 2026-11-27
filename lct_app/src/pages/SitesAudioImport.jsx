@@ -46,7 +46,8 @@ export default function SitesAudioImport() {
     <ConversationNavigation title="Import audio" panel={panel} onPanelChange={setPanel} mapUpdating={generating} mapError={mapError} />
     <section aria-label="Audio import canvas" className="relative flex min-h-0 flex-col overflow-hidden">
       <div className="shrink-0 px-5 py-2 text-xs leading-5">
-        {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}</p>}
+        {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}{flow.wait && ` · ${flow.wait.next ? `Falls back to ${flow.wait.next}` : 'Gives up'} in ${flow.wait.secondsLeft} s`}</p>}
+        {flow.notice && <p role="status" className="text-slate-600">{flow.notice}</p>}
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} />}
         {flow.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{flow.error}</p>}
         {privateFiles.message && <p role="status">{privateFiles.message}</p>}
@@ -108,6 +109,7 @@ export default function SitesAudioImport() {
       </aside>
     </section>
     <footer className="flex min-h-16 flex-wrap items-center justify-center gap-3 border-t border-slate-100 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      {busy && flow.wait?.next && <button className={button} onClick={flow.skip}>Use {flow.wait.next} now</button>}
       {busy ? <button className={button} onClick={flow.cancel}><X size={17} aria-hidden="true" />Stop processing</button> : recording && <><button className={button} onClick={() => setPanel('files')}>Files &amp; export</button><a href="/import-audio" className={button}>Import another file</a></>}
       {!recording && <button className="min-h-11 px-3 text-xs underline" onClick={() => setPanel('settings')}>Saving preferences</button>}
     </footer>

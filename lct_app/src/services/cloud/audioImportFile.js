@@ -32,7 +32,7 @@ export function importDelay(milliseconds, signal) {
     if (signal?.aborted) abort();
   });
 }
-async function durationOf(file, signal, AudioClass, urlAPI) {
+async function durationOf(file, signal, AudioClass, urlAPI, milliseconds = 15000) {
   if (!AudioClass || !urlAPI?.createObjectURL) throw failure('cannot read audio in this browser.');
   const audio = new AudioClass(), url = urlAPI.createObjectURL(file);
   let loaded, failed;
@@ -43,10 +43,20 @@ async function durationOf(file, signal, AudioClass, urlAPI) {
       audio.addEventListener('loadedmetadata', loaded); audio.addEventListener('error', failed);
       audio.preload = 'metadata'; audio.src = url; audio.load();
     });
-    return await importWait(duration, signal);
+    return await importWait(duration, signal, milliseconds);
   } finally {
     audio.removeEventListener('loadedmetadata', loaded); audio.removeEventListener('error', failed);
     audio.removeAttribute('src'); audio.load(); urlAPI.revokeObjectURL(url);
+  }
+}
+/** Length in seconds read from the file's metadata on this device, or null when it cannot be read. */
+export async function importAudioSeconds(file, { signal, AudioClass = globalThis.Audio, urlAPI = globalThis.URL } = {}) {
+  try {
+    const seconds = await durationOf(file, signal, AudioClass, urlAPI, 4000);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
+    return null;
   }
 }
 /** Decode on this device before requesting any provider credential. No microphone. */
