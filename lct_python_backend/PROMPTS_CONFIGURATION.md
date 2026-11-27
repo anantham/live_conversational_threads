@@ -820,9 +820,9 @@ Current implementation has **no authentication**. For production:
 
 ## Related Documentation
 
-- [GRAPH_GENERATION.md](./GRAPH_GENERATION.md) - How prompts are used in graph generation
+- [GRAPH_GENERATION.md](../docs/archive/GRAPH_GENERATION.md) - How prompts are used in graph generation
 - [INSTRUMENTATION.md](./INSTRUMENTATION.md) - API call tracking and cost monitoring
-- [ROADMAP.md](../docs/ROADMAP.md) - Overall project roadmap
+- [ROADMAP.md](../docs/archive/ROADMAP.md) - Overall project roadmap
 
 ---
 

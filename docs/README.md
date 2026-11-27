@@ -1,6 +1,6 @@
 # docs/ — map of the documentation
 
-41 docs accumulated here at research velocity; this index is how you find the one you
+Docs accumulated here at research velocity; this index is how you find the one you
 need. Newcomers: follow the reading path in [CONTRIBUTING.md](../CONTRIBUTING.md) first.
 
 ## Start here
@@ -11,7 +11,7 @@ need. Newcomers: follow the reading path in [CONTRIBUTING.md](../CONTRIBUTING.md
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | The map: every backend router/service and frontend page, one file |
 | [CONVENTIONS.md](CONVENTIONS.md) | Naming, patterns, style ground truth — read before writing code |
 | [LOCAL_SETUP.md](LOCAL_SETUP.md) | Setup + daily startup runbook |
-| [TESTING.md](TESTING.md) | Test suites, fixtures, DB harness, what to test vs not |
+| [../lct_python_backend/tests/README.md](../lct_python_backend/tests/README.md), [../lct_app/docs/E2E-TESTING.md](../lct_app/docs/E2E-TESTING.md) | Backend test fixtures and invariants; browser tests |
 | [adr/INDEX.md](adr/INDEX.md) | Index of all Architecture Decision Records — the architecture lives here |
 
 ## Vision & product direction
@@ -20,11 +20,11 @@ need. Newcomers: follow the reading path in [CONTRIBUTING.md](../CONTRIBUTING.md
   of the README's pre-formal-layer thesis (root `PRODUCT.md` is the design-register
   companion).
 - [FEATURES.md](FEATURES.md) — feature inventory.
-- [ROADMAP.md](ROADMAP.md), [FEATURE_ROADMAP.md](FEATURE_ROADMAP.md),
-  [ROADMAP_ADVANCED_ANALYSIS.md](ROADMAP_ADVANCED_ANALYSIS.md),
-  [ROADMAP_INSTRUMENTATION_METRICS.md](ROADMAP_INSTRUMENTATION_METRICS.md),
-  [TIER_2_FEATURES.md](TIER_2_FEATURES.md) — priority queues from different eras;
-  check dates before trusting any of them as *current* priority.
+- **Roadmap:** there is no current roadmap document. Direction is set in
+  [VISION.md](VISION.md) and decided in [adr/INDEX.md](adr/INDEX.md); active work is in
+  [plans/](plans/). The roadmaps and feature specs written in Nov 2025 (`ROADMAP.md`, `FEATURE_ROADMAP.md`,
+  `ROADMAP_ADVANCED_ANALYSIS.md`, `ROADMAP_INSTRUMENTATION_METRICS.md`,
+  `TIER_2_FEATURES.md`) were moved to [archive/](archive/) on 2026-11-25.
 
 ## Architecture & data
 
@@ -40,7 +40,7 @@ need. Newcomers: follow the reading path in [CONTRIBUTING.md](../CONTRIBUTING.md
 ## Feature deep-dives
 
 [BIAS_DETECTION.md](BIAS_DETECTION.md) · [FRAME_DETECTION.md](FRAME_DETECTION.md) ·
-[SIMULACRA_DETECTION.md](SIMULACRA_DETECTION.md) · [FEATURE_SIMULACRA_LEVELS.md](FEATURE_SIMULACRA_LEVELS.md) ·
+[SIMULACRA_DETECTION.md](SIMULACRA_DETECTION.md) ·
 [CLAIM_TAXONOMY_SYSTEM.md](CLAIM_TAXONOMY_SYSTEM.md) · [EDIT_HISTORY.md](EDIT_HISTORY.md) ·
 [FEATURE_MULTILINGUAL_TRANSCRIPTION.md](FEATURE_MULTILINGUAL_TRANSCRIPTION.md) ·
 [OBSIDIAN_CANVAS_INTEROP.md](OBSIDIAN_CANVAS_INTEROP.md) · [PERPLEXITY_INTEGRATION.md](PERPLEXITY_INTEGRATION.md) ·

@@ -740,10 +740,10 @@ curl http://localhost:8000/api/analytics/conversations/{id}/analytics
 
 ## Related Documentation
 
-- [GRAPH_GENERATION.md](./GRAPH_GENERATION.md) - Week 4 graph generation (source of nodes)
+- [GRAPH_GENERATION.md](../docs/archive/GRAPH_GENERATION.md) - Week 4 graph generation (source of nodes)
 - [GOOGLE_MEET_IMPORT.md](./GOOGLE_MEET_IMPORT.md) - Week 3 transcript parsing (source of utterances)
 - [DATA_MODEL_V2.md](../docs/DATA_MODEL_V2.md) - Database schema for utterances and nodes
-- [ROADMAP.md](../docs/ROADMAP.md) - Overall project roadmap
+- [ROADMAP.md](../docs/archive/ROADMAP.md) - Overall project roadmap
 
 ---
 

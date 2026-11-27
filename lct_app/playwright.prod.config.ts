@@ -10,14 +10,21 @@ import { defineConfig, devices } from '@playwright/test';
  *   # or against a specific deploy:
  *   PLAYWRIGHT_BASE_URL=https://some-preview.vercel.app npm run test:e2e:prod
  *
- * There is intentionally NO webServer block: we test the real deployment, and
- * only the prod-smoke spec (a build-health check that makes no OpenAI calls).
+ * There is intentionally NO webServer block: we test the real deployment.
+ *
+ * Only tests tagged @prod-smoke run here. The production domain can serve a
+ * build published from a branch other than main (the Site), so a test may carry
+ * the tag only if it holds on any healthy build: it must not depend on Home's
+ * layout, the viewer's markup, or anything else a UI change would move. The
+ * full opener journeys in prod-threads-opener.spec.js run untagged against the
+ * local dev server (playwright.config.ts), where spec and build share a commit.
  */
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'https://threads.adityaarpitha.com';
 
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: /prod-(smoke|threads-opener)\.spec\.js/,
+  grep: /@prod-smoke/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
