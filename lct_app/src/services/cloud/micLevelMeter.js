@@ -3,6 +3,8 @@
 //   actually picking up sound before anyone talks into a dead or wrong microphone.
 // - Only measures: the stream is never played back, recorded or sent anywhere by this module.
 // - Releases its audio graph on stop, and degrades to "unsupported" where the browser has no Web Audio.
+// - Reports nothing while the audio context is not running: a suspended context reads as all zeros,
+//   which would look exactly like a dead microphone.
 
 /** Below this the input counts as silent: roughly -55 dBFS, under normal speech and above a muted or dead input. */
 export const SILENCE_LEVEL = 0.08;
@@ -39,13 +41,15 @@ export function createMicLevelMeter(stream, onLevel, {
     // Deliberately not connected to the destination: measuring must never play the microphone back.
     source.connect(analyser);
     const samples = new Float32Array(analyser.fftSize);
+    // A context created outside a click may start suspended; the recording gesture has already happened.
+    const resume = () => { try { Promise.resolve(context.resume?.()).catch(() => {}); } catch { /* stays suspended */ } };
     // An interval, not animation frames, so the reading keeps updating while the tab is in the background.
     timer = setInterval(() => {
+      if (context.state && context.state !== 'running') { resume(); return; }
       analyser.getFloatTimeDomainData(samples);
       onLevel(levelFromSamples(samples));
     }, intervalMs);
-    // A context created outside a click may start suspended; the recording gesture has already happened.
-    try { Promise.resolve(context.resume?.()).catch(() => {}); } catch { /* stays suspended; level reads zero */ }
+    resume();
   } catch {
     release();
     return unsupported;

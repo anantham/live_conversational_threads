@@ -79,7 +79,9 @@ export default function ConversationTranscriptPanel({ transcript, status, minimi
         if (!line.speaker) return <p key={line.id} className="mb-3 whitespace-pre-wrap text-sm leading-6">{line.text}</p>;
         const name = speakerNames?.[line.speaker];
         const label = name || defaultSpeakerLabel(line);
-        return <p key={line.id} className="mb-3 whitespace-pre-wrap text-sm leading-6">
+        // Keyed by speaker as well as position: if a line ever changes hands, an open name field closes
+        // instead of saving its name against the wrong speaker.
+        return <p key={`${line.id}:${line.speaker}`} className="mb-3 whitespace-pre-wrap text-sm leading-6">
           {onRenameSpeaker ? <SpeakerLabel speaker={line.speaker} label={label} named={Boolean(name)} onRename={onRenameSpeaker} onEditingChange={trackEditing} />
             : <span className={labelClass}>{label}</span>}{line.text}</p>;
       })}

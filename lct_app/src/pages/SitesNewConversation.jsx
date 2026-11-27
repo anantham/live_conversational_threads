@@ -30,8 +30,14 @@ import { Compass } from 'lucide-react';
 
 const ACTIVE = new Set(['microphone', 'authorizing', 'connecting', 'recording', 'finalizing']);
 const emptyTranscript = { finalText: '', partialText: '', finalTokens: [], partialTokens: [] };
+// How far into the audio the transcript reaches. Token times are audio time, so pauses are not counted.
+const heardAudioMs = value => Math.max(0, ...[value.finalTokens.at(-1), value.partialTokens.at(-1)].map(token => token?.endMs ?? token?.startMs).filter(Number.isFinite));
 const LEAVE_WARNING = 'Leave this conversation? Download or save your audio, transcript and map first. Unsaved copies will be lost.';
 // Names typed on this page label the map's own speaker fields; the source transcript keeps its original ids.
+// Stored data is read back as untrusted: plain short strings only.
+const savedSpeakerNames = value => value && typeof value === 'object' && !Array.isArray(value)
+  ? Object.fromEntries(Object.entries(value).filter(([id, name]) => id.length <= 128 && typeof name === 'string' && name.trim() && name.length <= 80).slice(0, 64))
+  : {};
 const withSpeakerNames = (bundle, names) => Object.entries(names).reduce((named, [id, name]) => renameArtifactSpeaker(named, id, name), bundle);
 
 async function abortable(signal, work) {
@@ -99,6 +105,8 @@ export default function SitesNewConversation() {
   const renameSpeaker = useCallback((speakerId, name) => {
     speakerNamesNow.current = { ...speakerNamesNow.current, [speakerId]: name };
     setSpeakerNames(speakerNamesNow.current);
+    // Kept with the conversation, which is written to this device only when the user chose to save it here.
+    archive.update({ speakerNames: speakerNamesNow.current });
     // An existing map takes the name at once; later maps take it as they arrive.
     if (!mapNow.current) return;
     const named = renameArtifactSpeaker(mapNow.current, speakerId, name);
@@ -115,7 +123,7 @@ export default function SitesNewConversation() {
       if (cancelled) return;
       if (!value) throw new Error('This conversation is not saved in this browser.');
       setRecording(value.recording); setTranscript(value.transcript); setMap(value.map); setAudio(value.audio);
-      speakerNamesNow.current = Object.fromEntries(buildSpeakerDisplayNames(value.map)); setSpeakerNames(speakerNamesNow.current);
+      speakerNamesNow.current = { ...Object.fromEntries(buildSpeakerDisplayNames(value.map)), ...savedSpeakerNames(value.speakerNames) }; setSpeakerNames(speakerNamesNow.current);
       setActivity({ stage: value.stage === 'stopped' ? 'stopped' : 'recovered', startedAt: value.updatedAt, message: 'Opened from this device. Your microphone is off.' });
       archive.restored(value);
       if (value.mapUnreadable) setNotice('Your audio and transcript are available. This saved map could not be read; its stored copy has not been changed. You can generate another map.');
@@ -207,7 +215,7 @@ export default function SitesNewConversation() {
       onStage: value => { if (alive.current && session.current === next) { setActivity(value); archive.update({ stage: value.stage }); } },
       onAudio: value => { if (alive.current && session.current === next) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
       onAudioChunk: chunk => { if (alive.current && session.current === next) archive.append(chunk); },
-      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length || value.partialTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const now = Date.now(); const elapsedMs = Math.max(0, now - voiceStarted.current); setVoiceMetrics(prev => ({ provider: 'soniox', ttftMs: prev?.ttftMs ?? elapsedMs, lastLatencyMs: null, lastWordAt: now, audioSeconds: Math.round(elapsedMs / 1000), costUsd: (elapsedMs / 60_000) * 0.002 })); setVoiceHealth({ service: 'soniox', ok: true, at: now, detail: firstWords ? `First words received after ${Math.round(elapsedMs / 1000)} s, including setup and waiting for speech.` : 'Transcript is receiving words from Soniox.' }); } } },
+      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length || value.partialTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const now = Date.now(); const elapsedMs = Math.max(0, now - voiceStarted.current); const heardMs = heardAudioMs(value); setVoiceMetrics(prev => ({ provider: 'soniox', ttftMs: prev?.ttftMs ?? elapsedMs, lastLatencyMs: null, lastWordAt: now, audioSeconds: heardMs ? Math.round(heardMs / 1000) : prev?.audioSeconds ?? null, costUsd: heardMs ? (heardMs / 60_000) * 0.002 : prev?.costUsd ?? null })); setVoiceHealth({ service: 'soniox', ok: true, at: now, detail: firstWords ? `First words received after ${Math.round(elapsedMs / 1000)} s, including setup and waiting for speech.` : 'Transcript is receiving words from Soniox.' }); } } },
       onFailure: failure => { if (alive.current && session.current === next) { setError(failure.message); if (transcribe && failure.message.includes('live transcription')) setVoiceHealth({ service: 'soniox', ok: false, at: Date.now(), detail: 'Transcription stopped with an error. Your captured audio remains available.' }); } },
     });
     session.current = next;
@@ -271,7 +279,8 @@ export default function SitesNewConversation() {
     const words = finalText.trim() ? finalText.trim().split(/\s+/).length : 0;
     const speakers = new Set((transcript.finalTokens || []).map(t => t.speaker).filter(Boolean)).size;
     const audioBytes = audio?.blob?.size || (audio?.segments || []).reduce((sum, s) => sum + (s.blob?.size || s.bytes || 0), 0);
-    const secs = voiceMetrics?.audioSeconds ?? (active ? elapsed : 0);
+    // While recording, the page clock is the audio length; it excludes pauses. Afterwards, the last heard position.
+    const secs = (activity?.stage === 'recording' ? elapsed : 0) || voiceMetrics?.audioSeconds || 0;
     const wpm = words >= 5 && secs >= 5 ? Math.round((words / secs) * 60) : null;
     if (!voiceMetrics && !words && !audioBytes) return null;
     return {
@@ -286,7 +295,7 @@ export default function SitesNewConversation() {
       audioBytes: audioBytes || null,
       costUsd: voiceMetrics?.costUsd ?? null,
     };
-  }, [voiceMetrics, transcript.finalText, transcript.finalTokens, audio, active, elapsed, liveVoiceProvider]);
+  }, [voiceMetrics, transcript.finalText, transcript.finalTokens, audio, activity?.stage, elapsed, liveVoiceProvider]);
 
   const liveMapMetrics = useMemo(() => {
     const finalText = transcript.finalText || '';
@@ -368,7 +377,7 @@ export default function SitesNewConversation() {
         </div>
         <div hidden={panel !== 'map'}>
           {!recordingArtifact?.source && <p className="pt-12 text-sm text-slate-600">Start transcription to map your conversation. Confirmed words will be available here as you speak.</p>}
-          {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={backend} onBackendChange={setBackend} onHealthChange={handleInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} onScheduleChange={setMapSchedule} mapNowRequest={mapNowRequest} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
+          {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={backend} onBackendChange={setBackend} onHealthChange={handleInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} onScheduleChange={setMapSchedule} mapNowRequest={mapNowRequest} onExplore={exploreMap} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
         </div>
         <div hidden={panel !== 'files'}>
           {map && <button className="min-h-11 text-sm underline underline-offset-4" onClick={() => setPanel('map')}>Download or save your map</button>}

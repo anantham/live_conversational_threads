@@ -8,6 +8,7 @@ import {
 import { buildOpenQuestionTrail } from "./openQuestionTrail";
 import { buildSpeakingDynamics } from "./speakingDynamicsModel";
 import { formatVisitClock } from "./spatialLandscapeModel";
+import { visitCoversTime } from "./playheadSyncModel";
 
 const LANE_PALETTE = ["#334155", "#0f766e", "#b45309", "#4f46e5", "#be123c", "#0369a1", "#4d7c0f"];
 const REACTION_STYLES = {
@@ -22,6 +23,7 @@ export default function ConversationTimelineView({
   speakerDisplayNames = {},
   onOpenVisit,
   onAddReaction,
+  playheadSeconds = null,
 }) {
   const [granularity, setGranularity] = useState("strands");
   const timeline = useMemo(
@@ -142,31 +144,49 @@ export default function ConversationTimelineView({
                   )}
 
                   {/* Exact contiguous visit segments */}
-                  {lane.visits.map((visit, vIdx) => (
-                    <button
-                      key={`${visit.startUtteranceId || vIdx}-${visit.label}`}
-                      type="button"
-                      title={`${lane.title} · ${visit.label} (${visit.turnCount} turns, ${visit.words} words)`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLaneId(lane.id);
-                        setSelectedVisitIdx(vIdx);
-                        onOpenVisit?.({
-                          nodeId: lane.id,
-                          utteranceId: visit.startUtteranceId,
-                          seconds: visit.startSeconds,
-                        });
-                      }}
-                      style={{
-                        left: pct(visit.startPos),
-                        width: widthPct(visit.startPos, visit.endPos),
-                        backgroundColor: color,
-                      }}
-                      className={`absolute top-1 bottom-1 rounded-full transition-opacity ${
-                        isSelected ? "opacity-95 ring-2 ring-white" : "opacity-65 hover:opacity-95"
-                      }`}
+                  {lane.visits.map((visit, vIdx) => {
+                    const isPlaying = !timeline.useTurnAxis && visitCoversTime(visit, playheadSeconds);
+                    return (
+                      <button
+                        key={`${visit.startUtteranceId || vIdx}-${visit.label}`}
+                        type="button"
+                        data-playhead-active={isPlaying ? "true" : undefined}
+                        title={`${lane.title} · ${visit.label} (${visit.turnCount} turns, ${visit.words} words)`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLaneId(lane.id);
+                          setSelectedVisitIdx(vIdx);
+                          onOpenVisit?.({
+                            nodeId: lane.id,
+                            utteranceId: visit.startUtteranceId,
+                            seconds: visit.startSeconds,
+                          });
+                        }}
+                        style={{
+                          left: pct(visit.startPos),
+                          width: widthPct(visit.startPos, visit.endPos),
+                          backgroundColor: color,
+                        }}
+                        className={`absolute top-1 bottom-1 rounded-full transition-opacity ${
+                          isPlaying
+                            ? "opacity-100 ring-2 ring-emerald-400"
+                            : isSelected
+                              ? "opacity-95 ring-2 ring-white"
+                              : "opacity-65 hover:opacity-95"
+                        }`}
+                      />
+                    );
+                  })}
+
+                  {/* Live playhead marker */}
+                  {!timeline.useTurnAxis && Number.isFinite(playheadSeconds) && playheadSeconds >= 0 && (
+                    <span
+                      data-testid="timeline-playhead"
+                      aria-hidden="true"
+                      style={{ left: pct(playheadSeconds) }}
+                      className="pointer-events-none absolute top-0 bottom-0 w-0.5 -translate-x-1/2 bg-emerald-600"
                     />
-                  ))}
+                  )}
 
                   {/* Epistemic pins along the lane */}
                   {lane.pins.slice(0, 12).map((pin) => (
@@ -424,4 +444,5 @@ ConversationTimelineView.propTypes = {
   speakerDisplayNames: PropTypes.object,
   onOpenVisit: PropTypes.func,
   onAddReaction: PropTypes.func,
+  playheadSeconds: PropTypes.number,
 };

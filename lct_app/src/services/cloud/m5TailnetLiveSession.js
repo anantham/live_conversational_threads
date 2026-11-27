@@ -6,7 +6,7 @@
 //   and emits live telemetry (TTFT ms, last chunk latency ms, audio duration, $0.00 cost).
 // - Preserves full recorded audio and supports pause, resume, stop, and cancel cleanly.
 
-import { DEFAULT_M5_TAILNET_URL, isAllowedTailnetUrl, parseM5Segments } from './m5TailnetFileSession.js';
+import { DEFAULT_M5_TAILNET_URL, isAllowedTailnetUrl, parseM5Segments, probeM5TailnetEndpoint } from './m5TailnetFileSession.js';
 
 const DEFAULT_SLICE_MS = 6000;
 
@@ -68,6 +68,15 @@ export class M5TailnetLiveSession {
 
   async start() {
     this.startedAt = Date.now();
+    this.onStage?.({ stage: 'connecting', message: 'Checking M5 Tailnet STT.', startedAt: this.startedAt });
+    const health = await probeM5TailnetEndpoint(this.url, { token: this.token, signal: this.controller.signal });
+    if (this.controller.signal.aborted) return;
+    if (!health.ok) {
+      this.state = 'cancelled';
+      const err = new Error(health.message || 'M5 Tailnet STT could not be reached.');
+      this.onFailure?.(err);
+      throw err;
+    }
     this.state = 'recording';
     this.onStage?.({ stage: 'microphone', message: 'Starting microphone for M5 Tailnet STT.', startedAt: this.startedAt });
     try {
@@ -223,12 +232,25 @@ export class M5TailnetLiveSession {
         this.recorder.stop();
       });
     }
-    this.onStage?.({ stage: 'paused', message: 'Recording paused. M5 Tailnet transcription paused.', startedAt: Date.now(), elapsedOffsetMs: this.elapsedOffsetMs });
+    this.stopTracks();
+    this.onStage?.({ stage: 'paused', message: 'Paused. Microphone off.', startedAt: Date.now(), elapsedOffsetMs: this.elapsedOffsetMs });
   }
 
   async resume() {
     if (this.state !== 'paused') return;
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      const msg = error?.message || 'Microphone access was denied.';
+      this.onFailure?.(new Error(msg));
+      throw error;
+    }
+    if (this.controller.signal.aborted) {
+      this.stopTracks();
+      return;
+    }
     this.state = 'recording';
+    this.onMicStream?.(this.stream);
     this.onStage?.({ stage: 'recording', message: 'Recording with live M5 Tailnet transcription.', startedAt: Date.now(), elapsedOffsetMs: this.elapsedOffsetMs });
     this.beginSlice();
   }

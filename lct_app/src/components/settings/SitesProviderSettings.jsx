@@ -48,6 +48,7 @@ function SpeechOrder() {
   const { preferences, save, keys } = useSitesRuntime();
   const [m5Draft, setM5Draft] = useState(null);
   const [m5Probe, setM5Probe] = useState({ testing: false, result: null });
+  const probeRun = useRef(0);
   const [dragIndex, setDragIndex] = useState(null);
   const dragIndexRef = useRef(null);
   const [overIndex, setOverIndex] = useState(null);
@@ -60,10 +61,11 @@ function SpeechOrder() {
     save({ speech: reorderList(order, index, index + direction) });
   }
 
-  function handleDrop(targetIndex, event) {
-    const raw = dragIndexRef.current ?? dragIndex ?? Number(event?.dataTransfer?.getData('text/plain'));
-    const from = Number.isInteger(raw) ? raw : null;
-    if (from != null && targetIndex >= 0 && from !== targetIndex) {
+  // Only a drag that began on a row of this list counts. The drag data is never read back: text dropped
+  // on a field inside a row, or a row dragged over from the other list, must not reorder anything here.
+  function handleDrop(targetIndex) {
+    const from = dragIndexRef.current;
+    if (Number.isInteger(from) && targetIndex >= 0 && from !== targetIndex) {
       save({ speech: reorderList(order, from, targetIndex) });
     }
     dragIndexRef.current = null;
@@ -74,9 +76,11 @@ function SpeechOrder() {
   async function handleTestM5() {
     const trimmed = m5Url.trim();
     if (!trimmed || isAllowedTailnetUrl(trimmed)) save({ m5TailnetUrl: trimmed });
+    const run = ++probeRun.current;
     setM5Probe({ testing: true, result: null });
     const result = await probeM5TailnetEndpoint(trimmed, { token: keys.m5_tailnet || '' });
-    setM5Probe({ testing: false, result });
+    // If the address was edited while this ran, the answer is about a different address: drop it.
+    if (run === probeRun.current) setM5Probe({ testing: false, result });
   }
 
   return <section id="speech-to-text" className="scroll-mt-5 space-y-3">
@@ -106,11 +110,11 @@ function SpeechOrder() {
             event.preventDefault();
             if (overIndex !== index) setOverIndex(index);
           }}
-          onDragLeave={() => { if (overIndex === index) setOverIndex(null); }}
+          onDragLeave={event => { if (overIndex === index && !event.currentTarget.contains(event.relatedTarget)) setOverIndex(null); }}
           onDrop={event => {
-            if (!enabled) return;
+            if (!enabled || dragIndexRef.current === null) return;
             event.preventDefault();
-            handleDrop(index, event);
+            handleDrop(index);
           }}
           onDragEnd={() => { dragIndexRef.current = null; setDragIndex(null); setOverIndex(null); }}
           className={`space-y-2.5 rounded-xl border p-4 transition ${
@@ -160,7 +164,8 @@ function SpeechOrder() {
                     placeholder={DEFAULT_M5_TAILNET_URL}
                     onChange={event => {
                       setM5Draft(event.target.value);
-                      if (m5Probe.result) setM5Probe({ testing: false, result: null });
+                      probeRun.current += 1;
+                      if (m5Probe.result || m5Probe.testing) setM5Probe({ testing: false, result: null });
                     }}
                     onBlur={event => {
                       const val = event.target.value.trim();
@@ -327,10 +332,10 @@ function IntelligenceSettings() {
     save({ mapChain: reorderList(chain, index, index + direction) });
   }
 
-  function handleDrop(targetIndex, event) {
-    const raw = dragIndexRef.current ?? dragIndex ?? Number(event?.dataTransfer?.getData('text/plain'));
-    const from = Number.isInteger(raw) ? raw : null;
-    if (from != null && targetIndex >= 0 && from !== targetIndex) {
+  // As in the speech list: only a drag that began here counts, and the drag data is never read back.
+  function handleDrop(targetIndex) {
+    const from = dragIndexRef.current;
+    if (Number.isInteger(from) && targetIndex >= 0 && from !== targetIndex) {
       save({ mapChain: reorderList(chain, from, targetIndex) });
     }
     dragIndexRef.current = null;
@@ -417,10 +422,11 @@ function IntelligenceSettings() {
             event.preventDefault();
             if (overIndex !== index) setOverIndex(index);
           }}
-          onDragLeave={() => { if (overIndex === index) setOverIndex(null); }}
+          onDragLeave={event => { if (overIndex === index && !event.currentTarget.contains(event.relatedTarget)) setOverIndex(null); }}
           onDrop={event => {
+            if (dragIndexRef.current === null) return;
             event.preventDefault();
-            handleDrop(index, event);
+            handleDrop(index);
           }}
           onDragEnd={() => { dragIndexRef.current = null; setDragIndex(null); setOverIndex(null); }}
         />)}

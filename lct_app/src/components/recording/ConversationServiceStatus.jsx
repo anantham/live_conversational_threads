@@ -66,7 +66,7 @@ function TelemetryRows({ service, metrics }) {
     if (Number.isFinite(metrics.lastLatencyMs)) rows.push(['Last run', formatDuration(metrics.lastLatencyMs)]);
     if (Number.isFinite(metrics.tokensPerSec)) rows.push(['Speed', `${metrics.tokensPerSec} tok/s`]);
     if (metrics.inputTokens || metrics.outputTokens) {
-      rows.push(['Tokens', `${metrics.inputTokens.toLocaleString()} in / ${metrics.outputTokens.toLocaleString()} out`]);
+      rows.push(['Tokens', `${(metrics.inputTokens ?? 0).toLocaleString()} in / ${(metrics.outputTokens ?? 0).toLocaleString()} out`]);
     }
     if (metrics.runs) rows.push(['Runs', String(metrics.runs)]);
     if (Number.isFinite(metrics.costUsd)) rows.push(['Session cost', formatUsd(metrics.costUsd)]);

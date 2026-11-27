@@ -13,24 +13,27 @@ import { MIN_NEW_MAP_CHARS } from './liveMapHeartbeatModel.js';
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
 const interrupted = 'Waiting stopped. The attempt may still be running or counted; stopping this view does not confirm billing stopped. Keep your transcript and check setup before a deliberate retry.';
 
-export default function RecordingConversationMap({ localOnly = false, source, savedBundle, retention = 'ephemeral', backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false, onMapAttempt, stopSignal, onScheduleChange, mapNowRequest = 0 }) {
+export default function RecordingConversationMap({ localOnly = false, source, savedBundle, retention = 'ephemeral', backend: selectedBackend, onBackendChange, onHealthChange, privateEnabled, saving, onPrivateSave, onGeneratingChange, onMapChange, onMapStatusChange, liveActive = false, recordingBusy = false, onMapAttempt, stopSignal, onScheduleChange, mapNowRequest = 0, onExplore }) {
   const runtime = useSitesRuntime();
   const routes = useMemo(() => runtime ? configuredMapRoutes(runtime) : null, [runtime]);
-  const hasPersonalRoute = useMemo(() => Boolean(routes?.some(route => route.key)), [routes]);
-  const maxAutoAttempts = hasPersonalRoute ? 20 : 6;
-  const autoIntervalMs = hasPersonalRoute ? 25_000 : 45_000;
+  // Every route in the chain must use a personal key before words may go out without the tick box below.
+  // One site-key fallback in the chain is still a recipient the user has not agreed to, on a shared allowance.
+  const personalOnly = useMemo(() => Boolean(routes?.length && routes.every(route => route.key)), [routes]);
+  const maxAutoAttempts = personalOnly ? 20 : 6;
+  const autoIntervalMs = personalOnly ? 25_000 : 45_000;
   const [served, setServed] = useState(null);
   const [localBackend, setLocalBackend] = useState('openrouter');
   const backend = selectedBackend ?? localBackend;
   const setBackend = value => { setLocalBackend(value); onBackendChange?.(value); };
   const [automatic, setAutomatic] = useState(false), [attemptCount, setAttemptCount] = useState(0);
-  const userToggledAuto = useRef(false);
+  const userToggledAuto = useRef(false), autoStarted = useRef(false);
   const generateLatest = useRef(null), downloadURLs = useRef(new Set());
-  const lastAttempt = useRef(0), lastText = useRef(''), generating = useRef(false), attempts = useRef(0);
-  const [checkedStatus, setStatus] = useState(null), [consentedBackend, setConsent] = useState(null);
+  const lastAttempt = useRef(0), lastText = useRef(''), mappedText = useRef(''), generating = useRef(false), attempts = useRef(0);
+  const [checkedStatus, setStatus] = useState(null), [consentedBackend, setConsent] = useState(null), [declined, setDeclined] = useState(null);
   const routeSelection = routes || backend;
   const status = checkedStatus?.selection === routeSelection ? checkedStatus.data : null;
-  const consent = consentedBackend === routeSelection || (hasPersonalRoute && Boolean(status?.enabled));
+  // With personal keys only, permission is assumed until the user unticks the box; unticking always wins.
+  const consent = consentedBackend === routeSelection || (personalOnly && Boolean(status?.enabled) && declined !== routeSelection);
   const recipients = routes
     ? [...new Set(routes.map(({ backend }) => MAP_PROVIDERS[backend].recipient))].join(', ')
     : MAP_PROVIDERS[backend].recipient;
@@ -49,16 +52,19 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
       ? 'Generation setup stopped or timed out. Keep the transcript and retry setup.' : 'Generation setup is unavailable. Recording and local downloads remain available. Retry generation setup.'); }
   }, [run, backend, routes, routeSelection]);
   useEffect(() => {
-    alive.current = true; setConsent(null); setStatus(null); void checkStatus();
+    alive.current = true; setConsent(null); setDeclined(null); setStatus(null); void checkStatus();
     return () => { alive.current = false; cancel(); };
   }, [source.recordingId, checkStatus, cancel]);
-  useEffect(() => { setResult(null); setServed(null); setAutomatic(false); userToggledAuto.current = false; attempts.current = 0; setAttemptCount(0); lastText.current = ''; lastAttempt.current = 0; }, [source.recordingId]);
-  useEffect(() => { setAutomatic(false); userToggledAuto.current = false; }, [routeSelection]);
+  useEffect(() => { setResult(null); setServed(null); setAutomatic(false); userToggledAuto.current = false; autoStarted.current = false; attempts.current = 0; setAttemptCount(0); lastText.current = ''; mappedText.current = ''; lastAttempt.current = 0; }, [source.recordingId]);
+  useEffect(() => { setAutomatic(false); userToggledAuto.current = false; autoStarted.current = false; }, [routeSelection]);
+  // Automatic updates start by themselves once per recording. After a failure, the attempt limit, or the
+  // user switching them off, they stay off until the user switches them on again.
   useEffect(() => {
-    if (hasPersonalRoute && liveActive && status?.available && !userToggledAuto.current && !automatic) {
+    if (personalOnly && consent && liveActive && status?.available && !userToggledAuto.current && !autoStarted.current) {
+      autoStarted.current = true;
       setAutomatic(true);
     }
-  }, [hasPersonalRoute, liveActive, status?.available, automatic]);
+  }, [personalOnly, consent, liveActive, status?.available]);
   useEffect(() => {
     const stop = () => { setAutomatic(false); cancel(); };
     stopSignal?.addEventListener('abort', stop, { once: true });
@@ -68,6 +74,9 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
   useEffect(() => {
     if (!savedBundle || result?.bundle === savedBundle || savedBundle.conversation_id !== source.recordingId) return;
     const json = JSON.stringify(savedBundle), filename = `recording-${source.recordingId}.threads`;
+    // A map opened from this device already covers its own transcript; without this the canvas would
+    // offer to map every word again, and automatic updates would re-send them.
+    if (!mappedText.current && typeof savedBundle.full_transcript === 'string') { mappedText.current = savedBundle.full_transcript; lastText.current ||= savedBundle.full_transcript; }
     setResult({ bundle: savedBundle, json, filename, file: new File([json], filename, { type: 'application/json' }) });
   }, [savedBundle, source.recordingId, result?.bundle]);
   useEffect(() => { onMapStatusChange?.(error); }, [error, onMapStatusChange]);
@@ -113,26 +122,33 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
       usage: response.data?.usage || null,
     });
     if (response.data) {
+      mappedText.current = requestedSource.finalTokens.map(t => t.text).join('');
       setResult(response.data);
       setServed(response.data.backend ? `${MAP_PROVIDERS[response.data.backend].name} · ${response.data.model}` : null);
       onMapChange?.(response.data.bundle);
     }
-    else { setAutomatic(false); setError(response.outcome === 'cancelled' || response.outcome === 'timeout' ? interrupted : response.error.message); }
+    else {
+      // Nothing was mapped, so a later retry or the final update on Stop must still see these words as new.
+      lastText.current = mappedText.current;
+      setAutomatic(false); setError(response.outcome === 'cancelled' || response.outcome === 'timeout' ? interrupted : response.error.message);
+    }
   }
   generateLatest.current = generate;
   // The canvas shows this schedule while the panel is closed. It carries counts and times only, never transcript text.
   const scheduleState = activity === 'generate' ? 'mapping'
+    : !status && activity === 'load' ? 'checking'
     : !status?.enabled || !status.available ? 'unavailable'
     : !consent ? 'needs-consent'
     : error ? 'error'
     : attemptCount >= maxAutoAttempts ? 'limit'
-    : automatic && (liveActive || source.complete) ? 'scheduled' : 'manual';
+    // The timer below is held while a save or a setup check runs, so no countdown is promised then.
+    : automatic && !saving && !activity && (liveActive || source.complete) ? 'scheduled' : 'manual';
   const canMapNow = Boolean(consent && status?.enabled && status.available && !activity && !saving);
   useEffect(() => {
     onScheduleChange?.({ state: scheduleState, canMapNow, complete: source.complete, lastAttemptAt: lastAttempt.current,
-      mappedChars: lastText.current.length, intervalMs: autoIntervalMs, minNewChars: MIN_NEW_MAP_CHARS,
+      mappedChars: mappedText.current.length, intervalMs: autoIntervalMs, minNewChars: MIN_NEW_MAP_CHARS,
       attemptsUsed: attemptCount, maxAttempts: maxAutoAttempts });
-  }, [scheduleState, canMapNow, source.complete, source.recordingId, attemptCount, autoIntervalMs, maxAutoAttempts, onScheduleChange]);
+  }, [scheduleState, canMapNow, source.complete, source.recordingId, attemptCount, autoIntervalMs, maxAutoAttempts, onScheduleChange, result]);
   useEffect(() => () => onScheduleChange?.(null), [onScheduleChange]);
   // A deliberate request from the canvas. It counts as an attempt, like the button in this panel.
   const handledMapNow = useRef(mapNowRequest);
@@ -168,8 +184,8 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
     {!activity && !status?.enabled && <p className="mt-3 text-sm leading-6 text-slate-600">Generation is waiting for provider setup and confirmed spending limits. Transcript download remains available.</p>}
     {status?.enabled && !status.available && <p className="mt-3 text-sm leading-6 text-slate-600">Shared generation capacity is unavailable. Check setup again before retrying; unresolved attempts may need owner review.</p>}
     {status?.audience === 'authenticated' && <p className="mt-3 text-sm text-slate-600">This generation test requires sign-in. <Link className="underline underline-offset-4" to="/private-files">Sign in from Private files</Link></p>}
-    <label className="mt-4 flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={consent} disabled={Boolean(activity) || saving || !status?.enabled} onChange={event => { setConsent(event.target.checked ? routeSelection : null); if (!event.target.checked) setAutomatic(false); }} />I have permission to send these finalized words to {recipients} to generate a map. Their processing policies apply.</label>
-    <label className="mt-3 flex items-start gap-3 text-sm leading-6"><input type="checkbox" aria-label="Update map while I speak" className="mt-1" checked={automatic} disabled={!consent || !status?.available || attempts.current >= maxAutoAttempts} onChange={event => { userToggledAuto.current = true; setAutomatic(event.target.checked); }} />Update map while I speak</label>
+    <label className="mt-4 flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={consent} disabled={Boolean(activity) || saving || !status?.enabled} onChange={event => { const agreed = event.target.checked; setConsent(agreed ? routeSelection : null); setDeclined(agreed ? null : routeSelection); if (!agreed) { userToggledAuto.current = true; setAutomatic(false); } }} />I have permission to send these finalized words to {recipients} to generate a map. Their processing policies apply.</label>
+    <label className="mt-3 flex items-start gap-3 text-sm leading-6"><input type="checkbox" aria-label="Update map while I speak" className="mt-1" checked={automatic} disabled={!consent || !status?.available || attempts.current >= maxAutoAttempts} onChange={event => { userToggledAuto.current = true; if (event.target.checked) setError(''); setAutomatic(event.target.checked); }} />Update map while I speak</label>
     <p className="mt-1 text-xs leading-5 text-slate-500">Updates use new confirmed words, at most once every {Math.round(autoIntervalMs / 1000)} seconds. Automatic updates stop after {maxAutoAttempts} attempts per conversation. {attemptCount > 0 && `${attemptCount} attempts used.`}</p>
     {attemptCount >= maxAutoAttempts && <p role="status" className="mt-2 text-xs text-slate-600">Automatic updates have reached their limit. You can still request a map deliberately if shared capacity is available.</p>}
     <div className="mt-4 flex flex-wrap gap-3"><button className={`${button} border-slate-900 bg-slate-900 text-white`} disabled={!consent || !status?.available || Boolean(activity) || saving} onClick={() => void generate()}>{result ? 'Generate another map' : 'Generate conversation map'}</button><button className={button} disabled={Boolean(activity) || saving} onClick={() => void checkStatus()}>Retry generation setup</button></div>
@@ -180,7 +196,7 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
       {result.bundle.full_transcript !== source.finalTokens.map(t => t.text).join('') && <p className="text-xs text-amber-800">The map covers an earlier snapshot. New words are waiting for the next update.</p>}
       <p role="status" className="text-sm leading-6">{retention === 'local' ? 'Your map is ready. Browser saving status appears above; you can also download a copy.' : 'Your map is ready in this tab. Download audio, transcript and map before leaving the recording page.'}</p>
       {!localOnly && <PrivateRetentionNotice id="map-private-retention" />}
-      <div className="mt-4 flex flex-wrap gap-3"><button className={button} disabled={Boolean(activity) || saving || recordingBusy} onClick={() => navigate('/view', { state: { generatedMapId: stageGeneratedMap(result.bundle), remember: false } })}>Explore map</button>{url && <a className={button} href={url} download={result.filename}>Download map</a>}{!localOnly && <button className={button} aria-describedby="map-private-retention" disabled={!privateEnabled || Boolean(activity) || saving || liveActive} onClick={() => onPrivateSave(result.file, 'Map')}>Save map privately</button>}</div>
+      <div className="mt-4 flex flex-wrap gap-3"><button className={button} disabled={Boolean(activity) || saving || recordingBusy} onClick={() => onExplore ? onExplore() : navigate('/view', { state: { generatedMapId: stageGeneratedMap(result.bundle), remember: false } })}>Explore map</button>{url && <a className={button} href={url} download={result.filename}>Download map</a>}{!localOnly && <button className={button} aria-describedby="map-private-retention" disabled={!privateEnabled || Boolean(activity) || saving || liveActive} onClick={() => onPrivateSave(result.file, 'Map')}>Save map privately</button>}</div>
       {!localOnly && !privateEnabled && <p className="mt-3 text-sm text-slate-600">Private saving needs sign-in and enabled personal storage. You can download this map now.</p>}
       {!localOnly && <p className="mt-3 text-sm leading-6 text-slate-600">To share a public copy, download the map and use <Link className="underline underline-offset-4" to="/public">Public conversations</Link>. That step has separate confirmation and file limits.</p>}
       <details className="mt-4 text-sm"><summary className="cursor-pointer">Copy map data if download is unavailable</summary><label htmlFor="recording-map-json" className="mt-3 block">Conversation map JSON</label><textarea id="recording-map-json" readOnly value={result.json} rows={5} className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm" /></details>
@@ -190,4 +206,4 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
 
 RecordingConversationMap.propTypes = { localOnly: PropTypes.bool, savedBundle: PropTypes.object, retention: PropTypes.string, backend: PropTypes.string, onBackendChange: PropTypes.func, onHealthChange: PropTypes.func, source: PropTypes.object.isRequired, privateEnabled: PropTypes.bool,
   saving: PropTypes.bool.isRequired, onPrivateSave: PropTypes.func.isRequired, onGeneratingChange: PropTypes.func.isRequired, onMapChange: PropTypes.func, onMapStatusChange: PropTypes.func, liveActive: PropTypes.bool, recordingBusy: PropTypes.bool, onMapAttempt: PropTypes.func, stopSignal: PropTypes.object,
-  onScheduleChange: PropTypes.func, mapNowRequest: PropTypes.number };
+  onScheduleChange: PropTypes.func, mapNowRequest: PropTypes.number, onExplore: PropTypes.func };

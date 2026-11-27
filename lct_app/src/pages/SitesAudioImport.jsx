@@ -46,7 +46,7 @@ export default function SitesAudioImport() {
     <ConversationNavigation title="Import audio" panel={panel} onPanelChange={setPanel} mapUpdating={generating} mapError={mapError} />
     <section aria-label="Audio import canvas" className="relative flex min-h-0 flex-col overflow-hidden">
       <div className="shrink-0 px-5 py-2 text-xs leading-5">
-        {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}{flow.wait && ` · ${flow.wait.next ? `Falls back to ${flow.wait.next}` : 'Gives up'} in ${flow.wait.secondsLeft} s`}</p>}
+        {activity && !(flow.error && activity.stage === 'error') && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}{flow.wait && ` · ${flow.wait.next ? `Falls back to ${flow.wait.next}` : 'Gives up'} in ${flow.wait.secondsLeft} s`}</p>}
         {flow.notice && <p role="status" className="text-slate-600">{flow.notice}</p>}
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} />}
         {flow.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{flow.error}</p>}
@@ -87,9 +87,8 @@ export default function SitesAudioImport() {
       {recording && <>
         {map ? <LiveConversationGraph bundle={map} transcriptVisible={!minimized} onConfigure={() => setPanel('map')} recording /> :
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center" aria-label="Imported conversation graph">
-            <p className="text-sm font-medium text-slate-700">{busy ? 'Your threads will take shape here' : 'No thread map is saved'}</p>
             {busy && artifact?.source && <button className="mt-3 min-h-11 px-3 text-xs underline" onClick={() => setPanel('map')}>Set up live map</button>}
-            <p className="mt-2 max-w-sm text-xs leading-5 text-slate-500">{busy ? 'Open AI map to build threads from confirmed words while audio arrives.' : 'Open AI map to check generation availability.'} {(audio || artifact) && 'Your available audio and transcript are in Files & export.'}</p>
+            {!busy && <p className="text-xs text-slate-500">No thread map is saved. {(audio || artifact) && 'Your available audio and transcript are in Files & export.'}</p>}
           </div>}
         <ConversationTranscriptPanel transcript={transcript} status={busy ? 'Importing' : artifact?.source?.complete ? 'Finished' : 'Partial'} minimized={minimized} onMinimize={() => { setMinimized(value => !value); setFullscreen(false); }} fullscreen={fullscreen} onFullscreen={() => setFullscreen(value => !value)} />
       </>}

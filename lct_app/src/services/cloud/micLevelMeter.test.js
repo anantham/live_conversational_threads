@@ -2,15 +2,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMicLevelMeter, levelFromSamples, SILENCE_LEVEL } from './micLevelMeter.js';
 
-function fakeAudio(fill = 0) {
-  const state = { connected: [], closed: 0, disconnected: 0, resumed: 0, fill };
+function fakeAudio(fill = 0, contextState) {
+  const state = { connected: [], closed: 0, disconnected: 0, resumed: 0, fill, contextState };
   class Context {
+    get state() { return state.contextState; }
     createMediaStreamSource(stream) {
       state.stream = stream;
       return { connect: node => state.connected.push(node), disconnect: () => { state.disconnected += 1; } };
     }
     createAnalyser() {
-      const analyser = { fftSize: 0, kind: 'analyser', getFloatTimeDomainData: samples => samples.fill(state.fill) };
+      // The analyser can be connected onwards too; that is the other way audio could reach the speakers.
+      const analyser = { fftSize: 0, kind: 'analyser', connect: node => state.connected.push(node), getFloatTimeDomainData: samples => samples.fill(state.fill) };
       state.analyser = analyser;
       return analyser;
     }
@@ -58,8 +60,26 @@ describe('microphone level', () => {
 
   it('only measures: the microphone is never routed to the speakers', () => {
     const { state, Context } = fakeAudio();
-    createMicLevelMeter({}, () => {}, { AudioContextClass: Context }).stop();
+    const meter = createMicLevelMeter({}, () => {}, { AudioContextClass: Context });
+    expect(meter.supported).toBe(true);
+    meter.stop();
     expect(state.connected).toEqual([state.analyser]);
+  });
+
+  it('reports nothing while the audio context is suspended, keeps asking it to resume, and reports once it runs', () => {
+    const { state, Context } = fakeAudio(0, 'suspended');
+    const levels = [];
+    const meter = createMicLevelMeter({}, value => levels.push(value), { AudioContextClass: Context, intervalMs: 100 });
+    expect(meter.supported).toBe(true);
+    vi.advanceTimersByTime(6000);
+    // Zeros from a suspended context would read as a dead microphone, so there must be no readings at all.
+    expect(levels).toEqual([]);
+    expect(state.resumed).toBeGreaterThan(1);
+    state.contextState = 'running'; state.fill = 0.05;
+    vi.advanceTimersByTime(100);
+    expect(levels).toHaveLength(1);
+    expect(levels[0]).toBeGreaterThan(SILENCE_LEVEL);
+    meter.stop();
   });
 
   it('stops reporting and releases the audio graph on stop, once', () => {

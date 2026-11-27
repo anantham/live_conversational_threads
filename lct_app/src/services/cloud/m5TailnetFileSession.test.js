@@ -142,4 +142,85 @@ describe('m5TailnetFileSession', () => {
     expect(failure.reason).toBe('dropped');
     expect(failure.message).toContain('blocked its reply');
   });
+
+  // Review fixes, 2026-11-27: fail closed on the address and on what answers at it.
+  const wav = () => new File([new Uint8Array([1])], 'a.wav', { type: 'audio/wav' });
+  const healthy = () => Response.json({ engine: 'fluidaudio-parakeet', status: 'healthy' });
+
+  it('requires a node and a tailnet label before .ts.net', () => {
+    expect(isAllowedTailnetUrl('https://node.tailnet.ts.net:5443/v1/audio/transcriptions')).toBe(true);
+    expect(isAllowedTailnetUrl('https://.ts.net/v1')).toBe(false);
+    expect(isAllowedTailnetUrl('https://ts.net/v1')).toBe(false);
+    expect(isAllowedTailnetUrl('https://tailnet.ts.net/v1')).toBe(false);
+    expect(isAllowedTailnetUrl('https://node.tailnet.ts.net.attacker.example/v1')).toBe(false);
+  });
+
+  it('does not take an HTTP 200 page for the speech server, and sends it no audio', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('<!doctype html><title>Sign in</title>', { status: 200, headers: { 'content-type': 'text/html' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const probe = await probeM5TailnetEndpoint(DEFAULT_M5_TAILNET_URL);
+    expect(probe).toMatchObject({ ok: false, status: 'bad_reply' });
+    const failure = await new M5TailnetFileSession({ readSeconds: async () => 60 }).start({ file: wav() }).catch(e => e);
+    expect(failure.reason).toBe('health_bad_reply');
+    expect(failure.canTryNext).toBe(true);
+    expect(failure.message).toContain('Your audio was not sent');
+    expect(fetchMock.mock.calls.every(([, init]) => init.method === 'GET')).toBe(true);
+  });
+
+  it('reports a health reply that runs out of time while its body arrives as a timeout, not as ready', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', vi.fn((url, init) => Promise.resolve({ ok: true, status: 200,
+        json: () => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))) })));
+      const pending = probeM5TailnetEndpoint(DEFAULT_M5_TAILNET_URL, { timeoutMs: 8000 });
+      await vi.advanceTimersByTimeAsync(8001);
+      expect(await pending).toMatchObject({ ok: false, status: 'timeout' });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('refuses redirects on the health check and on the upload', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(healthy())
+      .mockResolvedValueOnce(Response.json({ segments: [{ start: 0, end: 1, speaker: 'SPEAKER_00', text: 'Hello.' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    await new M5TailnetFileSession({ readSeconds: async () => 60 }).start({ file: wav() });
+    expect(fetchMock.mock.calls.map(([, init]) => init.redirect)).toEqual(['error', 'error']);
+  });
+
+  it('refuses a filled-in address that is not allowed instead of quietly using the default host', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const session = new M5TailnetFileSession({ url: 'http://node.tailnet.ts.net:5443/v1/audio/transcriptions', token: 'synthetic-token', readSeconds: async () => 60 });
+    const failure = await session.start({ file: wav() }).catch(e => e);
+    expect(failure.reason).toBe('invalid_url');
+    expect(failure.canTryNext).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // An empty address still means the default.
+    expect(new M5TailnetFileSession({ url: '  ' }).url).toBe(DEFAULT_M5_TAILNET_URL);
+  });
+
+  it('treats a skip that lands while the audio length is being read as a skip, so the next provider runs', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(healthy());
+    vi.stubGlobal('fetch', fetchMock);
+    let session;
+    const stages = [];
+    session = new M5TailnetFileSession({ onStage: stage => stages.push(stage.stage),
+      readSeconds: (file, { signal }) => new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+        queueMicrotask(() => session.skip());
+      }) });
+    const failure = await session.start({ file: wav() }).catch(e => e);
+    expect(failure.reason).toBe('skipped');
+    expect(failure.canTryNext).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stages).not.toContain('error');
+  });
+
+  it('lets the next provider try after "too large", "unsupported" and "busy" refusals, but not after a malformed request', async () => {
+    for (const [status, canTryNext] of [[413, true], [415, true], [429, true], [408, true], [400, undefined]]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(healthy()).mockResolvedValueOnce(new Response('no', { status })));
+      const failure = await new M5TailnetFileSession({ readSeconds: async () => 60 }).start({ file: wav() }).catch(e => e);
+      expect([status, failure.reason, failure.canTryNext]).toEqual([status, 'http', canTryNext]);
+    }
+  });
 });

@@ -8,6 +8,8 @@
 //   and nothing is sent to it.
 // - Allows a wait scaled to the audio's length, publishes the deadline with the stage, and
 //   names the reason it stopped: health check, timeout, dropped connection, bad reply, skipped.
+// - Fails closed: an address that is not HTTPS *.ts.net is refused, never swapped for the default;
+//   a health reply that is not JSON does not count as the speech server; redirects are refused.
 
 import { importAudioSeconds, importFileType } from './audioImportFile.js';
 
@@ -21,7 +23,7 @@ export function isAllowedTailnetUrl(value) {
       parsed.protocol === 'https:' &&
       !parsed.username &&
       !parsed.password &&
-      parsed.hostname.toLowerCase().endsWith('.ts.net')
+      /^[a-z0-9-]+(\.[a-z0-9-]+)+\.ts\.net$/.test(parsed.hostname.toLowerCase())
     );
   } catch {
     return false;
@@ -49,6 +51,13 @@ function m5Failure(reason, message, cause) {
 }
 
 function healthFailure(health) {
+  if (health.status === 'invalid') {
+    return m5Failure('invalid_url', 'The M5 Tailnet STT address is not an HTTPS *.ts.net address. Your audio was not sent to it.');
+  }
+  if (health.status === 'bad_reply') {
+    return m5Failure('health_bad_reply',
+      'Something answered at the M5 Tailnet STT address, but not as a speech server. Your audio was not sent to it.');
+  }
   if (health.status === 'timeout') {
     return m5Failure('health_timeout', 'M5 Tailnet STT did not answer its health check. Your audio was not sent to it.');
   }
@@ -75,7 +84,7 @@ export async function probeM5TailnetEndpoint(url = DEFAULT_M5_TAILNET_URL, { tok
   const startedAt = Date.now();
   try {
     const headers = typeof token === 'string' && token.trim() ? { Authorization: `Bearer ${token.trim()}` } : {};
-    const response = await fetch(healthUrl, { method: 'GET', headers, signal: controller.signal });
+    const response = await fetch(healthUrl, { method: 'GET', headers, redirect: 'error', signal: controller.signal });
     const latencyMs = Math.max(0, Date.now() - startedAt);
     if (!response.ok) {
       return {
@@ -89,8 +98,20 @@ export async function probeM5TailnetEndpoint(url = DEFAULT_M5_TAILNET_URL, { tok
     let payload = null;
     try {
       payload = await response.json();
-    } catch {
+    } catch (error) {
+      // Running out of time or being stopped while the body arrives is a timeout or a stop, not a reply.
+      if (controller.signal.aborted) throw error;
       payload = null;
+    }
+    // A 200 does not identify a service: a proxy page or another app on the same address also answers 200.
+    // The speech server answers /health with a JSON object, so anything else is refused before audio is sent.
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return {
+        ok: false,
+        status: 'bad_reply',
+        latencyMs,
+        message: `Something answered in ${latencyMs} ms, but not as an M5 speech server (its health reply was not JSON).`,
+      };
     }
     const details = [
       payload?.engine,
@@ -153,7 +174,9 @@ export class M5TailnetFileSession {
   constructor({ url = DEFAULT_M5_TAILNET_URL, token = '', diarize = true, onStage, onAudio, onTranscript,
     readSeconds = importAudioSeconds } = {}) {
     Object.assign(this, {
-      url: isAllowedTailnetUrl(url) ? url.trim() : DEFAULT_M5_TAILNET_URL,
+      // An empty address means the default. A filled-in address that is not allowed is kept as it is,
+      // so the health check refuses it; it is never swapped for a different host.
+      url: typeof url === 'string' && url.trim() ? url.trim() : DEFAULT_M5_TAILNET_URL,
       token: typeof token === 'string' ? token.trim() : '',
       diarize,
       onStage,
@@ -205,7 +228,9 @@ export class M5TailnetFileSession {
       const timer = setTimeout(() => { timedOut = true; request.abort(); }, limitMs);
       let response, payload;
       try {
-        response = await fetch(this.url, { method: 'POST', body: form, headers, signal: request.signal });
+        // A stop or skip that landed before the listener above was attached would otherwise go unseen.
+        if (signal.aborted) throw this.stopped();
+        response = await fetch(this.url, { method: 'POST', body: form, headers, redirect: 'error', signal: request.signal });
         if (response.ok) payload = await response.json();
       } catch (cause) {
         if (signal.aborted) throw this.stopped();
@@ -226,7 +251,8 @@ export class M5TailnetFileSession {
       if (!response.ok) {
         const err = new Error(`M5 Tailnet STT returned HTTP ${response.status}. Your original audio is preserved.`);
         err.reason = 'http';
-        if (response.status >= 500 || response.status === 404 || response.status === 401 || response.status === 403) {
+        // Refusals that say "not this server, not this file, not now": the next provider may still manage.
+        if (response.status >= 500 || [401, 403, 404, 408, 413, 415, 422, 429].includes(response.status)) {
           err.canTryNext = true;
         }
         throw err;
@@ -243,7 +269,10 @@ export class M5TailnetFileSession {
       this.onStage?.({ stage: 'stopped', message: 'Transcript ready (M5 Tailnet).', startedAt: Date.now() });
       return transcript;
     } catch (error) {
-      if (!signal.aborted) this.onStage?.({ stage: 'error', message: error.message, startedAt: Date.now() });
+      // Whatever was in flight when the user stopped or skipped, report it as that stop or skip, so a
+      // skip always lets the next provider run.
+      if (signal.aborted) throw this.stopped();
+      this.onStage?.({ stage: 'error', message: error.message, startedAt: Date.now() });
       throw error;
     } finally {
       this.controller.abort();

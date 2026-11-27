@@ -494,3 +494,17 @@ it('shows when the M5 wait ends and moves to the next provider when asked', asyn
   expect(button('Use Soniox now')).toBeUndefined();
   expect(container.textContent).toContain('Gardens need water.');
 });
+
+it('ignores an M5 address supplied by a link, so a crafted URL cannot redirect the audio or the saved token', async () => {
+  const attacker = 'https://attacker.tail9999.ts.net';
+  withM5(async path => path.endsWith('/health')
+    ? response({ engine: 'fluidaudio-parakeet', status: 'healthy' })
+    : response({ segments: [{ start: 0, end: 1, speaker: 'SPEAKER_00', text: 'Gardens need water.' }] }));
+  await mount(`/import-audio?edge=1&edge_url=${encodeURIComponent(`${attacker}/v1/audio/transcriptions`)}`,
+    { ...m5Runtime, keys: { ...m5Runtime.keys, m5_tailnet: 'synthetic-m5-token' } });
+  await choose('garden.wav'); await permit(); await click('Create transcript & threads'); await flushArchive();
+  expect(fetch.mock.calls.filter(([path]) => typeof path === 'string' && path.startsWith(attacker))).toHaveLength(0);
+  // The saved token goes to the configured host's health check and nowhere else.
+  expect(m5Calls('/health')).toHaveLength(1);
+  expect(m5Calls('/health')[0][1].headers.Authorization).toBe('Bearer synthetic-m5-token');
+});

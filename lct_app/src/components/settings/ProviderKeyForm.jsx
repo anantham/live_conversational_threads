@@ -70,13 +70,15 @@ export default function ProviderKeyForm({ backend, name, speech = false, summary
   }, [fetchedAt, refresh, revision, speech]);
 
   // A result belongs to the key it tested. Replacing or removing the key discards it.
-  useEffect(() => { testRun.current += 1; setTest(null); }, [revision]);
+  useEffect(() => { testRun.current += 1; setTest(null); }, [key, revision]);
 
   async function runTest() {
     if (!testable || test?.loading) return;
     const run = ++testRun.current;
     const started = performance.now();
     lastAttempt.current = { revision, at: Date.now() };
+    // An older "Key saved" line would otherwise sit beside a failed check as if it vouched for the key.
+    setFeedback('');
     setTest({ loading: true });
     try {
       // The same check that loads the model list: it reads account metadata and spends nothing.
@@ -109,17 +111,20 @@ export default function ProviderKeyForm({ backend, name, speech = false, summary
     try {
       await setKey(backend, '');
       lastAttempt.current = null;
+      setDraft('');
       setFeedback('Personal key and cached models removed.');
       setOpen(false);
     } catch { setFeedback('The saved key could not be removed. Try again.'); }
     finally { setWorking(false); }
   }
 
-  const refreshLabel = speech ? 'Test connection' : 'Refresh models';
+  const refreshLabel = 'Refresh models';
   const currentRefresh = revision && refreshFeedback?.revision === revision ? refreshFeedback : null;
   const state = key ? `Personal key saved${loadedCount ? ` · ${loadedCount} ${loadedCount === 1 ? 'model' : 'models'}` : ''}`
     : summaryName ? 'Site configuration' : '';
   const toggleLabel = open ? 'Done' : key ? 'Edit' : 'Add key';
+  // Closing the form discards anything typed but not saved, so a pasted key does not linger in the page.
+  function toggleForm() { if (open) setDraft(''); setOpen(!open); }
 
   return <div className="space-y-2">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -129,11 +134,11 @@ export default function ProviderKeyForm({ backend, name, speech = false, summary
         <span className="min-w-0">{summaryName && <span className={key ? 'font-medium' : 'font-medium text-slate-900'}>{name}</span>}{summaryName && state && ' · '}{state}</span>
       </span> : <span />}
       <span className="flex flex-wrap items-center gap-2">
-        {testable && <button type="button" className={rowButton} aria-label={`Test ${name} key`} disabled={working || Boolean(test?.loading)} onClick={() => void runTest()}>
+        {testable && <button type="button" className={rowButton} aria-label={`Test ${name} key`} disabled={working || Boolean(test?.loading) || Boolean(currentRefresh?.loading)} onClick={() => void runTest()}>
           {test?.loading ? 'Testing…' : 'Test'}
         </button>}
         <button type="button" className={rowButton} aria-label={`${open ? 'Done editing' : key ? 'Edit' : 'Add'} ${name} key`}
-          aria-expanded={open} aria-controls={formId} onClick={() => setOpen(value => !value)}>{toggleLabel}</button>
+          aria-expanded={open} aria-controls={formId} onClick={toggleForm}>{toggleLabel}</button>
       </span>
     </div>
     {test && !test.loading && <p role="status" className={`text-sm ${test.ok ? 'text-emerald-800' : 'text-rose-800'}`}>
@@ -155,7 +160,7 @@ export default function ProviderKeyForm({ backend, name, speech = false, summary
             disabled={working} onClick={() => void removeKey()}>
             <Trash2 size={19} aria-hidden="true" />
           </TooltipButton>
-          {(!speech || !testable) && <TooltipButton compact aria-label={refreshLabel} tooltip={refreshLabel} className={iconButton}
+          {!speech && <TooltipButton compact aria-label={refreshLabel} tooltip={refreshLabel} className={iconButton}
             disabled={working || Boolean(currentRefresh?.loading)} onClick={() => void refresh(true)}>
             <RefreshCw className={currentRefresh?.loading ? 'motion-safe:animate-spin' : undefined} size={19} aria-hidden="true" />
           </TooltipButton>}

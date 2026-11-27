@@ -73,6 +73,7 @@ describe('microphone level bar', () => {
     return meter;
   }
   const bar = () => container.querySelector('[data-testid=mic-level]');
+  const STREAM = { id: 'synthetic' };
 
   it('shows nothing without an open microphone', async () => {
     const meter = fakeMeter();
@@ -93,14 +94,50 @@ describe('microphone level bar', () => {
     vi.useFakeTimers({ now: 5_000_000 });
     const meter = fakeMeter(), onSilentChange = vi.fn();
     await render(<MicLevelMeter stream={{}} createMeter={meter.create} onSilentChange={onSilentChange} silentAfterMs={5000} />);
-    await act(async () => { vi.setSystemTime(5_004_000); meter.emit(SILENCE_LEVEL / 2); });
+    const quietFor = async (ms, from) => { for (let t = 100; t <= ms; t += 100) await act(async () => { vi.setSystemTime(from + t); meter.emit(SILENCE_LEVEL / 2); }); };
+    await act(async () => { vi.setSystemTime(5_000_000); meter.emit(SILENCE_LEVEL / 2); });
+    await quietFor(4900, 5_000_000);
     expect(bar().dataset.silent).toBeUndefined();
-    await act(async () => { vi.setSystemTime(5_005_100); meter.emit(SILENCE_LEVEL / 2); });
+    await quietFor(100, 5_004_900);
     expect(bar().dataset.silent).toBe('true');
+    expect(bar().firstChild.style.width).toBe('0%');
     expect(onSilentChange).toHaveBeenLastCalledWith(true);
-    await act(async () => { vi.setSystemTime(5_005_200); meter.emit(0.5); });
+    await act(async () => { vi.setSystemTime(5_005_100); meter.emit(0.5); });
     expect(bar().dataset.silent).toBeUndefined();
     expect(onSilentChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('does not call a working microphone silent because a throttled tab sampled a few gaps between words', async () => {
+    vi.useFakeTimers({ now: 7_000_000 });
+    const meter = fakeMeter(), onSilentChange = vi.fn();
+    await render(<MicLevelMeter stream={{}} createMeter={meter.create} onSilentChange={onSilentChange} silentAfterMs={5000} />);
+    await act(async () => { meter.emit(0.5); });
+    // A background tab: one reading a second, each landing on a quiet instant, for eight seconds of talking.
+    for (let second = 1; second <= 8; second += 1) await act(async () => { vi.setSystemTime(7_000_000 + second * 1000); meter.emit(SILENCE_LEVEL / 2); });
+    expect(bar().dataset.silent).toBeUndefined();
+    expect(onSilentChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('draws nothing and reports no silence until the meter produces a reading', async () => {
+    vi.useFakeTimers({ now: 8_000_000 });
+    const meter = fakeMeter(), onSilentChange = vi.fn();
+    await render(<MicLevelMeter stream={{}} createMeter={meter.create} onSilentChange={onSilentChange} silentAfterMs={5000} />);
+    await act(async () => { vi.setSystemTime(8_020_000); });
+    expect(bar()).toBeNull();
+    expect(onSilentChange).not.toHaveBeenCalledWith(true);
+    await act(async () => { meter.emit(0.4); });
+    expect(bar().firstChild.style.width).toBe('40%');
+  });
+
+  it('reports each change of silence once, even when the parent passes a new callback on every render', async () => {
+    vi.useFakeTimers({ now: 9_000_000 });
+    const meter = fakeMeter(), calls = [];
+    const Parent = () => <MicLevelMeter stream={STREAM} createMeter={meter.create} silentAfterMs={200} onSilentChange={value => calls.push(value)} />;
+    await render(<Parent />);
+    await act(async () => { meter.emit(0); });
+    for (let t = 100; t <= 300; t += 100) await act(async () => { vi.setSystemTime(9_000_000 + t); meter.emit(0); });
+    await render(<Parent />); await render(<Parent />);
+    expect(calls).toEqual([false, true]);
   });
 
   it('releases the meter when the microphone closes and reports no silence afterwards', async () => {
@@ -180,6 +217,12 @@ describe('renaming a speaker in the live transcript', () => {
     await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
     expect(onRenameSpeaker).toHaveBeenCalledTimes(1);
     expect(container.querySelector('p form')).toBeNull();
+    // Leaving the field without pressing Enter keeps what was typed.
+    await act(async () => button('Rename Tobin').click());
+    await act(async () => type(container.querySelector('input'), 'Tomas'));
+    await act(async () => container.querySelector('input').dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+    expect(onRenameSpeaker).toHaveBeenCalledTimes(2);
+    expect(onRenameSpeaker).toHaveBeenLastCalledWith('2', 'Tomas');
   });
 
   it('explains the rename while a name is being typed and stops following new words until it ends', async () => {

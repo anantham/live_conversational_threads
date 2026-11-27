@@ -19,9 +19,10 @@ export function useConversationArchive() {
   const append = useCallback(chunk => writer.current?.append(chunk), []);
   const restored = useCallback(value => {
     void writer.current?.flush();
-    const { id, recording, title, transcript, map, stage, segments, updatedAt, revision } = value;
+    const { id, recording, title, transcript, map, stage, segments, updatedAt, revision, speakerNames } = value;
     let archive;
-    archive = new ConversationArchive(recording, { initial: { id, recording, title, transcript, map, stage, segments, updatedAt, revision },
+    // speakerNames is carried through so the next save of a reopened conversation does not drop it.
+    archive = new ConversationArchive(recording, { initial: { id, recording, title, transcript, map, stage, segments, updatedAt, revision, ...(speakerNames ? { speakerNames } : {}) },
       onStatus: next => { if (alive.current && writer.current === archive) setStatus(next); } });
     writer.current = archive; setStatus({ state: 'saved' });
   }, []);

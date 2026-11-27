@@ -589,6 +589,10 @@ describe('Sites recording page', () => {
     expect(container.querySelector('a[download$=".threads"]').getAttribute('download')).toBe(`recording-${source.recordingId}.threads`);
     expect(button('Save map privately').disabled).toBe(true);
     expect(fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1);
+    // This recording saves in the browser, and whether that save has finished by now is a matter of timing:
+    // if it has not, leaving asks first. Either way the answer here is yes. The warning itself is tested
+    // below, on a recording that is never saved.
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     await click('Explore map');
     const handoff = JSON.parse(container.querySelector('[data-testid="location"]').textContent);
     expect(handoff).toEqual({ remember: false, generatedMapId: expect.any(String) });
@@ -880,6 +884,18 @@ describe('Sites recording page: canvas map status, speaker names and Explore', (
     const handoff = JSON.parse(container.querySelector('[data-testid=location]').textContent);
     expect(handoff.remember).toBe(false);
     expect(readGeneratedMap(handoff.generatedMapId).conversation_title).toBe('Synthetic generated recording');
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks before the map panel\'s own Explore button leaves an unsaved recording', async () => {
+    transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permit();
+    await click('Generate conversation map'); await click('Stop recording');
+    const panelExplore = () => [...tools().querySelectorAll('button')].find(element => element.textContent === 'Explore map');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    await act(async () => panelExplore().click());
+    expect(JSON.parse(container.querySelector('[data-testid=location]').textContent)).toBeNull();
+    await act(async () => panelExplore().click());
+    expect(JSON.parse(container.querySelector('[data-testid=location]').textContent)).toMatchObject({ remember: false });
     expect(confirm).toHaveBeenCalledTimes(2);
   });
 

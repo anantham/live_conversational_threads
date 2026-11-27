@@ -30,6 +30,7 @@ import { buildSpeakerColorMapForNodes } from "../components/graph/colorModes";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { useViewerHistory } from "../hooks/useViewerHistory";
 import { buildSpeakerDisplayNames } from "../services/speakerDisplay";
+import { readLocalConversation } from "../services/cloud/localConversationStore";
 import {
   flattenThreadsGraph,
   readThreadsFile,
@@ -130,6 +131,31 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const [mediaNode, setMediaNode] = useState(null);
   const [sourceSeek, setSourceSeek] = useState(null);
   const [sourceTextSelection, setSourceTextSelection] = useState(null);
+  const [localAudioUrl, setLocalAudioUrl] = useState("");
+  const [playheadSeconds, setPlayheadSeconds] = useState(null);
+  const [followPlayhead, setFollowPlayhead] = useState(true);
+  const [audioSeekRequest, setAudioSeekRequest] = useState(null);
+
+  useEffect(() => {
+    const id = bundle?.conversation_id;
+    setPlayheadSeconds(null);
+    setAudioSeekRequest(null);
+    if (!id || selectYouTubeRef(bundle)) { setLocalAudioUrl(""); return undefined; }
+    let cancelled = false;
+    let objectUrl = "";
+    readLocalConversation(id)
+      .then((saved) => {
+        if (cancelled || !saved?.audio?.blob) return;
+        objectUrl = URL.createObjectURL(saved.audio.blob);
+        setLocalAudioUrl(objectUrl);
+      })
+      .catch(() => { /* local audio is optional */ });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setLocalAudioUrl("");
+    };
+  }, [bundle]);
   const [readingPath, setReadingPath] = useState({threadId: null, nodeIds: []});
   const sourceSeekHandled = useCallback(() => setSourceSeek(null), []);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
@@ -820,7 +846,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const namesStayInView = privateMode || ephemeral || Boolean(publicId);
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
   const renderSourcePanel = (node) => sourceTextSelection || !selectYouTubeRef(bundle)
-    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
+    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} audioUrl={localAudioUrl} playheadSeconds={playheadSeconds} followPlayhead={followPlayhead} onToggleFollowPlayhead={() => setFollowPlayhead((v) => !v)} onPlayheadTimeUpdate={setPlayheadSeconds} audioSeekRequest={audioSeekRequest} />
     : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} recordTimings={!privateMode} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["landscape", "graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
@@ -885,7 +911,12 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
             epistemicProviderLabel={epistemicProviderLabel}
             onVerifyClaim={epistemicRoutes.length ? handleVerifyClaim : undefined}
             verifyingClaimId={verifyingClaimId}
+            playheadSeconds={playheadSeconds}
             onOpenVisit={({ utteranceId, seconds }) => {
+              if (localAudioUrl && Number.isFinite(seconds) && seconds >= 0) {
+                setAudioSeekRequest({ seconds, key: Date.now() });
+                setPlayheadSeconds(seconds);
+              }
               if (utteranceId) openSourcePassage({ id: utteranceId, seconds });
               else if (validMediaSeconds(seconds) && selectYouTubeRef(bundle)) seekSourcePassage(seconds);
               else setSourceOpen(true);

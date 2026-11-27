@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
 import { importWait } from '../services/cloud/audioImportFile.js';
 import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
-import { M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
+import { DEFAULT_M5_TAILNET_URL, M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
 import { readEdgeConfig } from '../components/audio/edgeConfig.js';
 import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
@@ -13,6 +13,7 @@ import { readLocalConversation } from '../services/cloud/localConversationStore.
 import { useConversationArchive } from './useConversationArchive.js';
 import { useCloudTask } from './useCloudTask.js';
 const empty = () => ({ finalText: '', partialText: '', finalTokens: [], partialTokens: [] });
+const BUSY_STAGES = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'];
 
 export function useAudioImport() {
   const archive = useConversationArchive(), location = useLocation(), navigate = useNavigate();
@@ -30,7 +31,7 @@ export function useAudioImport() {
   const claimLiveMap = useCallback(() => { liveMapClaimed.current = true; }, []);
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
-  const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
+  const busy = BUSY_STAGES.includes(activity?.stage);
   const edgeConfig = readEdgeConfig(location.search);
   const configuredSpeech = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
     ? runtime.keys.soniox ? capability?.personal_enabled : capability?.enabled
@@ -131,7 +132,10 @@ export function useAudioImport() {
         const session = provider === 'm5_tailnet'
           ? new M5TailnetFileSession({
               ...callbacks,
-              url: runtime?.preferences?.m5TailnetUrl || edgeConfig.url,
+              // The address comes from Settings or the built-in default only. A link's ?edge_url= is
+              // deliberately ignored here: any Tailscale user can publish an https://*.ts.net host, so a
+              // crafted link could otherwise send this audio and the saved token somewhere else.
+              url: runtime?.preferences?.m5TailnetUrl || DEFAULT_M5_TAILNET_URL,
               token: key || edgeConfig.token,
               diarize: true,
             })
@@ -173,7 +177,14 @@ export function useAudioImport() {
       setActivity({ stage: 'complete', message: response.data ? 'Audio, transcript and threads are ready.' : 'Audio and transcript are ready.' });
     } catch (failure) {
       mapStop.current?.abort();
-      if (valid() && failure.name !== 'AbortError') setError(failure.message);
+      if (valid()) {
+        const stoppedByUser = failure.name === 'AbortError';
+        if (!stoppedByUser) setError(failure.message);
+        // A provider that fails without reporting a final stage must not leave the page waiting forever.
+        setActivity(current => BUSY_STAGES.includes(current?.stage)
+          ? { stage: stoppedByUser ? 'cancelled' : 'error', message: stoppedByUser ? 'Import stopped. Your original audio is preserved.' : failure.message, startedAt: Date.now() }
+          : current);
+      }
     } finally { running.current = false; }
   }
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }

@@ -5,6 +5,7 @@ import SourceSpeakerEditor from "./SourceSpeakerEditor";
 import { validYouTubeRef } from "../../services/youtubeMedia";
 import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../../services/mediaSeek";
 import { buildSpeakerDisplayNames, speakerDisplayName, transcriptSpeakerLabels } from "../../services/speakerDisplay";
+import { activeUtteranceAtTime } from "./playheadSyncModel";
 
 function tierSummary(bundle) {
   const nodes = Array.isArray(bundle?.graph_data) ? bundle.graph_data : [];
@@ -16,9 +17,24 @@ function tierSummary(bundle) {
   return labels.filter(([lvl]) => counts[lvl] > 0).map(([lvl, label]) => `${counts[lvl]} ${label}`).join(" · ");
 }
 
-export default function TextSourcePanel({ bundle, selection = null, compact = false, onClose, onRenameSpeaker, namesStayInView = false, sectionMode, onSectionChange }) {
+export default function TextSourcePanel({
+  bundle,
+  selection = null,
+  compact = false,
+  onClose,
+  onRenameSpeaker,
+  namesStayInView = false,
+  sectionMode,
+  onSectionChange,
+  audioUrl = "",
+  playheadSeconds = null,
+  followPlayhead = true,
+  onToggleFollowPlayhead,
+  onPlayheadTimeUpdate,
+  audioSeekRequest = null,
+}) {
   const transcript = typeof bundle.full_transcript === "string" ? bundle.full_transcript : "";
-  const utterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
+  const utterances = useMemo(() => (Array.isArray(bundle.utterances) ? bundle.utterances : []), [bundle.utterances]);
   const referenceNotes = bundle.meeting_metadata?.reference_notes || null;
   const hasGeminiNotes = Boolean(referenceNotes && (referenceNotes.summary || referenceNotes.quick_notes || referenceNotes.next_steps));
   const driveMediaRef = useMemo(() => {
@@ -32,6 +48,21 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
   const mode = !transcript && localMode !== "gemini" ? "utterances" : sectionMode || localMode;
   const setMode = (next) => { if (onSectionChange) onSectionChange(next); else setLocalMode(next); };
   const selectedRef = useRef(null);
+  const playheadRef = useRef(null);
+  const audioRef = useRef(null);
+  const activePlayheadUtterance = useMemo(
+    () => activeUtteranceAtTime(utterances, playheadSeconds),
+    [utterances, playheadSeconds],
+  );
+  useEffect(() => {
+    if (!audioSeekRequest || !Number.isFinite(audioSeekRequest.seconds) || !audioRef.current) return;
+    try { audioRef.current.currentTime = Math.max(0, audioSeekRequest.seconds); } catch { /* ignore unready media */ }
+  }, [audioSeekRequest]);
+  useEffect(() => {
+    if (followPlayhead && activePlayheadUtterance?.id != null) {
+      playheadRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+  }, [followPlayhead, activePlayheadUtterance?.id]);
   useEffect(() => {
     if (sectionMode) return;
     if (selection?.kind === "utterance") setLocalMode("utterances");
@@ -73,6 +104,32 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
       <button type="button" onClick={onClose} aria-label="Close source" title="Close source" className="inline-flex size-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-slate-700"><X size={16} aria-hidden="true" /></button>
     </div>
     {unsupportedRecording && <p role="status" className="mb-2 shrink-0 text-amber-800">YouTube source unavailable. The recording link or timing information could not be verified. You can still read the transcript below.</p>}
+    {audioUrl && (
+      <div className="mb-2 shrink-0 space-y-1.5 rounded-lg border border-slate-200 bg-stone-50 p-2">
+        <audio
+          ref={audioRef}
+          controls
+          src={audioUrl}
+          aria-label="Recorded conversation audio"
+          className="h-9 w-full"
+          onTimeUpdate={(e) => onPlayheadTimeUpdate?.(e.currentTarget.currentTime)}
+          onSeeked={(e) => onPlayheadTimeUpdate?.(e.currentTarget.currentTime)}
+        />
+        {onToggleFollowPlayhead && (
+          <div className="flex items-center justify-between text-[11px] text-slate-600">
+            <button
+              type="button"
+              aria-pressed={followPlayhead}
+              onClick={onToggleFollowPlayhead}
+              className={`rounded-full px-2 py-0.5 font-medium transition-colors ${followPlayhead ? "bg-emerald-100 text-emerald-900" : "bg-slate-200/70 text-slate-600"}`}
+            >
+              {followPlayhead ? "Following playback" : "Follow playback"}
+            </button>
+            {Number.isFinite(playheadSeconds) && <span className="font-mono tabular-nums text-slate-400">{mediaOffsetLabel(playheadSeconds) || "0:00"}</span>}
+          </div>
+        )}
+      </div>
+    )}
     {((transcript && utterances.length > 0) || hasGeminiNotes) && <div role="group" aria-label="Text source section" className="mb-2 flex flex-wrap gap-1.5">
       {transcript && <button type="button" aria-pressed={mode === "transcript"} onClick={() => setMode("transcript")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Full transcript</button>}
       {utterances.length > 0 && <button type="button" aria-pressed={mode === "utterances"} onClick={() => setMode("utterances")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Passages</button>}
@@ -83,9 +140,10 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
       {mode === "transcript" && transcript && <pre className="whitespace-pre-wrap break-words font-sans">{renderedTranscript}</pre>}
       {mode === "utterances" && utterances.map((row) => {
         const selected = selection?.kind === "utterance" && String(row.id) === String(selection.utteranceId);
+        const isPlaying = activePlayheadUtterance && String(row.id) === String(activePlayheadUtterance.id);
         const offset = mediaOffsetLabel(row.timestamp_start);
         const driveUrl = driveMediaRef ? buildMediaSeekUrl(driveMediaRef, row.timestamp_start) : null;
-        return <div key={row.id} ref={selected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} className={`mb-2 rounded border-l-2 p-2 ${selected ? "border-amber-500 bg-amber-50" : "border-transparent bg-white"}`}>
+        return <div key={row.id} ref={isPlaying ? playheadRef : selected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} data-playhead-active={isPlaying ? "true" : undefined} className={`mb-2 rounded border-l-2 p-2 transition-colors ${isPlaying ? "border-emerald-500 bg-emerald-50/80" : selected ? "border-amber-500 bg-amber-50" : "border-transparent bg-white"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium text-slate-700">{row.speaker_id ? speakerDisplayName(speakerNames, row.speaker_id) : row.speaker_name || row.speaker_display || "Source passage"}</span>
             {driveUrl && offset && (
@@ -129,4 +187,4 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
   </aside>;
 }
 
-TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances", "gemini"]), onSectionChange: PropTypes.func };
+TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances", "gemini"]), onSectionChange: PropTypes.func, audioUrl: PropTypes.string, playheadSeconds: PropTypes.number, followPlayhead: PropTypes.bool, onToggleFollowPlayhead: PropTypes.func, onPlayheadTimeUpdate: PropTypes.func, audioSeekRequest: PropTypes.object };

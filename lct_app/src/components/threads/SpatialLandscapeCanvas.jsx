@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import ConversationTimelineView from "./ConversationTimelineView";
+import { anyVisitCoversTime } from "./playheadSyncModel";
 import {
   breadcrumbTrailFor,
   buildSpatialLandscape,
@@ -306,6 +307,7 @@ export default function SpatialLandscapeCanvas({
   epistemicProviderLabel = "",
   onVerifyClaim,
   verifyingClaimId = null,
+  playheadSeconds = null,
   overflowMenu = null,
 }) {
   const landscape = useMemo(
@@ -606,6 +608,7 @@ export default function SpatialLandscapeCanvas({
           speakerDisplayNames={speakerDisplayNames}
           onOpenVisit={onOpenVisit}
           onAddReaction={onAddReaction}
+          playheadSeconds={playheadSeconds}
         />
       ) : (
       <>
@@ -630,6 +633,7 @@ export default function SpatialLandscapeCanvas({
               const children = landscape.childrenById.get(id) || [];
               const crossLinks = landscape.crossLinksById.get(id) || [];
               const isRevealed = hoveredId === id;
+              const isPlayingIsland = anyVisitCoversTime(visits, playheadSeconds);
               const lensFindings = matchingSet ? activeLensData.rolled.get(id) || [] : null;
               const isDimmed = Boolean(matchingSet && !matchingSet.has(id));
               const levelLabel = LEVEL_NAMES[Number(node?.semantic_level || node?.level)] || "";
@@ -640,18 +644,27 @@ export default function SpatialLandscapeCanvas({
                 <article
                   key={id}
                   data-landscape-node={id}
+                  data-playhead-active={isPlayingIsland ? "true" : undefined}
                   onMouseEnter={() => setHoveredId(id)}
                   onMouseLeave={() => setHoveredId((prev) => (prev === id ? null : prev))}
                   onFocus={() => setHoveredId(id)}
                   className={`group relative flex flex-col justify-between rounded-2xl p-6 transition-all duration-200 ${
                     isDimmed
                       ? "opacity-20 hover:opacity-50"
-                      : isRevealed
-                        ? "bg-white/90 shadow-[0_12px_40px_-18px_rgba(15,23,42,0.16)]"
-                        : "bg-transparent hover:bg-white/70"
+                      : isPlayingIsland
+                        ? "bg-white/95 ring-2 ring-emerald-500/45 shadow-[0_12px_40px_-18px_rgba(16,185,129,0.22)]"
+                        : isRevealed
+                          ? "bg-white/90 shadow-[0_12px_40px_-18px_rgba(15,23,42,0.16)]"
+                          : "bg-transparent hover:bg-white/70"
                   }`}
                 >
                   <div>
+                    {isPlayingIsland && (
+                      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Playing now
+                      </div>
+                    )}
                     {lensFindings?.length > 0 && (
                       <div className="mb-2 flex items-center justify-end text-[11px] font-medium text-amber-800">
                         <span>
@@ -816,5 +829,6 @@ SpatialLandscapeCanvas.propTypes = {
   epistemicProviderLabel: PropTypes.string,
   onVerifyClaim: PropTypes.func,
   verifyingClaimId: PropTypes.string,
+  playheadSeconds: PropTypes.number,
   overflowMenu: PropTypes.node,
 };

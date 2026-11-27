@@ -3320,3 +3320,13 @@ The local preview received an upstream HTTP 400 on the first window and stopped 
 - **What:** in the uncommitted Antigravity batch, `RecordingConversationMap.jsx` treats a configured personal key as consent (`consent = … || (hasPersonalRoute && status.enabled)`) and turns on "Update map while I speak" by itself. The checkbox still reads "I have permission to send these finalized words to …", and it now appears ticked without anyone ticking it. The site-key path is unchanged.
 - **Impact:** confirmed words go to the map provider every 25 s without that explicit step. The recording dialog still asks before capture starts. This was the owner's request ("why are the tangents not forming in real time"), so it is recorded for confirmation and for the next independent review, not reverted.
 - **Next step:** either keep it and reword the checkbox for personal keys, or move the permission into the recording dialog.
+
+## 2026-11-27 — Left open by the Gemini review of `eee89870..a054f2f2` (non-blocking)
+
+- **Text selection inside a draggable row.** The whole provider card is `draggable`, which in some browsers turns a mouse drag inside a text field into a drag of the card. Not checked in a browser. Options: make only the grip handle start a drag, or cancel a drag that begins on a control. `lct_app/src/components/settings/SitesProviderSettings.jsx`.
+- **No "use the next provider" during the M5 health check.** The button appears once transcription starts; the check itself can take eight seconds. `lct_app/src/services/cloud/m5TailnetFileSession.js`.
+- **Unreadable audio length keeps a three-minute M5 wait.** A long file whose length the browser cannot read would be cut off and fall back. Rare for MP3, WAV and M4A.
+- **`?edge_url=` is still honoured by the older edge speech path** (`lct_app/src/components/audio/edgeConfig.js`), which accepts any `https://*.ts.net` host and remembers it. The Sites import no longer uses it. Whether the older path should is a separate decision.
+- **The M5 live session** was in no completed review, and has changed since the packet was built.
+- **Stored costs are re-read on every confirmed word** in `SitesNewConversation.jsx` (`liveMapMetrics`). No wrong result; move it behind the map-run state.
+- **Privacy link placement.** The reviewer noted it is no longer one click from every page. The owner asked for it to live in Settings; recorded here in case that changes.

@@ -308,6 +308,7 @@ it('shows the provider’s refusal when a saved key fails its test, and drops th
   expect(failed.textContent).toContain('Round trip');
   expect(row.textContent).toContain('OpenRouter · Personal key saved');
   fetch.mockResolvedValueOnce(providerResponse('openrouter/model-a'));
+  await click(button('Edit OpenRouter key'));
   await saveKey('OpenRouter', 'synthetic-replacement-key');
   expect(row.textContent).not.toContain('HTTP 401');
 });
@@ -318,5 +319,80 @@ it('offers Test for a saved speech key but leaves the M5 endpoint to its own rea
   await mount();
   expect(button('Test Soniox key')).toBeTruthy();
   expect(button('Test M5 Tailnet STT key')).toBeUndefined();
+  // The key check knows nothing about the M5 server, so its form offers no "Test connection" either.
+  expect(button('Test connection')).toBeUndefined();
+  expect(button('Test endpoint')).toBeTruthy();
+});
+
+it('discards an unsaved key when its form is closed, and when the saved key is removed', async () => {
+  seedKey('anthropic');
+  await mount();
+  await click(button('Edit Anthropic key'));
+  const input = field('Anthropic API key');
+  await type(input, 'synthetic-unsaved-draft');
+  await click(button('Done editing Anthropic key'));
+  expect(input.value).toBe('');
+  await click(button('Edit Anthropic key'));
+  await type(input, 'synthetic-second-draft');
+  await click([...keyRow('Anthropic').querySelectorAll('button')].find(el => el.getAttribute('aria-label') === 'Remove key'));
+  expect(input.value).toBe('');
+  expect(container.innerHTML).not.toContain('synthetic-second-draft');
+});
+
+it('clears an earlier "Key saved" line when a test of that key fails, and blocks Test while models are refreshing', async () => {
+  fetch.mockResolvedValueOnce(providerResponse('claude-sonnet-5'));
+  await mount();
+  await click(button('Add Anthropic key'));
+  const row = await saveKey('Anthropic', 'synthetic-claude-key');
+  expect(row.textContent).toContain('Key saved in this browser.');
+  fetch.mockResolvedValueOnce(Response.json({ error: 'The provider’s model check returned HTTP 401.' }, { status: 502 }));
+  await click(button('Test Anthropic key'));
+  expect(row.textContent).toContain('HTTP 401');
+  expect(row.textContent).not.toContain('Key saved in this browser.');
+  let respond;
+  fetch.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+  await click([...row.querySelectorAll('button')].find(el => el.getAttribute('aria-label') === 'Refresh models'));
+  expect(button('Test Anthropic key').disabled).toBe(true);
+  await act(async () => respond(providerResponse('claude-sonnet-5')));
+  expect(button('Test Anthropic key').disabled).toBe(false);
+});
+
+it('reorders nothing when a drop did not begin as a drag in the same list', async () => {
+  await mount();
+  await click([...container.querySelectorAll('label')].find(el => el.textContent.includes('M5 Tailnet STT')).querySelector('input[type="checkbox"]'));
+  await click(button('+ Add model'));
+  await choose(providerSelect('Fallback 1'), 'anthropic');
+  const speechRows = [...container.querySelectorAll('#speech-to-text ol > li')];
+  const mapRows = [...container.querySelectorAll('#intelligence ol > li')];
+  expect(speechRows[1].draggable).toBe(true); expect(mapRows[1].draggable).toBe(true);
+  const order = () => [readProviderPreferences().speech, readProviderPreferences().mapChain.map(route => route.backend)];
+  const before = [['soniox', 'm5_tailnet'], ['openrouter', 'anthropic']];
+  expect(order()).toEqual(before);
+  const drop = text => Object.assign(new Event('drop', { bubbles: true, cancelable: true }), { dataTransfer: { getData: () => text } });
+  // Text or a file dropped on a field inside a row: there is no drag in progress, whatever the data says.
+  const stray = [drop(''), drop('0'), drop('0')];
+  await act(async () => { mapRows[1].dispatchEvent(stray[0]); mapRows[1].dispatchEvent(stray[1]); speechRows[1].dispatchEvent(stray[2]); });
+  expect(order()).toEqual(before);
+  // Left alone, so the field underneath still receives what was dropped on it.
+  expect(stray.map(event => event.defaultPrevented)).toEqual([false, false, false]);
+  // A speech row dragged over to the model list carries its own index; the model list must not act on it.
+  await act(async () => {
+    speechRows[1].dispatchEvent(new Event('dragstart', { bubbles: true }));
+    mapRows[0].dispatchEvent(drop('1'));
+    speechRows[1].dispatchEvent(new Event('dragend', { bubbles: true }));
+  });
+  expect(order()).toEqual(before);
+});
+
+it('drops an M5 endpoint test result when the address was edited while the test ran', async () => {
+  localStorage.setItem('lct.sites.provider-preferences.v1', JSON.stringify({ ...readProviderPreferences(), speech: ['soniox', 'm5_tailnet'] }));
+  let respond;
+  fetch.mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+  await mount();
+  await click(button('Test endpoint'));
+  expect(button('Testing…')).toBeTruthy();
+  await type(field('Tailnet endpoint'), 'https://other-node.tailnet.ts.net:5443/v1/audio/transcriptions');
+  await act(async () => respond(Response.json({ engine: 'fluidaudio-parakeet', status: 'healthy' })));
+  expect(container.textContent).not.toContain('Connected in');
   expect(button('Test endpoint')).toBeTruthy();
 });

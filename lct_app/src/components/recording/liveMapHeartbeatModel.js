@@ -24,8 +24,12 @@ export function liveMapHeartbeat(schedule, finalText = '', now = Date.now()) {
   const newChars = finalText.length - mappedChars;
   const newWords = countWords(finalText.slice(mappedChars));
   const pending = newWords ? ` · ${plural(newWords, 'new word')}` : '';
-  const mapAction = schedule.canMapNow && newChars > 0 ? 'map' : null;
+  // Offered only for new words: a tail of spaces or line breaks is nothing to send.
+  const mapAction = schedule.canMapNow && newWords > 0 ? 'map' : null;
   switch (schedule.state) {
+    case 'checking':
+      // Setup is still being checked; say nothing rather than guess.
+      return null;
     case 'mapping':
       return { label: 'Mapping…', busy: true, action: null };
     case 'scheduled': {
