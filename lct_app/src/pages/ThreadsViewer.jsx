@@ -1005,7 +1005,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   const nodeDetailsVisible = Boolean(selectedNodeData) && (!narrowViewer || !sourceOpen);
   return (
-    <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+    <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fbfaf7] font-sans">
       {sourceNotice}
       {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
         <ThreadsViewerHeader

@@ -145,3 +145,21 @@ it('bounds a stalled Soniox error body, caches unknown and permits the next wind
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(db.prepare('SELECT COUNT(*) AS n FROM lct_soniox_sessions').get().n).toBe(0);
 });
+
+// Critique 2026-11-25 issue 3: Home marks Meet "closed for now" from this public check.
+it('reports whether Meet is open from configuration alone, revealing neither its end time nor its owner', async () => {
+  const meetings = async (method = 'GET') => worker.fetch(new Request('https://fixture.example/api/cloud/health/meetings', { method }), env);
+  expect(await (await meetings()).json()).toMatchObject({ service: 'meetings', enabled: false, available: false });
+  const end = new Date(Date.now() + 3_600_000).toISOString();
+  Object.assign(env, { LCT_ATTENDEE_URL: 'https://recorder.fixture.ts.net/lct-meet', LCT_ATTENDEE_API_KEY: 'a'.repeat(64),
+    LCT_MEETINGS_OWNER: 'google:fixture-owner', LCT_MEETINGS_ENABLED: 'true', LCT_MEETINGS_TEST_END: end });
+  const open = await (await meetings()).json();
+  expect(Object.keys(open).sort()).toEqual(['available', 'checked_at', 'enabled', 'service']);
+  expect(open).toMatchObject({ enabled: true, available: true });
+  expect(JSON.stringify(open)).not.toContain('fixture-owner');
+  expect(JSON.stringify(open)).not.toContain(end.slice(0, 13));
+  env.LCT_MEETINGS_TEST_END = new Date(Date.now() - 1000).toISOString();
+  expect(await (await meetings()).json()).toMatchObject({ enabled: true, available: false });
+  expect((await meetings('POST')).status).toBe(405);
+  expect(fetch).not.toHaveBeenCalled();
+});
