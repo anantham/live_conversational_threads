@@ -1,7 +1,14 @@
 // Upstream SSE reader and incremental node scanner for real-time map generation progress.
 // Reassembles the exact non-streaming completion envelope so all existing validators run unchanged.
+import { OpenRouterError } from './openRouterPolicy.js';
 
-const MAX_STREAM_BYTES = 2 * 1024 * 1024;
+// The reply TEXT is bounded like a non-streamed completion body (2 MiB). SSE wraps every token in a
+// JSON envelope several times its size, so the wire bound is a looser backstop against a provider
+// that sends events without text; the generation deadline bounds time.
+const MAX_STREAM_TEXT_BYTES = 2 * 1024 * 1024;
+const MAX_STREAM_WIRE_BYTES = 16 * 1024 * 1024;
+const tooLarge = () => new OpenRouterError(502, 'body_limit', 'The generation body exceeds its size limit. No usable map was returned.');
+const aborted = () => new DOMException('Aborted', 'AbortError');
 const PROGRESS_INTERVAL_MS = 250;
 
 // Matches either key order inside compact or formatted JSON node objects as they stream in.
@@ -69,7 +76,9 @@ export async function readProviderStream(response, { anthropic, signal, onFirstT
 
   let buffer = '';
   let text = '';
-  let byteCount = 0;
+  let wireBytes = 0;
+  let textBytes = 0;
+  const utf8 = new TextEncoder();
   let stopReason = null;
   let finishReason = null;
   let inputTokens = null;
@@ -82,6 +91,12 @@ export async function readProviderStream(response, { anthropic, signal, onFirstT
   const stop = () => { void reader.cancel().catch(() => {}); };
   signal?.addEventListener('abort', stop, { once: true });
 
+  const appendText = (chunk) => {
+    textBytes += utf8.encode(chunk).byteLength;
+    if (textBytes > MAX_STREAM_TEXT_BYTES) throw tooLarge();
+    text += chunk;
+  };
+
   const handleDataLine = (rawData) => {
     const trimmed = rawData.trim();
     if (!trimmed || trimmed === '[DONE]') return;
@@ -93,7 +108,7 @@ export async function readProviderStream(response, { anthropic, signal, onFirstT
         if (typeof event.message.usage.input_tokens === 'number') inputTokens = event.message.usage.input_tokens;
       } else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && typeof event.delta.text === 'string') {
         if (!firstTokenSeen) { firstTokenSeen = true; onFirstToken?.(); }
-        text += event.delta.text;
+        appendText(event.delta.text);
         scanNodes(text);
         const now = Date.now();
         if (now - lastProgressAt >= PROGRESS_INTERVAL_MS) {
@@ -112,7 +127,7 @@ export async function readProviderStream(response, { anthropic, signal, onFirstT
     const chunk = choice?.delta?.content;
     if (typeof chunk === 'string' && chunk) {
       if (!firstTokenSeen) { firstTokenSeen = true; onFirstToken?.(); }
-      text += chunk;
+      appendText(chunk);
       scanNodes(text);
       const now = Date.now();
       if (now - lastProgressAt >= PROGRESS_INTERVAL_MS) {
@@ -131,11 +146,13 @@ export async function readProviderStream(response, { anthropic, signal, onFirstT
 
   try {
     while (true) {
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      if (signal?.aborted) throw aborted();
       const { value, done } = await reader.read();
+      // An abort cancels the reader, which ends the read as "done": that is a cancelled reply, not a short one.
+      if (signal?.aborted) throw aborted();
       if (done) break;
-      byteCount += value.byteLength;
-      if (byteCount > MAX_STREAM_BYTES) throw new Error('Provider stream exceeded the bounded output size.');
+      wireBytes += value.byteLength;
+      if (wireBytes > MAX_STREAM_WIRE_BYTES) throw tooLarge();
       buffer += decoder.decode(value, { stream: true });
       let newlineIdx;
       while ((newlineIdx = buffer.indexOf('\n')) !== -1) {

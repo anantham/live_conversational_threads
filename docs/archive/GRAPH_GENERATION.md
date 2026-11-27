@@ -956,11 +956,11 @@ async def test_generate_graph_without_llm():
 
 ## References
 
-- [Week 4 Roadmap](../docs/ROADMAP.md#week-4-initial-graph-generation)
-- [Database Schema](DATABASE_MIGRATIONS.md)
-- [Prompts Configuration](prompts.json)
+- [Week 4 Roadmap](ROADMAP.md#week-4-initial-graph-generation)
+- [Database Schema](../../lct_python_backend/DATABASE_MIGRATIONS.md)
+- [Prompts Configuration](../../lct_python_backend/prompts.json)
 - [Service Source Code](services/graph_generation.py)
-- [API Endpoints](graph_api.py)
+- [API Endpoints](../../lct_python_backend/graph_api.py)
 - [Test Suite](tests/test_graph_generation.py)
 
 ---

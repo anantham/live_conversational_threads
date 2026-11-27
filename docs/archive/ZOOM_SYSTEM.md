@@ -744,7 +744,7 @@ function autoZoom() {
 
 ## References
 
-- [Week 6 Roadmap](../docs/ROADMAP.md#week-6-5-level-zoom-system)
+- [Week 6 Roadmap](ROADMAP.md#week-6-5-level-zoom-system)
 - [Week 5 Dual-View Architecture](DUAL_VIEW_ARCHITECTURE.md)
 - [useZoomController Source](src/hooks/useZoomController.js)
 - [ZoomControls Source](src/components/ZoomControls/)

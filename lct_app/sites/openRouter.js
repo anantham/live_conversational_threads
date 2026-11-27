@@ -18,7 +18,7 @@ const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_
   'choice_refusal', 'choice_tools_empty', 'choice_tools_present', 'choice_content', 'content_size', 'content_json',
   'required_shape', 'graph_shape', 'metadata', 'node_shape', 'node_evidence', 'node_excerpt', 'node_speaker',
   'node_provenance', 'memberships', 'hierarchy', 'edges', 'threads', 'bundle_validation', 'bundle_json', 'bundle_size']);
-const EDGE_RULES = new Set(['edge_malformed', 'edge_kind', 'edge_duplicate_id', 'edge_self_reference', 'edge_unknown_endpoint', 'edge_contract']);
+const EDGE_RULES = new Set(['edge_malformed', 'edge_kind', 'edge_duplicate_id', 'edge_self_reference', 'edge_unknown_endpoint', 'edge_field', 'edge_contract']);
 const HIERARCHY_RULES = new Set(['parent_missing', 'parent_level', 'parent_backlink', 'primary_mismatch',
   'membership_missing', 'membership_level', 'membership_backlink', 'secondary_duplicate',
   'child_missing', 'child_level', 'child_backlink', 'cycle', 'typed_reference']);
@@ -183,16 +183,17 @@ export function invalidCompletionDetails(error, { anthropic, completion, respons
     // OpenRouter and Gemini report truncation as finish_reason "length": the same cut-off, so the
     // browser can split the window exactly as it does for Claude.
     const finish = completion?.choices?.[0]?.finish_reason;
+    const { outputTokens } = usageOf(completion, false);
     return { ...details, ...(finish === 'length' ? { stop_reason: 'max_tokens' } : {}),
-      ...(Number.isSafeInteger(completion?.usage?.completion_tokens) ? { output_tokens: completion.usage.completion_tokens } : {}),
+      ...(outputTokens != null ? { output_tokens: outputTokens } : {}),
       ...(Number.isSafeInteger(maxTokens) ? { max_output_tokens: maxTokens } : {}) };
   }
   const stopReason = completion?.stop_reason;
-  const outputTokens = completion?.usage?.output_tokens;
+  const { outputTokens } = usageOf(completion, true);
   const requestId = anthropicRequestId(response);
   return { ...details,
     ...(ANTHROPIC_STOP_REASONS.has(stopReason) ? { stop_reason: stopReason } : {}),
-    ...(Number.isSafeInteger(outputTokens) && outputTokens >= 0 ? { output_tokens: outputTokens } : {}),
+    ...(outputTokens != null ? { output_tokens: outputTokens } : {}),
     ...(Number.isSafeInteger(maxTokens) ? { max_output_tokens: maxTokens } : {}),
     ...(requestId ? { upstream_request_id: requestId } : {}) };
 }
@@ -298,17 +299,13 @@ async function generate(request, env, defaultPolicy, diagnostic = false) {
   }
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', `${admissionUnavailableMessage(policy)} Wait before retrying.`);
 
+// The browser-facing usage of an accepted reply: the same token counts as usageOf, plus total and cost.
 function extractResponseUsage(completion, anthropic) {
   const raw = completion?.usage;
   if (!raw || typeof raw !== 'object') return null;
-  const input = Number(anthropic ? raw.input_tokens : raw.prompt_tokens);
-  const output = Number(anthropic ? raw.output_tokens : raw.completion_tokens);
-  const inputTokens = Number.isFinite(input) && input >= 0 ? Math.round(input) : 0;
-  const outputTokens = Number.isFinite(output) && output >= 0 ? Math.round(output) : 0;
-  const totalRaw = Number(raw.total_tokens);
-  const totalTokens = Number.isFinite(totalRaw) && totalRaw >= 0 ? Math.round(totalRaw) : inputTokens + outputTokens;
-  const costRaw = Number(raw.cost);
-  const costUsd = Number.isFinite(costRaw) && costRaw >= 0 ? costRaw : null;
+  const { inputTokens = 0, outputTokens = 0 } = usageOf(completion, anthropic);
+  const totalTokens = Number.isSafeInteger(raw.total_tokens) && raw.total_tokens >= 0 ? raw.total_tokens : inputTokens + outputTokens;
+  const costUsd = Number.isFinite(raw.cost) && raw.cost >= 0 ? raw.cost : null;
   if (!inputTokens && !outputTokens && !totalTokens && costUsd == null) return null;
   return { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, ...(costUsd == null ? {} : { cost_usd: costUsd }) };
 }
@@ -328,7 +325,8 @@ function extractResponseUsage(completion, anthropic) {
       const authentication = anthropic ? anthropicHeaders(policy.key) : { Authorization: `Bearer ${policy.key}` };
       const callStarted = Date.now();
       const call = { backend: policy.backend, model: body.model, maxTokens, task: context?.task ?? 'map' };
-      // The model is named only on the owner's personal-key routes; server-configured routes keep it private.
+      // The stored attempt record names the model only on the owner's personal-key routes. This is not a
+      // secret: the browser is still told the model at consent, in stream stage events and in the result.
       const attempt = { backend: policy.backend, ...(policy.personal ? { model: body.model } : {}), task: call.task,
         max_output_tokens: maxTokens, started: callStarted, outcome: 'in_flight' };
       attempts.push(attempt);
@@ -367,15 +365,26 @@ function extractResponseUsage(completion, anthropic) {
         throw lastRefusal;
       }
       const isEventStream = stream && response.headers.get('content-type')?.toLowerCase().includes('text/event-stream');
-      const completion = isEventStream
-        ? await readProviderStream(response, {
-            anthropic,
-            signal,
-            onFirstToken: () => emit?.('stage', { stage: 'connected', provider: policy.label, backend: policy.backend, model: body.model, ttftMs: Date.now() - callStarted }),
-            onDelta: ({ chars, approxTokens }) => emit?.('token_progress', { provider: policy.label, backend: policy.backend, model: body.model, chars, approxTokens, elapsedMs: Date.now() - callStarted }),
-            onNodeDiscovered: node => emit?.('node_discovered', node),
-          })
-        : await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
+      let completion;
+      try {
+        completion = isEventStream
+          ? await readProviderStream(response, {
+              anthropic,
+              signal,
+              onFirstToken: () => emit?.('stage', { stage: 'connected', provider: policy.label, backend: policy.backend, model: body.model, ttftMs: Date.now() - callStarted }),
+              onDelta: ({ chars, approxTokens }) => emit?.('token_progress', { provider: policy.label, backend: policy.backend, model: body.model, chars, approxTokens, elapsedMs: Date.now() - callStarted }),
+              onNodeDiscovered: node => emit?.('node_discovered', node),
+            })
+          : await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
+      } catch (error) {
+        // Cancellation, deadlines and bounded-body refusals keep their own meaning.
+        if (signal.aborted || error instanceof OpenRouterError) throw error;
+        // The provider answered and then the reply broke off: it was reached, so do not call it unreachable.
+        settle(attempt, { outcome: 'stream_interrupted', error_name: safeName(error?.name), error_cause: safeName(error?.cause?.code) });
+        logProviderCall(env, { ...call, outcome: 'stream_interrupted', durationMs: Date.now() - callStarted });
+        throw new OpenRouterError(502, 'provider_stream_interrupted',
+          `${policy.label} stopped sending its reply partway through (${safeName(error?.name) || 'error'}${error?.cause?.code ? ' ' + safeName(error.cause.code) : ''}). The attempt remains counted; no map was saved.`);
+      }
       emit?.('stage', { stage: 'validating', provider: policy.label, backend: policy.backend, model: body.model, elapsedMs: Date.now() - callStarted });
       try {
         const readCompletion = anthropic ? recordingThreadsFromAnthropicResponse : recordingThreadsFromOpenRouterResponse;
@@ -429,9 +438,9 @@ function extractResponseUsage(completion, anthropic) {
     throw lastRefusal || new OpenRouterError(502, 'provider_refused', 'No configured provider could finish generation. The attempt remains counted.');
   }
 
-  async function runWiresWithAttempts({ stream = false, emit = null }) {
+  async function runWiresWithAttempts({ stream = false, emit = null, signal: callerSignal = request.signal }) {
     try {
-      return await openRouterWait(request.signal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream, emit }));
+      return await openRouterWait(callerSignal, MAP_PROVIDER_WINDOW_MS, signal => executeWires({ signal, stream, emit }));
     } catch (error) {
       const pending = attempts.find(a => a.outcome === 'in_flight');
       if (pending) settle(pending, { outcome: error?.code === 'timeout' ? 'timeout' : error instanceof OpenRouterError ? error.code : 'network_error',
@@ -445,8 +454,8 @@ function extractResponseUsage(completion, anthropic) {
     }
   }
 
-  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, epistemic, factCheck, usage }) {
-    if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
+  async function finalizeResult({ artifact, backend, model, repair, minimalId, mapId, boundaryNotes, stubTopicIds, glossary, audit, epistemic, factCheck, usage }, signal = request.signal) {
+    if (signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
     const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
     if (!acknowledged) throw new OpenRouterError(503, 'completion_unknown', 'Completion could not be acknowledged. The attempt remains counted; no map was saved.');
     if (diagnostic) return { diagnostic: 'passed', model, minimal_request_id: minimalId, map_request_id: mapId };
@@ -476,6 +485,11 @@ function extractResponseUsage(completion, anthropic) {
   const wantsStream = ordered && !diagnostic && request.headers.get('accept')?.includes('text/event-stream');
   if (wantsStream) {
     const encoder = new TextEncoder();
+    // Aborts the provider call when the request aborts OR the browser cancels this stream.
+    const disconnect = new AbortController();
+    const abortCall = () => disconnect.abort();
+    request.signal.addEventListener('abort', abortCall, { once: true });
+    if (request.signal.aborted) abortCall();
     const streamBody = new ReadableStream({
       async start(controller) {
         const send = (event, data) => {
@@ -483,8 +497,8 @@ function extractResponseUsage(completion, anthropic) {
         };
         send('stage', { stage: 'admitted', task: context?.task ?? 'map', model: wires[0]?.body?.model, provider: wires[0]?.policy?.label, maxTokens });
         try {
-          const outcome = await runWiresWithAttempts({ stream: true, emit: send });
-          const body = await finalizeResult(outcome);
+          const outcome = await runWiresWithAttempts({ stream: true, emit: send, signal: disconnect.signal });
+          const body = await finalizeResult(outcome, disconnect.signal);
           send('complete', body);
         } catch (error) {
           if (error instanceof OpenRouterError) {
@@ -495,9 +509,11 @@ function extractResponseUsage(completion, anthropic) {
             send('error', { status: 503, code: 'generation_failed', error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved.' });
           }
         } finally {
+          request.signal.removeEventListener('abort', abortCall);
           try { controller.close(); } catch { /* Already closed. */ }
         }
       },
+      cancel() { abortCall(); },
     });
     return new Response(streamBody, {
       status: 200,

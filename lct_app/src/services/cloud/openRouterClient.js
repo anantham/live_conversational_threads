@@ -14,6 +14,7 @@ const generationFailures = {
   invalid_completion: 'The AI provider returned an incomplete or invalid map. Your audio and transcript are preserved; the attempt remains counted.',
   no_model_route: 'No approved AI model currently has a route through the selected provider. Your audio and transcript are preserved; the attempt remains counted.',
   provider_unreachable: 'The AI provider could not be reached. Your audio and transcript are preserved; the attempt remains counted.',
+  provider_stream_interrupted: 'The AI provider stopped sending its reply partway through. Your audio and transcript are preserved; the attempt remains counted.',
 };
 const messages = {
   401: 'Sign in for the current generation test. Public browsing and local downloads remain available.',
@@ -123,7 +124,7 @@ function failure(status, payload) {
   const failedAttempt = publicAttempts(payload.attempts).at(-1);
   const detail = code === 'provider_refused' ? refusalDetail(payload.upstream_status)
     : code === 'invalid_completion' ? invalidCompletionDetail(payload)
-      : code === 'provider_unreachable' && failedAttempt?.error_name ? ` (${failedAttempt.error_name}${failedAttempt.error_cause ? ' ' + failedAttempt.error_cause : ''}).` : '';
+      : ['provider_unreachable', 'provider_stream_interrupted'].includes(code) && failedAttempt?.error_name ? ` (${failedAttempt.error_name}${failedAttempt.error_cause ? ' ' + failedAttempt.error_cause : ''}).` : '';
   const error = new Error(code ? generationFailures[code] + detail + providerDiagnosticDetail(payload) : messages[status] || uncertain);
   error.status = status;
   if (code) error.code = code;
@@ -221,6 +222,10 @@ export async function getOrderedMapStatus(signal, routes) {
   return { enabled: Boolean(ready.length), available: Boolean(ready.length && value.available), audience: value.audience, models };
 }
 
+// Bounds one SSE event (in UTF-16 units, about its byte size for JSON) like a JSON reply body: the
+// final event carries the whole result, the progress events are small.
+const MAX_EVENT_CHARS = 2 * 1024 * 1024 + 1024;
+
 async function readClientEventStream(response, signal, onEvent) {
   if (!response.body) throw unreadable();
   const reader = response.body.getReader();
@@ -243,11 +248,20 @@ async function readClientEventStream(response, signal, onEvent) {
   try {
     while (true) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      const { value, done } = await reader.read();
+      let part;
+      try { part = await reader.read(); } catch {
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+        throw Object.assign(new Error(`The connection to the generation service dropped while the reply was streaming. ${uncertain}`), { code: 'stream_interrupted' });
+      }
+      // An abort cancels the reader, which ends the read as "done": that is a cancellation, not a short reply.
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const { value, done } = part;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > MAX_EVENT_CHARS && buffer.indexOf('\n\n') === -1) throw unreadable();
       let idx;
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
+        if (idx > MAX_EVENT_CHARS) throw unreadable();
         const block = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
         let ev = currentEvent;
@@ -296,7 +310,7 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
     const cov = result.bundle.coverage;
     const coveragePct = cov?.total_turns ? Math.round((cov.covered_turns / cov.total_turns) * 100) : null;
     recordSitesCostEntry({
-      provider: payload.backend, model: payload.model, usage: payload.usage, kind: context.task || 'map',
+      provider: payload.backend, model: payload.model, usage: payload.usage, attempts: publicAttempts(payload.attempts), kind: context.task || 'map',
       requestId: payload.request_id, ttftMs, durationMs: Date.now() - startedAt, outcome: 'ok',
       nodes: result.bundle.graph_data?.length ?? null, coveragePct,
     });
@@ -305,15 +319,29 @@ export async function generateOrderedRecordingMap(source, signal, routes, guidan
       ...(notes ? { boundaryNotes: notes, stubTopicIds: Array.isArray(payload.stub_topic_ids) ? payload.stub_topic_ids : [] } : {}),
       ...(Array.isArray(payload.glossary) ? { glossary: payload.glossary } : {}), attempts: publicAttempts(payload.attempts) };
   } catch (err) {
-    if (err?.name !== 'AbortError') {
-      const first = routes[0];
-      recordSitesCostEntry({
-        provider: first?.backend || 'unknown', model: first?.model || 'site-default', kind: context.task || 'map',
-        ttftMs, durationMs: Date.now() - startedAt, outcome: 'error', errorCode: err?.code || String(err?.status || 'failed'),
-      });
-    }
+    recordFailedCall(err, routes, context.task || 'map', startedAt, ttftMs);
     throw err;
   }
+}
+
+/** A failed call still bills every attempt that reached a model; aborts are cancellations, not failures. */
+function recordFailedCall(err, routes, kind, startedAt, ttftMs = null) {
+  if (err?.name === 'AbortError') return;
+  const first = routes[0];
+  recordSitesCostEntry({
+    provider: first?.backend || 'unknown', model: first?.model || 'site-default', kind, attempts: err?.attempts,
+    ttftMs, durationMs: Date.now() - startedAt, outcome: 'error', errorCode: err?.code || String(err?.status || 'failed'),
+  });
+}
+
+/** One non-streamed task request on the ordered map route; a non-OK reply throws the Worker's failure. */
+async function postTask(body, signal, limit) {
+  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
+    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
+    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
+  const payload = await readJSON(response, signal, limit);
+  if (!response.ok) throw failure(response.status, payload);
+  return payload;
 }
 
 /**
@@ -324,13 +352,14 @@ export async function auditRecordingMap(source, signal, route, nodes) {
   createRecordingTranscript(source);
   const body = JSON.stringify({ source, routes: [route], task: 'audit', nodes });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This audit request is too large. Audit fewer spans.');
-  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
-    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
-  const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
-  if (!response.ok) throw failure(response.status, payload);
-  if (payload.task !== 'audit' || !Array.isArray(payload.findings) || payload.backend !== route.backend) throw unreadable();
-  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'audit', requestId: payload.request_id });
+  const startedAt = Date.now();
+  let payload;
+  try {
+    payload = await postTask(body, signal, 2 * 1024 * 1024 + 1024);
+    if (payload.task !== 'audit' || !Array.isArray(payload.findings) || payload.backend !== route.backend) throw unreadable();
+  } catch (err) { recordFailedCall(err, [route], 'audit', startedAt); throw err; }
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, attempts: publicAttempts(payload.attempts),
+    kind: 'audit', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
   return { findings: payload.findings, backend: payload.backend, model: payload.model,
     ...(payload.usage ? { usage: payload.usage } : {}),
     droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0,
@@ -346,13 +375,13 @@ export async function extractEpistemicMap(source, signal, routes, nodes) {
   const body = JSON.stringify({ source, routes, task: 'epistemic', nodes });
   if (new TextEncoder().encode(body).byteLength > 512 * 1024) throw new Error('This epistemic analysis request is too large.');
   const startedAt = Date.now();
-  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
-    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
-  const payload = await readJSON(response, signal, 2 * 1024 * 1024 + 1024);
-  if (!response.ok) throw failure(response.status, payload);
-  if (payload.task !== 'epistemic' || !payload.epistemic || !routes.some(route => route.backend === payload.backend)) throw unreadable();
-  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'epistemic', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
+  let payload;
+  try {
+    payload = await postTask(body, signal, 2 * 1024 * 1024 + 1024);
+    if (payload.task !== 'epistemic' || !payload.epistemic || !routes.some(route => route.backend === payload.backend)) throw unreadable();
+  } catch (err) { recordFailedCall(err, routes, 'epistemic', startedAt); throw err; }
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, attempts: publicAttempts(payload.attempts),
+    kind: 'epistemic', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
   return { epistemic: payload.epistemic, backend: payload.backend, model: payload.model,
     ...(payload.usage ? { usage: payload.usage } : {}),
     droppedRanges: payload.dropped_ranges || 0, unknownNodes: payload.unknown_nodes || 0, malformed: payload.malformed || 0,
@@ -368,13 +397,13 @@ export async function verifyFactualClaim(claim, signal, routes) {
   const placeholderSource = { recordingId: 'claim-check', startedAt: Date.now(), complete: true, finalTokens: [{ text: 'claim', speaker: 's' }] };
   const body = JSON.stringify({ source: placeholderSource, routes, task: 'fact_check', claim });
   const startedAt = Date.now();
-  const response = await fetch('/api/cloud/map/generate', { method: 'POST',
-    credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
-    headers: { 'Content-Type': 'application/json', 'X-LCT-Map-Consent': 'generate-v1' }, body });
-  const payload = await readJSON(response, signal, 256 * 1024);
-  if (!response.ok) throw failure(response.status, payload);
-  if (payload.task !== 'fact_check' || !payload.fact_check || !routes.some(route => route.backend === payload.backend)) throw unreadable();
-  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, kind: 'fact_check', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
+  let payload;
+  try {
+    payload = await postTask(body, signal, 256 * 1024);
+    if (payload.task !== 'fact_check' || !payload.fact_check || !routes.some(route => route.backend === payload.backend)) throw unreadable();
+  } catch (err) { recordFailedCall(err, routes, 'fact_check', startedAt); throw err; }
+  recordSitesCostEntry({ provider: payload.backend, model: payload.model, usage: payload.usage, attempts: publicAttempts(payload.attempts),
+    kind: 'fact_check', requestId: payload.request_id, durationMs: Date.now() - startedAt, outcome: 'ok' });
   return { factCheck: payload.fact_check, backend: payload.backend, model: payload.model,
     ...(payload.usage ? { usage: payload.usage } : {}),
     attempts: publicAttempts(payload.attempts) };

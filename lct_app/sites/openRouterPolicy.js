@@ -1,16 +1,16 @@
 import { createRecordingTranscript } from '../src/services/cloud/recordingTranscript.js';
 import { validPersonalKey } from '../src/services/cloud/sitesProviderPreferences.js';
-import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
+import { STALE_ATTEMPT_MS } from '../src/services/cloud/generationDeadlines.js';
 
 export class OpenRouterError extends Error {
   // details: extra public fields for the JSON body (status codes only, never provider text).
   constructor(status, code, message, details = undefined) { super(message); this.status = status; this.code = code; this.details = details; }
 }
 
-// An attempt older than this cannot still be running in a Worker: its input and provider windows
-// have both closed, plus a margin. It keeps counting toward the attempt cap, but it no longer holds
-// one of the concurrent slots, so a failed attempt cannot lock generation until a manual recovery.
-export const STALE_ATTEMPT_MS = MAP_INPUT_WINDOW_MS + MAP_PROVIDER_WINDOW_MS + 180_000;
+// An attempt older than STALE_ATTEMPT_MS (shared with the browser's admission retries) cannot still be
+// running in a Worker. It keeps counting toward the attempt cap, but it no longer holds one of the
+// concurrent slots, so a failed attempt cannot lock generation until a manual recovery.
+export { STALE_ATTEMPT_MS };
 
 // countSince: attempts created after it count toward maxRequests (0 = lifetime).
 // liveSince: unfinished attempts created after it still hold a concurrent slot.

@@ -33,8 +33,11 @@ describe('PublishLinkPanel', () => {
     const publish = vi.fn(() => new Promise(resolve => { release = resolve; }));
     act(() => root.render(<PublishLinkPanel bundle={bundle} publish={publish} />));
     act(() => labelWith('I have permission').querySelector('input').click());
-    await act(async () => { buttonNamed('Publish & copy link').click(); buttonNamed('Publishing…')?.click(); });
+    // Both clicks land on the same element before React re-renders, so only the in-flight guard can stop the second.
+    const publishButton = buttonNamed('Publish & copy link');
+    await act(async () => { publishButton.click(); publishButton.click(); });
     expect(publish).toHaveBeenCalledTimes(1);
+    expect(buttonNamed('Publishing…').disabled).toBe(true);
     await act(async () => { release({ url: 'https://site.example/public/one', capability: { id: 'one', key: 'k' } }); });
     act(() => buttonNamed('Publish the current map as a new link').click());
     act(() => root.render(<PublishLinkPanel bundle={{ ...bundle, conversation_title: 'Changed' }} publish={publish} />));

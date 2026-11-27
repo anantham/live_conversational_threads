@@ -79,3 +79,14 @@ it('renders Sites usage, latency, first-token, and reliability stats without cal
   await act(async () => clearBtn.click());
   expect(container.textContent).toContain('No generation calls recorded');
 });
+
+// Review finding: only some providers report a cost, so the headline must say what it covers.
+it('says how many calls the provider-reported cost covers instead of implying a total', async () => {
+  recordSitesCostEntry({ provider: 'openrouter', model: 'fixture/model', usage: { input_tokens: 10, output_tokens: 5, cost_usd: 0.25 } });
+  recordSitesCostEntry({ provider: 'anthropic', model: 'claude-fixture', usage: { input_tokens: 10, output_tokens: 5 } });
+  recordSitesCostEntry({ provider: 'gemini', model: 'gemini-fixture', usage: { input_tokens: 10, output_tokens: 5 } });
+  await act(async () => root.render(<MemoryRouter><SitesCostDashboard /></MemoryRouter>));
+  expect(container.textContent).toContain('$0.25');
+  expect(container.textContent).toContain('Full cost known for 1 of 3 calls');
+  expect(container.textContent).not.toContain('Reported by provider');
+});

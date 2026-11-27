@@ -21,10 +21,27 @@ export function readSitesCostEntries() {
   }
 }
 
+/**
+ * Tokens billed by attempts the reply's usage does not cover: rejected replies, attempts before a
+ * fallback, every attempt of a failed call. The accepted attempt is skipped only when the reply's usage
+ * is present (counting it twice would double it); a call that failed after acceptance (the completion
+ * could not be acknowledged) carries no usage, so its accepted attempt is counted here.
+ */
+function attemptTokensBeyondUsage(attempts, haveUsage) {
+  let input = 0, output = 0;
+  for (const attempt of Array.isArray(attempts) ? attempts : []) {
+    if (!attempt || (haveUsage && attempt.outcome === 'accepted')) continue;
+    input += safeNumber(attempt.input_tokens);
+    output += safeNumber(attempt.output_tokens);
+  }
+  return { input, output };
+}
+
 export function recordSitesCostEntry({
   provider,
   model,
   usage = null,
+  attempts = null,
   kind = 'map',
   requestId = '',
   ttftMs = null,
@@ -35,13 +52,17 @@ export function recordSitesCostEntry({
   coveragePct = null,
 } = {}) {
   try {
-    const inputTokens = safeNumber(usage?.input_tokens);
-    const outputTokens = safeNumber(usage?.output_tokens);
-    const totalTokens = safeNumber(usage?.total_tokens) || (inputTokens + outputTokens);
+    const extra = attemptTokensBeyondUsage(attempts, usage != null);
+    const replyInput = safeNumber(usage?.input_tokens);
+    const replyOutput = safeNumber(usage?.output_tokens);
+    const inputTokens = replyInput + extra.input;
+    const outputTokens = replyOutput + extra.output;
+    const totalTokens = (safeNumber(usage?.total_tokens) || (replyInput + replyOutput)) + extra.input + extra.output;
+    const costUsd = optionalNumber(usage?.cost_usd);
     const cleanDuration = optionalNumber(durationMs);
     const cleanTtft = optionalNumber(ttftMs);
     const genSec = cleanDuration != null ? Math.max(0.05, (cleanDuration - (cleanTtft ?? 0)) / 1000) : null;
-    const tokensPerSec = outputTokens > 0 && genSec ? Math.round((outputTokens / genSec) * 10) / 10 : null;
+    const tokensPerSec = replyOutput > 0 && genSec ? Math.round((replyOutput / genSec) * 10) / 10 : null;
     const entry = {
       id: requestId || crypto.randomUUID(),
       at: Date.now(),
@@ -53,7 +74,9 @@ export function recordSitesCostEntry({
       inputTokens,
       outputTokens,
       totalTokens,
-      costUsd: optionalNumber(usage?.cost_usd),
+      costUsd,
+      // The provider reports cost only for the accepted reply: it is the whole call's cost only if nothing else was billed.
+      ...(costUsd != null && (extra.input || extra.output) ? { costPartial: true } : {}),
       ttftMs: cleanTtft != null ? Math.round(cleanTtft) : null,
       durationMs: cleanDuration != null ? Math.round(cleanDuration) : null,
       tokensPerSec,
@@ -91,6 +114,7 @@ export function summarizeSitesCosts(entries, timeRange = '7d', now = Date.now())
   let totalTokens = 0;
   let reportedCostUsd = 0;
   let hasReportedCost = false;
+  let costReportedCalls = 0;
   let okCount = 0;
   let errorCount = 0;
   const durations = [];
@@ -106,6 +130,7 @@ export function summarizeSitesCosts(entries, timeRange = '7d', now = Date.now())
     outputTokens += safeNumber(entry.outputTokens);
     totalTokens += safeNumber(entry.totalTokens);
     if (entry.costUsd != null) { reportedCostUsd += entry.costUsd; hasReportedCost = true; }
+    if (entry.costUsd != null && !entry.costPartial) costReportedCalls += 1;
     if (entry.durationMs != null) durations.push(entry.durationMs);
     if (entry.ttftMs != null) ttfts.push(entry.ttftMs);
     if (entry.tokensPerSec != null) speeds.push(entry.tokensPerSec);
@@ -167,6 +192,8 @@ export function summarizeSitesCosts(entries, timeRange = '7d', now = Date.now())
     totalTokens,
     reportedCostUsd,
     hasReportedCost,
+    // Calls whose whole cost the provider reported; reportedCostUsd is a lower bound when this is below calls.
+    costReportedCalls,
     avgDurationMs: avg(durations),
     avgTtftMs: avg(ttfts),
     avgTokensPerSec: avg(speeds),

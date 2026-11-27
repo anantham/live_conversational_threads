@@ -56,6 +56,21 @@ describe('map audit', () => {
     expect(() => recordUserFlag(decided, '3:absent', 'irrelevant')).toThrow('not in this map');
   });
 
+  // Lower-tier review: an uncovered stretch at the end of a long call must still be audited.
+  it('audits uncovered turns first even when they come after the span limit', () => {
+    const long = 'word '.repeat(2000).trim();
+    const utterances = Array.from({ length: 7 }, (_, i) => ({ id: `t${i + 1}`, text: long }));
+    const topic = (id, i, extra = {}) => ({ id: `3:${id}`, semantic_level: 3, node_name: id, salience: 'core',
+      source_ref: { utterance_ids: [`t${i}`] }, ...extra });
+    const bundle = { utterances, graph_data: [topic('a', 1), topic('b', 2), topic('c', 3), topic('d', 4), topic('e', 5), topic('f', 6),
+      topic('gap', 7, { generated_gap: true, salience: undefined })] };
+    const spans = planAuditSpans(bundle);
+    expect(spans).toHaveLength(4);
+    expect(spans.flatMap(s => s.utteranceIds)).toContain('t7');
+    // Chosen spans stay in timeline order for the consent text.
+    expect(spans.map(s => s.utteranceIds[0])).toEqual(['t1', 't2', 't3', 't7']);
+  });
+
   // Review finding 3: a span only placeholders cover is still audited, with no nodes to credit.
   it('audits a span no node covers, so every point there is a miss', () => {
     const parsed = auditFromGeneratedText([u(1)], JSON.stringify({ format: 'audit-v1', contradictions: [], entity_splits: [],
