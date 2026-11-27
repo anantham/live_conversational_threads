@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Cloud, FileText, Globe, HardDrive, Trash2 } from "lucide-react";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import PageHeader from "../components/PageHeader";
 import RecordedConversations from "../components/browse/RecordedConversations.jsx";
 import IndrasNetAudioLibrary from "../components/browse/IndrasNetAudioLibrary";
 import PrivateFiles from "./PrivateFiles";
@@ -315,7 +316,7 @@ export default function Browse() {
   return (
     <div
       {...dropTargetProps}
-      className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans"
+      className="flex flex-col h-[100dvh] w-screen bg-[#fdfdfb] font-sans"
     >
       {isDraggingFile && (
         <div
@@ -328,27 +329,20 @@ export default function Browse() {
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="shrink-0 px-4 py-4 md:px-6 flex items-center justify-between gap-3 border-b border-gray-100 bg-white">
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-          className="min-h-11 rounded px-2 text-sm text-gray-400 transition hover:bg-gray-50 hover:text-gray-600 sm:min-h-0"
-        >
-          &larr; Back
-        </button>
-        <h1 className="text-sm font-medium text-gray-500 tracking-wide uppercase">
-          Library
-        </h1>
-        <ThreadsFileButton
-          onFileSelected={openThreadsFile}
-          className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
-        />
+      {/* Header: the shared page header (critique 2026-11-25 issue 5). */}
+      <div className="shrink-0 px-4 pt-6 md:px-6">
+        <div className="mx-auto max-w-2xl">
+          <PageHeader title="Library"
+            actions={<ThreadsFileButton
+              onFileSelected={openThreadsFile}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
+            />} />
+        </div>
       </div>
 
       {/* Sites unified library tabs */}
       {sitesMode && (
-        <nav aria-label="Library sources" className="shrink-0 border-b border-gray-100 bg-white px-4 md:px-6">
+        <nav aria-label="Library sources" className="shrink-0 px-4 md:px-6">
           <div className="mx-auto flex max-w-2xl gap-1 overflow-x-auto py-2">
             {[
               { id: "device", label: "On this device", Icon: HardDrive },

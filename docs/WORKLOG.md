@@ -1,3 +1,25 @@
+## 2026-11-27 02:10 IST — Second Codex round on the #273 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings (packet sha256 `5c339019…`). Taken: opening `/settings` directly redirects to `/settings/runtime` with replace, which gave the entry a new key, so Back still did nothing; Back now reads the browser router's `history.state.idx` (kept across a replace) and falls back to the key only without it. The `back` validator checks each supplied field (a valid `to` no longer excuses a non-function `onClick`), and the button is used only for a real function. An embedded header's link nav is named for its section, never a second "Page". The Browse test uses the real router `Link` in a `MemoryRouter`. `settings/SettingsLayout.test.jsx` now drives the real `BrowserRouter`; the redirect case fails on the previous version.
+
+## 2026-11-27 01:20 IST — Codex review fixes for the shared page header (PR #273)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved 2026-11-27), read-only, code-only diff `e90f816b...d5a93e85` without the worklog, packet sha256 `0327b22f…d1`. 7 findings, all fixed.
+
+- `pages/settings/SettingsLayout.jsx`: Back goes Home when Settings was opened directly (`location.key === "default"`); it used to do nothing there (`navigate(-1)` with no earlier entry; that predates this PR).
+- `components/PageHeader.jsx`: embedded headers keep links a caller passes (the way back is still dropped); the title block is a `div`, not `<header>`, which outside `<main>` became a site-wide banner landmark; `back` must name a destination or a click handler (custom prop validator).
+- `pages/PublicThreads.jsx`, `pages/PrivateFiles.jsx`: inside the library the page title is an h2, so their section headings move to h3 (and PublicThreads' selected-file title to h4). PublicThreads passes its links to the other library tabs only when standalone.
+- Tests: `PageHeader.test.jsx` checks nothing precedes the title at any depth, the validator, embedded links; new `settings/SettingsLayout.test.jsx` (direct open → Home, with history → back); `PublicThreads.test.jsx` checks both heading structures; the Browse test's router mock now renders a real `href` and asserts the Home link. 5 new behaviour tests fail on the old sources.
+- Full suite on a loaded machine (load average ~220 from a VM and an unrelated experiment): failures varied run to run (6, then 4) and all passed when rerun alone except `SitesReplayTrial`, which imports nothing changed here and passed on the #270/#272 runs; treated as timeouts, not regressions. PrivateFiles' heading change has no dedicated test (same pattern as PublicThreads, which is tested).
+
+## 2026-11-27 00:20 IST — One page header for the Site's pages (critique issue 5, part 2)
+
+Branch `fix/one-page-header` from `integ/sites-combined` (`e3936dc8`). Follows the Graph restyle (PR #272).
+
+- New `lct_app/src/components/PageHeader.jsx`: a way back (Home link, or history Back), optional page links on the right, then one h1, a description and optional actions above a single hairline. No eyebrow labels (craft floor ban). Embedded use (library tabs) drops the way back and renders an h2, so a page has one h1.
+- Converted: `pages/Browse.jsx` (was an uppercase grey "LIBRARY" label between "← Back" and the button), `PublicThreads.jsx` (dropped the "Open to everyone" eyebrow into the description), `PrivateFiles.jsx`, `SitesPrivacy.jsx`, `SitesCostDashboard.jsx` (dropped the "Usage, latency & spend" eyebrow; time range is now the Landscape pill control), `SitesTranscriptImport.jsx` (the large icon circles became text links), `settings/SettingsLayout.jsx` (bold grey title on cool grey → the shared header on paper; tabs use the pill control).
+- Not converted: `SitesMeetings.jsx`, because PR #270 edits the lines under its header; it gets the shared header once #270 lands. `SitesAudioImport.jsx` is a recording workspace like `/new`, with its own toolbar, so it is out of scope. The duplicate `/public` route is untouched (removing a route would break shared links; owner call).
+- Tests: `PageHeader.test.jsx` (new, 3 cases). `Browse.sites.test.jsx` router mock gained `Link`. Full suite 1720/1721 (publicDrive needs local port binding). Lint clean; `build:sites` passes. Screenshots of all seven pages at 1280 and 390 px.
 ## 2026-11-27 02:30 IST — Second Codex round on the #272 fixes
 
 Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings and my reasons for declining three (packet sha256 `22ddb90b…`). It accepted the floating-control backing and the paper-colour assertion, and called the decline reasons partly sound (crux marker size, active-pill outline) or insufficient (no dominant-speaker name on grouped cards for assistive technology). Those stay with the owner. Taken here, all in `tests/e2e/graph-calm.spec.ts`: the halo check requires an unselected crux, grouped cards are identified positively (`react-flow__node-default`) and checked in one read, and selecting a clickable grouped card must change its shadow, which fails with the old inline shadow and passes now.
