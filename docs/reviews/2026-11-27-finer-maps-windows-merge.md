@@ -191,12 +191,14 @@ Keep ADR-073 glance → detail; build neither windows plus merge nor a different
    - a narrower prompt change aimed only at the fold rule;
    - a deterministic post-step that folds acknowledgement-only chunks into a neighbour. It would need a definition of "acknowledgement-only" that spares short turns with content (the prompt keeps short consequential turns on purpose), and it must carry the folded chunk's evidence, parent links and thread references. It also edits a model reply after validation, whereas the pipeline's retry rule re-asks a refused segment rather than repairing it;
    - or accepting the defaults.
+
+   **Owner decision (2026-11-27): keep the defaults.** `DETAIL_PROMPT` stays as it is, and no fold step is built.
 2. **Look at why the glance can miss the introduction** (3 of 10 valid glances at today's split). The skeleton prompt already asks topics to cover every utterance, so this is a compliance failure. Changing what the glance covers needs a glance-stage change: its prompt or input, or a coverage check that re-asks when topics leave utterances out. The re-ask in step 3 fires only on a refused glance, and these misses were in accepted glances, so it would not reach them. Which of these would work was not tested. A planning change downstream could only change how the missed turns are shown (today, under a placeholder topic). Either way it is a separate small change, with a regression test built from these maps.
 3. **Consider re-asking a refused glance once**, as detail calls already are re-asked. Today a rejected glance (2 of 17 here, both hierarchy rejections) fails the whole map. How often a second ask would succeed was not measured.
 4. **Leave the utterance split alone for now.** It did not clearly help glance → detail, and changing it can change which text an utterance id points to when a transcript is rebuilt (see above).
 5. **Segment size** (900 vs 2,800 words) showed no consistent effect on grain in this sample, and it costs time: the valid 900-word runs used five detail calls each against two, and every valid 900-word run was slower than every 2,800-word run at the same split. On server-key pacing, three extra detail calls add about 31.5 s to the scheduled start of the last detail call (computed from the code, not measured). Keep the default unless the filler chunks turn out to depend on it. (The missing introduction cannot: it happens in the glance, before segments exist.)
 
-Steps 1–3 are product and code decisions for the owner. No further test spend is proposed until one of them is chosen.
+Step 1 is decided (keep the defaults). Steps 2 and 3 are code decisions for the owner. No further test spend is proposed.
 
 ## Limits
 

@@ -11117,3 +11117,6 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
 - **Spend correction:** the follow-up's logged calls sum to $0.2347 (grid $0.139 recomputed from saved call records, windows + merge $0.050, single calls $0.045), not the $0.25 written earlier. Study total is about $0.76, not $0.78. The 01:45 and 02:00 entries above keep their original (wrong) figures.
 - Rechecked: 52 of 52 merge thread steps are in the saved maps and point at present nodes; validator reference repair fired on 0 of 60 accepted glance-detail calls.
 - Rounds 5–9 (Codex, same model) each NO-GO on progressively narrower wording, all addressed: scoping "only the combination passed 18" to the 150/60-word cells (a 40-word map had 30), the glance re-ask not reaching accepted glances (a coverage-triggered re-ask added as an option), conditional utterance-id wording, and pacing restated as scheduled starts (the `runSegments` excerpt was added to the packet from round 6). Round 10 (packet sha256 a4c63408…): **GO**.
+
+## 2026-11-27 07:30 IST — Finer-maps: owner kept the detail-prompt defaults (same branch)
+- Owner chose "Keep defaults" for the filler-chunk lever: no `DETAIL_PROMPT` change and no deterministic fold. Recorded in the note's Proposal step 1. The glance fixes (missed introduction; re-ask a refused glance) remain open for the owner.
