@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
 import { importWait } from '../services/cloud/audioImportFile.js';
 import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
-import { M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
+import { DEFAULT_M5_TAILNET_URL, M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
+import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences.js';
 import { readEdgeConfig } from '../components/audio/edgeConfig.js';
 import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
@@ -19,6 +20,8 @@ export function useAudioImport() {
   const [file, setFile] = useState(null), [consentSelection, setConsentSelection] = useState(null), [backend, setBackend] = useState('openrouter');
   const [recording, setRecording] = useState(null), [audio, setAudio] = useState(null), [transcript, setTranscript] = useState(empty);
   const [map, setMap] = useState(null), [activity, setActivity] = useState(null), [error, setError] = useState('');
+  // Says which provider failed and which one received the audio instead, and stays up after the run.
+  const [fallbackNotice, setFallbackNotice] = useState('');
   const [setupError, setSetupError] = useState('');
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
@@ -79,6 +82,8 @@ export function useAudioImport() {
     readLocalConversation(localId).then(value => {
       if (cancelled || !alive.current) return;
       if (!value) throw new Error('This import is not saved in this browser.');
+      // A notice about an earlier run does not describe a reopened conversation.
+      setFallbackNotice('');
       setRecording(value.recording); setAudio(value.audio); setTranscript(value.transcript); setMap(value.map);
       if (value.mapUnreadable) {
         const temporary = { ...value.recording, retention: 'ephemeral' };
@@ -107,7 +112,7 @@ export function useAudioImport() {
     setMapStopSignal(mapStop.current.signal); liveMapClaimed.current = false;
     const next = { id, startedAt: Date.now(), transcribe: true, retention: archive.preference,
       source: 'audio-import', originalFilename: file.name.slice(0, 240) };
-    setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError('');
+    setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError(''); setFallbackNotice('');
     archive.begin(next, next.retention);
     navigate(next.retention === 'local' ? '/import-audio?local=' + id : '/import-audio', { replace: true });
     const valid = () => alive.current && epoch.current === generation;
@@ -123,12 +128,19 @@ export function useAudioImport() {
     };
     try {
       let words;
+      // Every provider that failed before the one that worked, said out loud in order.
+      const failures = [];
+      const providerName = id => SPEECH_PROVIDERS[id]?.name || id;
+      const failureText = () => failures.map(({ name, message }) => `${name} could not transcribe this file (${message}).`).join(' ');
       for (const [index, provider] of speechProviders.entries()) {
         const key = runtime?.keys[provider];
         const session = provider === 'm5_tailnet'
           ? new M5TailnetFileSession({
               ...callbacks,
-              url: runtime?.preferences?.m5TailnetUrl || edgeConfig.url,
+              // Settings is the one place this address is chosen, and it shows the build default when
+              // empty, so the address used is the one on screen. An `edge_url` stored by an old link
+              // (for live recording) never redirects file imports.
+              url: runtime?.preferences?.m5TailnetUrl || DEFAULT_M5_TAILNET_URL,
               token: key || edgeConfig.token,
               diarize: true,
             })
@@ -139,9 +151,19 @@ export function useAudioImport() {
         current.current = session;
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
+          if (failures.length && valid()) setFallbackNotice(`${failureText()} It was transcribed by ${providerName(provider)} instead, the next provider in the order you agreed to.`);
           break;
         } catch (error) {
-          if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) throw error;
+          if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) {
+            // The run ends here: replace "Trying X next" with what happened to X (its error shows below).
+            if (failures.length && valid() && error.name !== 'AbortError') {
+              setFallbackNotice(`${failureText()} ${providerName(provider)} was tried next and could not transcribe it either.`);
+            }
+            throw error;
+          }
+          console.warn(`[useAudioImport] ${provider} failed; trying ${speechProviders[index + 1]}:`, error);
+          failures.push({ name: providerName(provider), message: String(error.message || error).replace(/\.$/, '') });
+          setFallbackNotice(`${failureText()} Trying ${providerName(speechProviders[index + 1])} next, the next provider in the order you agreed to.`);
         }
       }
       if (!valid()) return;
@@ -171,6 +193,8 @@ export function useAudioImport() {
     } finally { running.current = false; }
   }
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
-  return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
+  // A notice about an earlier run does not describe a newly chosen file.
+  const chooseFile = useCallback(value => { setFallbackNotice(''); setFile(value); }, []);
+  return { archive, file, setFile: chooseFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map, fallbackNotice,
     mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }
