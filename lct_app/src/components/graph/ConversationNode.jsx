@@ -9,9 +9,11 @@ import {useCardDisplay} from "../threads/CardDisplaySettings";
  * Custom React Flow node renderer per ADR-030 §D4.
  *
  * Visual encoding:
- *   - Fill color: resolved by parent (MinimalGraph) per active color mode
- *     (tier | speaker | temporal | argument). Passed in via data.fillColor.
- *   - Border color: same source (data.borderColor), darker than fill.
+ *   - Card surface: always white, matching the Landscape (critique 2026-11-25
+ *     issue 5; owner ruling 2026-11-26 that the Graph is a view of the same map).
+ *   - Mode colour: resolved by parent (MinimalGraph) per active color mode
+ *     (tier | speaker | temporal | argument), passed as data.fillColor and
+ *     data.borderColor. Shown as the card border and a swatch before the title.
  *   - Draft (data.isDraft = true): dashed border, 0.7 opacity, slow pulse.
  *     Stable: solid border, full opacity, no animation.
  *   - is_tangent: 8° rotation of the whole card.
@@ -180,8 +182,10 @@ function ConversationNodeImpl({ data, selected }) {
     ? `1px dashed ${borderColor}`
     : `1px solid ${borderColor}`;
 
+  // Every card sits on white like the Landscape's (critique 2026-11-25 issue 5): the colour
+  // mode's colour is carried by the border and a small swatch, never a full pastel fill.
   const cardStyle = {
-    background: compactReading || !(Number(data?.fullData?.semantic_level || data?.fullData?.level) > 1) ? fillColor : "#fff",
+    background: "#fff",
     border: borderShorthand,
     borderRadius: "8px",
     padding: "11px 14px",
@@ -210,11 +214,10 @@ function ConversationNodeImpl({ data, selected }) {
     // nodes worth drilling into without reading text. Selection still wins (it
     // adds a solid 2px amber BORDER above; a crux keeps its thread-colored border
     // + this halo, so the two read distinctly). Cruxes are sparse by design.
+    // A crux is marked by its dot (CruxDot), not an amber halo: amber stays with the selection.
     boxShadow: isHighlighted
       ? "0 0 0 3px rgba(245,158,11,0.3)"
-      : isCrux
-      ? "0 0 0 2px #f59e0b, 0 0 12px 2px rgba(245,158,11,0.5)"
-      : "0 1px 3px rgba(0,0,0,0.06)",
+      : "0 1px 3px rgba(15,23,42,0.06)",
     position: "relative",
     animation: isDraft ? "lctDraftPulse 1.6s ease-in-out infinite" : undefined,
   };
@@ -246,6 +249,7 @@ function ConversationNodeImpl({ data, selected }) {
       {isBookmark && <BookmarkCorner />}
 
       <div style={compactReading ? compactTitleStyle : titleStyle} title={fullTitle || title || undefined}>
+        <ModeSwatch fill={fillColor} border={borderColor} />
         {isCrux && <CruxDot />}
         {title || "Untitled"}
       </div>
@@ -550,6 +554,30 @@ function ProgressArrow() {
   );
 }
 
+// The colour mode's key, shown beside the title. Neutral (uncoloured) cards show none.
+const NEUTRAL_SWATCH = new Set(["#f1f5f9", "#cbd5e1"]);
+function ModeSwatch({ fill, border }) {
+  if (!border || (NEUTRAL_SWATCH.has(String(fill).toLowerCase()) && NEUTRAL_SWATCH.has(String(border).toLowerCase()))) return null;
+  return (
+    <span
+      aria-hidden="true"
+      data-mode-swatch=""
+      style={{
+        display: "inline-block",
+        width: "8px",
+        height: "8px",
+        borderRadius: "9999px",
+        background: fill,
+        boxShadow: `inset 0 0 0 1.5px ${border}`,
+        marginRight: "7px",
+        verticalAlign: "middle",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+ModeSwatch.propTypes = { fill: PropTypes.string, border: PropTypes.string };
+
 // Quiet crux marker (ADR-030 §D4): a small amber dot before the title instead
 // of a full-card amber ring + halo. Cruxes are common on the macro view, so a
 // loud per-card treatment floods the canvas and destroys amber's meaning;
@@ -559,6 +587,8 @@ function ProgressArrow() {
 function CruxDot() {
   return (
     <span
+      role="img"
+      aria-label="Crux"
       title="Crux — what the discussion hinges on"
       style={{
         display: "inline-block",

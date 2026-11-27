@@ -20,6 +20,62 @@ Branch `fix/one-page-header` from `integ/sites-combined` (`e3936dc8`). Follows t
 - Converted: `pages/Browse.jsx` (was an uppercase grey "LIBRARY" label between "← Back" and the button), `PublicThreads.jsx` (dropped the "Open to everyone" eyebrow into the description), `PrivateFiles.jsx`, `SitesPrivacy.jsx`, `SitesCostDashboard.jsx` (dropped the "Usage, latency & spend" eyebrow; time range is now the Landscape pill control), `SitesTranscriptImport.jsx` (the large icon circles became text links), `settings/SettingsLayout.jsx` (bold grey title on cool grey → the shared header on paper; tabs use the pill control).
 - Not converted: `SitesMeetings.jsx`, because PR #270 edits the lines under its header; it gets the shared header once #270 lands. `SitesAudioImport.jsx` is a recording workspace like `/new`, with its own toolbar, so it is out of scope. The duplicate `/public` route is untouched (removing a route would break shared links; owner call).
 - Tests: `PageHeader.test.jsx` (new, 3 cases). `Browse.sites.test.jsx` router mock gained `Link`. Full suite 1720/1721 (publicDrive needs local port binding). Lint clean; `build:sites` passes. Screenshots of all seven pages at 1280 and 390 px.
+## 2026-11-27 02:30 IST — Second Codex round on the #272 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings and my reasons for declining three (packet sha256 `22ddb90b…`). It accepted the floating-control backing and the paper-colour assertion, and called the decline reasons partly sound (crux marker size, active-pill outline) or insufficient (no dominant-speaker name on grouped cards for assistive technology). Those stay with the owner. Taken here, all in `tests/e2e/graph-calm.spec.ts`: the halo check requires an unselected crux, grouped cards are identified positively (`react-flow__node-default`) and checked in one read, and selecting a clickable grouped card must change its shadow, which fails with the old inline shadow and passes now.
+
+## 2026-11-27 01:40 IST — Codex review fixes for the Graph restyle (PR #272)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved 2026-11-27), read-only, code-only diff `e3936dc8...fbd22597` without worklog/ISSUES, packet sha256 `118c57b3…f08`. 8 findings: 5 fixed, 3 design findings declined on their visual part.
+
+- `components/graphClustering.jsx`: the grouped card's inline box-shadow is gone. React Flow draws focus and selection as a box-shadow, and the inline one overrode it.
+- `components/MinimalGraph.jsx`: the floating zoom/Display group (non-toolbar layout) gets a paper pill behind it. The quiet buttons had lost their own white backing, so graph text could run under them.
+- `components/graph/ConversationNode.jsx`: the crux dot is `role="img"` named "Crux" (its title alone is not reliably announced). The crux comment, which my earlier commit had separated from `CruxDot`, is back above it.
+- `components/graph/MinimalGraphHud.jsx`: the shown level is `aria-current`, separate from the locked level's `aria-pressed`.
+- `tests/e2e/graph-calm.spec.ts`: loads a copy of the fixture with every node marked a crux (the fixture has none, so the halo check could not fail), checks the ground is #fbfaf7 rather than only equal across views, waits for grouped-renderer nodes before checking them, and skips a selected card's permitted amber ring. Unit tests now read the card's own box-shadow.
+- Declined: a larger crux marker for overview zoom (ADR-030 §D4 chose the quiet dot; the halo contradicted it), a speaker-coloured border on grouped cards (speaker-mode node cards already get the neutral border because the speaker palette is mid-tone hex, so grouped cards match them; the legend names the colours), and a stronger outline on the active level pill (it is the Landscape's control; changing one would split them again). Owner may want any of these.
+- Tests: 3 new unit assertions fail on the old sources; the e2e fails on the pre-restyle node card. Full suite 1720/1721 (publicDrive needs a local port).
+
+## 2026-11-26 23:40 IST — Graph view restyled to match the Landscape (critique issue 5, part 1)
+
+Owner ruling 2026-11-26: the Graph is another way of looking at the Landscape's map, so it is restyled to match. Branch `fix/graph-calm` from `integ/sites-combined` (`e3936dc8`). Page-header unification is the next, separate slice.
+
+- `lct_app/src/components/graph/ConversationNode.jsx`: every card on white; the colour mode's colour is the border plus a small swatch before the title (none for neutral cards). The crux's amber halo is gone (its amber dot stays), so amber stays with the selection (DESIGN.md One-Amber Rule; craft floor: a zero-offset coloured halo is decoration).
+- `lct_app/src/components/graphClustering.jsx`: grouped lowest-level nodes on white with a 1px hairline (were the dominant speaker's colour with a 2px slate border); the speaker colour becomes a swatch.
+- `graph/MinimalGraphHud.jsx`: level tabs use the Landscape's pill control; the tier hue stays on the active label.
+- `MinimalGraph.jsx`, `threads/ThreadsViewerToolbar.jsx`, `threads/ThreadsViewerHeader.jsx`, `pages/ThreadsViewer.jsx`: quiet pill buttons instead of bordered boxes; header and toolbar on the Landscape's paper (`#fbfaf7`) with its stone hairline; one rule line instead of two.
+- Tests: `graphClustering.test.jsx` (new), 3 ConversationNode cases, `tests/e2e/graph-calm.spec.ts` (new, real browser: paper ground equals the Landscape's, white cards at the top and grouped levels, no amber halo). All fail on the old sources. Landscape column e2e still passes.
+- Logged in ISSUES.md: the level tabs rename themselves when "moments" is chosen.
+## 2026-11-27 02:50 IST — Second Codex round on the #270 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings (packet sha256 `94b1dd3b…`). Taken:
+- `pages/SitesNewConversation.jsx`: at the shared limit the page records audio only, even if the visitor had switched transcription on (their choice returns when the limit lifts). Before, Start did nothing until they found Settings.
+- `pages/SitesMeetings.jsx` + `hooks/useMeetingsOpen.js`: only a boolean `canJoin` from this browser's status overrides the public check; a status without it falls back to the public answer. Check connection asks the public check again; a failed or unreadable re-check keeps the last well-formed answer.
+- `components/recording/ConversationServiceStatus.jsx`: a newer successful attempt (ready) outranks an older exhausted check in what the page is told.
+- Declined: ordering a private "open" against a later public "closed" by observation time. The server refuses a join while closed (`sites/meetings.js`), so a stale open form cannot send a bot. Also kept: for `inactive` the top "closed for now" line is the replacement, so no second line is added.
+- Tests: 4 new, all red on the previous commit's sources. Suites pass with a 60 s timeout; at the default 5 s two unrelated tests timed out while the machine's load average was ~220.
+
+## 2026-11-27 01:00 IST — Codex review fixes for "closed for now" (PR #270)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved Codex for #270/#272/#273 on 2026-11-27), read-only, packet = code-only diff `e3936dc8...7d24eabb` without the worklog, sha256 `adaf34d8…71`. 7 findings; 6 confirmed and fixed, 1 partly right.
+
+- `pages/SitesMeetings.jsx`: this browser's status now decides once it arrives (`status.canJoin === false`), the public check covers the time before it or a failed request. Before, a stale public "closed" kept the form locked after Check connection said it could join, and a status without `canJoin` read as closed. The quieter replacement now covers exactly `inactive` and 401 `sign_in`; any other 401 stays an alert (it used to vanish).
+- `components/recording/ConversationServiceStatus.jsx`: the page is told `limited` whenever a fresh check says the allowance is exhausted, even within 2 minutes of a failed attempt (the failure used to mask it). The indicator's headline is unchanged.
+- `pages/SitesNewConversation.jsx`: partly right. Starting with transcription after the limit was already blocked by the `transcribe && !live` guard, but a consent dialog open when the limit arrived kept a Confirm that did nothing. It now closes so the page can explain and offer audio only.
+- `pages/Home.jsx`: rows of primary tiles sit 36px apart when they wrap, so the "Closed for now" caption never meets the next row.
+- Tests: 4 new (all fail on the old sources), the /new limited test now confirms consent and asserts the session starts without transcription, the Home 503 case now sends a well-formed `available:false` body. Also fixed a rules-of-hooks lint error my original commit put in the /new test mock.
+
+## 2026-11-26 22:45 IST — Closed features say "closed for now" (critique issue 3)
+
+Owner ruling 2026-11-26: a feature that is closed today stays visible, marked "closed for now". Branch `fix/closed-for-now` from `integ/sites-combined` (`e3936dc8`).
+
+- `lct_app/sites/serviceHealth.js`: new public `GET /api/cloud/health/meetings` → `{service, enabled, available, checked_at}` from `meetingConfig` alone. No session, provider call or DB write; never the window end or owner. Home could not use `/api/cloud/meetings/status`, which needs a guest session the page would have to create for every visitor.
+- `lct_app/src/hooks/useMeetingsOpen.js` (new): reads that check. Only a well-formed `available:false` means closed; a failed or unreadable check changes nothing.
+- `pages/Home.jsx`: the Meet circle is drawn quieter (dashed) with a visible "Closed for now" caption and label, and still opens `/meeting`, where earlier recordings live.
+- `pages/SitesMeetings.jsx`: a status line at the top says meetings are closed; the link field and consent box are disabled. The page also reads the public check, so a signed-out visitor no longer gets "Sign in to use private meeting recordings" for a switched-off feature, only "Sign in to see recordings you made before".
+- `components/recording/ConversationServiceStatus.jsx` + `pages/SitesNewConversation.jsx`: the voice indicator reports its state; at the shared limit (`limited`, managed key only) `/new` turns live transcription off, starts audio-only, and says "Live transcription is closed for now. It has reached its shared limit."
+- Tests: 7 new or changed cases across 5 files; the 5 new behaviour tests fail on the old sources and pass now. Full suite 1726/1727 (publicDrive needs local port binding). Lint clean on changed files; `build:sites` passes. Checked in the browser on the local Sites preview at desktop and phone width.
+- Wording drafted by Claude; the owner may want to edit it.
 ## 2026-11-27 01:01 IST — Fix the five must-fix findings from the #261 review
 
 Branch `fix/integ-review-five` off `integ/sites-combined` `e90f816b`. Gemini (`gemini-4-argon-high`, two rounds, packets `d4965964…` and `dd3b9b95…`) reviewed #261's delta `27e83a1c..e3936dc8` and said NO-GO; each finding was checked against the code first.
