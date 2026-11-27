@@ -60,7 +60,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('No network request is expected'); }));
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const click = label => act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === label).click());
 const shown = label => host.querySelector(`[aria-label="${label}"]`).textContent;
 
@@ -128,7 +128,10 @@ it('drops a claim check that finishes after the viewer has closed', async () => 
   const { 1: signal } = spies.verify.mock.calls[0];
   await act(async () => root.unmount());
   expect(signal.aborted).toBe(true);
-  await act(async () => { check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' }); await Promise.resolve(); });
+  await act(async () => {
+    check.resolve({ factCheck, backend: 'anthropic', model: 'claude-test' });
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  });
   // Opening the map saved it once; the late result must not be saved on top.
   expect(spies.remember.mock.calls.some(([saved]) => saved.epistemic?.factual_claims?.[0]?.external_evidence)).toBe(false);
   // afterEach unmounts again; give it a fresh root so that is harmless.

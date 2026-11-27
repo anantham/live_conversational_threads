@@ -23,6 +23,7 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
     const mimeType = file.name.endsWith('m4a') ? 'audio/mp4' : file.name.endsWith('wav') ? 'audio/wav' : 'audio/mpeg';
     const blob = file.slice(0, file.size, mimeType);
     this.callbacks.onAudio({ blob, mimeType, complete: true, segments: [{ number: 1, blob, mimeType, complete: true }] });
+    if (fixture.failAbort) throw new DOMException('Provider timed out', 'AbortError');
     if (fixture.fail) { this.callbacks.onStage({ stage: 'error', message: 'Provider refused' }); throw new Error('Provider refused'); }
     this.callbacks.onTranscript(transcript);
     if (fixture.holdTranscript) await new Promise(resolve => { fixture.finishTranscript = resolve; });
@@ -62,7 +63,7 @@ beforeEach(() => {
   fixture.signedIn = false; fixture.uploads = []; fixture.holdUpload = false; fixture.badReceipt = false;
   fixture.holdDecode = false; fixture.finishDecode = null; fixture.sessionHTML = false; fixture.storagePatch = {}; fixture.uploadStatus = 201;
   finishUpload = null; fixture.holdTranscript = false; fixture.liveTranscript = null; fixture.finishTranscript = null; fixture.mapFailure = false;
-  fixture.m5Urls = [];
+  fixture.m5Urls = []; fixture.failAbort = false;
   posts = []; holdMap = false; finishMap = null; localStorage.clear();
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:synthetic-import'; static revokeObjectURL() {} });
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
@@ -507,3 +508,18 @@ it('replaces "Trying the next provider" when the import is stopped while that pr
   expect(container.querySelector('[role=alert]')).toBeNull();
 });
 
+it('reports a provider\'s own abort as a failure, not as the user stopping the import', async () => {
+  fixture.failAbort = true;
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const soniox = SPEECH_PROVIDERS.soniox.name;
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe'));
+  expect(notice).toContain(`${soniox} was tried next and could not transcribe it either.`);
+  expect(notice).not.toContain('stopped');
+});
