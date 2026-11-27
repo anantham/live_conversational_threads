@@ -36,6 +36,7 @@ const wordCount = (text) =>
 // "not", nor "rates" "rat". Heuristic: overlap only breaks ties after salience, so rare misses are tolerable.
 const formsOf = (w) => {
   const base = w.replace(/'s$/, "");
+  if (STOPWORDS.has(base)) return [base]; // stopwords never fold ("does" is not "doe")
   const derived = [];
   if (/ies$/.test(base)) derived.push(base.replace(/ies$/, "y"));
   if (/(s|x|z|ch|sh|o)es$/.test(base)) derived.push(base.slice(0, -2));

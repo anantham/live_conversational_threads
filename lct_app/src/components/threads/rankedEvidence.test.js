@@ -186,6 +186,7 @@ describe("rankNodeEvidence", () => {
     expect(rival("Notes", "not")).toBe("u1");
     expect(rival("Uses", "us")).toBe("u1");
     expect(rival("Will's decision", "Will")).toBe("u10");
+    expect(rival("Doe", "does")).toBe("u1");
     expect(rival("Tomatoes", "tomato")).toBe("u10");
     expect(rival("Echoes", "echo")).toBe("u10");
     expect(rival("Rates", "rat")).toBe("u1");
