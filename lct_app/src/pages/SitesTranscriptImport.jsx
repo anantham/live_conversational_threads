@@ -13,6 +13,7 @@ import { readTranscriptFile } from '../services/cloud/pdfTranscriptReader.js';
 import { splitSourceIntoWindows } from '../services/cloud/longTranscriptPipeline.js';
 import { runGlanceDetailPipeline } from '../services/cloud/glanceDetailPipeline.js';
 import { runEpistemicAnalysis } from '../services/cloud/epistemicPipeline.js';
+import { withAuditSignals, withEpistemic } from '../services/cloud/bundleFieldMerge.js';
 import { clearBoundaryCorrections, formatBoundaryPreferencesForPrompt, loadBoundaryCorrections } from '../services/cloud/boundaryLearningStore.js';
 import { MAP_GUIDANCE_LIMIT } from '../services/cloud/sitesProviderPreferences.js';
 import { stageGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
@@ -103,6 +104,14 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
   const epistemicRef = useRef(null);
   const runIdRef = useRef(0);
   const startedAtRef = useRef(0);
+  // The latest map, so a background pass (epistemic lenses, the audit) merges its own field onto it
+  // rather than replacing it with the map it started from.
+  const latestBundleRef = useRef(null);
+  function publishBundle(bundle) {
+    latestBundleRef.current = bundle;
+    setCompletedBundle(bundle);
+    onBundleReady(bundle);
+  }
   const status = readiness?.routes === routes ? readiness.status : null;
   const statusError = readiness?.routes === routes ? readiness.error : '';
   const consent = consentRoutes === routes;
@@ -210,14 +219,10 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
             appendLog(`✓ Map complete (${count} validated nodes).`);
             setStreamStats(null);
           }
-          if (event.partialBundle) {
-            setCompletedBundle(event.partialBundle);
-            onBundleReady(event.partialBundle);
-          }
+          if (event.partialBundle) publishBundle(event.partialBundle);
         },
       });
-      setCompletedBundle(result.bundle);
-      onBundleReady(result.bundle);
+      publishBundle(result.bundle);
       if (result.backend && result.model) setServed(`${MAP_PROVIDERS[result.backend].name} · ${result.model}`);
       // Quiet background epistemic pass (non-blocking): populates Cruxes, Claims, and Normative lenses.
       if (detail !== 'none' && !controller.signal.aborted) {
@@ -229,8 +234,8 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
           .then(enriched => {
             if (!current()) return;
             const { cruxes, factual_claims: claims, normative_assumptions: normative } = enriched.epistemic;
-            setCompletedBundle(enriched.bundle);
-            onBundleReady(enriched.bundle);
+            // Merge onto the latest map: an audit run meanwhile keeps its signals.
+            publishBundle(withEpistemic(latestBundleRef.current || result.bundle, enriched.epistemic));
             appendLog(`✓ Epistemic lenses ready: ${cruxes.length} cruxes · ${claims.length} claims · ${normative.length} normative.`);
           })
           .catch(() => {
@@ -438,7 +443,7 @@ export function MultiWindowPipelinePanel({ parsed, onBundleReady, onBusyChange }
 
       {completedBundle && !running && (
         <MapAuditPanel source={parsed.source} bundle={completedBundle} routes={routes}
-          onBundleChange={bundle => { setCompletedBundle(bundle); onBundleReady(bundle); }} />
+          onBundleChange={bundle => publishBundle(withAuditSignals(latestBundleRef.current || bundle, bundle.audit_signals))} />
       )}
 
       {/* A run that stopped early leaves a partial map: it can be saved or downloaded, not published. */}
