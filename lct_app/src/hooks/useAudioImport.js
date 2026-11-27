@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
-import { importWait } from '../services/cloud/audioImportFile.js';
+import { importFileType, importWait } from '../services/cloud/audioImportFile.js';
+import { audioCacheKey, hashAudioFile, isAudioCacheAvailable, readCachedAudioTranscript, writeCachedAudioTranscript } from '../services/cloud/audioTranscriptCache.js';
 import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
 import { DEFAULT_M5_TAILNET_URL, M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
 import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences.js';
@@ -23,6 +24,7 @@ export function useAudioImport() {
   // Says which provider failed and which one received the audio instead, and stays up after the run.
   const [fallbackNotice, setFallbackNotice] = useState('');
   const [setupError, setSetupError] = useState('');
+  const [bypassCache, setBypassCache] = useState(false);
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
   const [mapStopSignal, setMapStopSignal] = useState(null);
@@ -132,7 +134,25 @@ export function useAudioImport() {
       const failures = [];
       const providerName = id => SPEECH_PROVIDERS[id]?.name || id;
       const failureText = () => failures.map(({ name, message }) => `${name} could not transcribe this file (${message}).`).join(' ');
-      for (const [index, provider] of speechProviders.entries()) {
+      const allowLocalCache = next.retention === 'local' && isAudioCacheAvailable();
+      const audioSha = allowLocalCache ? await hashAudioFile(file) : null;
+      if (audioSha && !bypassCache) {
+        for (const provider of speechProviders) {
+          const cached = await readCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }));
+          if (!valid() || mapStop.current?.signal.aborted) return;
+          if (cached?.transcript?.finalTokens?.length) {
+            const mimeType = importFileType(file);
+            const upload = file.type === mimeType ? file : new File([file], file.name, { type: mimeType });
+            callbacks.onAudio({ blob: upload, mimeType, complete: true, segments: [{ number: 1, blob: upload, mimeType, complete: true }] });
+            callbacks.onTranscript(cached.transcript);
+            setFallbackNotice(`Loaded cached ${SPEECH_PROVIDERS[provider]?.name || provider} transcript (skipped re-transcription).`);
+            words = cached.transcript;
+            break;
+          }
+        }
+      }
+      if (!valid() || mapStop.current?.signal.aborted) return;
+      if (!words) for (const [index, provider] of speechProviders.entries()) {
         const key = runtime?.keys[provider];
         const session = provider === 'm5_tailnet'
           ? new M5TailnetFileSession({
@@ -152,6 +172,9 @@ export function useAudioImport() {
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
           if (failures.length && valid()) setFallbackNotice(`${failureText()} It was transcribed by ${providerName(provider)} instead, the next provider in the order you agreed to.`);
+          if (audioSha && allowLocalCache && words?.finalTokens?.length) {
+            void writeCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }), { transcript: words, provider });
+          }
           break;
         } catch (error) {
           if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) {
@@ -199,6 +222,6 @@ export function useAudioImport() {
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
   // A notice about an earlier run does not describe a newly chosen file.
   const chooseFile = useCallback(value => { setFallbackNotice(''); setFile(value); }, []);
-  return { archive, file, setFile: chooseFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map, fallbackNotice,
+  return { archive, file, setFile: chooseFile, consent, setConsent, bypassCache, setBypassCache, backend, setBackend, recording, audio, transcript, map, fallbackNotice,
     mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }
