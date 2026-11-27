@@ -195,6 +195,15 @@ export function invalidCompletionDetails(error, { anthropic, completion, respons
     ...(requestId ? { upstream_request_id: requestId } : {}) };
 }
 
+export function withOpenRouterPromptCache(messages, model) {
+  if (!String(model || '').toLowerCase().startsWith('anthropic/') || !Array.isArray(messages)) return messages;
+  return messages.map(msg => (
+    msg && typeof msg.content === 'string'
+      ? { role: msg.role, content: [{ type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }] }
+      : msg
+  ));
+}
+
 function generationWires(policy, source, maxTokens, guidance, context) {
   const { backend, model } = policy;
   if (backend === 'anthropic') return [buildAnthropicGenerationRequest({ source, model, maxTokens, guidance, context })];
@@ -203,7 +212,7 @@ function generationWires(policy, source, maxTokens, guidance, context) {
   if (gemini) return [{ model, max_tokens: wire.max_tokens, stream: false,
     messages: wire.messages, response_format: wire.response_format }];
   const provider = { ...wire.provider, ...(policy.provider ? { only: [policy.provider] } : {}), data_collection: policy.dataCollection };
-  return policy.models.map(model => ({ ...wire, model, provider }));
+  return policy.models.map(m => ({ ...wire, model: m, messages: withOpenRouterPromptCache(wire.messages, m), provider }));
 }
 
 function orderedPolicies(routes, env) {
@@ -304,8 +313,19 @@ function extractResponseUsage(completion, anthropic) {
   const totalTokens = Number.isFinite(totalRaw) && totalRaw >= 0 ? Math.round(totalRaw) : inputTokens + outputTokens;
   const costRaw = Number(raw.cost);
   const costUsd = Number.isFinite(costRaw) && costRaw >= 0 ? costRaw : null;
+  const cacheReadRaw = Number(anthropic ? raw.cache_read_input_tokens : raw.prompt_tokens_details?.cached_tokens);
+  const cacheReadTokens = Number.isFinite(cacheReadRaw) && cacheReadRaw > 0 ? Math.round(cacheReadRaw) : null;
+  const cacheWriteRaw = Number(anthropic ? raw.cache_creation_input_tokens : raw.cache_creation_input_tokens);
+  const cacheWriteTokens = Number.isFinite(cacheWriteRaw) && cacheWriteRaw > 0 ? Math.round(cacheWriteRaw) : null;
   if (!inputTokens && !outputTokens && !totalTokens && costUsd == null) return null;
-  return { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: totalTokens, ...(costUsd == null ? {} : { cost_usd: costUsd }) };
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+    ...(costUsd == null ? {} : { cost_usd: costUsd }),
+    ...(cacheReadTokens == null ? {} : { cache_read_tokens: cacheReadTokens }),
+    ...(cacheWriteTokens == null ? {} : { cache_write_tokens: cacheWriteTokens }),
+  };
 }
 
   // One content-free record per provider call, returned on success and failure so the browser can show what was tried.

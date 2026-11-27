@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
-import { importWait } from '../services/cloud/audioImportFile.js';
+import { importFileType, importWait } from '../services/cloud/audioImportFile.js';
+import { audioCacheKey, hashAudioFile, isAudioCacheAvailable, readCachedAudioTranscript, writeCachedAudioTranscript } from '../services/cloud/audioTranscriptCache.js';
 import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
 import { DEFAULT_M5_TAILNET_URL, M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
 import { readEdgeConfig } from '../components/audio/edgeConfig.js';
@@ -24,6 +25,7 @@ export function useAudioImport() {
   const [setupError, setSetupError] = useState('');
   // nextSpeech: the provider tried if the current one fails. notice: why the last one was left.
   const [nextSpeech, setNextSpeech] = useState(null), [notice, setNotice] = useState('');
+  const [bypassCache, setBypassCache] = useState(false);
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
   const [mapStopSignal, setMapStopSignal] = useState(null);
@@ -127,7 +129,23 @@ export function useAudioImport() {
     };
     try {
       let words;
-      for (const [index, provider] of speechProviders.entries()) {
+      const allowLocalCache = next.retention === 'local' && isAudioCacheAvailable();
+      const audioSha = allowLocalCache ? await hashAudioFile(file) : null;
+      if (audioSha && !bypassCache) {
+        for (const provider of speechProviders) {
+          const cached = await readCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }));
+          if (cached?.transcript?.finalTokens?.length) {
+            const mimeType = importFileType(file);
+            const upload = file.type === mimeType ? file : new File([file], file.name, { type: mimeType });
+            callbacks.onAudio({ blob: upload, mimeType, complete: true, segments: [{ number: 1, blob: upload, mimeType, complete: true }] });
+            callbacks.onTranscript(cached.transcript);
+            setNotice(`Loaded cached ${SPEECH_PROVIDERS[provider]?.name || provider} transcript (skipped re-transcription).`);
+            words = cached.transcript;
+            break;
+          }
+        }
+      }
+      if (!words) for (const [index, provider] of speechProviders.entries()) {
         const key = runtime?.keys[provider];
         const session = provider === 'm5_tailnet'
           ? new M5TailnetFileSession({
@@ -148,6 +166,9 @@ export function useAudioImport() {
         setNextSpeech(following);
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
+          if (audioSha && allowLocalCache && words?.finalTokens?.length) {
+            void writeCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }), { transcript: words, provider });
+          }
           break;
         } catch (error) {
           if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) throw error;
@@ -195,6 +216,6 @@ export function useAudioImport() {
     next: activity.skippable && nextSpeech ? SPEECH_PROVIDERS[nextSpeech].name : null,
   } : null;
   function skip() { current.current?.skip?.(); }
-  return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
+  return { archive, file, setFile, consent, setConsent, bypassCache, setBypassCache, backend, setBackend, recording, audio, transcript, map,
     mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, wait, notice, skip, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }

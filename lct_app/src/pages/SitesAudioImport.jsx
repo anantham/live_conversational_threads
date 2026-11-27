@@ -78,6 +78,12 @@ export default function SitesAudioImport() {
               : `I have permission to send this audio to Soniox for transcription and its transcript to ${MAP_PROVIDERS[flow.backend].recipient} to create threads.`}
           </label>
           <p className="text-xs leading-5 text-slate-500">{archive.preference === 'local' ? 'Audio, transcript and threads save in this browser. Nothing is published automatically.' : 'Ephemeral mode: download your files before closing this tab.'}</p>
+          {archive.preference === 'local' && flow.file && (
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" checked={flow.bypassCache} onChange={event => flow.setBypassCache(event.target.checked)} />
+              Re-transcribe (bypass cached transcript for this audio file)
+            </label>
+          )}
           <button type="submit" className={button + ' bg-slate-900 text-white'} disabled={!flow.file || !flow.consent || flow.loading || !flow.speechProviders.length || busy}><Upload size={17} aria-hidden="true" />Create transcript &amp; threads</button>
           {!flow.loading && !flow.speechProviders.length && <p className="text-sm text-slate-600">Transcription is currently unavailable. Your file has not been sent.</p>}
           {flow.loading && <p role="status" className="text-sm">Checking transcription setup…</p>}

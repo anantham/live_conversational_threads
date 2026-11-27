@@ -14,8 +14,14 @@ export function anthropicHeaders(key) {
 
 export function buildAnthropicGenerationRequest({ source, model, maxTokens, guidance, context }) {
   const [system, user] = buildRecordingGenerationMessages(source, maxTokens, guidance, context);
-  return { model, max_tokens: maxTokens, stream: false, system: system.content, messages: [user],
-    output_config: { format: { type: 'json_schema', schema: context?.task === 'detail' ? generationTask(context).schema : ANTHROPIC_SCHEMAS[context?.task ?? 'map'] } } };
+  return {
+    model,
+    max_tokens: maxTokens,
+    stream: false,
+    system: [{ type: 'text', text: system.content, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: user.role, content: [{ type: 'text', text: user.content, cache_control: { type: 'ephemeral' } }] }],
+    output_config: { format: { type: 'json_schema', schema: context?.task === 'detail' ? generationTask(context).schema : ANTHROPIC_SCHEMAS[context?.task ?? 'map'] } },
+  };
 }
 
 function invalid(stage) {
