@@ -13,7 +13,8 @@ const FILLERS = new Set(["um", "uh", "erm", "er", "ah", "hmm", "mm", "mhm", "uhm
 const STOPWORDS = new Set(
   ("a an and are as at be been but by can could did do does for from had has have he her his how i if in into is it its " +
     "just me more my no not of on or our out over so some such than that the their them then there these they this to too " +
-    "up us was we were what when where which while who why will with would you your about also very much many own s t am ok yes")
+    "up us was we were what when where which while who why will with would you your about also very much many own s t am ok yes " +
+    "it's that's there's what's he's she's let's here's who's")
     .split(" "),
 );
 const SALIENCE_RANK = { core: 2, supporting: 1, aside: 0 };
@@ -35,11 +36,12 @@ const wordCount = (text) =>
 // "not", nor "rates" "rat". Heuristic: overlap only breaks ties after salience, so rare misses are tolerable.
 const formsOf = (w) => {
   const base = w.replace(/'s$/, "");
-  const forms = [base];
-  if (/ies$/.test(base)) forms.push(base.replace(/ies$/, "y"));
-  if (/(s|x|z|ch|sh|o)es$/.test(base)) forms.push(base.slice(0, -2));
-  if (/[^s]s$/.test(base)) forms.push(base.slice(0, -1));
-  return forms;
+  const derived = [];
+  if (/ies$/.test(base)) derived.push(base.replace(/ies$/, "y"));
+  if (/(s|x|z|ch|sh|o)es$/.test(base)) derived.push(base.slice(0, -2));
+  if (/[^s]s$/.test(base)) derived.push(base.slice(0, -1));
+  // A folded form that lands on a stopword ("uses"→"us") is noise; the word itself always counts ("Will").
+  return [base, ...derived.filter((f) => !STOPWORDS.has(f))];
 };
 // Two-letter terms count ("AI" is often the point of a title); stopwords don't.
 /** The title and summary terms as form sets; a plural and its singular count once, whatever their order. */
@@ -66,7 +68,7 @@ function featuresOf(row) {
   if (!row || typeof row !== "object") return { count: 0, forms: new Set() };
   let features = rowFeatures.get(row);
   if (!features) {
-    features = { count: wordCount(row.text), forms: new Set(contentWords(row.text).filter((w) => !STOPWORDS.has(w)).flatMap(formsOf)) };
+    features = { count: wordCount(row.text), forms: new Set(contentWords(row.text).flatMap(formsOf)) };
     rowFeatures.set(row, features);
   }
   return features;
