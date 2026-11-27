@@ -1,3 +1,13 @@
+## 2026-11-27 07:55 IST — Gemini review fixes for the glance re-ask
+
+Independent review: agy `gemini-4-hydrogen-high` (Google family), plan mode, code-only packet (diff `28a9899b..5e57c17d` of the pipeline, its tests and intent doc, plus the full pipeline file and the `expandSkeleton` excerpt), packet sha256 `00677470…eeb6`. The first send (sha256 `422a67da…`) produced an empty file with exit 0: the model tried a tool, headless mode denied it, and nothing was printed. Re-sent with "use no tools". 6 findings, all taken:
+
+- Admission retry waited the pacing gap on top of the backoff and logged the shorter one. Pacing now counts from the previous call's start, as `runSegments` does (it counted from the end), and the logged wait is the real one: the backoff step or the rest of the pacing gap, whichever is longer.
+- A cancel during the first call or the refusal re-ask was logged as "Overview failed" (and could quote the previous call's time). It now rejects quietly, like detail calls, and an already-aborted run makes no call.
+- "Overview done in" now spans the whole overview step (first call to kept reply) in every case.
+- `withNote` could return 3,001 characters (a stray separator when the note filled the limit); the note is now bounded too. `turnRanges` drops duplicates and unknown ids. Plurals fixed in two messages. `node_shape` advice says themes and arcs carry an empty `source_ranges`.
+- New tests: a re-ask that leaves fewer turns out is kept; a tie with other turns and a worse re-ask keep the first; the admission backoff is honoured with no pacing to hide it, and the budget runs out; cancel during the first call, during either re-ask, and while waiting out the pacing gap. Mutations caught: keeping the second reply on a tie, no admission wait, a first-call cancel treated as a failure. File: 42/42; lint clean.
+
 ## 2026-11-27 07:20 IST — Glance re-ask: refused overviews and overviews that leave turns out
 
 Branch `fix/glance-reask` from `integ/sites-combined` (`28a9899b`). Implements proposals 2 and 3 of the finer-maps study (`docs/reviews/2026-11-27-finer-maps-windows-merge.md`, PR #275): 3 of 10 valid glances at today's split left the introduction in no topic, and 2 of 17 glance calls were refused (`hierarchy`) and failed the whole map.
