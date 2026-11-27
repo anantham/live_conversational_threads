@@ -1,3 +1,29 @@
+## 2026-11-27 02:30 IST — Second Codex round on the #272 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings and my reasons for declining three (packet sha256 `22ddb90b…`). It accepted the floating-control backing and the paper-colour assertion, and called the decline reasons partly sound (crux marker size, active-pill outline) or insufficient (no dominant-speaker name on grouped cards for assistive technology). Those stay with the owner. Taken here, all in `tests/e2e/graph-calm.spec.ts`: the halo check requires an unselected crux, grouped cards are identified positively (`react-flow__node-default`) and checked in one read, and selecting a clickable grouped card must change its shadow, which fails with the old inline shadow and passes now.
+
+## 2026-11-27 01:40 IST — Codex review fixes for the Graph restyle (PR #272)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved 2026-11-27), read-only, code-only diff `e3936dc8...fbd22597` without worklog/ISSUES, packet sha256 `118c57b3…f08`. 8 findings: 5 fixed, 3 design findings declined on their visual part.
+
+- `components/graphClustering.jsx`: the grouped card's inline box-shadow is gone. React Flow draws focus and selection as a box-shadow, and the inline one overrode it.
+- `components/MinimalGraph.jsx`: the floating zoom/Display group (non-toolbar layout) gets a paper pill behind it. The quiet buttons had lost their own white backing, so graph text could run under them.
+- `components/graph/ConversationNode.jsx`: the crux dot is `role="img"` named "Crux" (its title alone is not reliably announced). The crux comment, which my earlier commit had separated from `CruxDot`, is back above it.
+- `components/graph/MinimalGraphHud.jsx`: the shown level is `aria-current`, separate from the locked level's `aria-pressed`.
+- `tests/e2e/graph-calm.spec.ts`: loads a copy of the fixture with every node marked a crux (the fixture has none, so the halo check could not fail), checks the ground is #fbfaf7 rather than only equal across views, waits for grouped-renderer nodes before checking them, and skips a selected card's permitted amber ring. Unit tests now read the card's own box-shadow.
+- Declined: a larger crux marker for overview zoom (ADR-030 §D4 chose the quiet dot; the halo contradicted it), a speaker-coloured border on grouped cards (speaker-mode node cards already get the neutral border because the speaker palette is mid-tone hex, so grouped cards match them; the legend names the colours), and a stronger outline on the active level pill (it is the Landscape's control; changing one would split them again). Owner may want any of these.
+- Tests: 3 new unit assertions fail on the old sources; the e2e fails on the pre-restyle node card. Full suite 1720/1721 (publicDrive needs a local port).
+
+## 2026-11-26 23:40 IST — Graph view restyled to match the Landscape (critique issue 5, part 1)
+
+Owner ruling 2026-11-26: the Graph is another way of looking at the Landscape's map, so it is restyled to match. Branch `fix/graph-calm` from `integ/sites-combined` (`e3936dc8`). Page-header unification is the next, separate slice.
+
+- `lct_app/src/components/graph/ConversationNode.jsx`: every card on white; the colour mode's colour is the border plus a small swatch before the title (none for neutral cards). The crux's amber halo is gone (its amber dot stays), so amber stays with the selection (DESIGN.md One-Amber Rule; craft floor: a zero-offset coloured halo is decoration).
+- `lct_app/src/components/graphClustering.jsx`: grouped lowest-level nodes on white with a 1px hairline (were the dominant speaker's colour with a 2px slate border); the speaker colour becomes a swatch.
+- `graph/MinimalGraphHud.jsx`: level tabs use the Landscape's pill control; the tier hue stays on the active label.
+- `MinimalGraph.jsx`, `threads/ThreadsViewerToolbar.jsx`, `threads/ThreadsViewerHeader.jsx`, `pages/ThreadsViewer.jsx`: quiet pill buttons instead of bordered boxes; header and toolbar on the Landscape's paper (`#fbfaf7`) with its stone hairline; one rule line instead of two.
+- Tests: `graphClustering.test.jsx` (new), 3 ConversationNode cases, `tests/e2e/graph-calm.spec.ts` (new, real browser: paper ground equals the Landscape's, white cards at the top and grouped levels, no amber halo). All fail on the old sources. Landscape column e2e still passes.
+- Logged in ISSUES.md: the level tabs rename themselves when "moments" is chosen.
 ## 2026-11-27 02:50 IST — Second Codex round on the #270 fixes
 
 Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings (packet sha256 `94b1dd3b…`). Taken:

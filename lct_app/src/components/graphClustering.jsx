@@ -295,9 +295,26 @@ export function clusterMapToRfView(clusters, allNodes, speakerColorMap, prefix) 
       .filter(Boolean)
       .map((s) => (s.length > 50 ? s.slice(0, 48) + "…" : s));
 
+    const speakerCounts = {};
+    members.forEach((n) => {
+      const sid = n.speaker_id || "";
+      speakerCounts[sid] = (speakerCounts[sid] || 0) + 1;
+    });
+    const dominantSpeaker = Object.entries(speakerCounts)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+    const speakerColor = speakerColorMap[dominantSpeaker] || null;
+
     const clusterLabel = (
       <div style={{ lineHeight: 1.3, textAlign: "left" }}>
         <div style={{ fontWeight: 600, fontSize: "12px", marginBottom: "3px" }}>
+          {/* White card like the Landscape's; the dominant speaker shows as a swatch, not a fill. */}
+          {speakerColor && (
+            <span
+              aria-hidden="true"
+              data-mode-swatch=""
+              style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "9999px", background: speakerColor, boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.25)", marginRight: "6px", verticalAlign: "middle" }}
+            />
+          )}
           {truncName}
           {members.length > 1 && (
             <span style={{ fontWeight: 400, color: "#64748b" }}> ({members.length})</span>
@@ -313,22 +330,14 @@ export function clusterMapToRfView(clusters, allNodes, speakerColorMap, prefix) 
       </div>
     );
 
-    const speakerCounts = {};
-    members.forEach((n) => {
-      const sid = n.speaker_id || "";
-      speakerCounts[sid] = (speakerCounts[sid] || 0) + 1;
-    });
-    const dominantSpeaker = Object.entries(speakerCounts)
-      .sort((a, b) => b[1] - a[1])[0]?.[0] || "";
-    const bgColor = speakerColorMap[dominantSpeaker] || "#e2e8f0";
-
     return {
       id: `${prefix}-${cid}`,
       data: { label: clusterLabel, memberCount: members.length, clusterId: cid },
       position: { x: 0, y: 0 },
       style: {
-        background: bgColor,
-        border: "2px solid #94a3b8",
+        background: "#fff",
+        border: "1px solid #e2e8f0",
+        // No inline box-shadow: it would override React Flow's focus and selection ring.
         borderRadius: "10px",
         padding: "10px 14px",
         fontSize: "11px",

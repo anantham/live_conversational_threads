@@ -87,6 +87,15 @@ describe("MinimalGraphHud active-tier count", () => {
     expect(container.textContent).not.toContain("3 themes");
   });
 
+  it("tells assistive technology which level is shown apart from which is locked", () => {
+    renderHud({ effectiveSemanticLevel: 3, clusterLevelLabel: "topics" });
+    const current = [...container.querySelectorAll('button[aria-current="true"]')];
+    const locked = [...container.querySelectorAll('button[aria-pressed="true"]')];
+    expect(current).toHaveLength(1);
+    expect(locked).toHaveLength(1);
+    expect(current[0]).not.toBe(locked[0]);
+  });
+
   it("discloses the authored macro topology at the active tier", () => {
     renderHud({
       effectiveSemanticLevel: 5,
