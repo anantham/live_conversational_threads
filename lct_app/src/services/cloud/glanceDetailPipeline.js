@@ -182,15 +182,66 @@ const RETRY_ADVICE = {
   edges: 'return no edges',
   threads: 'return no thread paths',
 };
+// The same, for a refused overview (skeleton reply).
+const GLANCE_RETRY_ADVICE = {
+  hierarchy: 'every parent_id and secondary_parent_ids entry must copy the semantic_level and id of a theme or arc you authored, at a higher level than the child; arcs have parent_id null',
+  required_shape: 'return hierarchy_format skeleton-ranges-v1 with nodes, edges, metadata, conversation_threads and glossary',
+  node_shape: 'every node needs id, semantic_level 3, 4 or 5, semantic_type, node_name, summary, salience, source_ranges (an empty array on themes and arcs), parent_id and secondary_parent_ids',
+  node_evidence: 'every topic needs at least one source_ranges entry using utterance ids copied exactly from the supplied utterances, with from before to',
+  edges: 'return an empty edges array',
+  threads: 'every thread step moment_id must copy the semantic_level and id of a node you authored, and its evidence must be a {"from","to"} range of supplied utterance ids',
+};
+// Structural refusals worth one re-ask; anything else (provider errors, truncation) is not a schema slip.
+const RETRIABLE_STAGES = ['hierarchy', 'edges', 'threads', 'node_evidence', 'node_shape', 'required_shape'];
 const GUIDANCE_LIMIT = 3000;
+const MAX_NAMED_RANGES = 8;
+
+const retriableRefusal = error => error?.code === 'invalid_completion' && error?.stopReason !== 'max_tokens'
+  && RETRIABLE_STAGES.includes(error?.validationStage);
+const ruleOf = error => `${error.validationStage}${error.validationRule ? '/' + error.validationRule : ''}`;
+
+/** The owner's guidance with a note appended, trimming the guidance so both fit the guidance limit. */
+function withNote(guidance, note) {
+  const bounded = note.slice(0, GUIDANCE_LIMIT);
+  const room = GUIDANCE_LIMIT - bounded.length - 1;
+  return guidance && room > 0 ? `${String(guidance).slice(0, room)}\n${bounded}` : bounded;
+}
 
 /** The owner's guidance plus a one-line note naming what the refused reply got wrong, within the guidance limit. */
-export function retryGuidance(guidance, rule) {
+export function retryGuidance(guidance, rule, task = 'detail') {
   const stage = String(rule).split('/')[0];
-  const note = `Your previous reply for this segment was refused at ${rule}. Fix exactly that: ${RETRY_ADVICE[stage] || 'follow the schema exactly'}.`;
-  const room = Math.max(0, GUIDANCE_LIMIT - note.length - 1);
-  return guidance ? `${String(guidance).slice(0, room)}\n${note}` : note;
+  const [what, advice] = task === 'skeleton' ? ['overview', GLANCE_RETRY_ADVICE] : ['reply for this segment', RETRY_ADVICE];
+  return withNote(guidance, `Your previous ${what} was refused at ${rule}. Fix exactly that: ${advice[stage] || 'follow the schema exactly'}.`);
 }
+
+/**
+ * Consecutive runs of the given turns (duplicates and unknown ids dropped), in transcript order, as
+ * "a to b" (or "a" for a single turn); `turns` is how many distinct known turns they hold.
+ */
+function turnRanges(ids, utteranceIds) {
+  const order = new Map(utteranceIds.map((id, i) => [id, i]));
+  const runs = [];
+  for (const id of [...new Set(ids)].filter(id => order.has(id)).sort((a, b) => order.get(a) - order.get(b))) {
+    if (runs.length && order.get(id) === order.get(runs.at(-1).at(-1)) + 1) runs.at(-1).push(id); else runs.push([id]);
+  }
+  return Object.assign(runs.map(run => (run.length > 1 ? `${run[0]} to ${run.at(-1)}` : run[0])), { turns: runs.flat().length });
+}
+
+/**
+ * The owner's guidance plus a note naming the turns an accepted overview left in no topic, within the
+ * guidance limit. At most MAX_NAMED_RANGES ranges are named; the rest are counted.
+ */
+export function coverageGuidance(guidance, uncoveredIds, utteranceIds) {
+  const ranges = turnRanges(uncoveredIds, utteranceIds);
+  const named = ranges.slice(0, MAX_NAMED_RANGES).join(', ') + (ranges.length > MAX_NAMED_RANGES ? ` and ${ranges.length - MAX_NAMED_RANGES} more range${ranges.length - MAX_NAMED_RANGES === 1 ? '' : 's'}` : '');
+  const count = ranges.turns;
+  return withNote(guidance, `Your previous overview left ${count} utterance${count === 1 ? '' : 's'} in no topic: ${named}. `
+    + 'Topics must together cover every utterance: give each of these utterances a topic, as a range on an existing topic or as a new topic. '
+    + 'An introduction, greeting or small talk is a topic too (salience aside).');
+}
+
+/** Turns the overview assigned to no topic: the generated "Uncovered turns" placeholder's evidence. */
+const uncoveredTurns = glance => glance.bundle.graph_data.find(n => n.semantic_level === 3 && n.generated_gap)?.source_ref.utterance_ids || [];
 
 function withBuilders(bundle, used) {
   const all = [...(bundle.built_by || []), ...used];
@@ -390,10 +441,8 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
         return;
       }
       // A structural refusal is asked once more with the rule named: re-asking, never repairing the reply.
-      const retriable = !segment.retryOf && error?.code === 'invalid_completion' && error?.stopReason !== 'max_tokens'
-        && ['hierarchy', 'edges', 'threads', 'node_evidence', 'node_shape', 'required_shape'].includes(error?.validationStage);
-      if (retriable) {
-        const rule = `${error.validationStage}${error.validationRule ? '/' + error.validationRule : ''}`;
+      if (!segment.retryOf && retriableRefusal(error)) {
+        const rule = ruleOf(error);
         log('detail retry', { ...details, ms: Date.now() - t0, rule });
         activity(onProgress, 'warn', `${name} was refused (${rule}) after ${seconds(Date.now() - t0)}; asking once more with that rule named.`,
           { attempts: (error?.attempts || []).map(describeAttempt) });
@@ -467,6 +516,84 @@ async function runSegments({ source, base, segments, routes, guidance, signal, o
 }
 
 /**
+ * The overview call, re-asked at most once (one re-ask per overview, as per detail segment):
+ * - a structural refusal is asked again with the refused rule named; a second refusal fails the map;
+ * - an accepted overview whose topics leave turns out is asked again with those turns named. The reply
+ *   that leaves fewer turns out is kept (the first on a tie); turns still left out stay under the
+ *   "Uncovered turns" placeholder, and a failed coverage re-ask keeps the first overview.
+ * Pacing and admission follow runSegments: a call starts no sooner than `intervalMs` after the previous
+ * call started, and a call refused at admission (429, nothing spent) waits out the admission backoff
+ * (or the pacing gap, if longer) and tries again. A cancelled run rejects quietly, never as a failure.
+ * Returns the kept reply and when the overview step started (for its "done in" time).
+ */
+async function glanceWithReask({ source, routes, guidance, signal, onProgress, generate, utterances, totalWords, intervalMs, admissionDelays }) {
+  const aborted = error => signal?.aborted || error?.name === 'AbortError';
+  // Once the run is cancelled, whatever the call rejected with, the run rejects with an AbortError.
+  const cancelled = error => (signal?.aborted ? new DOMException('Aborted', 'AbortError') : error);
+  const stepStarted = Date.now();
+  let lastStart = null, started = stepStarted;
+  const call = async (note, why) => {
+    for (let tries = 0; ; tries += 1) {
+      if (lastStart != null) await sleep(lastStart + intervalMs - Date.now(), signal);
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      started = lastStart = Date.now();
+      onProgress?.({ phase: 'glance', startedAt: started });
+      activity(onProgress, 'info', `${why ? `Overview, asked again (${why})` : 'Overview'}: streaming all ${number(utterances.length)} turns (${number(totalWords)} words) to ${routeText(routes)}.`, { running: true });
+      try {
+        return await generate(source, signal, routes, note, { task: 'skeleton',
+          onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'skeleton', streamEvent }) });
+      } catch (error) {
+        if (aborted(error) || error?.status !== 429 || tries >= admissionDelays.length) throw error;
+        // The wait reported is the real one: the backoff step, or what is left of the pacing gap if longer.
+        const wait = Math.max(admissionDelays[tries], lastStart + intervalMs - Date.now());
+        activity(onProgress, 'warn', `Overview was not admitted yet (every slot is busy or another call was starting); retrying in ${seconds(wait)} (try ${tries + 1} of ${admissionDelays.length}).`);
+        log('glance admission retry', { tries: tries + 1, wait });
+        await sleep(wait, signal);
+      }
+    }
+  };
+  const failed = (error, again) => {
+    log('glance failed', { ms: Date.now() - started, error: error?.message, again });
+    activity(onProgress, 'error', `Overview failed${again ? ' again' : ''} after ${seconds(Date.now() - started)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
+    return error;
+  };
+  const attemptsOf = item => ({ attempts: (item?.attempts || []).map(describeAttempt) });
+  let glance;
+  try { glance = await call(guidance, null); }
+  catch (error) {
+    if (aborted(error)) throw cancelled(error);
+    if (!retriableRefusal(error)) throw failed(error, false);
+    const rule = ruleOf(error);
+    log('glance retry', { ms: Date.now() - started, rule });
+    activity(onProgress, 'warn', `Overview was refused (${rule}) after ${seconds(Date.now() - started)}; asking once more with that rule named.`, attemptsOf(error));
+    try { glance = await call(retryGuidance(guidance, rule, 'skeleton'), `refused at ${rule}`); }
+    catch (again) { throw aborted(again) ? cancelled(again) : failed(again, true); }
+    return { glance, started: stepStarted };
+  }
+  const missing = uncoveredTurns(glance);
+  if (!missing.length) return { glance, started: stepStarted };
+  const utteranceIds = utterances.map(u => u.id);
+  const plural = n => `${n} turn${n === 1 ? '' : 's'}`;
+  log('glance coverage retry', { ms: Date.now() - started, uncovered: missing.length });
+  activity(onProgress, 'warn', `Overview left ${plural(missing.length)} in no topic (${turnRanges(missing, utteranceIds).slice(0, MAX_NAMED_RANGES).join(', ')}); asking once more with those turns named.`, attemptsOf(glance));
+  let second;
+  try { second = await call(coverageGuidance(guidance, missing, utteranceIds), `${plural(missing.length)} in no topic`); }
+  catch (error) {
+    if (aborted(error)) throw cancelled(error);
+    log('glance coverage retry failed', { error: error?.message });
+    activity(onProgress, 'warn', `The second overview failed (${error?.message || 'unknown error'}); keeping the first, with ${plural(missing.length)} under "Uncovered turns".`, attemptsOf(error));
+    return { glance, started: stepStarted };
+  }
+  const still = uncoveredTurns(second).length;
+  const keep = still < missing.length;
+  log('glance coverage retry done', { before: missing.length, after: still, kept: keep ? 'second' : 'first' });
+  if (!keep || still) {
+    activity(onProgress, 'warn', `The second overview left ${plural(still)} in no topic (${missing.length} before); keeping the ${keep ? 'second' : 'first'}, with ${plural(keep ? still : missing.length)} under "Uncovered turns".`, attemptsOf(second));
+  }
+  return { glance: keep ? second : glance, started: stepStarted };
+}
+
+/**
  * Glance at the whole conversation, then detail its topics. `detail` is 'all' (default), 'none'
  * (skeleton only; expand topics later with expandTopicDetail) or 'core' (core-salience topics).
  */
@@ -476,18 +603,10 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
   const utterances = createRecordingTranscript(source).document.utterances;
   const utteranceById = new Map(utterances.map(u => [u.id, u]));
   const totalWords = utterances.reduce((s, u) => s + countWords(u.text), 0);
-  onProgress?.({ phase: 'glance', startedAt: Date.now() });
+  const pace = detailPacing(routes, intervalMs, concurrency);
   log('glance start', { turns: utterances.length, words: totalWords });
-  activity(onProgress, 'info', `Overview: streaming all ${number(utterances.length)} turns (${number(totalWords)} words) to ${routeText(routes)}.`, { running: true });
-  const started = Date.now();
-  let glance;
-  try { glance = await generate(source, signal, routes, guidance, { task: 'skeleton',
-    onEvent: streamEvent => onProgress?.({ phase: 'stream', task: 'skeleton', streamEvent }) }); }
-  catch (error) {
-    log('glance failed', { ms: Date.now() - started, error: error?.message });
-    activity(onProgress, 'error', `Overview failed after ${seconds(Date.now() - started)}: ${error?.message || 'unknown error'}`, { attempts: (error?.attempts || []).map(describeAttempt) });
-    throw error;
-  }
+  const { glance, started } = await glanceWithReask({ source, routes, guidance, signal, onProgress, generate, utterances, totalWords,
+    intervalMs: pace.intervalMs, admissionDelays: admissionRetryDelays(admissionRetryMs, admissionBudgetMs) });
   const skeleton = { ...glance.bundle, conversation_title: title || glance.bundle.conversation_title,
     built_by: glance.backend ? [{ backend: glance.backend, model: glance.model }] : [],
     ...(glance.glossary?.length ? { glossary: glance.glossary } : {}),
@@ -504,7 +623,6 @@ export async function runGlanceDetailPipeline({ source, routes, guidance = '', t
 
   const topicIds = detail === 'core' ? new Set(skeleton.graph_data.filter(n => n.semantic_level === 3 && n.salience === 'core').map(n => n.id)) : null;
   const segments = planSegments(skeleton, utteranceById, { maxWords: maxSegmentWords, topicIds });
-  const pace = detailPacing(routes, intervalMs, concurrency);
   activity(onProgress, 'info', `Detail plan: ${segments.length} topic group${segments.length === 1 ? '' : 's'} of up to ${number(maxSegmentWords)} words, `
     + `${pace.concurrency > 1 ? `up to ${pace.concurrency} at a time, starts ${seconds(pace.intervalMs)} apart (personal key)` : `one at a time, ${seconds(pace.intervalMs)} apart (provider pacing)`}.`);
   const run = await runSegments({ source, base: skeleton, segments, routes, guidance, signal, onProgress, generate,

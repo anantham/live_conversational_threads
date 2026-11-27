@@ -1,7 +1,7 @@
 // Test intent: lct_app/tests/intent/glance-detail-generation.md. All source is synthetic.
 import { describe, expect, it, vi } from 'vitest';
 import { recordingThreadsFromGeneratedText } from './openRouterGeneration.js';
-import { detailPacing, expandTopicDetail, retryGuidance, runGlanceDetailPipeline } from './glanceDetailPipeline.js';
+import { coverageGuidance, detailPacing, expandTopicDetail, retryGuidance, runGlanceDetailPipeline } from './glanceDetailPipeline.js';
 
 const texts = ['Welcome to the show.', 'I grew up by the sea.', 'Tell me more.', 'Boats every morning.',
   'Now, the budget.', 'It is tight.', 'Back to the sea.', 'Storms, mostly.'];
@@ -526,5 +526,233 @@ describe('lower-tier review findings (2026-11-27)', () => {
     const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate: fakeModel({ skeleton: ranged }), intervalMs: 0, onProgress: e => progress.push(e) });
     expect(progress.some(e => e.phase === 'log' && /1 ranges cited on themes or arcs ignored/.test(e.entry.text))).toBe(true);
     expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+});
+
+// The glance step re-asks once: a refused overview with the rule named, an accepted overview that leaves
+// turns in no topic with those turns named (finer-maps study 2026-11-27: 3 of 10 valid glances left the
+// introduction out; 2 of 17 glance calls were refused at hierarchy and failed the whole map).
+describe('glance re-ask', () => {
+  const refusal = () => Object.assign(new Error('refused overview'), { code: 'invalid_completion', validationStage: 'hierarchy', validationRule: 'parent_missing' });
+  // The overview without its introduction topic: turn 1 is in no topic.
+  const noIntro = () => {
+    const reply = JSON.parse(skeletonReply());
+    reply.nodes = reply.nodes.filter(n => n.id !== 'intro');
+    return JSON.stringify(reply);
+  };
+  // Answers each overview call with the next scripted step (a reply builder, or an error to throw).
+  const scriptedGlance = steps => {
+    let n = 0;
+    const replies = [];
+    const inner = fakeModel({ skeleton: () => replies.at(-1)() });
+    return vi.fn(async (...args) => {
+      if (args[4].task === 'skeleton') {
+        const step = steps[n++];
+        if (step instanceof Error || typeof step === 'object') throw step;
+        replies.push(step);
+      }
+      return inner(...args);
+    });
+  };
+  const tasks = generate => generate.mock.calls.map(c => c[4].task);
+  const gapTopic = bundle => bundle.graph_data.find(n => n.semantic_level === 3 && n.generated_gap);
+
+  it('re-asks an overview that leaves turns in no topic, naming them, and keeps the covering reply', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([noIntro, skeletonReply]);
+    const progress = [];
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, guidance: 'Owner note.', onProgress: e => progress.push(e) });
+    expect(tasks(generate)).toEqual(['skeleton', 'skeleton', 'detail']);
+    expect(generate.mock.calls[0][3]).toBe('Owner note.');
+    expect(generate.mock.calls[1][3]).toMatch(/^Owner note\.\nYour previous overview left 1 utterance in no topic: utterance-0001\. /);
+    expect(gapTopic(bundle)).toBeUndefined();
+    expect(evidence(bundle, '3:intro')).toEqual([u(1)]);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+    expect(progress.some(e => e.phase === 'log' && /left 1 turn in no topic \(utterance-0001\); asking once more/.test(e.entry.text))).toBe(true);
+  });
+
+  it('keeps the placeholder topic when the re-ask still leaves the turns out, and asks only once', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([noIntro, noIntro]);
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    expect(tasks(generate)).toEqual(['skeleton', 'skeleton', 'detail']);
+    expect(gapTopic(bundle).source_ref.utterance_ids).toEqual([u(1)]);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  it('keeps the first overview, placeholder and all, when the coverage re-ask fails', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([noIntro, new Error('provider down')]);
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    expect(tasks(generate)).toEqual(['skeleton', 'skeleton', 'detail']);
+    expect(gapTopic(bundle).source_ref.utterance_ids).toEqual([u(1)]);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  it('re-asks a refused overview once, naming the rule, and builds the map', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([refusal(), skeletonReply]);
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    expect(tasks(generate)).toEqual(['skeleton', 'skeleton', 'detail']);
+    expect(generate.mock.calls[1][3]).toMatch(/^Your previous overview was refused at hierarchy\/parent_missing\. Fix exactly that: every parent_id/);
+    expect(evidence(bundle, '3:sea')).toEqual([u(2), u(3), u(4), u(7), u(8)]);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  it('fails the map when the re-asked overview is refused again, and never re-asks a provider failure', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const twice = scriptedGlance([refusal(), refusal()]);
+    await expect(runGlanceDetailPipeline({ source, routes: [], generate: twice, intervalMs: 0 })).rejects.toThrow('refused overview');
+    expect(tasks(twice)).toEqual(['skeleton', 'skeleton']);
+    const provider = scriptedGlance([new Error('provider down')]);
+    await expect(runGlanceDetailPipeline({ source, routes: [], generate: provider, intervalMs: 0 })).rejects.toThrow('provider down');
+    expect(tasks(provider)).toEqual(['skeleton']);
+    const truncated = scriptedGlance([Object.assign(refusal(), { stopReason: 'max_tokens' })]);
+    await expect(runGlanceDetailPipeline({ source, routes: [], generate: truncated, intervalMs: 0 })).rejects.toThrow('refused overview');
+    expect(tasks(truncated)).toEqual(['skeleton']);
+  });
+
+  it('spends one re-ask per overview: a re-asked overview that leaves turns out is not asked a third time', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([refusal(), noIntro]);
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0 });
+    expect(tasks(generate)).toEqual(['skeleton', 'skeleton', 'detail']);
+    expect(gapTopic(bundle).source_ref.utterance_ids).toEqual([u(1)]);
+  });
+
+  it('starts a re-ask no sooner than the pacing interval after the previous call, and waits out admission refusals', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const admission = Object.assign(new Error('limit'), { status: 429 });
+    const generate = scriptedGlance([refusal(), admission, skeletonReply]);
+    const starts = [];
+    const timed = vi.fn(async (...args) => { if (args[4].task === 'skeleton') starts.push(Date.now()); return generate(...args); });
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate: timed, intervalMs: 60, admissionRetryMs: 1, admissionBudgetMs: 5 });
+    expect(starts).toHaveLength(3);
+    // Timer jitter allowance of a few milliseconds below the 60 ms interval.
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(55);
+    expect(starts[2] - starts[1]).toBeGreaterThanOrEqual(55);
+    // The admission retry still carries the re-ask note: nothing was spent on the refused admission.
+    expect(timed.mock.calls[2][3]).toMatch(/refused at hierarchy\/parent_missing/);
+    expect(bundle.graph_data.filter(n => n.semantic_level === 1)).toHaveLength(8);
+  });
+
+  // Overviews that leave out different turns: intro + turn 7, turn 7 alone, or the budget topic (turns 5-6).
+  const withoutSeven = build => () => build().replace('{"from":"utterance-0007","to":"utterance-0008"}', '{"from":"utterance-0008","to":"utterance-0008"}');
+  const noBudget = () => {
+    const reply = JSON.parse(skeletonReply());
+    reply.nodes = reply.nodes.filter(n => n.id !== 'money' && n.id !== 'work');
+    return JSON.stringify(reply);
+  };
+
+  it('keeps a re-ask that leaves fewer turns out, with the rest under the placeholder', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([withoutSeven(noIntro), withoutSeven(skeletonReply)]);
+    expect(withoutSeven(skeletonReply)()).not.toBe(skeletonReply());
+    // The kept overview itself (detail would refile turn 7 under its neighbouring topic).
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, detail: 'none' });
+    expect(generate.mock.calls[1][3]).toMatch(/left 2 utterances in no topic: utterance-0001, utterance-0007\. /);
+    expect(gapTopic(bundle).source_ref.utterance_ids).toEqual([u(7)]);
+    expect(evidence(bundle, '3:intro')).toEqual([u(1)]);
+  });
+
+  it('keeps the first overview when the re-ask leaves as many turns out (other turns) or more', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const tie = scriptedGlance([noIntro, withoutSeven(skeletonReply)]);
+    expect(gapTopic((await runGlanceDetailPipeline({ source, routes: [], generate: tie, intervalMs: 0 })).bundle).source_ref.utterance_ids).toEqual([u(1)]);
+    const worse = scriptedGlance([noIntro, noBudget]);
+    const progress = [];
+    const { bundle } = await runGlanceDetailPipeline({ source, routes: [], generate: worse, intervalMs: 0, onProgress: e => progress.push(e) });
+    expect(gapTopic(bundle).source_ref.utterance_ids).toEqual([u(1)]);
+    expect(progress.some(e => e.phase === 'log' && /second overview left 2 turns in no topic \(1 before\); keeping the first, with 1 turn under/.test(e.entry.text))).toBe(true);
+  });
+
+  it('waits the admission backoff before retrying a glance refused at admission, and gives up after the budget', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const admission = () => Object.assign(new Error('limit'), { status: 429 });
+    const starts = [];
+    const generate = scriptedGlance([admission(), skeletonReply]);
+    const timed = vi.fn(async (...args) => { if (args[4].task === 'skeleton') starts.push(Date.now()); return generate(...args); });
+    await runGlanceDetailPipeline({ source, routes: [], generate: timed, intervalMs: 0, admissionRetryMs: 50, admissionBudgetMs: 50 });
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(45);
+    // Budget of 3 ms with 1 ms steps: retries at 1, 2 ms, then the third refusal fails the map.
+    const always = scriptedGlance([admission(), admission(), admission(), admission()]);
+    await expect(runGlanceDetailPipeline({ source, routes: [], generate: always, intervalMs: 0, admissionRetryMs: 1, admissionBudgetMs: 3 })).rejects.toThrow('limit');
+    expect(tasks(always)).toEqual(['skeleton', 'skeleton', 'skeleton']);
+  });
+
+  it('rejects quietly on cancel during a re-ask, never as a failure and never keeping the first overview', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const cancelled = () => new DOMException('Aborted', 'AbortError');
+    for (const first of [noIntro, refusal()]) {
+      const progress = [];
+      const generate = scriptedGlance([first, cancelled()]);
+      const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, onProgress: e => progress.push(e) }).catch(e => e);
+      expect(error.name).toBe('AbortError');
+      expect(tasks(generate)).toEqual(['skeleton', 'skeleton']);
+      expect(progress.some(e => e.phase === 'log' && e.entry.level === 'error')).toBe(false);
+    }
+    // Cancelled during the first call: no re-ask and no failure entry either.
+    const progress = [];
+    const firstCall = scriptedGlance([cancelled()]);
+    expect((await runGlanceDetailPipeline({ source, routes: [], generate: firstCall, intervalMs: 0, onProgress: e => progress.push(e) }).catch(e => e)).name).toBe('AbortError');
+    expect(tasks(firstCall)).toEqual(['skeleton']);
+    expect(progress.some(e => e.phase === 'log' && e.entry.level === 'error')).toBe(false);
+    // Cancelled while waiting out the pacing gap before the re-ask: no second call is made.
+    const controller = new AbortController();
+    const waiting = scriptedGlance([refusal(), skeletonReply]);
+    const run = runGlanceDetailPipeline({ source, routes: [], generate: waiting, intervalMs: 5_000, signal: controller.signal }).catch(e => e);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    controller.abort();
+    expect((await run).name).toBe('AbortError');
+    expect(tasks(waiting)).toEqual(['skeleton']);
+    // Cancelled while waiting out an admission backoff: no further call is made.
+    const backoff = new AbortController();
+    const refusedAdmission = scriptedGlance([Object.assign(new Error('limit'), { status: 429 }), skeletonReply]);
+    const held = runGlanceDetailPipeline({ source, routes: [], generate: refusedAdmission, intervalMs: 0, admissionRetryMs: 5_000, signal: backoff.signal }).catch(e => e);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    backoff.abort();
+    expect((await held).name).toBe('AbortError');
+    expect(tasks(refusedAdmission)).toEqual(['skeleton']);
+  });
+
+  it('paces a coverage re-ask from the previous call\'s start, as detail calls are paced', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const generate = scriptedGlance([noIntro, skeletonReply]);
+    const starts = [];
+    // Each overview call takes 80 ms: paced from its start the re-ask begins ~100 ms later, from its end ~180 ms.
+    const slow = vi.fn(async (...args) => {
+      if (args[4].task === 'skeleton') { starts.push(Date.now()); await new Promise(resolve => setTimeout(resolve, 80)); }
+      return generate(...args);
+    });
+    await runGlanceDetailPipeline({ source, routes: [], generate: slow, intervalMs: 100 });
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(95);
+    expect(starts[1] - starts[0]).toBeLessThan(160);
+  });
+
+  it('rejects with an AbortError when a cancelled call rejects with something else', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const controller = new AbortController();
+    const generate = vi.fn(async () => { controller.abort(); throw new TypeError('network error'); });
+    const error = await runGlanceDetailPipeline({ source, routes: [], generate, intervalMs: 0, signal: controller.signal }).catch(e => e);
+    expect(error.name).toBe('AbortError');
+  });
+
+  it('names at most eight uncovered ranges and stays within the guidance limit', () => {
+    const ids = Array.from({ length: 40 }, (_, i) => `utterance-${String(i + 1).padStart(4, '0')}`);
+    const odd = ids.filter((_, i) => i % 2 === 0);
+    const note = coverageGuidance('g'.repeat(5000), odd, ids);
+    expect(note.length).toBeLessThanOrEqual(3000);
+    expect(note).toMatch(/left 20 utterances in no topic: utterance-0001, utterance-0003,.*utterance-0015 and 12 more ranges\./);
+    expect(coverageGuidance('', [ids[0], ids[1], ids[2], ids[9]], ids)).toMatch(/: utterance-0001 to utterance-0003, utterance-0010\. /);
+    expect(retryGuidance('', 'threads', 'skeleton')).toMatch(/^Your previous overview was refused at threads\. Fix exactly that: every thread step/);
+    const nine = ids.filter((_, i) => i % 2 === 0).slice(0, 9);
+    expect(coverageGuidance('', nine, ids)).toMatch(/ and 1 more range\. /);
+    // Duplicates and unknown ids are neither named nor counted.
+    expect(coverageGuidance('', [ids[0], ids[0], 'not-a-turn', ids[1]], ids)).toMatch(/left 2 utterances in no topic: utterance-0001 to utterance-0002\. /);
+    // A note that fills the limit leaves no room for guidance and no stray separator.
+    expect(retryGuidance('owner', 'x'.repeat(3200))).toHaveLength(3000);
+    expect(retryGuidance('owner', 'x'.repeat(3200)).startsWith('Your previous')).toBe(true);
   });
 });

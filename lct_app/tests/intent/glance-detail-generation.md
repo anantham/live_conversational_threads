@@ -11,3 +11,9 @@
 - A truncated detail segment is halved (depth 2); `detail: 'none'` returns the skeleton, and
   `expandTopicDetail` details one topic on demand.
 - Non-adjacent same-speaker turns in a segment never merge (one utterance per turn, asserted at merge).
+- The overview is re-asked at most once (2026-11-27, from the finer-maps study): a structural refusal
+  is asked again with the refused rule named (a second refusal fails the map; provider failures and
+  truncation are not re-asked); an accepted overview whose topics leave turns out is asked again with
+  those turns named, the reply leaving fewer turns out is kept, and any still left out stay under the
+  "Uncovered turns" placeholder (also when the re-ask fails). A re-ask is paced like a detail call and
+  a 429 admission refusal waits and tries again.
