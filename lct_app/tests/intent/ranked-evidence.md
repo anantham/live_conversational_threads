@@ -8,15 +8,19 @@ rule below on 2026-11-27.
 
 1. Candidates are the transcript lines a node cites, or, for a node that cites none of its own,
    the lines its descendants cite (the same set its passages open to).
-2. Lines of five content words or fewer are left out (`BACKCHANNEL_WORDS`, the generation side's
-   backchannel threshold). Fillers such as "um" and "uh" don't count as words.
+2. Lines of five words or fewer are left out (`BACKCHANNEL_WORDS`, the generation side's
+   backchannel threshold). Words are counted as the generation side counts them (split on spaces,
+   so "that’s" is one word), except that fillers such as "um" and "uh" don't count.
 3. Lines are ranked by, in order:
-   - the salience of the topic they come from: core, then supporting or unmarked, then aside;
+   - the salience of the topic they come from: core, then supporting or unmarked, then aside
+     (a line cited by several topics takes the most salient one);
    - how many of the node's title and summary words they share;
    - length, up to 40 words (a longer line usually carries more of the point).
    Ties keep transcript order.
-4. Lines next to an already chosen line (within two turns) are skipped, so the picks come from
-   different stretches when the node has them.
+4. Lines next to an already chosen line (within two turns) are skipped on a first pass, so the
+   picks come from different stretches when the node has them. If that pass finds fewer lines than
+   the limit, the best remaining lines fill the gap, even near a chosen line: the owner asked for
+   the top three, and spreading is a preference, not a reason to show fewer.
 5. The chosen lines are shown in transcript order, verbatim.
 
 ## Behaviour to test
@@ -29,6 +33,11 @@ rule below on 2026-11-27.
 - An upper-tier node with no citations of its own gets lines from its descendants.
 - Picks are spread out: two adjacent strong lines don't both appear when a third, distant line exists.
 - Output is in transcript order and is at most the limit.
-- Untrusted input (cycles in parent links, missing utterances, non-string text) does not throw.
+- Untrusted input (cycles in parent links, missing utterances, non-string text, values whose
+  string conversion throws) does not throw.
+- A line cited by both an aside and a core topic ranks as core, whatever order the topics are walked in.
+- The candidate lines are exactly the lines the card's passages open to, also when citations sit at
+  several tiers.
+- Contractions count as one word, plurals match their singular, and two-letter title terms ("AI") count.
 - On a card, the lines show in the detail area with speaker and time, and each opens the passage at
   that line through the existing `onOpenVisit`.

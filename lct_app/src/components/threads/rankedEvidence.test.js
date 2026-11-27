@@ -52,18 +52,70 @@ describe("rankNodeEvidence", () => {
   });
 
   it("lets summary overlap decide on a map without salience, and gives an uncited upper node its descendants' lines", () => {
+    // Same length, neither shares a title word; only u10 shares summary words, and it comes later.
     const utterances = [
-      line("u1", "I spent the morning reading about something else entirely, nothing related"),
-      line("u10", "Rainwater collection would keep the garden watered through the dry months"),
+      line("u1", "I spent the whole morning reading about something else entirely, really"),
+      line("u10", "Collecting rainwater would carry everyone through those long dry months"),
     ];
     const nodes = [
-      { id: "arc", node_name: "Watering the garden", summary: "Rainwater collection for dry months", source_ref: { utterance_ids: [] } },
+      { id: "arc", node_name: "Watering plan", summary: "Rainwater collection for dry months", source_ref: { utterance_ids: [] } },
       { id: "a", parent_id: "arc", source_ref: { utterance_ids: ["u1"] } },
       { id: "b", parent_id: "arc", source_ref: { utterance_ids: ["u10"] } },
     ];
     const result = rank(nodes, utterances, "arc", { limit: 1 });
     expect(result).toHaveLength(1);
-    expect(result[0].text).toMatch(/Rainwater collection/);
+    expect(result[0].utteranceId).toBe("u10");
+  });
+
+  it("gives a line cited by both an aside and a core topic the core rank", () => {
+    const utterances = [
+      line("u1", "We keep talking about the garden budget and the garden tools and plots"),
+      line("u10", "Somebody should probably water the tomatoes before it gets dark tonight"),
+    ];
+    const nodes = [
+      { id: "arc", node_name: "Garden", summary: "garden budget tools plots", source_ref: { utterance_ids: [] } },
+      { id: "z-aside", parent_id: "arc", salience: "aside", source_ref: { utterance_ids: ["u1"] } },
+      { id: "other", parent_id: "arc", salience: "supporting", source_ref: { utterance_ids: ["u10"] } },
+      { id: "a-core", parent_id: "arc", salience: "core", source_ref: { utterance_ids: ["u1"] } },
+    ];
+    // Ids chosen so the walk meets the aside citer first: the result must not depend on visit order.
+    const [first] = rank(nodes, utterances, "arc", { limit: 1 });
+    expect(first).toMatchObject({ utteranceId: "u1", salience: "core" });
+  });
+
+  it("offers exactly the lines the card's passages open to when citations sit at several tiers", () => {
+    const utterances = ["u1", "u2", "u3", "u4", "u5", "u6"].map((id) => line(id, `a long enough line called ${id} about the shared garden plans`));
+    const nodes = [
+      { id: "arc", node_name: "Garden", summary: "garden", source_ref: { utterance_ids: [] } },
+      { id: "theme", parent_id: "arc", source_ref: { utterance_ids: ["u1", "u2"] } },
+      { id: "topic", parent_id: "theme", source_ref: { utterance_ids: ["u3"] } },
+      { id: "bare", parent_id: "arc", source_ref: { utterance_ids: [] } },
+      { id: "chunk", parent_id: "bare", source_ref: { utterance_ids: ["u5", "u6"] } },
+    ];
+    const landscape = buildSpatialLandscape(nodes, { utterances });
+    const opened = landscape.sourceVisitsById.get("arc").flatMap((visit) => {
+      const from = landscape.utteranceIndex.get(visit.startUtteranceId);
+      const to = landscape.utteranceIndex.get(visit.endUtteranceId);
+      return utterances.slice(from, to + 1).map((u) => u.id);
+    });
+    const ranked = rankNodeEvidence("arc", landscape, { limit: 99 }).map((l) => l.utteranceId);
+    expect(ranked).toEqual(opened);
+    expect(ranked).toEqual(["u1", "u2", "u5", "u6"]);
+  });
+
+  it("counts words as the generation side does and matches short and plural terms", () => {
+    const utterances = [
+      line("u1", "Yeah, that’s all I’d say."),
+      line("u2", "Yeah, that's all I'd say."),
+      line("u10", "Honestly the interest rates were what worried people about the loans"),
+      line("u20", "We should talk about how the models decide things for everyone here"),
+    ];
+    const nodes = [{ id: "n", node_name: "AI and rate", summary: "interest rate", source_ref: { utterance_ids: ["u1", "u2", "u10", "u20"] } }];
+    // u1/u2 are five words either way; u10 matches "interest" and "rate" (from "rates").
+    expect(rank(nodes, utterances, "n", { limit: 1 }).map((l) => l.utteranceId)).toEqual(["u10"]);
+    expect(rank(nodes, utterances, "n").map((l) => l.utteranceId)).toEqual(["u10", "u20"]);
+    const ai = [line("u1", "the AI part is what this whole conversation kept coming back to"), line("u10", "the weather part is what this whole conversation kept coming back to")];
+    expect(rank([{ id: "n", node_name: "AI", summary: "", source_ref: { utterance_ids: ["u1", "u10"] } }], ai, "n", { limit: 1 })[0].utteranceId).toBe("u1");
   });
 
   it("spreads picks across stretches, returns them in transcript order, and respects the limit", () => {
@@ -100,6 +152,13 @@ describe("rankNodeEvidence", () => {
       { id: "c", parent_id: "a", source_ref: { utterance_ids: ["u1", "u2", "u3", "missing"] } },
     ];
     expect(() => rank(nodes, utterances, "a")).not.toThrow();
+    // Values whose string conversion throws must not crash the render.
+    const hostile = { toString: null, valueOf: null };
+    const odd = [
+      { id: "x", node_name: hostile, summary: hostile, salience: hostile, source_ref: { utterance_ids: [] } },
+      { id: "y", parent_id: "x", salience: hostile, source_ref: { utterance_ids: ["u1"] } },
+    ];
+    expect(texts(rankNodeEvidence("x", buildSpatialLandscape(odd, { utterances })))).toEqual(["a perfectly ordinary sentence about the garden budget and plans"]);
     expect(texts(rank(nodes, utterances, "a"))).toEqual(["a perfectly ordinary sentence about the garden budget and plans"]);
     expect(rank(nodes, utterances, "nope")).toEqual([]);
     expect(rankNodeEvidence("a", null)).toEqual([]);

@@ -9,6 +9,7 @@ const utterances = [
   { id: "u1", speaker_id: "s1", timestamp_start: 5, text: "Yeah." },
   { id: "u2", speaker_id: "s1", timestamp_start: 65, text: "Rainwater collection would keep the shared garden watered through the dry months" },
   { id: "u3", speaker_id: "s2", timestamp_start: 70, text: "Mm, right." },
+  { id: "u3b", speaker_id: "s1", timestamp_start: 90, text: "Okay." },
   { id: "u4", speaker_id: "s2", timestamp_start: 125, text: "I spent the morning reading about something else entirely, nothing related" },
 ];
 const nodes = [
