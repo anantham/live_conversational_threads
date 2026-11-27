@@ -6,14 +6,17 @@ rule below on 2026-11-27.
 
 ## The rule (no model calls)
 
-1. Candidates are the transcript lines a node cites, or, for a node that cites none of its own,
-   the lines its descendants cite (the same set its passages open to).
+1. Candidates are exactly the lines the card's passages open to (`sourceVisitsById`): the lines a
+   node cites (`source_ref.utterance_ids`, else legacy `utterance_ids`), or, for a node that cites
+   none of its own, the lines its descendants cite.
 2. Lines of five words or fewer are left out (`BACKCHANNEL_WORDS`, the generation side's
    backchannel threshold). Words are counted as the generation side counts them (split on spaces,
    so "that’s" is one word), except that fillers such as "um" and "uh" don't count.
 3. Lines are ranked by, in order:
-   - the salience of the topic they come from: core, then supporting or unmarked, then aside
-     (a line cited by several topics takes the most salient one);
+   - salience: core, then supporting or unmarked, then aside. A line's salience is the best among
+     the marked nodes in the card's subtree (the card included) that cite it, each node taking the
+     nearest mark at or above it. Generated maps mark topics, and generated parents repeat their
+     topics' citations, so an arc card still ranks by its topics' salience;
    - how many of the node's title and summary words they share;
    - length, up to 40 words (a longer line usually carries more of the point).
    Ties keep transcript order.
@@ -36,8 +39,12 @@ rule below on 2026-11-27.
 - Untrusted input (cycles in parent links, missing utterances, non-string text, values whose
   string conversion throws) does not throw.
 - A line cited by both an aside and a core topic ranks as core, whatever order the topics are walked in.
+- On a generated arc (citations derived upward by `deriveParentEvidence`), a core topic's line still
+  outranks an aside's.
+- Legacy top-level `utterance_ids` give key lines, as they give passages.
 - The candidate lines are exactly the lines the card's passages open to, also when citations sit at
   several tiers.
-- Contractions count as one word, plurals match their singular, and two-letter title terms ("AI") count.
+- Contractions count as one word and an emoji counts as one (as on the generation side); plurals
+  match their singular ("rates", "houses", "classes", "stories"); two-letter title terms ("AI") count.
 - On a card, the lines show in the detail area with speaker and time, and each opens the passage at
   that line through the existing `onOpenVisit`.

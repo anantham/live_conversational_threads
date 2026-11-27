@@ -3340,3 +3340,11 @@ Found by five read-only reviewers over 9f047a1e..173f8f2c plus main/CI commits; 
 
 ## 2026-11-27 — Resolved: the account panel has no Escape-to-close (entry of 2026-11-05)
 - **Fix:** branch `fix/panel-escape-share-credentials`. Escape pressed inside the panel closes it and returns focus as the × does; neither the map nor the node-detail drawer sees that Escape. See WORKLOG 2026-11-27.
+
+### 2026-11-27 — A crafted `.threads` file can crash the viewer through values whose string conversion throws
+
+- **What:** found by the Codex review of PR #280 (round 2), reproduced by the reviewer and confirmed by reading the code. A citation id such as `{"toString": null}` in `source_ref.utterance_ids` passes the v2 validator and then throws in `lct_app/src/components/graphProvenance.js` (`directUtteranceIds` → `nonEmptyId`, around line 51) during provenance enrichment, before the landscape renders. A node `id` of that shape throws in `buildSpatialLandscape` (`String(node.id)`), and an object `node_name` throws when the card renders it as a React child. PR #280 made `utteranceIdsOf` in `spatialLandscapeModel.js` and the key-line ranker safe; these three paths predate it.
+- **Impact:** a malicious or corrupt shared file shows a crashed viewer instead of an error. No data is exposed. Ordinary generated maps never produce these values.
+- **Blocker:** no.
+- **Next step:** reject non-string ids and names in the `.threads` validator (one place), rather than guarding each consumer.
+

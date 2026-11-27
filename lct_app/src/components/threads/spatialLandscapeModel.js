@@ -31,10 +31,14 @@ export function formatVisitClock(seconds) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function utteranceIdsOf(node) {
+// .threads files are untrusted: only strings and numbers are ids (String() on an object can throw).
+const citationIds = (ids) => ids.filter((uid) => typeof uid === "string" || typeof uid === "number").map(String);
+
+/** The utterance ids a node cites: `source_ref.utterance_ids`, else the legacy top-level `utterance_ids`. */
+export function utteranceIdsOf(node) {
   const fromRef = node?.source_ref?.utterance_ids;
-  if (Array.isArray(fromRef) && fromRef.length) return fromRef.map(String);
-  if (Array.isArray(node?.utterance_ids) && node.utterance_ids.length) return node.utterance_ids.map(String);
+  if (Array.isArray(fromRef) && fromRef.length) return citationIds(fromRef);
+  if (Array.isArray(node?.utterance_ids) && node.utterance_ids.length) return citationIds(node.utterance_ids);
   return [];
 }
 

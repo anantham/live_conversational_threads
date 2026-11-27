@@ -4,7 +4,7 @@
 // trust it. Deterministic and local: no model call, nothing sent anywhere.
 
 import { BACKCHANNEL_WORDS } from "../../services/cloud/mapStructure.js";
-import { formatVisitClock } from "./spatialLandscapeModel.js";
+import { formatVisitClock, utteranceIdsOf } from "./spatialLandscapeModel.js";
 
 export const KEY_LINE_LIMIT = 3;
 const LENGTH_CAP = 40;
@@ -26,15 +26,17 @@ const wordCount = (text) =>
   typeof text === "string"
     ? text.split(/\s+/).filter((w) => {
         const bare = w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-        return bare && !FILLERS.has(bare);
+        return w && !FILLERS.has(bare);
       }).length
     : 0;
-// Light plural folding: "rates"→"rate", "cases"→"case", "classes"→"class", "stories"→"story"; "glass" stays.
-const stem = (w) =>
-  w.replace(/'s$/, "")
-    .replace(/ies$/, "y")
-    .replace(/(s|x|z|ch|sh)es$/, "$1")
-    .replace(/([^s])s$/, "$1");
+// Light plural folding: "rates"→"rate", "houses"→"house", "classes"→"class", "boxes"→"box", "stories"→"story"; "glass" stays.
+// One rule per word, never chained (chaining turned "houses" into "hou").
+const stem = (w) => {
+  const base = w.replace(/'s$/, "");
+  if (/ies$/.test(base)) return base.replace(/ies$/, "y");
+  if (/(ss|x|z|ch|sh)es$/.test(base)) return base.replace(/es$/, "");
+  return base.replace(/([^s])s$/, "$1");
+};
 // Two-letter terms count ("AI" is often the point of a title); stopwords don't.
 const keyTerms = (text) => new Set(contentWords(text).filter((w) => w.length > 1 && !STOPWORDS.has(w)).map(stem));
 const textField = (value) => (typeof value === "string" ? value : "");
@@ -51,36 +53,41 @@ function featuresOf(row) {
   return features;
 }
 
-const citedIdsOf = (node) => {
-  const ids = node?.source_ref?.utterance_ids ?? node?.utterance_ids;
-  return Array.isArray(ids) ? ids.filter((uid) => typeof uid === "string" || typeof uid === "number").map(String) : [];
-};
+/** The lines the card's passages open to (`sourceVisitsById`), so key lines and passages agree by construction. */
+function eligibleIds(id, landscape) {
+  const ids = [];
+  for (const visit of landscape.sourceVisitsById?.get(id) || []) {
+    const from = landscape.utteranceIndex.get(visit?.startUtteranceId);
+    const to = landscape.utteranceIndex.get(visit?.endUtteranceId);
+    if (from === undefined || to === undefined) continue;
+    for (let i = from; i <= to; i += 1) ids.push(String(landscape.utterances[i].id));
+  }
+  return ids;
+}
 
 /**
- * utterance id → the node that cites it: the node's own citations, else its descendants' (the same set
- * buildSpatialLandscape opens the card's passages to). A line cited by several nodes keeps its most salient one.
+ * line id → the best salience among marked nodes in the card's subtree (the card included) that cite it.
+ * Generated parents repeat every child's citations, so a parent's own citation must not hide its topics'
+ * salience: the topics below are asked too. Iterative with a visited set, since parent links may cycle.
  */
-function citersFor(rootId, landscape, rankOf) {
-  const { nodesById, childrenById, utteranceIndex } = landscape;
-  const own = (id) => citedIdsOf(nodesById.get(id)).filter((uid) => utteranceIndex.has(uid));
-  const citer = new Map();
-  const rootOwn = own(rootId);
-  if (rootOwn.length) {
-    rootOwn.forEach((uid) => citer.set(uid, rootId));
-    return citer;
-  }
-  // Iterative with a visited set: .threads files are untrusted, so parent links may form cycles.
-  const visited = new Set([rootId]);
-  const stack = [...(childrenById.get(rootId) || [])];
+function salienceByLine(rootId, landscape, cache) {
+  const best = new Map();
+  const visited = new Set();
+  const stack = [rootId];
   while (stack.length) {
     const id = stack.pop();
     if (visited.has(id)) continue;
     visited.add(id);
-    const cited = own(id);
-    if (cited.length) cited.forEach((uid) => (!citer.has(uid) || rankOf(id) > rankOf(citer.get(uid))) && citer.set(uid, id));
-    else for (const childId of childrenById.get(id) || []) if (!visited.has(childId)) stack.push(childId);
+    const salience = salienceOf(id, landscape, cache);
+    if (salience) {
+      for (const uid of utteranceIdsOf(landscape.nodesById.get(id))) {
+        const previous = best.get(uid);
+        if (!previous || SALIENCE_RANK[salience] > SALIENCE_RANK[previous]) best.set(uid, salience);
+      }
+    }
+    for (const childId of landscape.childrenById?.get(id) || []) if (!visited.has(childId)) stack.push(childId);
   }
-  return citer;
+  return best;
 }
 
 /** Salience of the nearest marked node at or above `id`; null when none is marked. Caches every node on the walk. */
@@ -118,24 +125,20 @@ export function rankNodeEvidence(nodeId, landscape, { limit = KEY_LINE_LIMIT, sp
   if (!node || !utterances.length || !(landscape.utteranceIndex instanceof Map)) return [];
 
   const terms = keyTerms(`${textField(node.node_name) || textField(node.title)} ${textField(node.summary)}`);
-  const salienceCache = new Map();
-  // Unmarked counts as supporting: an older map says nothing about salience either way.
-  const rankOf = (citerId) => {
-    const salience = salienceOf(citerId, landscape, salienceCache);
-    return salience ? SALIENCE_RANK[salience] : SALIENCE_RANK.supporting;
-  };
+  const salienceByUtterance = salienceByLine(id, landscape, new Map());
   const candidates = [];
-  for (const [utteranceId, citerId] of citersFor(id, landscape, rankOf)) {
+  for (const utteranceId of eligibleIds(id, landscape)) {
     const index = landscape.utteranceIndex.get(utteranceId);
     const row = utterances[index];
     const { count, terms: lineTerms } = featuresOf(row);
     if (count <= BACKCHANNEL_WORDS) continue;
-    const salience = salienceOf(citerId, landscape, salienceCache);
+    const salience = salienceByUtterance.get(utteranceId) || null;
     let overlap = 0;
     for (const term of terms) if (lineTerms.has(term)) overlap += 1;
     candidates.push({
       utteranceId, index, row, salience,
-      score: [rankOf(citerId), overlap, Math.min(count, LENGTH_CAP)],
+      // Unmarked counts as supporting: an older map says nothing about salience either way.
+      score: [salience ? SALIENCE_RANK[salience] : SALIENCE_RANK.supporting, overlap, Math.min(count, LENGTH_CAP)],
     });
   }
 

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSpatialLandscape } from "./spatialLandscapeModel";
 import { rankNodeEvidence } from "./rankedEvidence";
+import { deriveParentEvidence } from "../../services/cloud/parentEvidence";
 
 const line = (id, text, extra = {}) => ({ id, speaker_id: "s1", speaker_name: "Mirela", timestamp_start: Number(id.slice(1)) * 10, text, ...extra });
 const rank = (nodes, utterances, id, options) => rankNodeEvidence(id, buildSpatialLandscape(nodes, { utterances }), options);
@@ -103,19 +104,50 @@ describe("rankNodeEvidence", () => {
     expect(ranked).toEqual(["u1", "u2", "u5", "u6"]);
   });
 
-  it("counts words as the generation side does and matches short and plural terms", () => {
+  it("keeps topic salience on a generated arc, whose citations repeat its topics'", () => {
+    const utterances = [
+      line("u1", "We keep talking about the garden budget and the garden tools and plots"),
+      line("u10", "What matters most is that neighbours decide together who looks after it"),
+    ];
+    const generated = deriveParentEvidence({ nodes: [
+      { id: "arc", semantic_level: 5, node_name: "Community garden", summary: "Planning the garden budget and tools", source_ref: { utterance_ids: [] } },
+      { id: "aside", semantic_level: 3, parent_id: "arc", salience: "aside", source_ref: { utterance_ids: ["u1"] } },
+      { id: "core", semantic_level: 3, parent_id: "arc", salience: "core", source_ref: { utterance_ids: ["u10"] } },
+    ] }).nodes;
+    expect(generated[0].source_ref.utterance_ids).toEqual(["u1", "u10"]);
+    const [first] = rank(generated, utterances, "arc", { limit: 1 });
+    expect(first).toMatchObject({ utteranceId: "u10", salience: "core" });
+  });
+
+  it("reads legacy top-level citations, as the card's passages do", () => {
+    const utterances = [line("u1", "Rainwater collection would keep the garden watered through the summer")];
+    const nodes = [{ id: "n", node_name: "Rain", summary: "rainwater", source_ref: { utterance_ids: [] }, utterance_ids: ["u1"] }];
+    expect(rank(nodes, utterances, "n").map((l) => l.utteranceId)).toEqual(["u1"]);
+  });
+
+  it("counts words as the generation side does", () => {
     const utterances = [
       line("u1", "Yeah, that’s all I’d say."),
       line("u2", "Yeah, that's all I'd say."),
-      line("u10", "Honestly the interest rates were what worried people about the loans"),
-      line("u20", "We should talk about how the models decide things for everyone here"),
+      line("u3", "one two three four five 🎉"),
+      line("u4", "um uh one two three four five"),
     ];
-    const nodes = [{ id: "n", node_name: "AI and rate", summary: "interest rate", source_ref: { utterance_ids: ["u1", "u2", "u10", "u20"] } }];
-    // u1/u2 are five words either way; u10 matches "interest" and "rate" (from "rates").
-    expect(rank(nodes, utterances, "n", { limit: 1 }).map((l) => l.utteranceId)).toEqual(["u10"]);
-    expect(rank(nodes, utterances, "n").map((l) => l.utteranceId)).toEqual(["u10", "u20"]);
-    const ai = [line("u1", "the AI part is what this whole conversation kept coming back to"), line("u10", "the weather part is what this whole conversation kept coming back to")];
-    expect(rank([{ id: "n", node_name: "AI", summary: "", source_ref: { utterance_ids: ["u1", "u10"] } }], ai, "n", { limit: 1 })[0].utteranceId).toBe("u1");
+    const nodes = [{ id: "n", node_name: "Words", summary: "", source_ref: { utterance_ids: ["u1", "u2", "u3", "u4"] } }];
+    // Contractions are one word (five words: dropped); an emoji is a word (six: kept); fillers are not.
+    expect(rank(nodes, utterances, "n").map((l) => l.utteranceId)).toEqual(["u3"]);
+  });
+
+  it("folds plurals and counts two-letter title terms, even against transcript order", () => {
+    const pair = (match) => [
+      line("u1", "the weather part is what this whole conversation kept coming back to"),
+      line("u10", `the ${match} part is what this whole conversation kept coming back to`),
+    ];
+    const top = (title, match) => rank([{ id: "n", node_name: title, summary: "", source_ref: { utterance_ids: ["u1", "u10"] } }], pair(match), "n", { limit: 1 })[0].utteranceId;
+    expect(top("AI", "AI")).toBe("u10");
+    expect(top("Rate", "rates")).toBe("u10");
+    expect(top("House", "houses")).toBe("u10");
+    expect(top("Class", "classes")).toBe("u10");
+    expect(top("Story", "stories")).toBe("u10");
   });
 
   it("spreads picks across stretches, returns them in transcript order, and respects the limit", () => {
@@ -159,6 +191,8 @@ describe("rankNodeEvidence", () => {
       { id: "y", parent_id: "x", salience: hostile, source_ref: { utterance_ids: ["u1"] } },
     ];
     expect(texts(rankNodeEvidence("x", buildSpatialLandscape(odd, { utterances })))).toEqual(["a perfectly ordinary sentence about the garden budget and plans"]);
+    const hostileId = [{ id: "z", node_name: "Z", summary: "garden", source_ref: { utterance_ids: [hostile, "u1"] } }];
+    expect(texts(rankNodeEvidence("z", buildSpatialLandscape(hostileId, { utterances })))).toEqual(["a perfectly ordinary sentence about the garden budget and plans"]);
     expect(texts(rank(nodes, utterances, "a"))).toEqual(["a perfectly ordinary sentence about the garden budget and plans"]);
     expect(rank(nodes, utterances, "nope")).toEqual([]);
     expect(rankNodeEvidence("a", null)).toEqual([]);
