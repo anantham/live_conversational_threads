@@ -156,8 +156,12 @@ export function useAudioImport() {
         } catch (error) {
           if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) {
             // The run ends here: replace "Trying X next" with what happened to X (its error shows below).
-            if (failures.length && valid() && error.name !== 'AbortError') {
-              setFallbackNotice(`${failureText()} ${providerName(provider)} was tried next and could not transcribe it either.`);
+            if (failures.length && valid()) {
+              // Only the user's Stop aborts mapStop; a provider's own timeout abort is a failure, not a stop.
+              const stopped = Boolean(mapStop.current?.signal.aborted);
+              setFallbackNotice(stopped
+                ? `${failureText()} The import was stopped before ${providerName(provider)} finished, so it may have received part or all of the audio.`
+                : `${failureText()} ${providerName(provider)} was tried next and could not transcribe it either.`);
             }
             throw error;
           }
