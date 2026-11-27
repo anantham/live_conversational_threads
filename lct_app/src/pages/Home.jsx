@@ -5,6 +5,7 @@ import ServiceStatus from "../components/ServiceStatus";
 import TooltipButton from "../components/TooltipButton";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
+import { useMeetingsOpen } from "../hooks/useMeetingsOpen";
 
 const action = "relative inline-flex items-center justify-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700";
 const neutral = "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-400 hover:text-slate-900";
@@ -12,11 +13,14 @@ const primaryAction = `${action} size-20 sm:size-24`;
 const secondaryAction = `${action} size-16 sm:size-18`;
 const primaryIcon = "size-8 sm:size-9";
 const secondaryIcon = "size-6 sm:size-7";
+// A closed door stays visible and openable (earlier recordings live behind it), drawn quieter and labelled in words.
+const closedNeutral = "border-dashed border-slate-300 bg-white/50 text-slate-500 hover:border-slate-400 hover:text-slate-700";
 
 export default function Home() {
   const navigate = useNavigate();
   const [draftSummary, setDraftSummary] = useState(null);
   const [pendingFeatureToast, setPendingFeatureToast] = useState("");
+  const meetClosed = useMeetingsOpen() === "closed";
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +66,8 @@ export default function Home() {
       </h1>
 
       <nav aria-label="Home actions" className="relative flex flex-col items-center gap-8 sm:gap-10">
-        <div className="flex flex-wrap justify-center gap-3 sm:gap-6">
+        {/* Rows sit far enough apart that the "Closed for now" caption under a tile never meets the next row. */}
+        <div className="flex flex-wrap justify-center gap-x-3 gap-y-9 sm:gap-x-6">
           <TooltipButton compact align="center" aria-label="New recording"
             tooltip={draftSummary ? "New recording · Draft available" : "New recording"}
             onClick={() => navigate(getAutostartOnNew() ? "/new?autostart=true" : "/new")}
@@ -70,10 +75,15 @@ export default function Home() {
             <Mic aria-hidden="true" className={primaryIcon} />
             {draftSummary && <span aria-hidden="true" className="absolute right-3 top-3 size-2.5 rounded-full bg-amber-400" />}
           </TooltipButton>
-          <TooltipButton compact align="center" aria-label="Join Google Meet" tooltip="Join Google Meet"
-            onClick={() => navigate("/meeting")} className={`${primaryAction} ${neutral}`}>
-            <Video aria-hidden="true" className={primaryIcon} />
-          </TooltipButton>
+          <span className="relative inline-flex">
+            <TooltipButton compact align="center"
+              aria-label={meetClosed ? "Google Meet, closed for now" : "Join Google Meet"}
+              tooltip={meetClosed ? "Google Meet is closed for now. Earlier recordings are still here." : "Join Google Meet"}
+              onClick={() => navigate("/meeting")} className={`${primaryAction} ${meetClosed ? closedNeutral : neutral}`}>
+              <Video aria-hidden="true" className={primaryIcon} />
+            </TooltipButton>
+            {meetClosed && <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap text-xs text-slate-600">Closed for now</span>}
+          </span>
           <TooltipButton compact align="center" aria-label="Browse library" tooltip="Browse library"
             onClick={() => navigate("/browse")} className={`${primaryAction} ${neutral}`}>
             <FolderOpen aria-hidden="true" className={primaryIcon} />

@@ -24,6 +24,36 @@ Owner ruling 2026-11-26: the Graph is another way of looking at the Landscape's 
 - `MinimalGraph.jsx`, `threads/ThreadsViewerToolbar.jsx`, `threads/ThreadsViewerHeader.jsx`, `pages/ThreadsViewer.jsx`: quiet pill buttons instead of bordered boxes; header and toolbar on the Landscape's paper (`#fbfaf7`) with its stone hairline; one rule line instead of two.
 - Tests: `graphClustering.test.jsx` (new), 3 ConversationNode cases, `tests/e2e/graph-calm.spec.ts` (new, real browser: paper ground equals the Landscape's, white cards at the top and grouped levels, no amber halo). All fail on the old sources. Landscape column e2e still passes.
 - Logged in ISSUES.md: the level tabs rename themselves when "moments" is chosen.
+## 2026-11-27 02:50 IST — Second Codex round on the #270 fixes
+
+Codex `gpt-6.2-sol` re-read the fix commit with its earlier findings (packet sha256 `94b1dd3b…`). Taken:
+- `pages/SitesNewConversation.jsx`: at the shared limit the page records audio only, even if the visitor had switched transcription on (their choice returns when the limit lifts). Before, Start did nothing until they found Settings.
+- `pages/SitesMeetings.jsx` + `hooks/useMeetingsOpen.js`: only a boolean `canJoin` from this browser's status overrides the public check; a status without it falls back to the public answer. Check connection asks the public check again; a failed or unreadable re-check keeps the last well-formed answer.
+- `components/recording/ConversationServiceStatus.jsx`: a newer successful attempt (ready) outranks an older exhausted check in what the page is told.
+- Declined: ordering a private "open" against a later public "closed" by observation time. The server refuses a join while closed (`sites/meetings.js`), so a stale open form cannot send a bot. Also kept: for `inactive` the top "closed for now" line is the replacement, so no second line is added.
+- Tests: 4 new, all red on the previous commit's sources. Suites pass with a 60 s timeout; at the default 5 s two unrelated tests timed out while the machine's load average was ~220.
+
+## 2026-11-27 01:00 IST — Codex review fixes for "closed for now" (PR #270)
+
+Independent review: Codex `gpt-6.2-sol` (OpenAI family; owner approved Codex for #270/#272/#273 on 2026-11-27), read-only, packet = code-only diff `e3936dc8...7d24eabb` without the worklog, sha256 `adaf34d8…71`. 7 findings; 6 confirmed and fixed, 1 partly right.
+
+- `pages/SitesMeetings.jsx`: this browser's status now decides once it arrives (`status.canJoin === false`), the public check covers the time before it or a failed request. Before, a stale public "closed" kept the form locked after Check connection said it could join, and a status without `canJoin` read as closed. The quieter replacement now covers exactly `inactive` and 401 `sign_in`; any other 401 stays an alert (it used to vanish).
+- `components/recording/ConversationServiceStatus.jsx`: the page is told `limited` whenever a fresh check says the allowance is exhausted, even within 2 minutes of a failed attempt (the failure used to mask it). The indicator's headline is unchanged.
+- `pages/SitesNewConversation.jsx`: partly right. Starting with transcription after the limit was already blocked by the `transcribe && !live` guard, but a consent dialog open when the limit arrived kept a Confirm that did nothing. It now closes so the page can explain and offer audio only.
+- `pages/Home.jsx`: rows of primary tiles sit 36px apart when they wrap, so the "Closed for now" caption never meets the next row.
+- Tests: 4 new (all fail on the old sources), the /new limited test now confirms consent and asserts the session starts without transcription, the Home 503 case now sends a well-formed `available:false` body. Also fixed a rules-of-hooks lint error my original commit put in the /new test mock.
+
+## 2026-11-26 22:45 IST — Closed features say "closed for now" (critique issue 3)
+
+Owner ruling 2026-11-26: a feature that is closed today stays visible, marked "closed for now". Branch `fix/closed-for-now` from `integ/sites-combined` (`e3936dc8`).
+
+- `lct_app/sites/serviceHealth.js`: new public `GET /api/cloud/health/meetings` → `{service, enabled, available, checked_at}` from `meetingConfig` alone. No session, provider call or DB write; never the window end or owner. Home could not use `/api/cloud/meetings/status`, which needs a guest session the page would have to create for every visitor.
+- `lct_app/src/hooks/useMeetingsOpen.js` (new): reads that check. Only a well-formed `available:false` means closed; a failed or unreadable check changes nothing.
+- `pages/Home.jsx`: the Meet circle is drawn quieter (dashed) with a visible "Closed for now" caption and label, and still opens `/meeting`, where earlier recordings live.
+- `pages/SitesMeetings.jsx`: a status line at the top says meetings are closed; the link field and consent box are disabled. The page also reads the public check, so a signed-out visitor no longer gets "Sign in to use private meeting recordings" for a switched-off feature, only "Sign in to see recordings you made before".
+- `components/recording/ConversationServiceStatus.jsx` + `pages/SitesNewConversation.jsx`: the voice indicator reports its state; at the shared limit (`limited`, managed key only) `/new` turns live transcription off, starts audio-only, and says "Live transcription is closed for now. It has reached its shared limit."
+- Tests: 7 new or changed cases across 5 files; the 5 new behaviour tests fail on the old sources and pass now. Full suite 1726/1727 (publicDrive needs local port binding). Lint clean on changed files; `build:sites` passes. Checked in the browser on the local Sites preview at desktop and phone width.
+- Wording drafted by Claude; the owner may want to edit it.
 ## 2026-11-27 01:01 IST — Fix the five must-fix findings from the #261 review
 
 Branch `fix/integ-review-five` off `integ/sites-combined` `e90f816b`. Gemini (`gemini-4-argon-high`, two rounds, packets `d4965964…` and `dd3b9b95…`) reviewed #261's delta `27e83a1c..e3936dc8` and said NO-GO; each finding was checked against the code first.
