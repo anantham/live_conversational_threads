@@ -1,3 +1,7 @@
+## 2026-11-27 08:30 IST — Third Gemini round on the glance re-ask: no material findings
+
+agy `gemini-4-hydrogen-high`, packet sha256 `280f977f…c2bf` (round-2 review verbatim, diff `e0e5779c..34fc5e12`, `glanceWithReask` and helpers). Round-2 findings 3 and 4 resolved, 2 partly; "No material findings" for new defects. Taken: a test for cancel during an admission backoff. Left (low): no test reads the logged admission wait when the pacing gap is longer than the backoff step (sub-second rounding makes it flaky), and `coverageGuidance` called directly with no known ids would say "left 0 utterances" (the pipeline only calls it with a non-empty placeholder). File: 44/44.
+
 ## 2026-11-27 08:15 IST — Second Gemini round on the glance re-ask
 
 agy `gemini-4-hydrogen-high`, packet sha256 `0a52f348…b7b2` (round-1 findings verbatim, fix diff `5e57c17d..e0e5779c`, full pipeline, the new tests). Verdicts: round-1 findings 1, 2, 5 resolved; 3, 4, 6 partly. Taken: `coverageGuidance` counted duplicate or unknown ids that it did not name (now counts what it names); a cancelled call that rejects with another error now rejects the run with an AbortError, as `runSegments` does; tests for coverage re-ask pacing with 80 ms calls (fails on `5e57c17d`, which paced from the end: 190 ms gap) and for the AbortError. Declined: per-call failure lines ("Overview failed again after …") time that call only, by design, like `runSegments`' per-call times; the step total is in "Overview done in". File: 44/44; lint clean.

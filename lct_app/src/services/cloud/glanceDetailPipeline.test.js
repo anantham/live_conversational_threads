@@ -706,6 +706,14 @@ describe('glance re-ask', () => {
     controller.abort();
     expect((await run).name).toBe('AbortError');
     expect(tasks(waiting)).toEqual(['skeleton']);
+    // Cancelled while waiting out an admission backoff: no further call is made.
+    const backoff = new AbortController();
+    const refusedAdmission = scriptedGlance([Object.assign(new Error('limit'), { status: 429 }), skeletonReply]);
+    const held = runGlanceDetailPipeline({ source, routes: [], generate: refusedAdmission, intervalMs: 0, admissionRetryMs: 5_000, signal: backoff.signal }).catch(e => e);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    backoff.abort();
+    expect((await held).name).toBe('AbortError');
+    expect(tasks(refusedAdmission)).toEqual(['skeleton']);
   });
 
   it('paces a coverage re-ask from the previous call\'s start, as detail calls are paced', async () => {
