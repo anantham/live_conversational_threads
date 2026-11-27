@@ -36,10 +36,10 @@ const citationIds = (ids) => ids.filter((uid) => typeof uid === "string" || type
 
 /** The utterance ids a node cites: `source_ref.utterance_ids`, else the legacy top-level `utterance_ids`. */
 export function utteranceIdsOf(node) {
-  const fromRef = node?.source_ref?.utterance_ids;
-  if (Array.isArray(fromRef) && fromRef.length) return citationIds(fromRef);
-  if (Array.isArray(node?.utterance_ids) && node.utterance_ids.length) return citationIds(node.utterance_ids);
-  return [];
+  // Filter before choosing, so a modern list holding only invalid ids does not hide valid legacy ones.
+  const fromRef = Array.isArray(node?.source_ref?.utterance_ids) ? citationIds(node.source_ref.utterance_ids) : [];
+  if (fromRef.length) return fromRef;
+  return Array.isArray(node?.utterance_ids) ? citationIds(node.utterance_ids) : [];
 }
 
 /**

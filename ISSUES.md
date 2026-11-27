@@ -3348,3 +3348,10 @@ Found by five read-only reviewers over 9f047a1e..173f8f2c plus main/CI commits; 
 - **Blocker:** no.
 - **Next step:** reject non-string ids and names in the `.threads` validator (one place), rather than guarding each consumer.
 
+### 2026-11-27 — The landscape's speaker hairline and lens quotes never show display names
+
+- **What:** found while fixing the same bug in PR #280's key lines (Codex review round 3). `ThreadsViewer` builds `speakerDisplayNames` with `buildSpeakerDisplayNames`, which returns a `Map`, but `speakerHairline` in `SpatialLandscapeCanvas.jsx` (`speakerDisplayNames?.[s.id]`, around line 32) and `canonicalQuoteFor` in `spatialLandscapeModel.js` (around line 117) index it like a plain object, so they always fall back to the raw speaker id.
+- **Impact:** a speaker named in the file shows as `SPEAKER_01` (or similar) in the card's speaker hairline and in lens quotes. Part of the "Naming" item in the 5 November UX plan.
+- **Blocker:** no.
+- **Next step:** read names through `speakerDisplayName(names, id)` from `services/speakerDisplay.js` in both places, with a test that passes the real Map.
+

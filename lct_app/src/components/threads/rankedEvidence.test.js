@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildSpatialLandscape } from "./spatialLandscapeModel";
 import { rankNodeEvidence } from "./rankedEvidence";
 import { deriveParentEvidence } from "../../services/cloud/parentEvidence";
+import { buildSpeakerDisplayNames } from "../../services/speakerDisplay";
 
 const line = (id, text, extra = {}) => ({ id, speaker_id: "s1", speaker_name: "Mirela", timestamp_start: Number(id.slice(1)) * 10, text, ...extra });
 const rank = (nodes, utterances, id, options) => rankNodeEvidence(id, buildSpatialLandscape(nodes, { utterances }), options);
@@ -123,6 +124,21 @@ describe("rankNodeEvidence", () => {
     const utterances = [line("u1", "Rainwater collection would keep the garden watered through the summer")];
     const nodes = [{ id: "n", node_name: "Rain", summary: "rainwater", source_ref: { utterance_ids: [] }, utterance_ids: ["u1"] }];
     expect(rank(nodes, utterances, "n").map((l) => l.utteranceId)).toEqual(["u1"]);
+    // A modern list holding only invalid ids must not hide valid legacy ones.
+    const invalidModern = [{ ...nodes[0], source_ref: { utterance_ids: [null] } }];
+    expect(rank(invalidModern, utterances, "n").map((l) => l.utteranceId)).toEqual(["u1"]);
+  });
+
+  it("names speakers from the viewer's display-name Map, and renders only string names", () => {
+    const utterances = [
+      { id: "u1", speaker_id: "s1", speaker_name: "Asha", timestamp_start: 1, text: "Hi." },
+      { id: "u2", speaker_id: "s1", timestamp_start: 2, text: "Rainwater collection would keep the garden watered through the summer" },
+      { id: "u3", speaker_id: "s2", speaker_name: { toString: null }, timestamp_start: 3, text: "And the shared tools would live in the shed by the gate" },
+    ];
+    const names = buildSpeakerDisplayNames({ utterances });
+    expect(names).toBeInstanceOf(Map);
+    const result = rank([{ id: "n", node_name: "Garden", summary: "", source_ref: { utterance_ids: ["u2", "u3"] } }], utterances, "n", { speakerDisplayNames: names });
+    expect(result.map((l) => l.speaker)).toEqual(["Asha", "s2"]);
   });
 
   it("counts words as the generation side does", () => {
@@ -148,6 +164,10 @@ describe("rankNodeEvidence", () => {
     expect(top("House", "houses")).toBe("u10");
     expect(top("Class", "classes")).toBe("u10");
     expect(top("Story", "stories")).toBe("u10");
+    expect(top("Bus", "buses")).toBe("u10");
+    expect(top("Status", "statuses")).toBe("u10");
+    expect(top("Alias", "aliases")).toBe("u10");
+    expect(top("Boxes", "box")).toBe("u10");
   });
 
   it("spreads picks across stretches, returns them in transcript order, and respects the limit", () => {

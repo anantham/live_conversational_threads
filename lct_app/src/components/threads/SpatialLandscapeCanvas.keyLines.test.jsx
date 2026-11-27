@@ -38,6 +38,12 @@ it("shows an upper card's key lines from its descendants, without filler, and op
   expect(onOpenVisit).toHaveBeenCalledWith({ nodeId: "arc", utteranceId: "u2", endUtteranceId: "u2", seconds: 65 });
 });
 
+it("renders a card whose key line has a non-string speaker name", () => {
+  const odd = [{ id: "u9", speaker_id: "s3", speaker_name: { toString: null }, timestamp_start: 9, text: "Rainwater collection would keep the garden watered all summer" }];
+  act(() => root.render(<SpatialLandscapeCanvas bundle={{ utterances: odd }} nodes={[{ id: "n", semantic_level: 5, node_name: "Rain", summary: "rainwater", source_ref: { utterance_ids: ["u9"] } }]} />));
+  expect(host.querySelector('[aria-label="Key lines for Rain"]').textContent).toContain("s3 · 00:09");
+});
+
 it("shows no key-lines block for a card whose citations are all filler", () => {
   act(() => root.render(<SpatialLandscapeCanvas bundle={{ utterances }} nodes={[{ id: "solo", semantic_level: 5, node_name: "Small talk", summary: "Greetings.", source_ref: { utterance_ids: ["u1", "u3"] } }]} />));
   expect(host.querySelector('[aria-label^="Key lines"]')).toBeNull();

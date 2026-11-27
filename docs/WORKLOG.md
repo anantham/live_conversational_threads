@@ -11256,3 +11256,9 @@ Before merging #238 (Sites line → main), the owner chose to keep private mode 
   - Declined again with Codex's agreement: line clamp, buttons without `onOpenVisit`, the passage cutoff. Chunk-versus-topic salience is now written into the intent as "best marked citer in the subtree", which also stops a hand-marked aside chunk from demoting a line its core topic cites.
   - Pre-existing (not this PR, logged in ISSUES.md): hostile ids crash `graphProvenance.js` and `buildSpatialLandscape`'s `String(node.id)`; an object `node_name` crashes the card render.
   - Red-proved: 5 tests fail against the round-2 commit `f6a16858`; switching off plural folding, two-letter terms, or the subtree salience walk each fails a test. Benchmark 1.4 ms warm.
+- Codex round 3 (packet sha256 `49de5789…`, fix diff only): confirmed the round-2 fixes; NO-GO on four new points, all real:
+  - The viewer passes speaker display names as a `Map` (`buildSpeakerDisplayNames`), and the ranker indexed it like an object, so named speakers showed as ids. Fixed (Map or object), test uses the real builder. Same pre-existing bug in the speaker hairline and lens quotes, logged in ISSUES.md.
+  - An object `speaker_name` crashed the card render through the new speaker label. Speaker fields now render only when they are strings; card test renders such a file.
+  - One-rule plural folding fixed "houses" but broke "buses", "statuses", "aliases". Matching now compares candidate forms (as is, minus s, minus es, ies→y), so both families match; a plural and its singular in one title count once.
+  - `source_ref.utterance_ids: [null]` hid valid legacy `utterance_ids`. `utteranceIdsOf` now filters before choosing.
+  - Red-proved: 4 tests fail against round-3 commit `8a3ca7e1`. Benchmark 3.0 ms warm.

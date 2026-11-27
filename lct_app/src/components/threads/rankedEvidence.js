@@ -29,25 +29,36 @@ const wordCount = (text) =>
         return w && !FILLERS.has(bare);
       }).length
     : 0;
-// Light plural folding: "rates"→"rate", "houses"→"house", "classes"→"class", "boxes"→"box", "stories"→"story"; "glass" stays.
-// One rule per word, never chained (chaining turned "houses" into "hou").
-const stem = (w) => {
+// Plural folding by candidate forms: a title word and a line word match when any of their forms meet.
+// "houses"→house, "buses"→bus, "statuses"→status, "classes"→class, "stories"→story, "rates"→rate.
+// One stem rule cannot cover both "houses" (drop s) and "buses" (drop es); forms do.
+const formsOf = (w) => {
   const base = w.replace(/'s$/, "");
-  if (/ies$/.test(base)) return base.replace(/ies$/, "y");
-  if (/(ss|x|z|ch|sh)es$/.test(base)) return base.replace(/es$/, "");
-  return base.replace(/([^s])s$/, "$1");
+  const forms = [base];
+  if (/ies$/.test(base)) forms.push(base.replace(/ies$/, "y"));
+  if (/es$/.test(base)) forms.push(base.slice(0, -2));
+  if (/[^s]s$/.test(base)) forms.push(base.slice(0, -1));
+  return forms;
 };
 // Two-letter terms count ("AI" is often the point of a title); stopwords don't.
-const keyTerms = (text) => new Set(contentWords(text).filter((w) => w.length > 1 && !STOPWORDS.has(w)).map(stem));
+/** The title and summary terms, as form lists; a plural and its singular in one title count once. */
+const keyTerms = (text) => {
+  const terms = [];
+  for (const word of new Set(contentWords(text).filter((w) => w.length > 1 && !STOPWORDS.has(w)))) {
+    const forms = formsOf(word);
+    if (!terms.some((taken) => taken.some((f) => forms.includes(f)))) terms.push(forms);
+  }
+  return terms;
+};
 const textField = (value) => (typeof value === "string" ? value : "");
 
 // Per transcript row, computed once: every visible card and every page change reuses it.
 const rowFeatures = new WeakMap();
 function featuresOf(row) {
-  if (!row || typeof row !== "object") return { count: 0, terms: new Set() };
+  if (!row || typeof row !== "object") return { count: 0, forms: new Set() };
   let features = rowFeatures.get(row);
   if (!features) {
-    features = { count: wordCount(row.text), terms: new Set(contentWords(row.text).map(stem)) };
+    features = { count: wordCount(row.text), forms: new Set(contentWords(row.text).flatMap(formsOf)) };
     rowFeatures.set(row, features);
   }
   return features;
@@ -130,11 +141,11 @@ export function rankNodeEvidence(nodeId, landscape, { limit = KEY_LINE_LIMIT, sp
   for (const utteranceId of eligibleIds(id, landscape)) {
     const index = landscape.utteranceIndex.get(utteranceId);
     const row = utterances[index];
-    const { count, terms: lineTerms } = featuresOf(row);
+    const { count, forms: lineForms } = featuresOf(row);
     if (count <= BACKCHANNEL_WORDS) continue;
     const salience = salienceByUtterance.get(utteranceId) || null;
     let overlap = 0;
-    for (const term of terms) if (lineTerms.has(term)) overlap += 1;
+    for (const forms of terms) if (forms.some((f) => lineForms.has(f))) overlap += 1;
     candidates.push({
       utteranceId, index, row, salience,
       // Unmarked counts as supporting: an older map says nothing about salience either way.
@@ -158,11 +169,13 @@ export function rankNodeEvidence(nodeId, landscape, { limit = KEY_LINE_LIMIT, sp
   return chosen
     .sort((a, b) => a.index - b.index)
     .map(({ utteranceId, row, salience, index }) => {
-      const speakerId = row.speaker_id ? String(row.speaker_id) : "";
+      // Names are untrusted file values: only strings render. The viewer passes a Map; tests may pass an object.
+      const speakerId = typeof row.speaker_id === "number" ? String(row.speaker_id) : textField(row.speaker_id).trim();
+      const named = speakerDisplayNames instanceof Map ? speakerDisplayNames.get(speakerId) : speakerDisplayNames?.[speakerId];
       const startSeconds = Number.isFinite(row.timestamp_start) ? row.timestamp_start : null;
       return {
         utteranceId,
-        speaker: (speakerId && speakerDisplayNames?.[speakerId]) || row.speaker_name || row.speaker_display || speakerId || "",
+        speaker: (speakerId && textField(named)) || textField(row.speaker_name) || textField(row.speaker_display) || speakerId,
         text: String(row.text).trim(),
         startSeconds,
         label: formatVisitClock(startSeconds) || `Turn ${index + 1}`,

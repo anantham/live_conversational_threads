@@ -45,6 +45,8 @@ rule below on 2026-11-27.
 - The candidate lines are exactly the lines the card's passages open to, also when citations sit at
   several tiers.
 - Contractions count as one word and an emoji counts as one (as on the generation side); plurals
-  match their singular ("rates", "houses", "classes", "stories"); two-letter title terms ("AI") count.
+  match their singular ("rates", "houses", "buses", "statuses", "classes", "stories"); two-letter
+  title terms ("AI") count.
+- Speaker names come from the viewer's display-name Map; only string names render.
 - On a card, the lines show in the detail area with speaker and time, and each opens the passage at
   that line through the existing `onOpenVisit`.
