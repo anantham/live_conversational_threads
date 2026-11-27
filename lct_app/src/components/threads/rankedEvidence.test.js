@@ -184,11 +184,20 @@ describe("rankNodeEvidence", () => {
       line("u10", `the ${word} part is what this whole conversation kept coming back to`),
     ], "n", { limit: 1 })[0].utteranceId;
     expect(rival("Notes", "not")).toBe("u1");
+    expect(rival("Uses", "us")).toBe("u1");
+    expect(rival("Tomatoes", "tomato")).toBe("u10");
+    expect(rival("Echoes", "echo")).toBe("u10");
     expect(rival("Rates", "rat")).toBe("u1");
     expect(rival("Rate Rates", "rates")).toBe("u10");
     expect(rival("Rates Rate", "rates")).toBe("u10");
     expect(rival("Rates Rate", "rate")).toBe("u10");
     expect(top("Notes", "notes").utteranceId).toBe("u1");
+    // Order independence when one word bridges two groups: same pick either way.
+    const bridge = (title) => rank([{ id: "n", node_name: title, summary: "", source_ref: { utterance_ids: ["u1", "u10"] } }], [
+      line("u1", "the ax part is what this whole conversation kept coming back to"),
+      line("u10", "the axes part is what this whole conversation kept coming back to"),
+    ], "n", { limit: 1 })[0].utteranceId;
+    expect(bridge("Ax Axe Axes")).toBe(bridge("Axes Ax Axe"));
   });
 
   it("spreads picks across stretches, returns them in transcript order, and respects the limit", () => {

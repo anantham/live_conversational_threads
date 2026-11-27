@@ -31,12 +31,13 @@ const wordCount = (text) =>
     : 0;
 // Plural folding by candidate forms: a title word and a line word match when any of their forms meet.
 // "houses"→house, "buses"→bus, "statuses"→status, "classes"→class, "boxes"→box, "stories"→story,
-// "rates"→rate. "es" comes off only after s/x/z/ch/sh, so "notes" never reaches "not", nor "rates" "rat".
+// "tomatoes"→tomato, "rates"→rate. "es" comes off only after s/x/z/ch/sh/o, so "notes" never reaches
+// "not", nor "rates" "rat". Heuristic: overlap only breaks ties after salience, so rare misses are tolerable.
 const formsOf = (w) => {
   const base = w.replace(/'s$/, "");
   const forms = [base];
   if (/ies$/.test(base)) forms.push(base.replace(/ies$/, "y"));
-  if (/(s|x|z|ch|sh)es$/.test(base)) forms.push(base.slice(0, -2));
+  if (/(s|x|z|ch|sh|o)es$/.test(base)) forms.push(base.slice(0, -2));
   if (/[^s]s$/.test(base)) forms.push(base.slice(0, -1));
   return forms;
 };
@@ -45,10 +46,15 @@ const formsOf = (w) => {
 const keyTerms = (text) => {
   const terms = [];
   for (const word of new Set(contentWords(text).filter((w) => w.length > 1 && !STOPWORDS.has(w)))) {
-    const forms = formsOf(word);
-    const group = terms.find((taken) => forms.some((f) => taken.has(f)));
-    if (group) forms.forEach((f) => group.add(f));
-    else terms.push(new Set(forms));
+    // Merge every group this word touches, so "Ax Axe Axes" and "Axes Ax Axe" give the same groups.
+    const merged = new Set(formsOf(word));
+    for (let i = terms.length - 1; i >= 0; i -= 1) {
+      if ([...merged].some((f) => terms[i].has(f))) {
+        terms[i].forEach((f) => merged.add(f));
+        terms.splice(i, 1);
+      }
+    }
+    terms.push(merged);
   }
   return terms;
 };
@@ -60,7 +66,7 @@ function featuresOf(row) {
   if (!row || typeof row !== "object") return { count: 0, forms: new Set() };
   let features = rowFeatures.get(row);
   if (!features) {
-    features = { count: wordCount(row.text), forms: new Set(contentWords(row.text).flatMap(formsOf)) };
+    features = { count: wordCount(row.text), forms: new Set(contentWords(row.text).filter((w) => !STOPWORDS.has(w)).flatMap(formsOf)) };
     rowFeatures.set(row, features);
   }
   return features;

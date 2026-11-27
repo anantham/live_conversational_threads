@@ -46,7 +46,9 @@ rule below on 2026-11-27.
   several tiers.
 - Contractions count as one word and an emoji counts as one (as on the generation side); plurals
   match their singular ("rates", "houses", "buses", "statuses", "classes", "stories"); two-letter
-  title terms ("AI") count; a plural never folds into an unrelated shorter word ("notes" is not "not").
+  title terms ("AI") count; common false folds are avoided ("notes" is not "not", "uses" is not
+  "us"). Plural folding is a heuristic and will miss some irregular words; it only orders lines
+  that tie on salience.
 - Speaker names come from the viewer's display-name Map; only string names render.
 - On a card, the lines show in the detail area with speaker and time, and each opens the passage at
   that line through the existing `onOpenVisit`.
