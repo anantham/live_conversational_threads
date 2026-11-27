@@ -839,31 +839,31 @@ describe('Sites recording page: canvas map status, speaker names and Explore', (
 
   it('labels the map with names typed in the transcript, keeps them through Stop, and never sends them with a map request', async () => {
     transcribe = true; generation = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await permit();
-    await rename('Speaker S1', 'Aditya');
-    expect(container.querySelector('[aria-label="Live transcript"]').textContent).toContain('Aditya');
+    await rename('Speaker S1', 'Mirela');
+    expect(container.querySelector('[aria-label="Live transcript"]').textContent).toContain('Mirela');
     await click('Generate conversation map');
-    expect(mapJSON().utterances[0]).toMatchObject({ speaker_id: 'S1', speaker_name: 'Aditya' });
+    expect(mapJSON().utterances[0]).toMatchObject({ speaker_id: 'S1', speaker_name: 'Mirela' });
     expect(mapJSON().utterances[1].speaker_name).toBeUndefined();
-    await rename('Speaker S2', 'Andre');
-    expect(mapJSON().utterances[1]).toMatchObject({ speaker_id: 'S2', speaker_name: 'Andre' });
+    await rename('Speaker S2', 'Tobin');
+    expect(mapJSON().utterances[1]).toMatchObject({ speaker_id: 'S2', speaker_name: 'Tobin' });
     expect(mapJSON().full_transcript).toBe('Hello there. Again.');
     await click('Stop recording');
     expect(mapJSON().transcription_complete).toBe(true);
-    expect(mapJSON().utterances.map(row => row.speaker_name)).toEqual(['Aditya', 'Andre']);
+    expect(mapJSON().utterances.map(row => row.speaker_name)).toEqual(['Mirela', 'Tobin']);
     expect(calls()).toHaveLength(1);
-    expect(calls()[0][1].body).not.toContain('Aditya');
+    expect(calls()[0][1].body).not.toContain('Mirela');
   });
 
   it('restores names from a saved map and starts the next recording without them', async () => {
     const id = 'synthetic-restored';
     const bundle = generated({ recordingId: id, startedAt: 1, finalTokens: transcript.finalTokens, complete: true }).bundle;
-    bundle.utterances[0] = { ...bundle.utterances[0], speaker_name: 'Aditya' };
+    bundle.utterances[0] = { ...bundle.utterances[0], speaker_name: 'Mirela' };
     fixture.restored = { id, version: 1, recording: { id, startedAt: 1, transcribe: true, retention: 'local' }, transcript, map: bundle, audio: null, stage: 'stopped', updatedAt: 1, segments: [] };
     transcribe = true; window.history.replaceState(null, '', `/new?local=${id}`); await mount(true);
-    expect(button('Rename Aditya')).toBeTruthy(); expect(button('Rename Speaker S2')).toBeTruthy();
+    expect(button('Rename Mirela')).toBeTruthy(); expect(button('Rename Speaker S2')).toBeTruthy();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     await record('Record and transcribe'); await deliverTranscript();
-    expect(button('Rename Speaker S1')).toBeTruthy(); expect(button('Rename Aditya')).toBeFalsy();
+    expect(button('Rename Speaker S1')).toBeTruthy(); expect(button('Rename Mirela')).toBeFalsy();
   });
 
   it('offers Explore map beside Start once a stopped recording has a map, behind the same leave warning', async () => {

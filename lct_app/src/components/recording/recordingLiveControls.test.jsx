@@ -138,19 +138,19 @@ describe('renaming a speaker in the live transcript', () => {
     await act(async () => button('Rename Speaker 1').click());
     const input = container.querySelector('input[aria-label="Name for Speaker 1"]');
     expect(document.activeElement).toBe(input);
-    await act(async () => type(input, '  Aditya  '));
+    await act(async () => type(input, '  Mirela  '));
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })));
     expect(onRenameSpeaker).toHaveBeenCalledTimes(1);
-    expect(onRenameSpeaker).toHaveBeenCalledWith('1', 'Aditya');
+    expect(onRenameSpeaker).toHaveBeenCalledWith('1', 'Mirela');
     expect(container.querySelector('input')).toBeNull();
     expect(document.activeElement.getAttribute('aria-label')).toBe('Rename Speaker 1');
   });
 
   it('shows one name on every turn from that speaker and leaves other speakers alone', async () => {
-    await render(panel({ speakerNames: { 1: 'Aditya' }, onRenameSpeaker: () => {} }));
-    expect(labels()).toEqual(['Aditya', 'Speaker 2', 'Aditya']);
-    await act(async () => button('Rename Aditya').click());
-    expect(container.querySelector('input').value).toBe('Aditya');
+    await render(panel({ speakerNames: { 1: 'Mirela' }, onRenameSpeaker: () => {} }));
+    expect(labels()).toEqual(['Mirela', 'Speaker 2', 'Mirela']);
+    await act(async () => button('Rename Mirela').click());
+    expect(container.querySelector('input').value).toBe('Mirela');
   });
 
   it('discards the edit on Escape without closing anything around it', async () => {
@@ -158,7 +158,7 @@ describe('renaming a speaker in the live transcript', () => {
     await render(<div onKeyDown={outer}>{panel({ speakerNames: {}, onRenameSpeaker })}</div>);
     await act(async () => button('Rename Speaker 2').click());
     const input = container.querySelector('input');
-    await act(async () => type(input, 'Andre'));
+    await act(async () => type(input, 'Tobin'));
     await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
     expect(onRenameSpeaker).not.toHaveBeenCalled(); expect(outer).not.toHaveBeenCalled();
     expect(labels()).toEqual(['Speaker 1', 'Speaker 2', 'Speaker 1']);
@@ -166,16 +166,16 @@ describe('renaming a speaker in the live transcript', () => {
 
   it('saves on blur, ignores an empty or unchanged name, and saves only once', async () => {
     const onRenameSpeaker = vi.fn();
-    await render(panel({ speakerNames: { 2: 'Andre' }, onRenameSpeaker }));
+    await render(panel({ speakerNames: { 2: 'Tobin' }, onRenameSpeaker }));
     await act(async () => button('Rename Speaker 1').click());
     await act(async () => container.querySelector('input').dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
     expect(onRenameSpeaker).not.toHaveBeenCalled();
-    await act(async () => button('Rename Andre').click());
+    await act(async () => button('Rename Tobin').click());
     await act(async () => container.querySelector('input').dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
     expect(onRenameSpeaker).not.toHaveBeenCalled();
     await act(async () => button('Rename Speaker 1').click());
     const input = container.querySelector('input');
-    await act(async () => type(input, 'Aditya'));
+    await act(async () => type(input, 'Mirela'));
     // Enter and the blur it causes land before React renders again.
     await act(async () => { input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
     expect(onRenameSpeaker).toHaveBeenCalledTimes(1);
