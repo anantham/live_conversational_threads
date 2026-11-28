@@ -3,8 +3,12 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('../components/recording/ConversationServiceStatus.jsx', () => ({ default: () => <div aria-label="Service status" /> }));
-const fixture = vi.hoisted(() => ({ sessions: [], restored: null, waitingForMic: false }));
+const fixture = vi.hoisted(() => ({ sessions: [], restored: null, waitingForMic: false, voiceState: null }));
+// The real indicator is tested on its own; this stand-in reports the voice state a test chooses.
+vi.mock('../components/recording/ConversationServiceStatus.jsx', async () => {
+  const { useEffect } = await import('react');
+  return { default: function ServiceStatusStub({ onVoiceState }) { useEffect(() => { fixture.report = onVoiceState; if (fixture.voiceState) onVoiceState?.(fixture.voiceState); }, [onVoiceState]); return <div aria-label="Service status" />; } };
+});
 vi.mock('../services/cloud/localConversationStore.js', () => ({ readLocalConversation: async () => fixture.restored, saveLocalConversation: async () => {} }));
 vi.mock('../components/MinimalGraph.jsx', () => ({ default: ({ graphData }) => <div aria-label="Rendered graph">{graphData.map(n => <span key={n.id}>{n.node_name}</span>)}</div> }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
@@ -37,7 +41,7 @@ function generated(source) {
 }
 function LocationProbe() { return <output data-testid="location">{JSON.stringify(useLocation().state)}</output>; }
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; fixture.restored = null; fixture.waitingForMic = false; transcribe = false; privateUploads = false; generation = false;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; fixture.restored = null; fixture.waitingForMic = false; fixture.voiceState = null; transcribe = false; privateUploads = false; generation = false;
   localStorage.clear(); createURL = vi.fn(() => 'blob:synthetic-audio'); revokeURL = vi.fn();
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn(function () { this.open = true; }) });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: vi.fn(function () { this.open = false; }) });
@@ -45,9 +49,9 @@ beforeEach(() => {
   vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = createURL; static revokeObjectURL = revokeURL; });
   window.history.replaceState(null, '', '/new?autostart=true');
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } }); vi.stubGlobal('MediaRecorder', class {});
-  vi.stubGlobal('fetch', vi.fn(async (path, options) => ['/api/cloud/openrouter/status', '/api/cloud/gemini/status'].includes(path) ? jsonResponse({ backend: path.includes('/gemini/') ? 'gemini' : 'openrouter', enabled: generation, available: generation,
+  vi.stubGlobal('fetch', vi.fn(async (path, options) => ['/api/cloud/openrouter/status', '/api/cloud/gemini/status', '/api/cloud/anthropic/status'].includes(path) ? jsonResponse({ backend: path.split('/')[3], enabled: generation, available: generation,
     configured: generation, schema_ready: generation, audience: 'public', model: 'fixture/model', provider: 'Fixture provider' })
-    : ['/api/cloud/openrouter/generate', '/api/cloud/gemini/generate'].includes(path) ? jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(JSON.parse(options.body).source).bundle })
+    : ['/api/cloud/openrouter/generate', '/api/cloud/gemini/generate', '/api/cloud/anthropic/generate'].includes(path) ? jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(JSON.parse(options.body).source).bundle })
     : new Response(JSON.stringify(path.includes('soniox')
     ? { enabled: transcribe, audience: 'public', max_session_seconds: 300 }
     : { enabled: true, configured: true, synthetic_only: !privateUploads }), { status: 200 })));
@@ -556,19 +560,20 @@ describe('Sites recording page', () => {
   async function permitMap() { await act(async () => container.querySelector('[aria-label="Conversation map"] input').click()); }
   const generationCalls = () => fetch.mock.calls.filter(call => call[0] === '/api/cloud/openrouter/generate');
 
-  it('requires new consent after choosing Gemini and sends only to the selected backend', async () => {
+  it.each([['gemini', 'Gemini', 'Google Gemini through Google AI Studio'],
+    ['anthropic', 'Anthropic', 'Anthropic (Claude)']])('requires new consent after choosing %s and sends only to that backend', async (backend, header, recipient) => {
     await readyMap(); await permitMap();
     const selector = container.querySelector('#map-inference-backend');
     expect(selector.value).toBe('openrouter');
-    await act(async () => { selector.value = 'gemini'; selector.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { selector.value = backend; selector.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(container.querySelector('[aria-label="Conversation map"] input').checked).toBe(false);
     expect(button('Generate conversation map').disabled).toBe(true);
-    expect(container.textContent).toContain('Google Gemini through Google AI Studio');
+    expect(container.textContent).toContain(recipient);
     expect(fetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     await permitMap(); await click('Generate conversation map');
     const posts = fetch.mock.calls.filter(([, options]) => options?.method === 'POST');
-    expect(posts).toHaveLength(1); expect(posts[0][0]).toBe('/api/cloud/gemini/generate');
-    expect(posts[0][1].headers).toEqual({ 'Content-Type': 'application/json', 'X-LCT-Gemini-Consent': 'generate-v1' });
+    expect(posts).toHaveLength(1); expect(posts[0][0]).toBe(`/api/cloud/${backend}/generate`);
+    expect(posts[0][1].headers).toEqual({ 'Content-Type': 'application/json', [`X-LCT-${header}-Consent`]: 'generate-v1' });
     expect(container.querySelector('#recording-map-json')).toBeTruthy();
   });
 
@@ -776,4 +781,45 @@ it('starts a fresh ephemeral conversation after opening a saved one without rest
   await record(); await click('Stop recording');
   expect(window.location.search).toBe(''); expect(container.textContent).toContain('Ephemeral · download');
   expect(container.textContent).not.toContain('Opening saved conversation'); expect(button('Start session').disabled).toBe(false);
+});
+
+// Critique 2026-11-25 issue 3, owner ruling 2026-11-26: at the shared limit, /new stops promising a transcript.
+for (const voiceState of ['limited', 'idle']) it(`says transcription is closed for now only at its shared limit (indicator=${voiceState})`, async () => {
+  transcribe = true; fixture.voiceState = voiceState;
+  await mount();
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  const limited = voiceState === 'limited';
+  expect(container.textContent.includes('Live transcription is closed for now')).toBe(limited);
+  expect(transcriptionSwitch().checked).toBe(!limited);
+  if (limited) {
+    // Audio-only still starts, and the consent dialog promises no transcript.
+    await click('Start session');
+    expect(container.querySelector('dialog').textContent).toContain('Record audio locally');
+    await consent(); await click('Start recording');
+    expect(fixture.sessions.at(-1).options.transcribe).toBe(false);
+  }
+});
+
+it('records audio only at the shared limit even after the visitor chose transcription', async () => {
+  transcribe = true;
+  await mount();
+  // Off then on, so the choice is the visitor's own rather than the default.
+  await chooseTranscription(false); await chooseTranscription(true);
+  await act(async () => fixture.report('limited'));
+  expect(container.textContent).toContain('You can still record audio.');
+  await click('Start session');
+  expect(container.querySelector('dialog').textContent).toContain('Record audio locally');
+  await consent(); await click('Start recording');
+  expect(fixture.sessions.at(-1).options.transcribe).toBe(false);
+});
+
+it('closes a transcription consent dialog when the shared limit arrives while it is open', async () => {
+  transcribe = true;
+  await mount();
+  await chooseTranscription(true); await click('Start session');
+  expect(container.querySelector('dialog')).toBeTruthy();
+  await act(async () => fixture.report('limited'));
+  expect(container.querySelector('dialog')).toBeNull();
+  expect(container.textContent).toContain('Live transcription is closed for now');
+  expect(fixture.sessions).toHaveLength(0);
 });

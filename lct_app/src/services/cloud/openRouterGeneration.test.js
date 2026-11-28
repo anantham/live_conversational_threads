@@ -60,21 +60,23 @@ const responseFor = (graph) => ({
 describe('pure OpenRouter recording generation contract', () => {
   it('requests source links with empty optional quotes while preserving all exact speech and valid authored quotations', () => {
     const request = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
-    expect(request.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt)
-      .toEqual({ type: 'string', enum: [''] });
-    expect(request.messages[0].content).toContain('Keep source_excerpt empty');
+    // Range citations (tests/intent/range-citations.md): a chunk cites {from, to}; no quote field is requested.
+    const chunk = request.response_format.json_schema.schema.properties.nodes.items.anyOf[0];
+    expect(chunk.properties.source_range.required).toEqual(['from', 'to']);
+    expect(chunk.properties.source_excerpt).toBeUndefined();
+    expect(request.messages[0].content).toContain('Cite it as source_range');
     // A 20-minute reply spent ~27% of its characters on indentation and hit the output cap.
     expect(request.messages[0].content).toContain('Return compact JSON on one line');
     // Intent: tests/intent/map-structure-quality.md. Their effect is measured by the paid A/B, not here.
     for (const rule of ['A chunk is one coherent moment', 'Give a parent a single child only when',
-      "A parent's source_ref must include the utterance IDs of every child", 'Give a digression']) {
+      'derives each parent\'s evidence from the chunks filed beneath it', 'Give a digression']) {
       expect(request.messages[0].content).toContain(rule);
     }
     expect(JSON.parse(request.messages[1].content).utterances.map(row => row.text))
       .toEqual(['A careful idea.', ' A response.']);
-    request.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt.enum.push('caller mutation');
+    request.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_range.required.push('caller mutation');
     const next = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
-    expect(next.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_excerpt.enum).toEqual(['']);
+    expect(next.response_format.json_schema.schema.properties.nodes.items.anyOf[0].properties.source_range.required).toEqual(['from', 'to']);
     const authored = generatedGraph(); authored.nodes[0].source_excerpt = 'careful idea';
     expect(recordingThreadsFromOpenRouterResponse({ source, response: responseFor(authored) }).bundle.graph_data[0].source_excerpt)
       .toBe('careful idea');
@@ -118,7 +120,8 @@ describe('pure OpenRouter recording generation contract', () => {
     const shape = request.response_format.json_schema.schema;
     expect(shape.required).toEqual(['nodes', 'edges', 'metadata', 'conversation_threads', 'hierarchy_format']);
     expect(shape.additionalProperties).toBe(false);
-    expect(shape.properties.nodes.items.anyOf[0].properties.source_ref.properties.utterance_ids.type).toBe('array');
+    expect(shape.properties.nodes.items.anyOf[0].properties.source_range.properties).toEqual({ from: { type: 'string' }, to: { type: 'string' } });
+    expect(shape.properties.nodes.items.anyOf[2].properties.source_range.anyOf.at(-1)).toEqual({ type: 'null' });
     expect(JSON.parse(request.messages[1].content)).toEqual({
       transcription_complete: true,
       utterances: [
@@ -148,7 +151,7 @@ describe('pure OpenRouter recording generation contract', () => {
   it('requests one source of truth for primary and overlapping parent relationships', () => {
     const request = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
     const shape = request.response_format.json_schema.schema;
-    expect(shape.properties.hierarchy_format.enum).toEqual(['tiered-parent-links-v2']);
+    expect(shape.properties.hierarchy_format.enum).toEqual(['tiered-ranges-v3']);
     const node = shape.properties.nodes.items.anyOf[0];
     expect(node.required).toContain('parent_id');
     expect(node.required).toContain('secondary_parent_ids');

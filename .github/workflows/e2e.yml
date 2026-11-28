@@ -120,6 +120,7 @@ jobs:
           CI: "true"
         run: |
           npx playwright test \
+            audio-import-cache-retention.spec \
             initialization \
             d4-color-mode-smoke \
             d6-autosave-smoke \

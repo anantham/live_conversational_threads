@@ -30,11 +30,21 @@ describe('map structure counts', () => {
       evidenceMismatches: 0, mismatchesByChildLevel: [0, 0, 0, 0], mismatchExamples: [] });
   });
 
+  const nodes = () => [
+    node(1, 'plan', [1], ref(2, 'layout')), node(1, 'beds', [3, 4], ref(2, 'layout')),
+    node(1, 'ack', [2], ref(2, 'layout')),
+    node(2, 'layout', [3, 4], ref(5, 'season')), node(5, 'season', [3])];
+
+  it('finds no mismatch in a generated map, whose parent evidence is derived from its children', () => {
+    expect(mapStructure(bundle(nodes()))).toMatchObject({ evidenceMismatches: 0, mismatchesByChildLevel: [0, 0, 0, 0] });
+  });
+
+  // Maps authored before derived evidence (or by hand) still carry parent evidence of their own.
   it('flags a chunk filed under an idea whose evidence does not include it, by tier, with the missing utterances', () => {
-    const result = mapStructure(bundle([
-      node(1, 'plan', [1], ref(2, 'layout')), node(1, 'beds', [3, 4], ref(2, 'layout')),
-      node(1, 'ack', [2], ref(2, 'layout')),
-      node(2, 'layout', [3, 4], ref(5, 'season')), node(5, 'season', [3])]));
+    const authored = bundle(nodes());
+    const cite = (id, numbers) => { authored.graph_data.find(n => n.id === id).source_ref.utterance_ids = numbers.map(n => `utterance-000${n}`); };
+    cite('2:layout', [3, 4]); cite('5:season', [3]);
+    const result = mapStructure(authored);
     expect(result.evidenceMismatches).toBe(3);
     expect(result.mismatchesByChildLevel).toEqual([2, 1, 0, 0]);
     expect(result.mismatchExamples).toEqual([

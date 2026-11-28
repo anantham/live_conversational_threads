@@ -5,6 +5,7 @@ import SitesNewConversation from "../pages/SitesNewConversation";
 import SitesMeetings from "../pages/SitesMeetings";
 import SitesHostedTrial from "../pages/SitesHostedTrial";
 import SitesAudioImport from "../pages/SitesAudioImport";
+import SitesTranscriptImport from "../pages/SitesTranscriptImport";
 import SitesReplayTrial from "../pages/SitesReplayTrial";
 import JoinMeeting from "../pages/JoinMeeting";
 import MeetingView from "../pages/MeetingView";
@@ -27,7 +28,10 @@ import ClaimsView from "../pages/ClaimsView";
 import DebateReport from "../pages/DebateReport";
 import DebateShared from "../pages/DebateShared";
 import CostDashboard from "../pages/CostDashboard";
+import SitesCostDashboard from "../pages/SitesCostDashboard";
 import Bookmarks from "../pages/Bookmarks";
+import SitesProviderSettings from '../components/settings/SitesProviderSettings';
+import SitesMapPrompts from '../components/settings/SitesMapPrompts';
 import PromptLibraryPage from "../pages/settings/PromptLibraryPage";
 import RuntimeSettingsPage from "../pages/settings/RuntimeSettingsPage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
@@ -47,6 +51,7 @@ export default function AppRoutes() {
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/privacy" element={<SitesPrivacy />} />}
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/public/:publicId" element={<ThreadsViewer />} />}
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/import-audio" element={<SitesAudioImport />} />}
+      {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/import-transcript" element={<SitesTranscriptImport />} />}
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/replay-test" element={<SitesReplayTrial />} />}
       <Route path="/import" element={<Import />} />
       <Route path="/conversation/:conversationId" element={<ViewConversation />} />
@@ -71,12 +76,12 @@ export default function AppRoutes() {
       <Route path="/claims/:conversationId" element={<ClaimsView />} />
       <Route path="/debate/s" element={<DebateShared />} />
       <Route path="/debate/:conversationId" element={<DebateReport />} />
-      <Route path="/cost-dashboard" element={<CostDashboard />} />
+      <Route path="/cost-dashboard" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesCostDashboard /> : <CostDashboard />} />
       <Route path="/bookmarks" element={<Bookmarks />} />
       <Route path="/settings" element={<SettingsLayout />}>
         <Route index element={<Navigate replace to="runtime" />} />
-        <Route path="runtime" element={<RuntimeSettingsPage />} />
-        <Route path="prompts" element={<PromptLibraryPage />} />
+        <Route path="runtime" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesProviderSettings /> : <RuntimeSettingsPage />} />
+        <Route path="prompts" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesMapPrompts /> : <PromptLibraryPage />} />
       </Route>
     </Routes>
   );

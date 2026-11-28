@@ -42,7 +42,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); window.__MG_DEBUG__ = false; });
 const click = label => act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === label).click());
 // Main's viewer has one cycling view-mode control; speaker naming lives in the Source panel.
-const switchView = async label => { for (let i = 0; i < 3 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
+const switchView = async label => { for (let i = 0; i < 4 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
 
 it.each([false, true])('opens the actual generated source in Graph/Discussion without remembering or saving speaker edits (compact=%s)', async compact => {
   context.compact = compact;
@@ -50,6 +50,7 @@ it.each([false, true])('opens the actual generated source in Graph/Discussion wi
   await act(async () => root.render(<StrictMode><ThreadsViewer /></StrictMode>));
   expect(host.textContent).toContain('Synthetic generated moment');
   expect(host.textContent).toContain('Generated map · kept in this view · not saved');
+  await switchView('Graph');
   expect(host.querySelector('[data-testid="graph"]').dataset.diagnostics).toBe('false');
   const graphColor = host.querySelector('[data-node-id="fixture-moment"]').style.background;
   expect(graphColor).toBe(host.querySelector('[data-testid="legend"] [data-speaker-id="fixture-speaker"]').style.backgroundColor);

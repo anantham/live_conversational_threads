@@ -1,0 +1,4 @@
+- Reimporting identical audio can reuse completed words from a saved local conversation.
+- Removing the conversation also removes its cached words. Concurrent stale archive saves cannot restore them.
+- Clean up the older standalone transcript cache before acknowledging deletion. If another tab blocks cleanup, deletion can be retried.
+- Cache lookups inspect at most 24 recent eligible recordings and skip ephemeral imports.

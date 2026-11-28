@@ -46,10 +46,13 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); globalThis.IS_REACT_ACT_ENVIRONMENT = false; vi.unstubAllGlobals(); window.location.hash = ""; });
-for (const compact of [false, true]) it(`opens Graph first and reads bundled discussion without backend calls (compact=${compact})`, async () => {
+const openGraph = () => act(async () => host.querySelector('[aria-label="Current view: Landscape. Switch to Graph view."]')?.click());
+for (const compact of [false, true]) it(`opens Landscape first and switches to Graph and Discussion without backend calls (compact=${compact})`, async () => {
   context.compact = compact;
   const network = vi.fn(() => { throw new Error("Artifact Discussion must remain local"); }); vi.stubGlobal("fetch", network);
   await act(async () => root.render(<ThreadsViewer />));
+  expect(host.querySelector('[data-testid="spatial-landscape"]')).not.toBeNull();
+  await openGraph();
   expect(host.querySelector('[data-testid="graph"]')).not.toBeNull();
   const click = async (label) => act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent.includes(label)).click());
   await click("Discussion"); await click("Topic A"); await click("Idea A"); await click("Moment A");
@@ -63,8 +66,7 @@ for (const compact of [false, true]) it(`opens Graph first and reads bundled dis
     expect(host.textContent).toContain("Cards fixture");
     await act(async () => viewButton().click());
   }
-  expect(viewButton().textContent).toContain("Graph");
-  expect(host.querySelector('[data-testid="graph"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="spatial-landscape"]')).not.toBeNull();
 });
 
 it("opens a shared Discussion link at its exact branch on a fresh artifact load", async () => {
@@ -79,6 +81,7 @@ it("opens a shared Discussion link at its exact branch on a fresh artifact load"
 it("follows a Discussion link added while the artifact is already open", async () => {
   context.compact = false;
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   expect(host.querySelector('[data-testid="graph"]')).not.toBeNull();
   await act(async () => {
     window.history.replaceState(null, "", "#discussion=moment");
@@ -92,6 +95,7 @@ it("reveals Overview from the compact graph and returns Cards to Graph after wid
   context.compact = true;
   context.bundle.executive_summary = "Synthetic overview";
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   expect(host.textContent).not.toContain("Synthetic overview");
   await act(async () => host.querySelector('button[aria-label^="Conversation overview:"]').click());
   expect(host.textContent).toContain("Synthetic overview");
@@ -107,6 +111,7 @@ it("reveals Overview from the compact graph and returns Cards to Graph after wid
 it("keeps a focused node overview available when switching to Discussion", async () => {
   context.compact = false;
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Focus idea").click());
   await act(async () => host.querySelector('[aria-label="Conversation view"] button').click());
   await act(async () => host.querySelector('button[aria-label^="Conversation overview:"]').click());
@@ -116,6 +121,7 @@ it("keeps a focused node overview available when switching to Discussion", async
 it("exits graph focus when a Discussion link is opened", async () => {
   context.compact = false;
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   await act(async () => [...host.querySelectorAll("summary")].find((item) => item.textContent === "More").click());
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Focus graph").click());
   expect(host.querySelector('[aria-label="Conversation view"]')).toBeNull();
@@ -132,6 +138,7 @@ it("opens Source at the cited timestamp from closed node evidence", async () => 
   context.compact = false;
   context.bundle.media_refs = [{ provider: "youtube", video_id: "ABCDEFGHIJK", view_url: "https://www.youtube.com/watch?v=ABCDEFGHIJK", time_unit: "seconds" }];
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   expect(host.querySelector('[data-testid="source"]')).toBeNull();
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Open moment").click());
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Seek cited moment").click());
@@ -143,6 +150,7 @@ it("uses local text Source for untimed and transcript hits, and video for timed 
   context.bundle.full_transcript = "Whole original transcript";
   context.bundle.media_refs = [{ provider: "youtube", video_id: "ABCDEFGHIJK", view_url: "https://www.youtube.com/watch?v=ABCDEFGHIJK", time_unit: "seconds" }];
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   const choose = async (label) => act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === label).click());
   await choose("Find untimed passage");
   expect(host.querySelector('[data-testid="text-source"]')?.getAttribute("data-utterance")).toBe("u1");
@@ -157,6 +165,7 @@ it("opens Source for text-only artifacts and clears a previous search selection 
   context.compact = false;
   context.bundle.full_transcript = "Whole original transcript";
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Find transcript passage").click());
   expect(host.querySelector('[data-testid="text-source"]')?.getAttribute("data-kind")).toBe("transcript");
   await act(async () => host.querySelector('button[aria-label="Source"]').click());
@@ -169,6 +178,7 @@ it("switches Graph navigation to all moments after a jump outside the selected t
   context.compact = false;
   context.bundle.graph_data = [[...straightTree, { id: "outside", semantic_level: 1, node_name: "Outside moment", timestamp_start: 20 }]];
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Select reading path").click());
   expect(host.querySelector('[data-testid="graph"]').getAttribute("data-navigation")).toBe("moment");
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Open outside moment").click());
@@ -179,6 +189,7 @@ it("keeps Source stacked on a narrow screen and closes it for graph Focus", asyn
   context.compact = true;
   context.bundle.media_refs = [{ provider: "youtube", video_id: "ABCDEFGHIJK", view_url: "https://www.youtube.com/watch?v=ABCDEFGHIJK", time_unit: "seconds" }];
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   await act(async () => host.querySelector('button[aria-label="Source"]').click());
   expect(host.querySelector('[data-testid="source"]').getAttribute("data-compact")).toBe("true");
   expect(host.querySelector('[data-testid="source"]').parentElement.className).toContain("flex-col");
@@ -191,6 +202,7 @@ it("keeps Source stacked on a narrow screen and closes it for graph Focus", asyn
 it("uses the same fallback timeline level in Graph and Discussion", async () => {
   context.compact = false;
   await act(async () => root.render(<ThreadsViewer />));
+  await openGraph();
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Show topics").click());
   expect(host.querySelector('[data-testid="timeline"]').getAttribute("data-level")).toBe("3");
   await act(async () => host.querySelector('[aria-label="Conversation view"] button').click());
@@ -204,6 +216,7 @@ it("uses the same fallback timeline level in Graph and Discussion", async () => 
 it("propagates a Source rename to the graph and Discussion before persistence finishes", async () => {
   context.compact=false;
   await act(async()=>root.render(<ThreadsViewer/>));
+  await openGraph();
   await act(async()=>host.querySelector('button[aria-label="Source"]').click());
   context.holdSave=true;
   await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==="Apply fixture name").click());

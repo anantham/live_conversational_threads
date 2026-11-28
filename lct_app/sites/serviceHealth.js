@@ -1,11 +1,13 @@
 import { sonioxPolicy } from './sonioxPolicy.js';
-import { openRouterPolicy, geminiPolicy, readOpenRouterAdmission, openRouterJSON } from './openRouterPolicy.js';
+import { openRouterPolicy, geminiPolicy, anthropicPolicy, readOpenRouterAdmission, attemptLimitReached, openRouterJSON } from './openRouterPolicy.js';
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
+import { anthropicHeaders } from './anthropic.js';
+import { meetingConfig } from './meetingPolicy.js';
 
-// Three fixed slots per Worker, no visitor-controlled cache keys. Never cache identities.
+// Fixed slots per Worker, no visitor-controlled cache keys. Never cache identities.
 const checks = new Map();
 const TTL = 60_000;
-const policies = { soniox: sonioxPolicy, openrouter: openRouterPolicy, gemini: geminiPolicy };
+const policies = { soniox: sonioxPolicy, openrouter: openRouterPolicy, gemini: geminiPolicy, anthropic: anthropicPolicy };
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 
 // Model listing has separate permissions from STT. Never forward provider error text.
@@ -86,7 +88,7 @@ function routeDetail(routes, provider) {
 async function providerCheck(service, policy, env) {
   const key = service === 'soniox' ? env.SONIOX_API_KEY.trim() : policy.key;
   // Route counts depend on the provider as well as the model list.
-  const models = `${policy.provider ?? ''}|${policy.models?.join(',') ?? policy.model}`;
+  const models = `${policy.provider ?? ''}|${policy.models?.join(',') ?? policy.model}${service === 'anthropic' ? '|' + policy.longMaxTokens : ''}`;
   const previous = checks.get(service);
   if (previous?.key === key && previous.models === models && Date.now() - previous.at < TTL) return previous.promise;
   const entry = { key, models, at: Date.now() };
@@ -98,9 +100,11 @@ async function providerCheck(service, policy, env) {
         const routing = service === 'openrouter' ? modelRoutes(policy, signal) : null;
         const url = service === 'soniox' ? 'https://api.soniox.com/v1/models'
           : service === 'openrouter' ? 'https://openrouter.ai/api/v1/key'
-            : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(policy.model)}`;
-        const response = await fetch(url, { method: 'GET', redirect: 'manual', signal,
-          headers: service === 'gemini' ? { 'x-goog-api-key': key } : { Authorization: `Bearer ${key}` } });
+            : service === 'anthropic' ? `https://api.anthropic.com/v1/models/${encodeURIComponent(policy.model)}`
+              : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(policy.model)}`;
+        const headers = service === 'anthropic' ? anthropicHeaders(key)
+          : service === 'gemini' ? { 'x-goog-api-key': key } : { Authorization: `Bearer ${key}` };
+        const response = await fetch(url, { method: 'GET', redirect: 'manual', signal, headers });
         if (response.status !== 200) {
           const refusal = service === 'soniox' ? await sonioxModelRefusal(response, signal)
             : { detail: response.status === 401 || response.status === 403 ? 'Provider access was refused.' : 'Provider check could not finish.' };
@@ -111,6 +115,13 @@ async function providerCheck(service, policy, env) {
         const body = await readOpenRouterJSON(response, signal, 256 * 1024, true);
         if (service === 'soniox' && (!Array.isArray(body.models) || !body.models.length)) throw new Error('Unusable models');
         if (service === 'gemini' && body.name !== `models/${policy.model}`) throw new Error('Unusable model');
+        if (service === 'anthropic') {
+          if (body?.type !== 'model' || typeof body.id !== 'string' || !body.id.startsWith('claude-')) throw new Error('Unusable model');
+          if (body.capabilities?.structured_outputs?.supported !== true || !finite(body.max_tokens) || body.max_tokens < policy.longMaxTokens) {
+            return { reachable: false, allowance: 'unknown', latency_ms: Date.now() - start,
+              detail: 'The configured Claude model must support structured outputs and the shared output token cap.' };
+          }
+        }
         if (service === 'openrouter' && (!body.data || !('limit_remaining' in body.data))) throw new Error('Unusable key status');
         const data = body.data;
         const limits = service === 'openrouter' ? [data.limit_remaining, data.effective_budget?.remaining_usd,
@@ -136,9 +147,19 @@ async function providerCheck(service, policy, env) {
   return entry.promise;
 }
 
+// Whether Meet is open to join, for the Home page. It reads configuration only: no session,
+// no provider call, no database write, and never the window's end time or owner.
+function meetingsHealth(env) {
+  const config = meetingConfig(env);
+  return openRouterJSON(200, { service: 'meetings', enabled: config.enabled, available: config.canJoin, checked_at: Date.now() });
+}
+
 export async function handleServiceHealth(request, env) {
   const path = new URL(request.url).pathname;
-  const match = /^\/api\/cloud\/health\/(soniox|openrouter|gemini)$/.exec(path);
+  if (path === '/api/cloud/health/meetings') {
+    return request.method === 'GET' ? meetingsHealth(env) : openRouterJSON(405, { error: 'Use GET to check service availability.' });
+  }
+  const match = /^\/api\/cloud\/health\/(soniox|openrouter|gemini|anthropic)$/.exec(path);
   if (!match) return null;
   if (request.method !== 'GET') return openRouterJSON(405, { error: 'Use GET to check service availability.' });
   const service = match[1], policy = policies[service](env);
@@ -154,8 +175,8 @@ export async function handleServiceHealth(request, env) {
       available = row.attempts < policy.maxSessions && row.active < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.mintIntervalMs);
     } else {
       const row = await readOpenRouterAdmission(env, policy);
-      exhausted = row.attempts >= policy.maxRequests;
-      available = row.attempts < policy.maxRequests && row.unresolved < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.admissionIntervalMs);
+      exhausted = attemptLimitReached(policy, row.attempts);
+      available = !exhausted && row.unresolved < policy.maxConcurrent && (row.latest == null || row.latest <= Date.now() - policy.admissionIntervalMs);
     }
     if (!available) return openRouterJSON(200, { ...base, capacity: exhausted ? 'exhausted' : 'busy', detail: exhausted ? (service !== 'soniox' && policy.windowMs ? `The shared attempt limit for the last ${policy.windowMs / 3_600_000} hours has been reached.` : 'The shared attempt limit has been reached.') : 'A request is active or the short admission interval has not elapsed.' });
     // Each request owns a deadline even when an originating request disappears.

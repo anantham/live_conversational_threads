@@ -1,19 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
-import { importWait } from '../services/cloud/audioImportFile.js';
-import { getRecordingMapStatus, generateRecordingMap } from '../services/cloud/openRouterClient.js';
-import { readLocalConversation } from '../services/cloud/localConversationStore.js';
+import { importFileType, importWait } from '../services/cloud/audioImportFile.js';
+import { audioCacheKey, hashAudioFile, isAudioCacheAvailable } from '../services/cloud/audioTranscriptCache.js';
+import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
+import { DEFAULT_M5_TAILNET_URL, M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
+import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences.js';
+import { readEdgeConfig } from '../components/audio/edgeConfig.js';
+import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
+import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
+import { getRecordingMapStatus, generateRecordingMap, configuredMapRoutes, getOrderedMapStatus, generateOrderedRecordingMap } from '../services/cloud/openRouterClient.js';
+import { readCachedAudioTranscript, readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { useConversationArchive } from './useConversationArchive.js';
 import { useCloudTask } from './useCloudTask.js';
 const empty = () => ({ finalText: '', partialText: '', finalTokens: [], partialTokens: [] });
 
 export function useAudioImport() {
   const archive = useConversationArchive(), location = useLocation(), navigate = useNavigate();
-  const [file, setFile] = useState(null), [consent, setConsent] = useState(false), [backend, setBackend] = useState('openrouter');
+  const runtime = useSitesRuntime();
+  const [file, setFile] = useState(null), [consentSelection, setConsentSelection] = useState(null), [backend, setBackend] = useState('openrouter');
   const [recording, setRecording] = useState(null), [audio, setAudio] = useState(null), [transcript, setTranscript] = useState(empty);
   const [map, setMap] = useState(null), [activity, setActivity] = useState(null), [error, setError] = useState('');
+  // Says which provider failed and which one received the audio instead, and stays up after the run.
+  const [fallbackNotice, setFallbackNotice] = useState('');
   const [setupError, setSetupError] = useState('');
+  const [bypassCache, setBypassCache] = useState(false);
   const [capability, setCapability] = useState(null), [loading, setLoading] = useState(true), [elapsed, setElapsed] = useState(0);
   const task = useCloudTask('recording-map');
   const [mapStopSignal, setMapStopSignal] = useState(null);
@@ -22,6 +33,20 @@ export function useAudioImport() {
   const running = useRef(false), current = useRef(null), alive = useRef(true), epoch = useRef(0);
   const localId = new URLSearchParams(location.search).get('local');
   const busy = ['preparing', 'authorizing', 'connecting', 'transcribing', 'finalizing', 'mapping'].includes(activity?.stage);
+  const edgeConfig = readEdgeConfig(location.search);
+  const configuredSpeech = runtime ? runtime.preferences.speech.filter(id => id === 'soniox'
+    ? runtime.keys.soniox ? capability?.personal_enabled : capability?.enabled
+    : id === 'm5_tailnet' ? true : runtime.keys.openai) : capability?.enabled ? ['soniox'] : [];
+  const speechProviders = runtime?.credentialsReady === false
+    ? []
+    : edgeConfig.enabled && !configuredSpeech.includes('m5_tailnet')
+      ? ['m5_tailnet', ...configuredSpeech]
+      : configuredSpeech;
+  const speechSelection = speechProviders.join(',');
+  const consent = consentSelection?.routes === (runtime || backend) && consentSelection.speech === speechSelection;
+  const setConsent = value => setConsentSelection(value ? { routes: runtime || backend, speech: speechSelection } : null);
+  const mapRoutes = runtime ? configuredMapRoutes(runtime) : null;
+
   const check = useCallback(async () => {
     setup.current?.abort();
     const controller = new AbortController();
@@ -59,6 +84,8 @@ export function useAudioImport() {
     readLocalConversation(localId).then(value => {
       if (cancelled || !alive.current) return;
       if (!value) throw new Error('This import is not saved in this browser.');
+      // A notice about an earlier run does not describe a reopened conversation.
+      setFallbackNotice('');
       setRecording(value.recording); setAudio(value.audio); setTranscript(value.transcript); setMap(value.map);
       if (value.mapUnreadable) {
         const temporary = { ...value.recording, retention: 'ephemeral' };
@@ -78,7 +105,7 @@ export function useAudioImport() {
   }, [busy]);
   const mapReady = useCallback(bundle => { setMap(bundle); archive.update({ map: bundle }); }, [archive.update]);
   async function start() {
-    if (running.current || !file || !consent || busy || loading || !capability?.enabled) return;
+    if (running.current || !file || !consent || busy || loading || !speechProviders.length) return;
     running.current = true;
     const id = globalThis.crypto?.randomUUID?.();
     if (!id) { running.current = false; setError('This browser cannot create a conversation identifier. No file was sent.'); return; }
@@ -87,21 +114,86 @@ export function useAudioImport() {
     setMapStopSignal(mapStop.current.signal); liveMapClaimed.current = false;
     const next = { id, startedAt: Date.now(), transcribe: true, retention: archive.preference,
       source: 'audio-import', originalFilename: file.name.slice(0, 240) };
-    setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError('');
+    setRecording(next); setAudio(null); setMap(null); setTranscript(empty()); setError(''); setFallbackNotice('');
     archive.begin(next, next.retention);
     navigate(next.retention === 'local' ? '/import-audio?local=' + id : '/import-audio', { replace: true });
     const valid = () => alive.current && epoch.current === generation;
-    const session = new AudioImportSession({
+    let audioKept = false;
+    const callbacks = {
       onStage: value => { if (valid()) { setActivity(value); archive.update({ stage: value.stage }); } },
-      onAudio: value => { if (valid()) {
+      onAudio: value => { if (valid() && !audioKept) {
+        audioKept = true;
         setAudio(value); archive.append({ segment: 1, index: 0, mimeType: value.mimeType, blob: value.blob });
         archive.update({ segments: [{ number: 1, mimeType: value.mimeType, complete: true, bytes: value.blob.size }] });
       } },
       onTranscript: value => { if (valid()) { setTranscript(value); archive.update({ transcript: value }); } },
-    });
-    current.current = session;
+    };
     try {
-      const words = await session.start({ file, maxSessionSeconds: capability.max_session_seconds });
+      let words;
+      // Every provider that failed before the one that worked, said out loud in order.
+      const failures = [];
+      const providerName = id => SPEECH_PROVIDERS[id]?.name || id;
+      const failureText = () => failures.map(({ name, message }) => `${name} could not transcribe this file (${message}).`).join(' ');
+      const allowLocalCache = next.retention === 'local' && isAudioCacheAvailable();
+      const audioSha = allowLocalCache ? await hashAudioFile(file) : null;
+      if (audioSha && !bypassCache) {
+        for (const provider of speechProviders) {
+          const cached = await readCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }));
+          if (!valid() || mapStop.current?.signal.aborted) return;
+          if (cached?.finalTokens?.length) {
+            const mimeType = importFileType(file);
+            const upload = file.type === mimeType ? file : new File([file], file.name, { type: mimeType });
+            callbacks.onAudio({ blob: upload, mimeType, complete: true, segments: [{ number: 1, blob: upload, mimeType, complete: true }] });
+            callbacks.onTranscript(cached);
+            archive.update({ audioCacheKey: audioCacheKey({ sha256: audioSha, provider }), audioCacheTime: Date.now() });
+            setFallbackNotice(`Loaded cached ${SPEECH_PROVIDERS[provider]?.name || provider} transcript (skipped re-transcription).`);
+            words = cached;
+            break;
+          }
+        }
+      }
+      if (!valid() || mapStop.current?.signal.aborted) return;
+      if (!words) for (const [index, provider] of speechProviders.entries()) {
+        const key = runtime?.keys[provider];
+        const session = provider === 'm5_tailnet'
+          ? new M5TailnetFileSession({
+              ...callbacks,
+              // Settings is the one place this address is chosen, and it shows the build default when
+              // empty, so the address used is the one on screen. An `edge_url` stored by an old link
+              // (for live recording) never redirects file imports.
+              url: runtime?.preferences?.m5TailnetUrl || DEFAULT_M5_TAILNET_URL,
+              token: key || edgeConfig.token,
+              diarize: true,
+            })
+          : provider === 'openai'
+            ? new OpenAIFileSession({ ...callbacks, key })
+            : new AudioImportSession({ ...callbacks,
+              ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+        current.current = session;
+        try {
+          words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
+          if (failures.length && valid()) setFallbackNotice(`${failureText()} It was transcribed by ${providerName(provider)} instead, the next provider in the order you agreed to.`);
+          if (valid() && audioSha && words?.finalTokens?.length) {
+            archive.update({ transcript: words, audioCacheKey: audioCacheKey({ sha256: audioSha, provider }), audioCacheTime: Date.now() });
+          }
+          break;
+        } catch (error) {
+          if (!valid() || mapStop.current?.signal.aborted || !error.canTryNext || index === speechProviders.length - 1) {
+            // The run ends here: replace "Trying X next" with what happened to X (its error shows below).
+            if (failures.length && valid()) {
+              // Only the user's Stop aborts mapStop; a provider's own timeout abort is a failure, not a stop.
+              const stopped = Boolean(mapStop.current?.signal.aborted);
+              setFallbackNotice(stopped
+                ? `${failureText()} The import was stopped before ${providerName(provider)} finished, so it may have received part or all of the audio.`
+                : `${failureText()} ${providerName(provider)} was tried next and could not transcribe it either.`);
+            }
+            throw error;
+          }
+          console.warn(`[useAudioImport] ${provider} failed; trying ${speechProviders[index + 1]}:`, error);
+          failures.push({ name: providerName(provider), message: String(error.message || error).replace(/\.$/, '') });
+          setFallbackNotice(`${failureText()} Trying ${providerName(speechProviders[index + 1])} next, the next provider in the order you agreed to.`);
+        }
+      }
       if (!valid()) return;
       archive.update({ stage: 'stopped' });
       // One owner: an explicit live attempt must never gain an implicit final retry.
@@ -112,9 +204,10 @@ export function useAudioImport() {
       const source = { recordingId: id, startedAt: next.startedAt, finalTokens: words.finalTokens, complete: true };
       setActivity({ stage: 'mapping', message: 'Creating threads from your transcript.' });
       const response = await task.run('generate', async signal => {
-        const status = await getRecordingMapStatus(signal, backend);
+        const status = mapRoutes ? await getOrderedMapStatus(signal, mapRoutes) : await getRecordingMapStatus(signal, backend);
         if (!status.enabled || !status.available) throw new Error('Your transcript is ready. Threads are unavailable within the current shared limits; no generation request was sent.');
-        return generateRecordingMap(source, signal, backend);
+        return mapRoutes ? generateOrderedRecordingMap(source, signal, mapRoutes, runtime.preferences.guidance)
+          : generateRecordingMap(source, signal, backend);
       });
       if (!valid()) return;
       if (response.data) mapReady(response.data.bundle);
@@ -128,6 +221,8 @@ export function useAudioImport() {
     } finally { running.current = false; }
   }
   function cancel() { current.current?.cancel(); mapStop.current?.abort(); task.cancel(); }
-  return { archive, file, setFile, consent, setConsent, backend, setBackend, recording, audio, transcript, map,
-    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || setupError, capability, check, start, cancel };
+  // A notice about an earlier run does not describe a newly chosen file.
+  const chooseFile = useCallback(value => { setFallbackNotice(''); setFile(value); }, []);
+  return { archive, file, setFile: chooseFile, consent, setConsent, bypassCache, setBypassCache, backend, setBackend, recording, audio, transcript, map, fallbackNotice,
+    mapReady, claimLiveMap, mapStopSignal, activity, busy, loading, elapsed, error: error || (speechProviders.length ? '' : setupError), capability, speechProviders, mapRoutes, check, start, cancel };
 }

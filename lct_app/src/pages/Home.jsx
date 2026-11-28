@@ -1,14 +1,26 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video, Cloud } from "lucide-react";
+import { Mic, FolderOpen, FileAudio, FileText, Bookmark, BarChart3, Settings, Video } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
+import TooltipButton from "../components/TooltipButton";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
+import { useMeetingsOpen } from "../hooks/useMeetingsOpen";
+
+const action = "relative inline-flex items-center justify-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-700";
+const neutral = "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-400 hover:text-slate-900";
+const primaryAction = `${action} size-20 sm:size-24`;
+const secondaryAction = `${action} size-16 sm:size-18`;
+const primaryIcon = "size-8 sm:size-9";
+const secondaryIcon = "size-6 sm:size-7";
+// A closed door stays visible and openable (earlier recordings live behind it), drawn quieter and labelled in words.
+const closedNeutral = "border-dashed border-slate-300 bg-white/50 text-slate-500 hover:border-slate-400 hover:text-slate-700";
 
 export default function Home() {
   const navigate = useNavigate();
   const [draftSummary, setDraftSummary] = useState(null);
   const [pendingFeatureToast, setPendingFeatureToast] = useState("");
+  const meetClosed = useMeetingsOpen() === "closed";
 
   useEffect(() => {
     let cancelled = false;
@@ -46,106 +58,66 @@ export default function Home() {
   };
 
   return (
-    <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] font-sans">
+    <div className="relative flex min-h-dvh flex-col items-center justify-center bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 py-16 font-sans">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.06),transparent_42%)]" />
 
-      <div className="relative mb-12 text-center">
-        <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.42em] text-slate-400">
-          live conversational
-        </p>
-        <h1 className="text-6xl font-semibold leading-none tracking-[-0.09em] text-slate-800 sm:text-7xl md:text-8xl">
-          Threads
-        </h1>
-      </div>
+      <h1 className="relative mb-10 text-center text-7xl font-semibold leading-none tracking-[-0.09em] text-slate-800 sm:mb-12 sm:text-8xl">
+        Threads
+      </h1>
 
-      {/* Primary actions */}
-      <div className="relative mb-12 flex items-center gap-6">
-        <button
-          onClick={() => navigate(getAutostartOnNew() ? "/new?autostart=true" : "/new")}
-          className="flex flex-col items-center gap-2 group"
-        >
-          <span className="w-14 h-14 flex items-center justify-center rounded-full bg-gray-800 text-white group-hover:bg-gray-700 transition">
-            <Mic size={22} />
+      <nav aria-label="Home actions" className="relative flex flex-col items-center gap-8 sm:gap-10">
+        {/* Rows sit far enough apart that the "Closed for now" caption under a tile never meets the next row. */}
+        <div className="flex flex-wrap justify-center gap-x-3 gap-y-9 sm:gap-x-6">
+          <TooltipButton compact align="center" aria-label="New recording"
+            tooltip={draftSummary ? "New recording · Draft available" : "New recording"}
+            onClick={() => navigate(getAutostartOnNew() ? "/new?autostart=true" : "/new")}
+            className={`${primaryAction} border-slate-900 bg-slate-900 text-white hover:bg-slate-700`}>
+            <Mic aria-hidden="true" className={primaryIcon} />
+            {draftSummary && <span aria-hidden="true" className="absolute right-3 top-3 size-2.5 rounded-full bg-amber-400" />}
+          </TooltipButton>
+          <span className="relative inline-flex">
+            <TooltipButton compact align="center"
+              aria-label={meetClosed ? "Google Meet, closed for now" : "Join Google Meet"}
+              tooltip={meetClosed ? "Google Meet is closed for now. Earlier recordings are still here." : "Join Google Meet"}
+              onClick={() => navigate("/meeting")} className={`${primaryAction} ${meetClosed ? closedNeutral : neutral}`}>
+              <Video aria-hidden="true" className={primaryIcon} />
+            </TooltipButton>
+            {meetClosed && <span aria-hidden="true" className="pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap text-xs text-slate-600">Closed for now</span>}
           </span>
-          <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">New</span>
-          {draftSummary && (
-            <span className="text-[10px] font-medium text-amber-600 group-hover:text-amber-700 transition">
-              Draft available
-            </span>
+          <TooltipButton compact align="center" aria-label="Browse library" tooltip="Browse library"
+            onClick={() => navigate("/browse")} className={`${primaryAction} ${neutral}`}>
+            <FolderOpen aria-hidden="true" className={primaryIcon} />
+          </TooltipButton>
+        </div>
+
+        <div className="flex flex-wrap justify-center gap-2 sm:gap-4">
+          {import.meta.env.VITE_SITES_MODE === "true" && (
+            <TooltipButton compact align="center" aria-label="Import transcript" tooltip="Import transcript"
+              onClick={() => navigate("/import-transcript")} className={`${secondaryAction} ${neutral}`}>
+              <FileText aria-hidden="true" className={secondaryIcon} />
+            </TooltipButton>
           )}
-        </button>
-
-        <button
-          onClick={() => navigate("/meeting")}
-          className="flex flex-col items-center gap-2 group"
-          title="Send a bot into a Google Meet and watch the live graph"
-        >
-          <span className="w-14 h-14 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
-            <Video size={22} />
-          </span>
-          <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">Meet</span>
-        </button>
-
-        <button
-          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/public" : "/browse")}
-          className="flex flex-col items-center gap-2 group"
-        >
-          <span className="w-14 h-14 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
-            <FolderOpen size={22} />
-          </span>
-          <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">Browse</span>
-        </button>
-      </div>
-
-      {/* Secondary actions */}
-      <div className="relative flex items-center gap-5">
-        {import.meta.env.VITE_SITES_MODE === "true" && <button type="button" onClick={() => navigate("/private-files")} className="flex flex-col items-center gap-1.5 group"><span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition"><Cloud size={16} /></span><span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Private files</span></button>}
-        {/* Sites imports use their own local-first file journey; legacy uses /new. */}
-        <button
-          type="button"
-          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/import-audio" : "/new")}
-          className="flex flex-col items-center gap-1.5 group"
-          title="Upload an audio file instead of recording live"
-        >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
-            <FileAudio size={16} />
-          </span>
-          <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Import audio</span>
-        </button>
-
-        {/* Bookmarks is not built yet. The Site hides the door rather than show one that does nothing. */}
-        {import.meta.env.VITE_SITES_MODE !== "true" && <button
-          type="button"
-          onClick={() => showPendingFeatureToast("Bookmarks")}
-          aria-disabled="true"
-          className="flex flex-col items-center gap-1.5 group"
-        >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 backdrop-blur-sm border border-gray-150 text-gray-300 group-hover:text-amber-600 group-hover:border-amber-300 transition">
-            <Bookmark size={16} />
-          </span>
-          <span className="text-xs text-gray-500 group-hover:text-amber-700 transition">Bookmarks</span>
-        </button>}
-
-        <button
-          onClick={() => navigate("/cost-dashboard")}
-          className="flex flex-col items-center gap-1.5 group"
-        >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
-            <BarChart3 size={16} />
-          </span>
-          <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Costs</span>
-        </button>
-
-        <button
-          onClick={() => navigate("/settings")}
-          className="flex flex-col items-center gap-1.5 group"
-        >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
-            <Settings size={16} />
-          </span>
-          <span className="text-xs text-gray-600 group-hover:text-gray-800 transition">Settings</span>
-        </button>
-      </div>
+          <TooltipButton compact align="center" aria-label="Import audio" tooltip="Import audio"
+            onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/import-audio" : "/new")}
+            className={`${secondaryAction} ${neutral}`}>
+            <FileAudio aria-hidden="true" className={secondaryIcon} />
+          </TooltipButton>
+          {import.meta.env.VITE_SITES_MODE !== "true" && (
+            <TooltipButton compact align="center" aria-label="Bookmarks" tooltip="Bookmarks" aria-disabled="true"
+              onClick={() => showPendingFeatureToast("Bookmarks")} className={`${secondaryAction} border-slate-200 bg-white/60 text-slate-400`}>
+              <Bookmark aria-hidden="true" className={secondaryIcon} />
+            </TooltipButton>
+          )}
+          <TooltipButton compact align="center" aria-label="Costs" tooltip="Costs"
+            onClick={() => navigate("/cost-dashboard")} className={`${secondaryAction} ${neutral}`}>
+            <BarChart3 aria-hidden="true" className={secondaryIcon} />
+          </TooltipButton>
+          <TooltipButton compact align="center" aria-label="Settings" tooltip="Settings"
+            onClick={() => navigate("/settings")} className={`${secondaryAction} ${neutral}`}>
+            <Settings aria-hidden="true" className={secondaryIcon} />
+          </TooltipButton>
+        </div>
+      </nav>
 
       {/* Service Status Indicators */}
       {import.meta.env.VITE_SITES_MODE !== "true" && (

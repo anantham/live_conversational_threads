@@ -1,20 +1,25 @@
 import { createRecordingTranscript } from '../src/services/cloud/recordingTranscript.js';
-import { MAP_INPUT_WINDOW_MS, MAP_PROVIDER_WINDOW_MS } from '../src/services/cloud/generationDeadlines.js';
+import { validPersonalKey } from '../src/services/cloud/sitesProviderPreferences.js';
+import { STALE_ATTEMPT_MS } from '../src/services/cloud/generationDeadlines.js';
 
 export class OpenRouterError extends Error {
   // details: extra public fields for the JSON body (status codes only, never provider text).
   constructor(status, code, message, details = undefined) { super(message); this.status = status; this.code = code; this.details = details; }
 }
 
-// An attempt older than this cannot still be running in a Worker: its input and provider windows
-// have both closed, plus a margin. It keeps counting toward the attempt cap, but it no longer holds
-// one of the concurrent slots, so a failed attempt cannot lock generation until a manual recovery.
-export const STALE_ATTEMPT_MS = MAP_INPUT_WINDOW_MS + MAP_PROVIDER_WINDOW_MS + 180_000;
+// An attempt older than STALE_ATTEMPT_MS (shared with the browser's admission retries) cannot still be
+// running in a Worker. It keeps counting toward the attempt cap, but it no longer holds one of the
+// concurrent slots, so a failed attempt cannot lock generation until a manual recovery.
+export { STALE_ATTEMPT_MS };
 
 // countSince: attempts created after it count toward maxRequests (0 = lifetime).
 // liveSince: unfinished attempts created after it still hold a concurrent slot.
 export function admissionCutoffs(policy, now) {
   return { countSince: policy.windowMs ? now - policy.windowMs : 0, liveSince: now - STALE_ATTEMPT_MS };
+}
+
+export function attemptLimitReached(policy, attempts) {
+  return policy.attemptLimitEnabled && attempts >= policy.maxRequests;
 }
 
 export function openRouterJSON(status, body) {
@@ -83,22 +88,27 @@ function fallbackModels(value, primary) {
   return valid && new Set(list).size === list.length ? list : null;
 }
 
-export function openRouterPolicy(env) {
+export function openRouterPolicy(env, { optionalProvider = false } = {}) {
   const modelValue = text(env.LCT_OPENROUTER_MODEL, 160);
   const model = modelValue && MODEL_ID.test(modelValue) ? modelValue : null;
   const fallbacks = fallbackModels(env.LCT_OPENROUTER_FALLBACK_MODELS, model);
-  const provider = text(env.LCT_OPENROUTER_PROVIDER, 160);
+  const rawProvider = env.LCT_OPENROUTER_PROVIDER;
+  const provider = optionalProvider && (rawProvider === undefined || rawProvider === '')
+    ? null : text(rawProvider, 160);
+  const providerValid = optionalProvider ? (rawProvider === undefined || rawProvider === '' || Boolean(provider)) : Boolean(provider);
   const dataCollection = ['allow', 'deny'].includes(env.LCT_OPENROUTER_DATA_COLLECTION) ? env.LCT_OPENROUTER_DATA_COLLECTION : null;
   const audience = ['public', 'authenticated'].includes(env.LCT_OPENROUTER_AUDIENCE) ? env.LCT_OPENROUTER_AUDIENCE : null;
-  const maxRequests = integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200);
-  const windowMs = attemptWindowMs(env.LCT_OPENROUTER_WINDOW_HOURS);
+  const attemptLimitEnabled = env.LCT_GENERATION_ATTEMPT_LIMIT_ENABLED !== 'false';
+  const maxRequests = attemptLimitEnabled ? integer(env.LCT_OPENROUTER_MAX_REQUESTS, 200) : null;
+  const windowMs = attemptLimitEnabled ? attemptWindowMs(env.LCT_OPENROUTER_WINDOW_HOURS) : null;
+  const attemptLimitConfigured = !attemptLimitEnabled || Boolean(maxRequests && windowMs !== false);
   const maxTokens = integer(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS, 8192);
   const longTokens = longMaxTokens(env.LCT_OPENROUTER_LONG_MAX_OUTPUT_TOKENS, maxTokens);
   const key = text(env.OPENROUTER_API_KEY_2 ?? env.OPENROUTER_API_KEY, 4096);
-  const configured = Boolean(model && fallbacks && provider && dataCollection && audience && maxRequests && windowMs !== false
+  const configured = Boolean(model && fallbacks && providerValid && dataCollection && audience && attemptLimitConfigured
     && maxTokens && longTokens && key && env.DB?.prepare);
   return { configured, model, fallbackModels: fallbacks || [], models: model && fallbacks ? [model, ...fallbacks] : [],
-    provider, dataCollection, audience, maxRequests, windowMs: windowMs || null, windowValid: windowMs !== false,
+    provider, dataCollection, audience, maxRequests, windowMs: windowMs || null, attemptLimitEnabled, attemptLimitConfigured,
     maxTokens, longMaxTokens: longTokens, key,
     backend: 'openrouter', label: 'OpenRouter', consentHeader: 'x-lct-openrouter-consent',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
@@ -118,18 +128,55 @@ export async function readOpenRouterAdmission(env, policy, now = Date.now()) {
   return { attempts: row.attempts, unresolved: row.unresolved, latest: row.latest };
 }
 
-// Both backends intentionally share the original admission ledger and limits.
+// All map backends intentionally share the original admission ledger and limits.
 // Changing the recipient must never create a second quota or release a holder.
 export function geminiPolicy(env) {
   const shared = openRouterPolicy(env);
   const modelValue = text(env.LCT_GEMINI_MODEL, 160);
   const model = modelValue && /^gemini-[A-Za-z0-9._-]+$/.test(modelValue) ? modelValue : null;
   const key = text(env.GEMINI_API_KEY, 4096);
-  const configured = Boolean(model && key && shared.audience && shared.maxRequests && shared.windowValid
+  const configured = Boolean(model && key && shared.audience && shared.attemptLimitConfigured
     && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
   return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
     backend: 'gemini', label: 'Gemini', provider: 'Google AI Studio', dataCollection: null,
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
     consentHeader: 'x-lct-gemini-consent',
     enabled: configured && env.LCT_GEMINI_ENABLED === 'true' && env.LCT_GEMINI_PROJECT_BUDGET_CONFIRMED === 'true' };
+}
+
+export function anthropicPolicy(env) {
+  const shared = openRouterPolicy(env);
+  const modelValue = text(env.LCT_ANTHROPIC_MODEL, MAX_MODEL_ID);
+  const model = modelValue && /^claude-[A-Za-z0-9][A-Za-z0-9._-]*$/.test(modelValue) ? modelValue : null;
+  const key = text(env.ANTHROPIC_API_KEY, 4096);
+  const configured = Boolean(model && key && shared.audience && shared.attemptLimitConfigured
+    && shared.maxTokens && shared.longMaxTokens && env.DB?.prepare);
+  return { ...shared, configured, model, fallbackModels: [], models: model ? [model] : [], key,
+    backend: 'anthropic', label: 'Anthropic', provider: 'Anthropic', dataCollection: null,
+    endpoint: 'https://api.anthropic.com/v1/messages', consentHeader: 'x-lct-anthropic-consent',
+    enabled: configured && env.LCT_ANTHROPIC_ENABLED === 'true' && env.LCT_ANTHROPIC_PROJECT_BUDGET_CONFIRMED === 'true' };
+}
+
+
+export const mapPolicies = { openrouter: openRouterPolicy, gemini: geminiPolicy, anthropic: anthropicPolicy };
+
+// The owner's own key and spend (approved 2026-11-25): detail calls may run three at a time, and a
+// refused reply (which stays unresolved until it goes stale) must not lock out the rest of a run.
+// Server-key routes keep their pacing. Lifetime and window attempt limits are unchanged.
+// The interval is a burst guard only; the client staggers starts 1.6 s apart, leaving margin for upload time.
+export const PERSONAL_PACING = Object.freeze({ maxConcurrent: 6, admissionIntervalMs: 500 });
+
+export function personalMapPolicy(route, env) {
+  const { backend, key, model, provider } = route;
+  if (env.LCT_PERSONAL_PROVIDERS_ENABLED !== 'true' || !validPersonalKey(key) || !Object.hasOwn(mapPolicies, backend)) return null;
+  if (backend === 'openrouter') {
+    const cleanProvider = typeof provider === 'string' ? provider.trim() : '';
+    if (cleanProvider && !/^[a-z0-9][a-z0-9-]{0,79}$/i.test(cleanProvider)) return null;
+    return { ...openRouterPolicy({ ...env, OPENROUTER_API_KEY_2: key, LCT_OPENROUTER_MODEL: model,
+      LCT_OPENROUTER_PROVIDER: cleanProvider, LCT_OPENROUTER_DATA_COLLECTION: 'deny', LCT_OPENROUTER_FALLBACK_MODELS: '',
+      LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true' }, { optionalProvider: true }), ...PERSONAL_PACING };
+  }
+  const prefix = backend.toUpperCase();
+  return { ...mapPolicies[backend]({ ...env, [prefix + '_API_KEY']: key, ['LCT_' + prefix + '_MODEL']: model,
+    ['LCT_' + prefix + '_ENABLED']: 'true', ['LCT_' + prefix + '_PROJECT_BUDGET_CONFIRMED']: 'true' }), ...PERSONAL_PACING };
 }

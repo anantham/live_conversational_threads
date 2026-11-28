@@ -1,0 +1,280 @@
+// @vitest-environment jsdom
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import SpatialLandscapeCanvas from "./SpatialLandscapeCanvas";
+
+const utterances = [
+  { id: "u1", speaker_id: "s1", speaker_name: "Mirela", timestamp_start: 0, text: "Opening community-garden plan." },
+  { id: "u2", speaker_id: "s2", speaker_name: "Sam", timestamp_start: 60, text: "Brief tangent." },
+  { id: "u3", speaker_id: "s1", speaker_name: "Mirela", timestamp_start: 2400, text: "Budget limit turns into shared tools." },
+  { id: "u4", speaker_id: "s2", speaker_name: "Sam", timestamp_start: 3900, text: "Returning to community-garden at the end." },
+];
+
+const nodes = [
+  { id: "arc-1", semantic_level: 5, node_name: "Community garden", summary: "Planning a shared garden.", source_ref: { utterance_ids: ["u1", "u3", "u4"] } },
+  { id: "arc-2", semantic_level: 5, node_name: "Lake Retreat", summary: "Designing the retreat.", source_ref: { utterance_ids: ["u2"] } },
+  { id: "arc-3", semantic_level: 5, node_name: "Inner Work", summary: "Personal reflection.", source_ref: { utterance_ids: ["u2"] } },
+  { id: "arc-4", semantic_level: 5, node_name: "Fourth Arc", summary: "Overflow sibling.", source_ref: { utterance_ids: ["u3"] } },
+  { id: "topic-1", semantic_level: 3, parent_id: "arc-1", node_name: "Funding & Collaborators", summary: "Who joins.", source_ref: { utterance_ids: ["u3"] } },
+  { id: "idea-11", semantic_level: 2, node_name: "Meditating with people again", summary: "Unfiled idea.", source_ref: { utterance_ids: ["u2"] } },
+];
+
+describe("SpatialLandscapeCanvas", () => {
+  let host;
+  let root;
+
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+  });
+
+  it("renders at most 3 focal Arcs with 1-3 of 4 pagination, isolates Unfiled, and jumps on visit click", () => {
+    const onOpenVisit = vi.fn();
+    const bundle = {
+      conversation_title: "Mirela catch-up",
+      utterances,
+      audit_signals: [
+        {
+          id: "sig-1",
+          source: "audit",
+          kind: "contradiction",
+          node_id: "topic-1",
+          utterance_ids: ["u3"],
+          note: "Summary date conflicts with transcript.",
+          decision: "pending",
+        },
+      ],
+    };
+
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={bundle} nodes={nodes} onOpenVisit={onOpenVisit} />);
+    });
+
+    // Strict ≤3 nodes in focus, no unfiled Idea 11 at root
+    const stageNodes = host.querySelectorAll("[data-landscape-node]");
+    expect(stageNodes).toHaveLength(3);
+    expect(host.textContent).not.toContain("Meditating with people again");
+    expect(host.textContent).toContain("1–3 of 4");
+    expect(host.textContent).toContain("Unfiled (1)");
+
+    // Clicking a visit timestamp opens source at that exact utterance
+    const visit40 = [...host.querySelectorAll("button")].find((b) => b.textContent === "40:00");
+    expect(visit40).not.toBeUndefined();
+    act(() => visit40.click());
+    expect(onOpenVisit).toHaveBeenCalledWith({ nodeId: "arc-1", utteranceId: "u3", endUtteranceId: "u4", seconds: 2400 });
+
+    // Next page shows 4–4 of 4
+    act(() => host.querySelector('[aria-label="Next siblings"]').click());
+    expect(host.textContent).toContain("4–4 of 4");
+    expect(host.textContent).toContain("Fourth Arc");
+
+    // Step back to page 1 and drill into Community garden
+    act(() => host.querySelector('[aria-label="Previous siblings"]').click());
+    const gardenBtn = [...host.querySelectorAll("h2 button")].find((b) => b.textContent === "Community garden");
+    act(() => gardenBtn.click());
+    expect(host.textContent).toContain("Funding & Collaborators");
+
+    // Activate Map checks lens and verify honest label ("Summary conflicts with source")
+    const mapChecksBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Map checks"));
+    act(() => mapChecksBtn.click());
+    expect(host.textContent).toContain("Summary conflicts with source");
+    expect(host.textContent).toContain("Mirela:");
+
+    // Unrun lenses are disabled and labeled not analyzed
+    const cruxesBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Cruxes"));
+    expect(cruxesBtn.disabled).toBe(true);
+    expect(cruxesBtn.title).toContain("not analyzed");
+
+    // No noisy footer helper labels ("Esc to step up", "Click to enter", "1 node")
+    expect(host.textContent).not.toMatch(/Esc to step up|Click to enter|← Up|\b1 node\b/);
+
+    // ArrowUp steps back up to root, ArrowDown drills back in
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
+    expect(host.textContent).toContain("Community garden");
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+    expect(host.textContent).toContain("Funding & Collaborators");
+  });
+
+
+  // Test intent (2026-11-25 critique): a node's meaning and the way into it are legible
+  // without a hover, and an upper tier that cites no turns itself still opens to the
+  // turns its descendants cite (never to an unmarked whole transcript).
+  it("shows summaries and a real drill control at rest, and opens upper tiers to their descendants' passages", () => {
+    const onOpenVisit = vi.fn();
+    const layered = [
+      { id: "theme-a", semantic_level: 4, node_name: "Shared rhythms", summary: "How the group keeps time." },
+      { id: "theme-b", semantic_level: 4, node_name: "Money", summary: "Who pays for what." },
+      { id: "moment-a1", semantic_level: 1, parent_id: "theme-a", node_name: "Morning sits", source_ref: { utterance_ids: ["u3", "u4"] } },
+      { id: "moment-b1", semantic_level: 1, parent_id: "theme-b", node_name: "Rent", source_ref: { utterance_ids: ["u2"] } },
+    ];
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={{ conversation_title: "Rhythms", utterances }} nodes={layered} onOpenVisit={onOpenVisit} />);
+    });
+
+    // Summaries sit outside the hover-only region, so they are visible with no pointer.
+    const summary = [...host.querySelectorAll("p")].find((p) => p.textContent === "How the group keeps time.");
+    expect(summary).not.toBeUndefined();
+    expect(summary.closest(".opacity-0")).toBeNull();
+
+    // The theme's visits come from the moment beneath it, as one contiguous run u3..u4.
+    const visit = [...host.querySelectorAll("button")].find((b) => b.textContent === "40:00");
+    act(() => visit.click());
+    expect(onOpenVisit).toHaveBeenCalledWith({ nodeId: "theme-a", utteranceId: "u3", endUtteranceId: "u4", seconds: 2400 });
+
+    // "1 inside" is a real button that drills in.
+    const drill = host.querySelector('button[aria-label="1 inside: Shared rhythms"]');
+    expect(drill).not.toBeNull();
+    act(() => drill.click());
+    expect(host.textContent).toContain("Morning sits");
+    expect(host.textContent).not.toContain("Who pays for what.");
+
+    // A leaf has no children: its button opens the passage instead, with the full run.
+    const openPassage = host.querySelector('button[aria-label="Open passage: Morning sits"]');
+    expect(openPassage).not.toBeNull();
+    act(() => openPassage.click());
+    expect(onOpenVisit).toHaveBeenLastCalledWith({ nodeId: "moment-a1", utteranceId: "u3", endUtteranceId: "u4", seconds: 2400 });
+  });
+
+  it("emits merge and split boundary corrections through the quiet Adjust boundary control", () => {
+    const onBoundaryCorrection = vi.fn();
+    const bundle = { conversation_title: "Mirela catch-up", utterances };
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={bundle} nodes={nodes} onBoundaryCorrection={onBoundaryCorrection} />);
+    });
+    const mergeBtn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Merge into Lake Retreat");
+    expect(mergeBtn).not.toBeUndefined();
+    act(() => mergeBtn.click());
+    expect(onBoundaryCorrection).toHaveBeenCalledWith({ kind: "merge", sourceNodeId: "arc-1", targetNodeId: "arc-2" });
+
+    const splitBtn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Split at 40:00");
+    expect(splitBtn).not.toBeUndefined();
+    act(() => splitBtn.click());
+    expect(onBoundaryCorrection).toHaveBeenCalledWith({ kind: "split", sourceNodeId: "arc-1", splitUtteranceId: "u3" });
+  });
+
+  it("switches to the interleaving Timeline view and verifies consent for the configured recipients", async () => {
+    const onAddReaction = vi.fn();
+    const onRunEpistemic = vi.fn().mockResolvedValue(true);
+    const bundle = { conversation_title: "Mirela catch-up", utterances };
+    const render = (label) => act(() => {
+      root.render(
+        <SpatialLandscapeCanvas
+          bundle={bundle}
+          nodes={nodes}
+          onAddReaction={onAddReaction}
+          onRunEpistemic={onRunEpistemic}
+          epistemicProviderLabel={label}
+        />,
+      );
+    });
+    render("Anthropic (claude-sonnet-5-5) or Gemini");
+
+    // Click unanalyzed Cruxes pill to open 1-click analyze popover
+    const cruxesBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Cruxes"));
+    expect(cruxesBtn.disabled).toBe(false);
+    act(() => cruxesBtn.click());
+    expect(host.textContent).toContain("Analyze Cruxes, Claims & Normative assumptions");
+    expect(host.textContent).toContain("Send this transcript and map nodes to Anthropic (claude-sonnet-5-5) or Gemini.");
+    const analyzeButton = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Analyze now");
+    expect(analyzeButton().disabled).toBe(true);
+    act(() => host.querySelector('input[type="checkbox"]').click());
+    expect(analyzeButton().disabled).toBe(false);
+    render("Anthropic (claude-sonnet-5-5) or OpenRouter");
+    expect(analyzeButton().disabled).toBe(true);
+    expect(onRunEpistemic).not.toHaveBeenCalled();
+    act(() => host.querySelector('input[type="checkbox"]').click());
+    await act(async () => analyzeButton().click());
+    expect(onRunEpistemic).toHaveBeenCalledTimes(1);
+
+    // Switch to Timeline surface and mark a reaction
+    const timelineBtn = [...host.querySelectorAll('[aria-label="Surface mode"] button')].find((b) => b.textContent === "Timeline");
+    act(() => timelineBtn.click());
+    expect(host.querySelector('[data-testid="conversation-timeline"]')).not.toBeNull();
+    const energizedBtn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Energized");
+    act(() => energizedBtn.click());
+    expect(onAddReaction).toHaveBeenCalledWith(expect.objectContaining({ kind: "energized", nodeId: "arc-1" }));
+  });
+
+  // Test intent (2026-11-27 review): the claim-check consent box shows the exact text that is sent,
+  // in full, names who receives it, and says when that text is a verbatim transcript quote.
+  it("shows the exact claim text, its recipient, and whether it is a transcript quote before a claim check", async () => {
+    // Resolves true when a check ran, so the box closes; false (none started) keeps it open.
+    const onVerifyClaim = vi.fn().mockResolvedValue(true);
+    const longNote = "Shared tools cut costs. ".repeat(10).trim();
+    const claimsBundle = (claim) => ({ conversation_title: "Mirela catch-up", utterances,
+      epistemic: { cruxes: [], normative_assumptions: [], factual_claims: [{ id: "claim-1", node_id: "arc-1", utterance_ids: ["u3"], ...claim }] } });
+    const render = (claim) => act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={claimsBundle(claim)} nodes={nodes} onVerifyClaim={onVerifyClaim}
+        epistemicProviderLabel="Anthropic (claude-test)" />);
+    });
+    const openCheck = () => {
+      const claimsBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Claims"));
+      act(() => claimsBtn.click());
+      act(() => [...host.querySelectorAll("button")].find((b) => b.textContent === "Check externally…").click());
+    };
+
+    // No written note: the quote is what is sent, so the box must not claim no transcript text leaves.
+    render({});
+    openCheck();
+    expect(host.textContent).toContain("Only this text is sent, to Anthropic (claude-test):");
+    expect(host.textContent).toContain("“Budget limit turns into shared tools.”");
+    expect(host.textContent).toContain("This is a verbatim quote from the transcript.");
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
+    expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", "Budget limit turns into shared tools.");
+    expect(host.textContent).not.toContain("Only this text is sent");
+
+    // A written note longer than the old 160-character preview is shown in full, and is what is sent.
+    act(() => root.unmount()); root = createRoot(host);
+    render({ note: longNote });
+    openCheck();
+    expect(longNote.length).toBeGreaterThan(160);
+    expect(host.textContent).toContain(`“${longNote}”`);
+    expect(host.textContent).toContain("No transcript turns and no speaker names are sent.");
+    expect(host.textContent).not.toContain("verbatim quote");
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
+    expect(onVerifyClaim).toHaveBeenLastCalledWith("claim-1", longNote);
+    expect(host.textContent).not.toContain("Only this text is sent");
+
+    // When no check started, the box stays open with the text still visible.
+    onVerifyClaim.mockResolvedValueOnce(false);
+    act(() => [...host.querySelectorAll("button")].find((b) => b.textContent === "Check externally…").click());
+    await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Confirm & check").click());
+    expect(host.textContent).toContain(`“${longNote}”`);
+
+    // While another claim is being checked, this one's confirm button waits and says why.
+    act(() => root.unmount()); root = createRoot(host);
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={claimsBundle({ note: "Tools are shared." })} nodes={nodes} onVerifyClaim={onVerifyClaim}
+        epistemicProviderLabel="Anthropic (claude-test)" verifyingClaimId="claim-elsewhere" />);
+    });
+    openCheck();
+    const waiting = [...host.querySelectorAll("button")].find((b) => b.textContent === "Another check is running…");
+    expect(waiting.disabled).toBe(true);
+
+    // While the lenses are being (re)analysed, a check waits too: they would replace this claim.
+    act(() => root.unmount()); root = createRoot(host);
+    act(() => {
+      root.render(<SpatialLandscapeCanvas bundle={claimsBundle({ note: "Tools are shared." })} nodes={nodes} onVerifyClaim={onVerifyClaim}
+        epistemicProviderLabel="Anthropic (claude-test)" epistemicRunning />);
+    });
+    openCheck();
+    expect([...host.querySelectorAll("button")].find((b) => b.textContent === "Waiting for the analysis…").disabled).toBe(true);
+
+        // A claim the server would refuse is not offered for checking at all.
+    act(() => root.unmount()); root = createRoot(host);
+    render({ note: "x".repeat(601) });
+    const claimsBtn = [...host.querySelectorAll('[aria-label="Epistemic lenses"] button')].find((b) => b.textContent.includes("Claims"));
+    act(() => claimsBtn.click());
+    expect(host.textContent).toContain("too long to check externally");
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Check externally…")).toBe(false);
+  });
+});

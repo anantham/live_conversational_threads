@@ -26,6 +26,23 @@ function ids(value, required = false, validationStage = 'node_shape') {
   return value;
 }
 
+/** Name the first rule an edge list breaks, so a refusal says why (fixed labels, no content). */
+function edgeRule(rawEdges, nodes) {
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const seen = new Set();
+  for (const edge of Array.isArray(rawEdges) ? rawEdges : []) {
+    if (!object(edge) || !identity(edge.id) || !identity(edge.from_node_id) || !identity(edge.to_node_id) || !identity(edge.relation_type)) return 'edge_malformed';
+    if (edge.edge_kind != null && !['semantic', 'temporal'].includes(edge.edge_kind)) return 'edge_kind';
+    if ([edge.explanation, edge.relation_text].some(text => text != null && typeof text !== 'string')
+      || (edge.confidence != null && !(typeof edge.confidence === 'number' && edge.confidence >= 0 && edge.confidence <= 1))) return 'edge_field';
+    if (seen.has(edge.id)) return 'edge_duplicate_id';
+    if (edge.from_node_id === edge.to_node_id) return 'edge_self_reference';
+    if (!nodeIds.has(edge.from_node_id) || !nodeIds.has(edge.to_node_id)) return 'edge_unknown_endpoint';
+    seen.add(edge.id);
+  }
+  return 'edge_contract';
+}
+
 function optionalText(value) {
   if (value != null && typeof value !== 'string') throw invalid();
   return value;
@@ -85,6 +102,8 @@ function normalizedGraph(graph, utterances) {
       ...(node.source_excerpt == null ? {} : { source_excerpt: node.source_excerpt }),
       ...(node.thread_id == null ? {} : { thread_id: node.thread_id }),
       ...(node.speaker_id == null ? {} : { speaker_id: node.speaker_id }),
+      ...(['core', 'supporting', 'aside'].includes(node.salience) ? { salience: node.salience } : {}),
+      ...(node.generated_gap === true ? { generated_gap: true } : {}),
       ...(node.parent_id == null ? {} : { parent_id: node.parent_id }),
       ...(node.children_ids == null ? {} : { children_ids: [...node.children_ids] }),
       ...(memberships == null ? {} : { memberships }),
@@ -154,7 +173,7 @@ function normalizedGraph(graph, utterances) {
     });
     validateThreadsArtifact({ format: 'lct.threads', format_version: 2, graph_data: nodes,
       edge_schema: EDGE_SCHEMA, edges });
-  } catch { throw invalid('edges'); }
+  } catch { throw invalid('edges', edgeRule(graph.edges, nodes)); }
 
   let conversationThreads;
   if (graph.conversation_threads != null) {
@@ -173,7 +192,8 @@ export function createRecordingThreads({ recordingId, startedAt, finalTokens, co
   // Source validation precedes every read of generated output.
   const { document } = createRecordingTranscript({ recordingId, startedAt, finalTokens, complete });
   const { nodes, edges, conversationThreads } = normalizedGraph(graph, document.utterances);
-  const linked = new Set(nodes.flatMap((node) => node.source_ref.utterance_ids));
+  // Placeholders for uncovered turns keep those turns visible but are not coverage by the model.
+  const linked = new Set(nodes.filter((node) => !node.generated_gap).flatMap((node) => node.source_ref.utterance_ids));
   const covered = linked.size;
   const bundle = {
     format: 'lct.threads', format_version: 2,

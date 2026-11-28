@@ -1,3 +1,6 @@
+import { Link } from 'react-router-dom';
+import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences';
+import { MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
 import { useEffect, useMemo, useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { useAudioImport } from '../hooks/useAudioImport.js';
@@ -45,6 +48,7 @@ export default function SitesAudioImport() {
       <div className="shrink-0 px-5 py-2 text-xs leading-5">
         {activity && <p role="status">{activity.message}{busy && ' · ' + flow.elapsed + ' s elapsed'}</p>}
         {archive.status.state === 'error' && <ConversationStorageStatus status={archive.status} preference={recording?.retention || archive.preference} onRetry={archive.retry} />}
+        {flow.fallbackNotice && <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-900">{flow.fallbackNotice}</p>}
         {flow.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{flow.error}</p>}
         {privateFiles.message && <p role="status">{privateFiles.message}</p>}
         {privateFiles.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{privateFiles.error}</p>}
@@ -56,15 +60,32 @@ export default function SitesAudioImport() {
           <p className="text-sm leading-6 text-slate-600">Turn an MP3, WAV or M4A file into a transcript and connected threads.</p>
           <label className="block text-sm font-medium" htmlFor="audio-import-file">Audio file</label>
           <input id="audio-import-file" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/wav,audio/mp4" className="block w-full min-w-0 text-sm file:mr-3 file:min-h-11 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3" disabled={busy} onChange={event => { flow.setFile(event.target.files?.[0] || null); flow.setConsent(false); }} />
+          {flow.mapRoutes ? <>
+            <p className="text-sm text-slate-600">Choose an MP3, WAV or M4A file up to 20 MiB.</p>
+            <p className="text-sm text-slate-600">Transcription {flow.speechProviders.map(id => SPEECH_PROVIDERS[id].name).join(' → ') || 'unavailable'}</p>
+            <p className="text-sm text-slate-600">Threads {flow.mapRoutes.map(({ backend }) => MAP_PROVIDERS[backend].name).join(' → ')}</p>
+            <Link className="inline-flex min-h-11 items-center text-sm underline underline-offset-4" to="/settings/runtime">Manage provider order and keys</Link>
+          </> : <>
           <p className="text-xs text-slate-500">Up to 20 MiB and {capability ? Math.floor(capability.max_session_seconds / 60) + ' minutes' : 'the configured session limit'}. Keep this tab open while processing.</p>
           <label className="block text-sm" htmlFor="import-provider">AI provider for threads</label>
           <select id="import-provider" value={flow.backend} disabled={busy} onChange={event => { flow.setBackend(event.target.value); flow.setConsent(false); }} className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3">
-            <option value="openrouter">OpenRouter</option><option value="gemini">Gemini · Google AI Studio</option>
+            {Object.entries(MAP_PROVIDERS).map(([value, provider]) => <option key={value} value={value}>{provider.option}</option>)}
           </select>
-          <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={flow.consent} onChange={event => flow.setConsent(event.target.checked)} />I have permission to send this audio to Soniox for transcription and its transcript to {flow.backend === 'gemini' ? 'Google Gemini through Google AI Studio' : 'OpenRouter and the selected model provider'} to create threads.</label>
+          </>}
+          <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={flow.consent} onChange={event => flow.setConsent(event.target.checked)} />
+            {flow.mapRoutes
+              ? `I have permission to send this audio to the listed transcription providers and its transcript to ${flow.mapRoutes.map(({ backend }) => MAP_PROVIDERS[backend].recipient).join(', ')} in the configured order as needed to create threads.`
+              : `I have permission to send this audio to Soniox for transcription and its transcript to ${MAP_PROVIDERS[flow.backend].recipient} to create threads.`}
+          </label>
           <p className="text-xs leading-5 text-slate-500">{archive.preference === 'local' ? 'Audio, transcript and threads save in this browser. Nothing is published automatically.' : 'Ephemeral mode: download your files before closing this tab.'}</p>
-          <button type="submit" className={button + ' bg-slate-900 text-white'} disabled={!flow.file || !flow.consent || flow.loading || !capability?.enabled || busy}><Upload size={17} aria-hidden="true" />Create transcript &amp; threads</button>
-          {!flow.loading && !capability?.enabled && <p className="text-sm text-slate-600">Transcription is currently unavailable. Your file has not been sent.</p>}
+          {archive.preference === 'local' && flow.file && (
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input type="checkbox" checked={flow.bypassCache} onChange={event => flow.setBypassCache(event.target.checked)} />
+              Re-transcribe (bypass cached transcript for this audio file)
+            </label>
+          )}
+          <button type="submit" className={button + ' bg-slate-900 text-white'} disabled={!flow.file || !flow.consent || flow.loading || !flow.speechProviders.length || busy}><Upload size={17} aria-hidden="true" />Create transcript &amp; threads</button>
+          {!flow.loading && !flow.speechProviders.length && <p className="text-sm text-slate-600">Transcription is currently unavailable. Your file has not been sent.</p>}
           {flow.loading && <p role="status" className="text-sm">Checking transcription setup…</p>}
           {!capability && !flow.loading && <button type="button" className={button} onClick={() => void flow.check()}>Check setup again</button>}
         </form>

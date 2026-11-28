@@ -31,7 +31,7 @@ function reservePrivate(size) {
 }
 function seedPublic(count, removed = false) {
   const payload = JSON.stringify(fixture);
-  for (let n = 0; n < count; n++) sqlite.prepare('INSERT INTO lct_public_threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), removed ? '' : fixture.conversation_title, removed ? null : payload, removed ? 0 : Buffer.byteLength(payload), removed ? 0 : 1, '0'.repeat(64), removed ? null : '2'.repeat(64), removed ? 'removed' : 'ready', 1000 + n);
+  for (let n = 0; n < count; n++) sqlite.prepare('INSERT INTO lct_public_threads (id, title, payload, byte_size, node_count, delete_hash, payload_hash, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), removed ? '' : fixture.conversation_title, removed ? null : payload, removed ? 0 : Buffer.byteLength(payload), removed ? 0 : 1, '0'.repeat(64), removed ? null : '2'.repeat(64), removed ? 'removed' : 'ready', 1000 + n);
 }
 
 describe('Guest public conversation Worker API with real generated SQLite schema', () => {
@@ -150,4 +150,39 @@ describe('Guest public conversation Worker API with real generated SQLite schema
     expect((await aborted).status).toBe(400);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_public_threads').get().n).toBe(0);
   });
+
+  // Intent: lct_app/tests/intent/publish-link.md.
+  it('keeps an unlisted copy out of the library while its link still opens', async () => {
+    const hidden = crypto.randomUUID(), shown = crypto.randomUUID();
+    const unlisted = await publish(hidden, { headers: { 'x-lct-public-visibility': 'unlisted' } });
+    expect(unlisted.status).toBe(201);
+    expect((await unlisted.json()).item).toMatchObject({ id: hidden, visibility: 'unlisted' });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + PUBLIC_LIMITS.minIntervalMs + 1);
+    expect((await publish(shown)).status).toBe(201); // no header: listed, as before
+    const library = await (await worker.fetch(req(PREFIX), env)).json();
+    expect(library.items.map(item => item.id)).toEqual([shown]);
+    expect((await worker.fetch(req(`${PREFIX}/${hidden}`), env)).status).toBe(200);
+    expect((await worker.fetch(req(`${PREFIX}/${hidden}/content`), env)).status).toBe(200);
+    expect((await publish(crypto.randomUUID(), { headers: { 'x-lct-public-visibility': 'secret' } })).status).toBe(400);
+  });
+
+  it('accepts a 90-minute-call-sized map up to 1.5 MiB and refuses anything larger', async () => {
+    const big = { ...fixture, full_transcript: 'x'.repeat(1_000_000) };
+    expect((await publish(crypto.randomUUID(), { body: JSON.stringify(big) })).status).toBe(201);
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + PUBLIC_LIMITS.minIntervalMs + 1);
+    const over = { ...fixture, full_transcript: 'x'.repeat(PUBLIC_LIMITS.maxArtifactBytes) };
+    expect((await publish(crypto.randomUUID(), { body: JSON.stringify(over) })).status).toBe(413);
+    expect(PUBLIC_LIMITS.maxArtifactBytes).toBeLessThan(2_000_000); // Cloudflare D1 value limit
+  });
+
+  // Review: visibility is checked first and cannot change on republish; empty is not "public".
+  it('refuses an empty visibility and a republish that changes visibility', async () => {
+    expect((await publish(crypto.randomUUID(), { headers: { 'x-lct-public-visibility': '' } })).status).toBe(400);
+    const id = crypto.randomUUID();
+    expect((await publish(id, { headers: { 'x-lct-public-visibility': 'unlisted' } })).status).toBe(201);
+    expect((await publish(id, { headers: { 'x-lct-public-visibility': 'unlisted' } })).status).toBe(200);
+    expect((await publish(id)).status).toBe(409);
+    expect((await publish(id, { headers: { 'x-lct-public-visibility': 'bogus' } })).status).toBe(400);
+  });
 });
+

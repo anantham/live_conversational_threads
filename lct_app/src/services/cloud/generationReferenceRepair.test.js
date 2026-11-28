@@ -252,8 +252,10 @@ describe('deterministic reference repair through the public adapter', () => {
     expect(repairGeneratedReferences(value).repair).toBe(null);
     const error = rejection(value);
     expect(error.message).toBe('Invalid generated conversation graph.');
-    expect(error.validationRule).toBe(rule);
-    expect(error.validationStage).toBe(rule === undefined && _label.includes('edge') ? 'edges' : 'hierarchy');
+    const edgeCase = rule === undefined && _label.includes('edge');
+    // Edge refusals now name their rule (an endpoint the hierarchy does not declare).
+    expect(error.validationRule).toBe(edgeCase ? 'edge_unknown_endpoint' : rule);
+    expect(error.validationStage).toBe(edgeCase ? 'edges' : 'hierarchy');
     expect(JSON.stringify(value)).toBe(before);
   });
 

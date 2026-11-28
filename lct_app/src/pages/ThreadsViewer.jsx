@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Rows3 } from "lucide-react";
+import { ChevronDown, Rows3 } from "lucide-react";
 import PropTypes from "prop-types";
 
 import { useDataProvider } from "../services/dataProvider";
@@ -13,6 +13,7 @@ import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import ThreadsViewerToolbar from "../components/threads/ThreadsViewerToolbar";
+import SpatialLandscapeCanvas from "../components/threads/SpatialLandscapeCanvas";
 import { buildViewerFindGroups } from "../components/threads/viewerFindModel";
 import { buildConversationSearchDocuments } from "../services/conversationSearch";
 import { buildSpeakerContributions } from "../components/graph/speakerContributions";
@@ -36,6 +37,14 @@ import {
 } from "../services/threadsArtifact";
 import { indexExplicitEdges } from "../services/edgeContract";
 import { readGeneratedMap, releaseGeneratedMap } from "../services/cloud/generatedMapHandoff.js";
+import { applyMergeNodes, applyReturnToThread, applySplitNodeAtVisit, recordBoundaryCorrection } from "../services/cloud/boundaryLearningStore.js";
+import { recordUserFlag } from "../services/cloud/mapAudit.js";
+import { recordQualitySnapshot } from "../services/cloud/qualityLedgerStore.js";
+import { addReactionMarker } from "../components/threads/conversationTimelineModel";
+import { runEpistemicAnalysis } from "../services/cloud/epistemicPipeline.js";
+import { withClaimEvidence, withEpistemic } from "../services/cloud/bundleFieldMerge.js";
+import { configuredMapRoutes, MAP_PROVIDERS, verifyFactualClaim } from "../services/cloud/openRouterClient.js";
+import { useSitesRuntime } from "../contexts/SitesRuntimeContext";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
@@ -74,6 +83,10 @@ export default function ThreadsViewer({ privateBundle, onPrivateClose }) {
 function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const privateMode = privateBundle !== undefined;
   const dataProvider = useDataProvider();
+  const sitesRuntime = useSitesRuntime();
+  const [epistemicRunning, setEpistemicRunning] = useState(false);
+  const [epistemicError, setEpistemicError] = useState("");
+  const [verifyingClaimId, setVerifyingClaimId] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { artifactId, publicId } = useParams();
@@ -88,12 +101,43 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const [bundle, setBundle] = useState(null);
   const [historySession, setHistorySession] = useState(0);
   const viewerRoot = useRef(null);
+  // Background passes (epistemic lenses, claim checks) finish after the user may have edited the map or
+  // opened or closed one. Every change of the bundle goes through one of two helpers, so `bundleRef` is
+  // always the latest map and `mapEpochRef` changes exactly when a different map (or none) is shown.
+  const bundleRef = useRef(null);
+  const mapEpochRef = useRef(0);
+  const verifyControllerRef = useRef(null);
+  const epistemicControllerRef = useRef(null);
+  /** Show a different map, or none: cancels and forgets every background pass of the old one. */
+  const replaceMap = useCallback((next) => {
+    mapEpochRef.current += 1;
+    verifyControllerRef.current?.abort();
+    epistemicControllerRef.current?.abort();
+    verifyControllerRef.current = null;
+    epistemicControllerRef.current = null;
+    setVerifyingClaimId(null);
+    setEpistemicRunning(false);
+    setEpistemicError("");
+    bundleRef.current = next;
+    setBundle(next);
+  }, []);
+  /** Apply an edit to the map that is shown. */
+  const commitEdit = useCallback((next) => {
+    bundleRef.current = next;
+    setBundle(next);
+  }, []);
+  // Leaving the viewer is a switch to no map: results that arrive afterwards are dropped.
+  useEffect(() => () => {
+    mapEpochRef.current += 1;
+    verifyControllerRef.current?.abort();
+    epistemicControllerRef.current?.abort();
+  }, []);
   const [graphNavigation, setGraphNavigation] = useState(null);
   const [graphRevision, setGraphRevision] = useState(0);
   const [discussionExpanded, setDiscussionExpanded] = useState([]);
   const [sourcePosition, setSourcePosition] = useState(null);
   const [textSourceMode, setTextSourceMode] = useState("transcript");
-  const [viewMode, setViewMode] = useState(() => !privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+  const [viewMode, setViewMode] = useState(() => !privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "landscape");
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
@@ -174,7 +218,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   } = {}) => {
     try {
       const validated = validateThreadsArtifact(data);
-      setBundle(validated);
+      replaceMap(validated);
       setHistorySession((value) => value + 1);
       setGraphNavigation(null);
       setGraphRevision(0);
@@ -182,7 +226,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       setSourcePosition(null);
       setTextSourceMode("transcript");
       setSourceSeek(null);
-      setViewMode(!privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+      setViewMode(!privateMode && typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "landscape");
       setOverviewOpen(false);
       setSourceOpen(false);
       setSourceTextSelection(null);
@@ -216,10 +260,10 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
           });
       }
     } catch (e) {
-      setBundle(null);
+      replaceMap(null);
       setError(privateMode ? "This private conversation map cannot be displayed. Return to your files and try another copy." : String(e?.message || e));
     }
-  }, [privateMode]);
+  }, [privateMode, replaceMap]);
 
   useEffect(() => {
     if (!privateMode) return;
@@ -233,7 +277,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     setSrcLoading(false);
     setLibraryStatus({ state: "public", message: "Public copy · edits stay in this view" });
   }, [ingest]);
-  useEffect(() => { if (publicId && !privateMode) { setBundle(null); setError(""); setLibraryStatus(null); } }, [publicId, privateMode]);
+  useEffect(() => { if (publicId && !privateMode) { replaceMap(null); setError(""); setLibraryStatus(null); } }, [publicId, privateMode, replaceMap]);
 
   // A Drive link is stable, while its short-lived OAuth token is deliberately
   // not. Reopen the validated artifact already saved for this exact Drive file
@@ -273,11 +317,11 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
         const data = await readThreadsFile(file);
         ingest(data, { sourceName: file.name });
       } catch (e) {
-        setBundle(null);
+        replaceMap(null);
         setError(`Could not read .threads file: ${String(e?.message || e)}`);
       }
     },
-    [privateMode, ingest],
+    [privateMode, ingest, replaceMap],
   );
 
   // Browse passes a parsed bundle through router state so the file opens even
@@ -314,7 +358,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       })
       .catch((loadError) => {
         if (!cancelled) {
-          setBundle(null);
+          replaceMap(null);
           setError(`Could not open saved artifact: ${String(loadError?.message || loadError)}`);
         }
       })
@@ -324,7 +368,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     return () => {
       cancelled = true;
     };
-  }, [privateMode, ephemeral, artifactId, ingest]);
+  }, [privateMode, ephemeral, artifactId, ingest, replaceMap]);
 
   // Optional ?src=<url> — fetch a hosted .threads (NOT an /api/ call). Lets a
   // share be a plain link to a hosted file without any backend.
@@ -522,8 +566,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
 
   const openLibrary = useCallback(() => privateMode ? onPrivateClose() : navigate(publicId ? "/public" : "/browse"), [privateMode, onPrivateClose, navigate, publicId]);
   const renameSpeaker = useCallback((speakerId, name) => {
-    const updated = renameArtifactSpeaker(bundle, speakerId, name);
-    setBundle(updated);
+    if (!bundleRef.current) return;
+    const updated = renameArtifactSpeaker(bundleRef.current, speakerId, name);
+    commitEdit(updated);
     if (privateMode) { setLibraryStatus({ state: "private", message: "Speaker names changed in this view only" }); return; }
     if (publicId) { setLibraryStatus({ state: "public", message: "Speaker names changed in this view only" }); return; }
     if (ephemeral) { setLibraryStatus({ state: "memory", message: "Speaker names changed in this view only · not saved" }); return; }
@@ -531,15 +576,176 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     void rememberThreadsArtifact(updated).then((record) => {
       setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
     }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
-  }, [bundle, publicId, privateMode, ephemeral]);
+  }, [publicId, privateMode, ephemeral, commitEdit]);
+
+  const handleBoundaryCorrection = useCallback(({ kind, sourceNodeId, targetNodeId, splitUtteranceId }) => {
+    const current = bundleRef.current;
+    if (!current) return;
+    const outcome = kind === "merge"
+      ? applyMergeNodes(current, sourceNodeId, targetNodeId)
+      : kind === "return_to_thread"
+        ? applyReturnToThread(current, sourceNodeId, targetNodeId)
+        : kind === "split"
+          ? applySplitNodeAtVisit(current, sourceNodeId, splitUtteranceId)
+          : { bundle: current, correction: null };
+    if (!outcome.correction) return;
+    commitEdit(outcome.bundle);
+    if (privateMode) { setLibraryStatus({ state: "private", message: "Boundary updated in this view only" }); return; }
+    if (publicId) { setLibraryStatus({ state: "public", message: "Boundary updated in this view only" }); return; }
+    // An unsaved map leaves nothing on this device: no quality-ledger row (it holds the title), and no
+    // learned preferences, whose node titles later imports would otherwise send to the map provider.
+    if (ephemeral) { setLibraryStatus({ state: "memory", message: "Boundary updated in this view only · not saved, not learned" }); return; }
+    recordQualitySnapshot(outcome.bundle);
+    recordBoundaryCorrection(outcome.correction);
+    const label = kind === "split"
+      ? `Split "${outcome.correction.source_title}" · preference learned`
+      : `Linked "${outcome.correction.source_title}" → "${outcome.correction.target_title}" · preference learned`;
+    setLibraryStatus({ state: "saving", message: label });
+    void rememberThreadsArtifact(outcome.bundle).then((record) => {
+      setLibraryStatus({ state: "saved", message: label, recordId: record.id });
+    }).catch(() => setLibraryStatus({ state: "error", message: `${label} (download to save)` }));
+  }, [privateMode, publicId, ephemeral, commitEdit]);
+
+  // Save an edit of a saved map and say what happened either way. Callers handle private, public and
+  // unsaved maps before calling, because each of those keeps edits in this view only.
+  const persistEdit = useCallback((updated, { saved, failed }) => {
+    void rememberThreadsArtifact(updated).then((record) => {
+      setLibraryStatus({ state: "saved", message: saved, recordId: record.id });
+    }).catch((cause) => {
+      console.error("[ThreadsViewer] Could not save the edited map:", cause);
+      setLibraryStatus({ state: "error", message: `${failed} Download the map to keep it.` });
+    });
+  }, []);
+
+  const handleAddReaction = useCallback((payload) => {
+    if (!bundleRef.current) return;
+    const { bundle: updated } = addReactionMarker(bundleRef.current, payload);
+    commitEdit(updated);
+    if (privateMode || publicId || ephemeral) return;
+    recordQualitySnapshot(updated);
+    persistEdit(updated, { saved: "Reaction saved on this device", failed: "Reaction added here but could not be saved." });
+  }, [privateMode, publicId, ephemeral, persistEdit, commitEdit]);
+
+  const handleFlagNode = useCallback((nodeId, kind) => {
+    if (!bundleRef.current) return;
+    try {
+      const updated = recordUserFlag(bundleRef.current, nodeId, kind);
+      commitEdit(updated);
+      const msg = `Flagged node as ${kind}`;
+      if (privateMode || publicId || ephemeral) { setLibraryStatus({ state: privateMode ? "private" : publicId ? "public" : "memory", message: msg }); return; }
+      recordQualitySnapshot(updated);
+      persistEdit(updated, { saved: `${msg} · saved on this device`, failed: `${msg} here but could not save it.` });
+    } catch { /* Ignore unknown node/flag. */ }
+  }, [privateMode, publicId, ephemeral, persistEdit, commitEdit]);
+
+  const epistemicRoutes = useMemo(() => (sitesRuntime ? configuredMapRoutes(sitesRuntime) : []), [sitesRuntime]);
+  const epistemicProviderLabel = useMemo(() => {
+    const labels = epistemicRoutes.map(({ backend, model, provider }) => {
+      const name = MAP_PROVIDERS[backend]?.name || backend;
+      const details = [model, provider].filter(Boolean).join(" · ");
+      return details ? `${name} (${details})` : name;
+    });
+    return new Intl.ListFormat("en", { type: "disjunction" }).format([...new Set(labels)]);
+  }, [epistemicRoutes]);
+
+  // The two background passes never run at once: the lenses replace the claims a check would attach to.
+  const handleRunEpistemic = useCallback(async () => {
+    const current = bundleRef.current;
+    // Refs as well as state: two clicks in one tick happen before either state change renders.
+    if (!current || !epistemicRoutes.length || epistemicRunning || verifyingClaimId
+      || epistemicControllerRef.current || verifyControllerRef.current) return false;
+    const epoch = mapEpochRef.current;
+    const controller = new AbortController();
+    epistemicControllerRef.current = controller;
+    setEpistemicRunning(true);
+    setEpistemicError("");
+    try {
+      const utterances = Array.isArray(current.utterances) ? current.utterances : [];
+      const source = {
+        recordingId: String(current.conversation_id || "viewer-map").slice(0, 80),
+        startedAt: Date.now(),
+        complete: true,
+        finalTokens: utterances.map((u, idx) => ({
+          text: (idx ? "\n" : "") + String(u.text || "").trim(),
+          speaker: String(u.speaker_display || u.speaker_name || u.speaker_id || "Speaker"),
+          startMs: Number.isFinite(u.timestamp_start) ? Math.round(u.timestamp_start * 1000) : null,
+          endMs: Number.isFinite(u.timestamp_end) ? Math.round(u.timestamp_end * 1000) : null,
+        })),
+      };
+      const enriched = await runEpistemicAnalysis({ source, bundle: current, routes: epistemicRoutes, signal: controller.signal });
+      // A different map is shown now (switching cancels this pass): these lenses belong to the old one.
+      if (mapEpochRef.current !== epoch) return false;
+      const updated = withEpistemic(bundleRef.current, enriched.epistemic);
+      commitEdit(updated);
+      if (!privateMode && !publicId && !ephemeral) {
+        persistEdit(updated, { saved: "Epistemic lenses saved on this device", failed: "Epistemic lenses are shown here but could not be saved." });
+      }
+      return true;
+    } catch (cause) {
+      if (mapEpochRef.current !== epoch) return false;
+      setEpistemicError(cause?.message || "Epistemic analysis did not finish.");
+      return false;
+    } finally {
+      if (mapEpochRef.current === epoch) {
+        if (epistemicControllerRef.current === controller) epistemicControllerRef.current = null;
+        setEpistemicRunning(false);
+      }
+    }
+  }, [epistemicRoutes, epistemicRunning, verifyingClaimId, privateMode, publicId, ephemeral, persistEdit, commitEdit]);
+
+  // Returns true when a check ran to an outcome the user has been told about, false when none started.
+  const handleVerifyClaim = useCallback(async (claimId, claimText) => {
+    const current = bundleRef.current;
+    if (!current || !epistemicRoutes.length || verifyingClaimId || epistemicRunning
+      || verifyControllerRef.current || epistemicControllerRef.current) return false;
+    const epoch = mapEpochRef.current;
+    // Evidence belongs to this set of claims; re-run lenses may reuse an id for a different claim.
+    const analyzedAt = current.epistemic?.analyzed_at;
+    const controller = new AbortController();
+    verifyControllerRef.current = controller;
+    setVerifyingClaimId(claimId);
+    try {
+      const res = await verifyFactualClaim(claimText, controller.signal, epistemicRoutes);
+      // A different map is shown now (switching aborts this request): the result belongs to the old map.
+      if (mapEpochRef.current !== epoch) return true;
+      const external = {
+        ...res.factCheck,
+        claim_sent: claimText,
+        checked_at: new Date().toISOString(),
+        backend: res.backend,
+        model: res.model,
+      };
+      // Merge onto the map as it is now, so edits made while the check ran are kept.
+      const updated = withClaimEvidence(bundleRef.current, claimId, external, { analyzedAt });
+      if (!updated) {
+        setLibraryStatus({ state: "error", message: "The claim check finished, but that claim is no longer in this map, so the result was not kept." });
+        return true;
+      }
+      commitEdit(updated);
+      if (!privateMode && !publicId && !ephemeral) {
+        persistEdit(updated, { saved: "External claim check saved", failed: "The claim check is shown here but could not be saved." });
+      }
+      return true;
+    } catch (cause) {
+      if (mapEpochRef.current !== epoch) return true;
+      console.error("[ThreadsViewer] External claim check failed:", cause);
+      setLibraryStatus({ state: "error", message: `External claim check could not finish: ${String(cause?.message || cause)}` });
+      return true;
+    } finally {
+      if (mapEpochRef.current === epoch) {
+        if (verifyControllerRef.current === controller) verifyControllerRef.current = null;
+        setVerifyingClaimId(null);
+      }
+    }
+  }, [epistemicRoutes, verifyingClaimId, epistemicRunning, privateMode, publicId, ephemeral, persistEdit, commitEdit]);
   const openAnother = useCallback(() => {
     if (privateMode) { onPrivateClose(); return; }
-    setBundle(null);
+    replaceMap(null);
     setError("");
     setLibraryStatus(null);
     setMobileMapOpen(false);
     navigate("/view");
-  }, [privateMode, onPrivateClose, navigate]);
+  }, [privateMode, onPrivateClose, navigate, replaceMap]);
 
   const onGraphNavigationChange = useCallback((snapshot, { replace = false } = {}) => {
     setGraphNavigation(snapshot);
@@ -575,9 +781,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     const position = { seconds, videoId: video.video_id };
     setSourceTextSelection(null); setSourceOpen(true); setSourcePosition(position); setSourceSeek(position);
   }, [bundle]);
-  const openSourcePassage = useCallback(({ id, seconds }) => {
+  const openSourcePassage = useCallback(({ id, endId, seconds }) => {
     if (selectYouTubeRef(bundle) && validMediaSeconds(seconds)) { seekSourcePassage(seconds); return; }
-    setSourceSeek(null); setSourceTextSelection({kind: "utterance", utteranceId: String(id)}); setTextSourceMode("utterances"); setSourceOpen(true);
+    setSourceSeek(null); setSourceTextSelection({kind: "utterance", utteranceId: String(id), ...(endId != null ? { endUtteranceId: String(endId) } : {})}); setTextSourceMode("utterances"); setSourceOpen(true);
   }, [bundle, seekSourcePassage]);
 
   // Private/public early exits sit after every hook so hook order is stable.
@@ -682,7 +888,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
     : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} namesStayInView={namesStayInView} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} recordTimings={!privateMode} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
-    viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
+    viewMode={renderedViewMode} modes={["landscape", "graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
     graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult} meaningSearch={!privateMode}
     history={history}
@@ -693,6 +899,73 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     cardSettings={<CardDisplaySettings />} libraryStatus={libraryStatus} coverage={bundle.coverage}
   />;
   const header = <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)} />;
+  if (renderedViewMode === "landscape") {
+    const sourceAvailable = Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube") || bundle.full_transcript || bundle.utterances?.length);
+    const landscapeOverflow = (
+      <details className="group relative">
+        <summary aria-label="More options" title="More options" className="inline-flex size-8 cursor-pointer list-none items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-stone-200/80 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-slate-700">
+          <ChevronDown size={16} aria-hidden="true" className="transition-transform group-open:rotate-180" />
+          <span className="sr-only">More</span>
+        </summary>
+        <div className="absolute right-0 top-10 z-[70] w-56 rounded-xl border border-stone-200 bg-white p-1.5 text-xs text-slate-700 shadow-lg">
+          <div role="group" aria-label="Conversation view" className="space-y-0.5 border-b border-stone-100 pb-1.5">
+            <button type="button" aria-label="Current view: Landscape. Switch to Graph view." onClick={() => setViewMode("graph")} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Graph view</span></button>
+            <button type="button" onClick={() => setViewMode("discussion")} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Discussion outline</span></button>
+            {compactViewer && <button type="button" onClick={() => setViewMode("cards")} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Cards</span></button>}
+          </div>
+          <div className="space-y-0.5 pt-1.5">
+            {sourceAvailable && <button type="button" onClick={() => { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen((v) => !v); }} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>{sourceOpen ? "Close source" : "Open source"}</span></button>}
+            <button type="button" onClick={downloadTranscript} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Download transcript</span></button>
+            <button type="button" onClick={downloadMap} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Download .threads</span></button>
+            <button type="button" onClick={openLibrary} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Library</span></button>
+            <button type="button" onClick={openAnother} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Open another file</span></button>
+            {refreshFromDrive && <button type="button" onClick={refreshFromDrive} className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left hover:bg-stone-100"><span>Refresh from Drive</span></button>}
+          </div>
+          {(bundle.coverage || libraryStatus) && (
+            <div className="mt-1.5 border-t border-stone-100 px-2.5 pt-1.5 text-[11px] text-slate-400">
+              {bundle.coverage?.auditable && <p>{bundle.coverage.covered_turns}/{bundle.coverage.total_turns} turns linked</p>}
+              {libraryStatus?.message && <p>{libraryStatus.message}</p>}
+            </div>
+          )}
+        </div>
+      </details>
+    );
+    return (
+      <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden bg-[#fbfaf7] font-sans">
+        {sourceNotice}
+        {/* The landscape has no header, and its status line sits inside the closed "More options" menu,
+            so a failure (an unsaved edit, a claim check that did not finish) needs its own visible line. */}
+        {libraryStatus?.state === "error" && (
+          <p role="alert" className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 sm:px-5">{libraryStatus.message}</p>
+        )}
+        <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
+          {sourceOpen && renderSourcePanel(selectedNodeData || focusNode)}
+          <SpatialLandscapeCanvas
+            bundle={bundle}
+            nodes={flatNodes}
+            speakerDisplayNames={speakerDisplayNames}
+            speakerColorMap={speakerColorMap}
+            onFocusNodeChange={setFocusNode}
+            onBoundaryCorrection={handleBoundaryCorrection}
+            onFlagNode={handleFlagNode}
+            onAddReaction={handleAddReaction}
+            onRunEpistemic={handleRunEpistemic}
+            epistemicRunning={epistemicRunning}
+            epistemicError={epistemicError}
+            epistemicProviderLabel={epistemicProviderLabel}
+            onVerifyClaim={epistemicRoutes.length ? handleVerifyClaim : undefined}
+            verifyingClaimId={verifyingClaimId}
+            onOpenVisit={({ utteranceId, endUtteranceId, seconds }) => {
+              if (utteranceId) openSourcePassage({ id: utteranceId, endId: endUtteranceId, seconds });
+              else if (validMediaSeconds(seconds) && selectYouTubeRef(bundle)) seekSourcePassage(seconds);
+              else { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen(true); }
+            }}
+            overflowMenu={landscapeOverflow}
+          />
+        </div>
+      </div>
+    );
+  }
   if (viewMode === "discussion") return <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
     {sourceNotice}
     {header}
@@ -732,7 +1005,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   const nodeDetailsVisible = Boolean(selectedNodeData) && (!narrowViewer || !sourceOpen);
   return (
-    <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+    <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fbfaf7] font-sans">
       {sourceNotice}
       {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
         <ThreadsViewerHeader

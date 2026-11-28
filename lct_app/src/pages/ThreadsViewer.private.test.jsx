@@ -32,7 +32,7 @@ afterEach(async () => { if (root) await act(async () => root.unmount()); host.re
 const mount = (bundle = fixture) => act(async () => root.render(<ThreadsViewer privateBundle={bundle} onPrivateClose={context.close} />));
 const click = label => act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === label).click());
 // Main's viewer has one cycling view-mode control; speaker naming lives in the Source panel.
-const switchView = async label => { for (let i = 0; i < 3 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
+const switchView = async label => { for (let i = 0; i < 4 && !host.querySelector(`[aria-label^="Current view: ${label}."]`); i++) await act(async () => host.querySelector('[aria-label="Conversation view"] button').click()); };
 
 it("opens only the supplied private graph despite competing public/local/Drive/src/router inputs, without persistence, URL changes or diagnostics", async () => {
   const log = vi.spyOn(console, "log").mockImplementation(() => {}), originalUrl = window.location.href;
@@ -40,6 +40,7 @@ it("opens only the supplied private graph despite competing public/local/Drive/s
   expect(host.textContent).toContain("Fixture idea");
   expect(host.textContent).toContain("Private cloud copy · edits stay in this view");
   expect(host.textContent).not.toMatch(/Wrong routed content|Wrong .*gate|drop a file|visible to everyone/i);
+  await switchView("Graph");
   expect(host.querySelector('[data-testid="graph"]').dataset.diagnostics).toBe("false");
   expect(context.local).toEqual({ id: "colliding-local-id", title: "Existing local record" });
   expect(context.remote).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled();
@@ -71,6 +72,7 @@ it("reads bundled exact discussion, hides share-link controls and keeps speaker 
 it("offers text search only: no on-device model download and no stored search timings", async () => {
   const Worker = vi.fn(); vi.stubGlobal("Worker", Worker);
   await mount();
+  await switchView("Graph");
   await act(async () => host.querySelector("summary").click());
   const input = host.querySelector("input[type=search]");
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "synthetic"); input.dispatchEvent(new Event("input", { bubbles: true })); });

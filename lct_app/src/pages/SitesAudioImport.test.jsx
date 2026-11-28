@@ -23,6 +23,7 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
     const mimeType = file.name.endsWith('m4a') ? 'audio/mp4' : file.name.endsWith('wav') ? 'audio/wav' : 'audio/mpeg';
     const blob = file.slice(0, file.size, mimeType);
     this.callbacks.onAudio({ blob, mimeType, complete: true, segments: [{ number: 1, blob, mimeType, complete: true }] });
+    if (fixture.failAbort) throw new DOMException('Provider timed out', 'AbortError');
     if (fixture.fail) { this.callbacks.onStage({ stage: 'error', message: 'Provider refused' }); throw new Error('Provider refused'); }
     this.callbacks.onTranscript(transcript);
     if (fixture.holdTranscript) await new Promise(resolve => { fixture.finishTranscript = resolve; });
@@ -33,8 +34,11 @@ vi.mock('../services/cloud/AudioImportSession.js', () => ({ AudioImportSession: 
   }
   cancel() { this.cancelled = true; this.callbacks.onStage({ stage: 'cancelled', message: 'Import stopped.' }); fixture.finishDecode?.(); }
 } }));
+import { SitesRuntimeContext } from '../contexts/SitesRuntimeContext';
 import SitesAudioImport from './SitesAudioImport.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
+import { DEFAULT_M5_TAILNET_URL } from '../services/cloud/m5TailnetFileSession.js';
+import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences.js';
 let root, container, posts, holdMap, finishMap, finishUpload;
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const mapped = source => createRecordingThreads({ ...source, graph: { metadata: { conversation_title: 'Garden plan' },
@@ -59,6 +63,7 @@ beforeEach(() => {
   fixture.signedIn = false; fixture.uploads = []; fixture.holdUpload = false; fixture.badReceipt = false;
   fixture.holdDecode = false; fixture.finishDecode = null; fixture.sessionHTML = false; fixture.storagePatch = {}; fixture.uploadStatus = 201;
   finishUpload = null; fixture.holdTranscript = false; fixture.liveTranscript = null; fixture.finishTranscript = null; fixture.mapFailure = false;
+  fixture.m5Urls = []; fixture.failAbort = false;
   posts = []; holdMap = false; finishMap = null; localStorage.clear();
   vi.stubGlobal('URL', class extends URL { static createObjectURL = () => 'blob:synthetic-import'; static revokeObjectURL() {} });
   vi.stubGlobal('fetch', vi.fn(async (url, options) => {
@@ -74,7 +79,8 @@ beforeEach(() => {
       if (fixture.holdUpload) return new Promise(resolve => { finishUpload = () => resolve(receipt); });
       return fixture.badReceipt ? response({ file: { state: 'staging' } }, 201) : receipt;
     }
-    const backend = url.includes('/gemini/') ? 'gemini' : 'openrouter';
+    if (String(url).includes('.ts.net')) { fixture.m5Urls.push(String(url)); return response({ error: 'busy' }, 503); }
+    const backend = url.split('/')[3];
     if (url.endsWith('/status')) return response({ backend, enabled: true, available: true, configured: true, schema_ready: true, audience: 'public', model: 'synthetic-model', provider: 'synthetic-provider' });
     if (url.endsWith('/generate')) {
       const source = JSON.parse(options.body).source; posts.push({ url, source, signal: options.signal });
@@ -92,8 +98,10 @@ afterEach(async () => {
 });
 const button = name => [...container.querySelectorAll('button')].find(value => (value.getAttribute('aria-label') || value.textContent) === name);
 const click = async name => { await act(async () => button(name).click()); };
-async function mount(path = '/import-audio') {
-  await act(async () => root.render(<MemoryRouter initialEntries={[path]}><SitesAudioImport /></MemoryRouter>));
+async function mount(path = '/import-audio', runtime = null) {
+  await act(async () => root.render(<MemoryRouter initialEntries={[path]}><SitesRuntimeContext.Provider value={runtime}>
+    <SitesAudioImport />
+  </SitesRuntimeContext.Provider></MemoryRouter>));
 }
 async function choose(name = 'garden.mp3') {
   const file = new File(['original synthetic audio'], name);
@@ -253,15 +261,16 @@ describe('cloud audio import page', () => {
     expect(container.textContent).not.toContain('Save audio privately');
     expect(fetch.mock.calls.filter(([url, options]) => /cloud\/files|public/.test(url) && options?.method === 'POST')).toHaveLength(0);
   });
-  it('honors Gemini selection and ephemeral mode without conversation writes', async () => {
+  it.each([['gemini', 'Google Gemini through Google AI Studio'], ['anthropic', 'Anthropic (Claude)']])('honors %s selection and ephemeral mode without conversation writes', async (backend, recipient) => {
     localStorage.setItem('lct.conversation_retention.v1', 'ephemeral');
     await mount(); await choose('garden.m4a');
     await permit();
-    await act(async () => { const select = container.querySelector('#import-provider'); select.value = 'gemini'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => { const select = container.querySelector('#import-provider'); select.value = backend; select.dispatchEvent(new Event('change', { bubbles: true })); });
     expect(container.querySelector('form input[type=checkbox]').checked).toBe(false);
+    expect(container.textContent).toContain('Soniox for transcription and its transcript to ' + recipient);
     expect(button('Create transcript & threads').disabled).toBe(true);
     await permit(); await click('Create transcript & threads'); await flushArchive();
-    expect(posts).toHaveLength(1); expect(posts[0].url).toBe('/api/cloud/gemini/generate'); expect(fixture.writes).toHaveLength(0);
+    expect(posts).toHaveLength(1); expect(posts[0].url).toBe(`/api/cloud/${backend}/generate`); expect(fixture.writes).toHaveLength(0);
     await click('Files & export'); expect(container.querySelector('a[download$=".m4a"]')).toBeTruthy();
   });
   it('preserves the original file on provider refusal and never requests a map or retries automatically', async () => {
@@ -396,4 +405,121 @@ it('uses the existing automatic cadence to catch up with the completed transcrip
   expect(fixture.writes.at(-1).snapshot.map.transcription_complete).toBe(true);
   expect(fixture.writes.at(-1).snapshot.map.full_transcript).toBe(fixture.liveTranscript.finalText);
   await act(async () => vi.advanceTimersByTimeAsync(90000)); expect(posts).toHaveLength(2);
+});
+
+
+it.each([401, 502])('honors the speech provider order after OpenAI HTTP %i and passes Settings guidance to the map', async status => {
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === 'https://api.openai.com/v1/audio/transcriptions') return new Response('do not expose this', { status });
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    if (path === '/api/cloud/map/generate') {
+      const input = JSON.parse(options.body);
+      posts.push(input);
+      return response({ request_id: '00000000-0000-4000-8000-000000000001', backend: 'anthropic',
+        model: 'claude-test', artifact: mapped(input.source) });
+    }
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['openai', 'soniox'], map: ['anthropic'],
+    models: { anthropic: 'claude-test' }, guidance: 'Surface changes of mind.' },
+    keys: { openai: 'synthetic-audio-key', anthropic: 'synthetic-map-key' } });
+  expect(container.textContent).toContain('OpenAI → Soniox');
+  await choose(); await permit(); await click('Create transcript & threads');
+  expect(fetch.mock.calls.filter(([path]) => path === 'https://api.openai.com/v1/audio/transcriptions'), container.textContent).toHaveLength(1);
+  if (status === 401) {
+    expect(fixture.sessions).toHaveLength(1);
+    expect(posts).toEqual([expect.objectContaining({
+      routes: [{ backend: 'anthropic', key: 'synthetic-map-key', model: 'claude-test' }],
+      guidance: 'Surface changes of mind.',
+    })]);
+  } else {
+    expect(fixture.sessions).toHaveLength(0);
+    expect(posts).toHaveLength(0);
+    expect(container.textContent).toContain('OpenAI did not complete transcription (HTTP 502).');
+    expect(container.textContent).not.toContain('do not expose this');
+  }
+});
+
+it('says out loud when the tailnet provider fails and the audio goes to the next provider instead', async () => {
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    if (path === '/api/cloud/map/generate') {
+      const input = JSON.parse(options.body); posts.push(input);
+      return response({ request_id: '00000000-0000-4000-8000-000000000001', backend: 'anthropic', model: 'claude-test', artifact: mapped(input.source) });
+    }
+    return oldFetch(path, options);
+  });
+  // An old live-recording link stored another machine on the same tailnet. File imports ignore it and
+  // use the address Settings shows: the build default, because Settings is empty here.
+  const stale = new URL(DEFAULT_M5_TAILNET_URL); stale.hostname = 'another-machine.' + stale.hostname.split('.').slice(1).join('.');
+  localStorage.setItem('lct_stt_edge_url', stale.href);
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const m5 = SPEECH_PROVIDERS.m5_tailnet.name, soniox = SPEECH_PROVIDERS.soniox.name;
+  expect(container.textContent).toContain(`${m5} → ${soniox}`);
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  expect(fixture.m5Urls).toEqual([DEFAULT_M5_TAILNET_URL]);
+  expect(fixture.sessions).toHaveLength(1);
+  const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe this file'));
+  expect(notice).toBe(`${m5} could not transcribe this file (M5 Tailnet STT returned HTTP 503. Your original audio is preserved). `
+    + `It was transcribed by ${soniox} instead, the next provider in the order you agreed to.`);
+  expect(container.textContent).toContain('Garden watering');
+});
+
+it('replaces "Trying the next provider" with the outcome when the next provider fails too', async () => {
+  fixture.fail = true;
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const m5 = SPEECH_PROVIDERS.m5_tailnet.name, soniox = SPEECH_PROVIDERS.soniox.name;
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe'));
+  expect(notice).toBe(`${m5} could not transcribe this file (M5 Tailnet STT returned HTTP 503. Your original audio is preserved). `
+    + `${soniox} was tried next and could not transcribe it either.`);
+  expect(notice).not.toContain('Trying');
+  expect(container.querySelector('[role=alert]').textContent).toContain('Provider refused');
+
+});
+
+it('replaces "Trying the next provider" when the import is stopped while that provider runs', async () => {
+  fixture.holdDecode = true;
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const m5 = SPEECH_PROVIDERS.m5_tailnet.name, soniox = SPEECH_PROVIDERS.soniox.name;
+  const notice = () => [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe'));
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  // The second provider is running, and the notice says so.
+  expect(fixture.sessions).toHaveLength(1);
+  expect(notice()).toContain(`Trying ${soniox} next`);
+  await click('Stop processing'); await flushArchive();
+  expect(notice()).toBe(`${m5} could not transcribe this file (M5 Tailnet STT returned HTTP 503. Your original audio is preserved). `
+    + `The import was stopped before ${soniox} finished, so it may have received part or all of the audio.`);
+  expect(container.querySelector('[role=alert]')).toBeNull();
+});
+
+it('reports a provider\'s own abort as a failure, not as the user stopping the import', async () => {
+  fixture.failAbort = true;
+  const oldFetch = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => {
+    if (path === '/api/cloud/map/status') return response({ available: true, personal: true, providers: {} });
+    return oldFetch(path, options);
+  });
+  await mount('/import-audio', { preferences: { speech: ['m5_tailnet', 'soniox'], map: ['anthropic'], models: { anthropic: 'claude-test' }, guidance: '' },
+    keys: { anthropic: 'synthetic-map-key' } });
+  const soniox = SPEECH_PROVIDERS.soniox.name;
+  await choose(); await permit(); await click('Create transcript & threads'); await flushArchive();
+  const notice = [...container.querySelectorAll('[role=status]')].map(node => node.textContent).find(text => text.includes('could not transcribe'));
+  expect(notice).toContain(`${soniox} was tried next and could not transcribe it either.`);
+  expect(notice).not.toContain('stopped');
 });

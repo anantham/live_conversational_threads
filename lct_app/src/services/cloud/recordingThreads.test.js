@@ -176,10 +176,34 @@ describe('createRecordingThreads', () => {
     expect(() => createRecordingThreads({ ...source, graph })).toThrow('Invalid generated conversation graph.');
   });
 
+  // The public gate is 1.5 MiB (tests/intent/publish-link.md): a 600 KiB map now publishes, a larger one does not.
   it('keeps the separate public publication size gate', async () => {
     const graph = baseGraph();
     graph.nodes[0].summary = 'z'.repeat(600 * 1024);
-    const { file } = createRecordingThreads({ ...source, graph });
-    await expect(preparePublicFile(file)).rejects.toThrow('512 KiB');
+    await expect(preparePublicFile(createRecordingThreads({ ...source, graph }).file)).resolves.toMatchObject({ count: expect.any(Number) });
+    graph.nodes[0].summary = 'z'.repeat(1600 * 1024);
+    await expect(preparePublicFile(createRecordingThreads({ ...source, graph }).file)).rejects.toThrow('1.5 MiB');
+  });
+});
+
+// Lower-tier review: every edge failure gets its own label instead of the catch-all "edge_contract",
+// and the Worker passes those labels through to the browser.
+describe('edge refusal labels', () => {
+  const ruleFor = edges => {
+    try { createRecordingThreads({ ...source, graph: { ...baseGraph(), edges } }); } catch (error) { return [error.validationStage, error.validationRule]; }
+    return null;
+  };
+  const edge = extra => [{ id: 'edge-1', from_node_id: 'moment', to_node_id: 'idea', relation_type: 'supports', ...extra }];
+
+  it('names bad optional edge fields', async () => {
+    expect(ruleFor(edge({ explanation: 7 }))).toEqual(['edges', 'edge_field']);
+    expect(ruleFor(edge({ relation_text: {} }))).toEqual(['edges', 'edge_field']);
+    expect(ruleFor(edge({ confidence: 2 }))).toEqual(['edges', 'edge_field']);
+    expect(ruleFor(edge({ edge_kind: 'causal' }))).toEqual(['edges', 'edge_kind']);
+    const { invalidCompletionDetails } = await import('../../../sites/openRouter.js');
+    for (const rule of ['edge_field']) {
+      expect(invalidCompletionDetails({ validationStage: 'edges', validationRule: rule }, { anthropic: true, completion: {}, response: new Response('') }))
+        .toMatchObject({ validation_stage: 'edges', validation_rule: rule });
+    }
   });
 });

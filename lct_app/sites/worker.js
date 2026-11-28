@@ -4,6 +4,7 @@ import { handleStorage } from './storage.js';
 import { handlePublicThreads } from './publicThreads.js';
 import { handleSoniox } from './soniox.js';
 import { handleOpenRouter } from './openRouter.js';
+import { handlePersonalProviderCheck } from './personalProviderCheck.js';
 import { handleServiceHealth } from './serviceHealth.js';
 import { handleAuth } from './auth.js';
 import { handleMeetings } from './meetings.js';
@@ -47,6 +48,8 @@ export default {
     if (hostedTrial) return hostedTrial;
     const meetings = await handleMeetings(request, env);
     if (meetings) return meetings;
+    const personalCheck = await handlePersonalProviderCheck(request, env);
+    if (personalCheck) return personalCheck;
     const health = await handleServiceHealth(request, env);
     if (health) return health;
     const soniox = await handleSoniox(request, env);

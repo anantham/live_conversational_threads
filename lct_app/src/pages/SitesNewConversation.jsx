@@ -1,4 +1,7 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
+import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient';
+import { MAP_PROVIDERS } from '../services/cloud/openRouterClient.js';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useConversationArchive } from '../hooks/useConversationArchive.js';
 import { readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { ConversationStorageSettings, ConversationStorageStatus } from '../components/recording/ConversationStorage.jsx';
@@ -43,7 +46,11 @@ export default function SitesNewConversation() {
   const [saveStartedAt, setSaveStartedAt] = useState(null);
   const [recording, setRecording] = useState(null), [saveSubject, setSaveSubject] = useState('Audio');
   const [generating, setGenerating] = useState(false);
-  const [backend, setBackend] = useState('openrouter'), [voiceHealth, setVoiceHealth] = useState(null), [inferenceHealth, setInferenceHealth] = useState(null);
+  const runtime = useSitesRuntime();
+  const [chosenBackend, setBackend] = useState('openrouter'), [voiceHealth, setVoiceHealth] = useState(null), [inferenceHealth, setInferenceHealth] = useState(null);
+  const [voiceState, setVoiceState] = useState(null);
+  const backend = inferenceHealth?.ok && runtime?.preferences.map.includes(inferenceHealth.service)
+    ? inferenceHealth.service : runtime?.preferences.map[0] || chosenBackend;
   const voiceStarted = useRef(null), voiceFirst = useRef(false);
 
   const [map, setMap] = useState(null), [panel, setPanel] = useState(null), [mapError, setMapError] = useState('');
@@ -142,7 +149,11 @@ export default function SitesNewConversation() {
       onFailure: failure => { if (alive.current && session.current === next) { setError(failure.message); if (transcribe && failure.message.includes('live transcription')) setVoiceHealth({ service: 'soniox', ok: false, at: Date.now(), detail: 'Transcription stopped with an error. Your captured audio remains available.' }); } },
     });
     session.current = next;
-    try { await next.start({ transcribe, maxSessionSeconds: transcribe ? capabilities.transcription.max_session_seconds : 300 }); }
+    try {
+      const key = runtime?.keys.soniox;
+      await next.start({ transcribe, maxSessionSeconds: transcribe ? capabilities.transcription.max_session_seconds : 300,
+        ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+    }
     catch (failure) { if (alive.current && session.current === next) setError(failure.message); }
   }
 
@@ -167,10 +178,18 @@ export default function SitesNewConversation() {
     }
   }
 
-  const active = ACTIVE.has(activity?.stage), live = capabilities?.transcription?.enabled;
+  const active = ACTIVE.has(activity?.stage);
+  // At the shared limit, transcription is closed for now: say so, and start audio-only (a personal key has its own limit).
+  const voiceLimited = !runtime?.keys.soniox && voiceState === 'limited';
+  const live = !voiceLimited && runtime?.credentialsReady !== false && (!runtime || runtime.preferences.speech.includes('soniox')) && (runtime?.keys.soniox
+    ? capabilities?.transcription?.personal_enabled : capabilities?.transcription?.enabled);
   // A fast check stays silent; only one that runs past two seconds says so.
   const slowSetup = Boolean(setup && elapsed >= 2);
-  const transcribe = transcriptionChoice ?? Boolean(live);
+  // At the shared limit the page records audio only; the visitor's own choice returns when it lifts.
+  const transcribe = voiceLimited ? false : transcriptionChoice ?? Boolean(live);
+  // If transcription closes while its consent dialog is open, Confirm would do nothing; close the
+  // dialog so the page can say why and offer audio only.
+  useEffect(() => { if (pendingRecording?.transcribe && !live) setPendingRecording(null); }, [pendingRecording, live]);
   useEffect(() => { if (active) stopControl.current?.focus(); }, [active]);
   useEffect(() => { if (activity?.stage === 'paused') resumeControl.current?.focus(); }, [activity?.stage]);
   const privateSaving = capabilities?.storage?.enabled && capabilities?.storage?.configured && !capabilities?.storage?.synthetic_only;
@@ -205,7 +224,7 @@ export default function SitesNewConversation() {
         {restoring && <p role="status">Opening saved conversation…</p>}
         {!supported && <p className="text-rose-800">This browser needs HTTPS, microphone access and audio-recording support.</p>}
         {(slowSetup || activity || saving) && <><p role="status">{saving ? `Saving ${saveSubject.toLowerCase()} to your private files` : active ? activity.message : slowSetup ? 'Checking connections' : activity.message}</p>{(slowSetup || active || saving) && <p className="tabular-nums">{elapsed} s elapsed · Time remaining unknown</p>}{slowSetup && <button className="min-h-8 underline underline-offset-2" onClick={() => setupRequest.current?.abort()}>Cancel connection check</button>}{saving && <button className="min-h-8 underline underline-offset-2" onClick={() => saveRequest.current?.abort()}>Cancel private save</button>}</>}
-        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
+        {!setup && !active && activity?.stage !== 'paused' && !pendingRecording && !live && <p>{voiceLimited ? 'Live transcription is closed for now. It has reached its shared limit. You can still record audio.' : transcribe ? <>Live transcription is unavailable. Turn it off in <button className="underline underline-offset-2" onClick={() => setPanel('settings')}>Settings</button> to record audio only.</> : 'Live transcription is not available yet. Local recording uses no transcription credits.'}</p>}
         {active && <p>Keep this tab open while recording.</p>}
       </div>
       {error && <p role="alert" className="shrink-0 bg-rose-50 px-5 py-2 text-xs text-rose-900">{error}</p>}
@@ -215,7 +234,23 @@ export default function SitesNewConversation() {
         onMinimize={() => { setTranscriptMinimized(v => !v); setTranscriptFullscreen(false); }} fullscreen={transcriptFullscreen} onFullscreen={() => setTranscriptFullscreen(v => !v)} />}
       <aside hidden={!panel} aria-label="Conversation tools" className="absolute right-3 top-3 z-40 max-h-[calc(100%-1.5rem)] w-[28rem] max-w-[calc(100%-1.5rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
         <CloseConversationTools onClose={() => setPanel(null)} />
-        <div hidden={panel !== 'settings'}><h2 className="pt-12 text-lg font-medium">Settings</h2><ConversationTranscriptionSetting supported={supported} live={Boolean(live)} busy={restoring || saving || generating || active || activity?.stage === 'paused' || Boolean(pendingRecording)} transcribe={transcribe} onChange={setTranscriptionChoice} /><label htmlFor="conversation-provider" className="mt-4 block text-sm">AI provider</label><select id="conversation-provider" value={backend} disabled={generating} onChange={event => setBackend(event.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"><option value="openrouter">OpenRouter</option><option value="gemini">Gemini · Google AI Studio</option></select><button className="mt-4 min-h-11 text-sm underline underline-offset-4" disabled={Boolean(setup) || active} onClick={refreshServices}>Check connections</button><p className="mt-3 text-xs text-slate-500">Connection and latency details are available from the two indicators below.</p><ConversationStorageSettings preference={archive.preference} onChange={archive.choose} error={archive.preferenceError} /><div className="mt-4">{archive.status.state !== 'error' && <ConversationStorageStatus status={archive.status} preference={archive.preference} onRetry={archive.retry} />}</div></div>
+        <div hidden={panel !== 'settings'}>
+          <h2 className="pt-12 text-lg font-medium">Settings</h2>
+          <ConversationTranscriptionSetting supported={supported} live={Boolean(live)}
+            busy={restoring || saving || generating || active || activity?.stage === 'paused' || Boolean(pendingRecording)}
+            transcribe={transcribe} onChange={setTranscriptionChoice} />
+          {runtime ? <Link to="/settings/runtime" className="mt-4 inline-flex min-h-11 items-center text-sm underline underline-offset-4">Manage transcription and intelligence providers</Link> : <>
+            <label htmlFor="conversation-provider" className="mt-4 block text-sm">AI provider</label>
+            <select id="conversation-provider" value={backend} disabled={generating} onChange={event => setBackend(event.target.value)}
+              className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm">
+              {Object.entries(MAP_PROVIDERS).map(([value, provider]) => <option key={value} value={value}>{provider.option}</option>)}
+            </select>
+          </>}
+          <button className="mt-4 min-h-11 text-sm underline underline-offset-4" disabled={Boolean(setup) || active} onClick={refreshServices}>Check connections</button>
+          <p className="mt-3 text-xs text-slate-500">Connection and latency details are available from the two indicators below.</p>
+          <ConversationStorageSettings preference={archive.preference} onChange={archive.choose} error={archive.preferenceError} />
+          <div className="mt-4">{archive.status.state !== 'error' && <ConversationStorageStatus status={archive.status} preference={archive.preference} onRetry={archive.retry} />}</div>
+        </div>
         <div hidden={panel !== 'map'}>
           {!recordingArtifact?.source && <p className="pt-12 text-sm text-slate-600">Start transcription to map your conversation. Confirmed words will be available here as you speak.</p>}
           {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={backend} onBackendChange={setBackend} onHealthChange={setInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
@@ -230,7 +265,8 @@ export default function SitesNewConversation() {
     </section>
     <footer className="relative shrink-0 border-t border-gray-100 bg-white/80 px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:px-4">
       <div className={active || activity?.stage === 'paused' ? "flex w-full items-center justify-between gap-2 max-[380px]:flex-col-reverse max-[380px]:items-stretch" : "grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2"}>
-        <ConversationServiceStatus backend={backend} voice={voiceHealth} inference={inferenceHealth} onRefresh={refreshServices} />
+        <ConversationServiceStatus backend={backend} voice={voiceHealth} inference={inferenceHealth} onVoiceState={setVoiceState}
+          personalVoice={Boolean(runtime?.keys.soniox)} personalInference={Boolean(runtime?.keys[backend])} />
         <CloudRecordingToolbar active={active} supported={supported} live={Boolean(live)} busy={restoring || saving || generating} stage={activity?.stage} stopRef={stopControl} resumeRef={resumeControl} transcribe={transcribe} onStart={() => requestRecording(transcribe)} onPause={() => void session.current?.pause()} onResume={() => { setError(''); void session.current?.resume().catch(failure => setError(failure.message)); }} onStop={() => void session.current?.stop()} onCancel={() => session.current?.cancel()} />
       </div>
     </footer>

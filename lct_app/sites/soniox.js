@@ -1,4 +1,5 @@
 import { SonioxError, sonioxJSON, sonioxPolicy, readSonioxJSON } from './sonioxPolicy.js';
+import { validPersonalKey } from '../src/services/cloud/sitesProviderPreferences.js';
 import { resolveIdentity } from './auth.js';
 
 const PREFIX = '/api/cloud/soniox';
@@ -34,7 +35,7 @@ function logStatusCapabilities(request) {
   } catch { try { console.error('[soniox] status capabilities unavailable'); } catch { /* Status remains available without logs. */ } }
 }
 
-async function mint(request, env, policy, diagnostic) {
+async function mint(request, env, policy, diagnostic, key) {
   if (request.headers.get('origin') !== new URL(request.url).origin || request.headers.get('x-lct-soniox-consent') !== 'transcribe-v1') {
     throw new SonioxError(403, 'consent', 'Start transcription from this Site after confirming permission to send the audio to Soniox.');
   }
@@ -69,13 +70,13 @@ async function mint(request, env, policy, diagnostic) {
       let response;
       try {
         response = await fetch('https://api.soniox.com/v1/auth/temporary-api-key', { method: 'POST',
-          headers: { Authorization: `Bearer ${env.SONIOX_API_KEY.trim()}`, 'Content-Type': 'application/json' },
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ usage_type: 'transcribe_websocket', expires_in_seconds: policy.startExpirySeconds,
             single_use: true, max_session_duration_seconds: policy.maxSessionSeconds, client_reference_id: id }),
           // Edge fetch supports manual; every non-201 response below is refused.
           signal: controller.signal, redirect: 'manual' });
       } catch (error) {
-        if (env.LCT_SONIOX_DEBUG === 'true') diagnostic.transportMessage = transportMessage(error, env.SONIOX_API_KEY.trim());
+        if (env.LCT_SONIOX_DEBUG === 'true') diagnostic.transportMessage = transportMessage(error, key);
         throw error;
       }
       diagnostic.providerStatus = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : null;
@@ -113,17 +114,25 @@ export async function handleSoniox(request, env) {
   if (path !== PREFIX && !path.startsWith(PREFIX + '/')) return null;
   const diagnostic = { phase: 'pre_admission', providerStatus: null };
   try {
-    const policy = sonioxPolicy(env);
+    const managed = sonioxPolicy(env);
+    const personalKey = request.headers.get('x-lct-personal-soniox-key');
+    const personalEnabled = env.LCT_PERSONAL_PROVIDERS_ENABLED === 'true' && Boolean(managed.audience
+      && managed.maxSessions && managed.maxSessionSeconds && env.DB?.prepare);
     if (path === PREFIX + '/status' && request.method === 'GET') {
       if (env.LCT_SONIOX_DEBUG === 'true') logStatusCapabilities(request);
       return sonioxJSON(200, {
-        enabled: policy.enabled, audience: policy.audience, max_session_seconds: policy.maxSessionSeconds,
-        message: policy.enabled ? 'Live transcription is available within shared session limits.' : 'Live transcription is waiting for confirmed spending limits and provider setup.',
+        enabled: managed.enabled, audience: managed.audience, max_session_seconds: managed.maxSessionSeconds,
+        ...(personalEnabled ? { personal_enabled: true } : {}),
+        message: managed.enabled ? 'Live transcription is available within shared session limits.' : 'Live transcription is waiting for confirmed spending limits and provider setup.',
       });
     }
     if (path !== PREFIX + '/session') throw new SonioxError(404, 'route', 'This transcription endpoint does not exist.');
     if (request.method !== 'POST') throw new SonioxError(405, 'method', 'Use POST to start a transcription session.');
-    return await mint(request, env, policy, diagnostic);
+    if (personalKey !== null && (!personalEnabled || !validPersonalKey(personalKey))) {
+      throw new SonioxError(503, 'transcription_inactive', 'A personal Soniox key cannot be used with the current settings.');
+    }
+    const policy = personalKey ? { ...managed, enabled: true } : managed;
+    return await mint(request, env, policy, diagnostic, personalKey || env.SONIOX_API_KEY?.trim());
   } catch (error) {
     if (error instanceof SonioxError) return sonioxJSON(error.status, { error: error.message, code: error.code });
     if (env.LCT_SONIOX_DEBUG === 'true') {

@@ -80,11 +80,17 @@ export const publicThreads = sqliteTable('lct_public_threads', {
   payloadHash: text('payload_hash'),
   state: text('state', { enum: ['ready', 'removed'] }).notNull(),
   createdAt: integer('created_at').notNull(),
+  // 1 = shown in the public library; 0 = unlisted (reachable only by its link). Existing rows stay listed.
+  listed: integer('listed').notNull().default(1),
 }, (table) => [
   index('lct_public_threads_state_created_id_idx').on(table.state, table.createdAt, table.id),
+  index('lct_public_threads_listed_created_id_idx').on(table.state, table.listed, table.createdAt, table.id),
   index('lct_public_threads_created_idx').on(table.createdAt),
-  check('lct_public_threads_state_check', sql`${table.state} in ('ready', 'removed')`),
-  check('lct_public_threads_payload_check', sql`(${table.state} = 'ready' and ${table.payload} is not null and ${table.payloadHash} is not null and ${table.byteSize} > 0 and ${table.byteSize} <= 524288) or (${table.state} = 'removed' and ${table.payload} is null and ${table.payloadHash} is null and ${table.byteSize} = 0 and ${table.nodeCount} = 0 and ${table.title} = '')`),
+  // Unqualified column names: a rebuilt table's CHECK must not name the temporary table it was built as.
+  check('lct_public_threads_state_check', sql`"state" in ('ready', 'removed')`),
+  check('lct_public_threads_listed_check', sql`"listed" in (0, 1)`),
+  // 1.5 MiB: fits a 90-minute call (about 640 KiB) and stays under Cloudflare D1's 2,000,000-byte value limit.
+  check('lct_public_threads_payload_check', sql`("state" = 'ready' and "payload" is not null and "payload_hash" is not null and "byte_size" > 0 and "byte_size" <= 1572864) or ("state" = 'removed' and "payload" is null and "payload_hash" is null and "byte_size" = 0 and "node_count" = 0 and "title" = '')`),
 ]);
 
 // Owner-scoped meeting control receipts; content/audio remain on the selected recorder.

@@ -19,9 +19,9 @@ export function useConversationArchive() {
   const append = useCallback(chunk => writer.current?.append(chunk), []);
   const restored = useCallback(value => {
     void writer.current?.flush();
-    const { id, recording, title, transcript, map, stage, segments, updatedAt, revision } = value;
+    const { id, recording, title, transcript, map, stage, segments, audioCacheKey, audioCacheTime, updatedAt, revision } = value;
     let archive;
-    archive = new ConversationArchive(recording, { initial: { id, recording, title, transcript, map, stage, segments, updatedAt, revision },
+    archive = new ConversationArchive(recording, { initial: { id, recording, title, transcript, map, stage, segments, audioCacheKey, audioCacheTime, updatedAt, revision },
       onStatus: next => { if (alive.current && writer.current === archive) setStatus(next); } });
     writer.current = archive; setStatus({ state: 'saved' });
   }, []);

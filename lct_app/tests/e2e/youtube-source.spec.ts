@@ -27,6 +27,11 @@ const fixture = {
   ],
 };
 
+async function openGraphFromLandscape(page) {
+  await page.getByLabel("More options", { exact: true }).click();
+  await page.getByRole("button", { name: "Current view: Landscape. Switch to Graph view." }).click();
+}
+
 async function open(page, mockPlayer = true, testBundle = fixture) {
   if (mockPlayer) await page.addInitScript(() => {
     window.__youtubeSeeks = [];
@@ -62,6 +67,7 @@ async function open(page, mockPlayer = true, testBundle = fixture) {
   });
   await page.goto("/view");
   await page.locator('input[type="file"]').setInputFiles({ name: "youtube-test.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(testBundle)) });
+  await openGraphFromLandscape(page);
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "YouTube source" })).toBeVisible();
   // Wide time-based graphs retain the existing Center recovery control.
@@ -97,6 +103,7 @@ test("rapid Source close and reopen retires the pending player", async ({ page }
   });
   await page.goto("/view");
   await page.locator('input[type="file"]').setInputFiles({ name: "rapid-source.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)) });
+  await openGraphFromLandscape(page);
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__sourceLifecycle.created)).toBe(1);
   await page.getByRole("button", { name: "Source", exact: true }).click();
@@ -157,6 +164,7 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   expect(reviewed.utterances[0].speaker_name).toBe("Aditya");
   await page.goto("/view");
   await page.locator('input[type="file"]').setInputFiles(await download.path());
+  await openGraphFromLandscape(page);
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await page.getByRole("button", { name: "Center", exact: true }).click();
   await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
@@ -247,6 +255,7 @@ for (const width of [390, 1440]) {
     await page.goto("/view");
     const bundle = { ...fixture, media_refs: [{ ...fixture.media_refs[0], view_url: "https://evil.test/watch?v=6HmR9IaqM88" }] };
     await page.locator('input[type="file"]').setInputFiles({ name: "unsupported-media.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+    await openGraphFromLandscape(page);
     await page.getByRole("button", { name: "Source", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "YouTube source unavailable" })).toBeVisible();
     await expect(page.locator(".react-flow__node")).toHaveCount(2);

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, HardDrive, Trash2 } from "lucide-react";
+import { Cloud, FileText, Globe, HardDrive, Trash2 } from "lucide-react";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import PageHeader from "../components/PageHeader";
 import RecordedConversations from "../components/browse/RecordedConversations.jsx";
 import IndrasNetAudioLibrary from "../components/browse/IndrasNetAudioLibrary";
+import PrivateFiles from "./PrivateFiles";
+import PublicThreads from "./PublicThreads";
 import { apiFetch, API_BASE_URL } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
@@ -59,6 +62,7 @@ function chipClass(active) {
 
 export default function Browse() {
   const sitesMode = import.meta.env.VITE_SITES_MODE === "true";
+  const [libraryTab, setLibraryTab] = useState("device");
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -312,7 +316,7 @@ export default function Browse() {
   return (
     <div
       {...dropTargetProps}
-      className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans"
+      className="flex flex-col h-[100dvh] w-screen bg-[#fdfdfb] font-sans"
     >
       {isDraggingFile && (
         <div
@@ -325,26 +329,56 @@ export default function Browse() {
           </div>
         </div>
       )}
-      {/* Header */}
-      <div className="shrink-0 px-4 py-4 md:px-6 flex items-center justify-between gap-3 border-b border-gray-100 bg-white">
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-          className="min-h-11 rounded px-2 text-sm text-gray-400 transition hover:bg-gray-50 hover:text-gray-600 sm:min-h-0"
-        >
-          &larr; Back
-        </button>
-        <h1 className="text-sm font-medium text-gray-500 tracking-wide uppercase">
-          Library
-        </h1>
-        <ThreadsFileButton
-          onFileSelected={openThreadsFile}
-          className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
-        />
+      {/* Header: the shared page header (critique 2026-11-25 issue 5). */}
+      <div className="shrink-0 px-4 pt-6 md:px-6">
+        <div className="mx-auto max-w-2xl">
+          <PageHeader title="Library"
+            actions={<ThreadsFileButton
+              onFileSelected={openThreadsFile}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
+            />} />
+        </div>
       </div>
+
+      {/* Sites unified library tabs */}
+      {sitesMode && (
+        <nav aria-label="Library sources" className="shrink-0 px-4 md:px-6">
+          <div className="mx-auto flex max-w-2xl gap-1 overflow-x-auto py-2">
+            {[
+              { id: "device", label: "On this device", Icon: HardDrive },
+              { id: "private", label: "Private cloud", Icon: Cloud },
+              { id: "public", label: "Public library", Icon: Globe },
+            ].map(({ id, label, Icon }) => {
+              const active = libraryTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setLibraryTab(id)}
+                  className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    active
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+        {sitesMode && libraryTab === "private" ? (
+          <PrivateFiles embedded />
+        ) : sitesMode && libraryTab === "public" ? (
+          <PublicThreads embedded />
+        ) : (
+        <>
         {sitesMode && <RecordedConversations />}
         <section className="mx-auto max-w-2xl">
           <div className="mb-3 flex items-end justify-between gap-4">
@@ -435,7 +469,13 @@ export default function Browse() {
         </section>
 
         {sitesMode ? (
-          <div className="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-slate-600"><button type="button" className="min-h-11 rounded-lg bg-slate-800 px-4 py-2 font-medium text-white" onClick={() => navigate("/public")}>Explore public conversations</button><p className="mt-3 text-xs">Files opened here stay in this browser. Publishing a public copy is a separate choice in the public library.</p></div>
+          <div className="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-slate-600">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="min-h-11 rounded-lg bg-slate-800 px-4 py-2 font-medium text-white" onClick={() => setLibraryTab("private")}>Open private cloud</button>
+              <button type="button" className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 font-medium text-slate-800" onClick={() => setLibraryTab("public")}>Explore public library</button>
+            </div>
+            <p className="mt-3 text-xs">Files opened here stay in this browser. Private cloud files use your signed-in account, and publishing a public copy is a separate choice.</p>
+          </div>
         ) : (
           <>
             <IndrasNetAudioLibrary />
@@ -610,6 +650,8 @@ export default function Browse() {
         )}
         </section>
           </>
+        )}
+        </>
         )}
       </div>
 

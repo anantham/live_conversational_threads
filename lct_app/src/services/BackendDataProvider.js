@@ -116,7 +116,8 @@ export class BackendDataProvider extends DataProvider {
         return fetch(url, { method: "POST", ...options });
       },
       uploadEdgeStt: async (url, formData, options = {}) => {
-        return fetch(url, { method: "POST", ...options, body: formData });
+        // The edge URL can come from a link; a redirect could forward the audio elsewhere.
+        return fetch(url, { method: "POST", ...options, body: formData, redirect: "error" });
       }
     };
 

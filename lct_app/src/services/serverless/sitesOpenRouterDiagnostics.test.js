@@ -143,7 +143,7 @@ describe('redacted OpenRouter validation diagnostics through the public Worker',
     const response = await worker.fetch(request(), env), body = await response.json();
     expect(response.status).toBe(502); expect(body.code).toBe('invalid_completion'); expect(body.artifact).toBeUndefined();
     expect(logged.mock.calls).toEqual([['[openrouter] generation failed', { code: 'invalid_completion',
-      validationStage: stage, ...(stage === 'hierarchy' ? { validationRule: 'parent_missing' } : {}) }]]);
+      validationStage: stage, ...(stage === 'hierarchy' ? { validationRule: 'parent_missing' } : stage === 'edges' ? { validationRule: 'edge_unknown_endpoint' } : {}) }]]);
     expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toMatch(/synthetic-|utterance-0001|invented-|private-path|private-edge/);
     const rows = sqlite.prepare('SELECT * FROM lct_openrouter_attempts').all();
     expect(rows).toHaveLength(1); expect(rows[0].completed_at).toBeNull(); expect(fetch).toHaveBeenCalledTimes(1);
@@ -167,7 +167,11 @@ describe('redacted OpenRouter validation diagnostics through the public Worker',
     fetch.mockResolvedValueOnce(new Response(JSON.stringify(hierarchyCompletion(mutate)), { status: 200 }));
     const response = await worker.fetch(request(), env), body = await response.json();
     expect(response.status).toBe(502);
-    expect(body).toEqual({ code: 'invalid_completion', error: 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.' });
+    expect(body).toEqual({ code: 'invalid_completion', error: 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.',
+      validation_stage: 'hierarchy', validation_rule: rule, max_output_tokens: Number(env.LCT_OPENROUTER_MAX_OUTPUT_TOKENS),
+      // What was tried, content-free; a server-configured route does not name its model.
+      attempts: [{ backend: 'openrouter', task: 'map', max_output_tokens: 2048, outcome: 'rejected', stage: 'hierarchy', rule,
+        duration_ms: expect.any(Number) }] });
     expect(logged.mock.calls).toEqual([['[openrouter] generation failed', {
       code: 'invalid_completion', validationStage: 'hierarchy', validationRule: rule,
     }]]);
@@ -212,15 +216,17 @@ describe('redacted OpenRouter validation diagnostics through the public Worker',
     expect(sqlite.prepare('SELECT completed_at FROM lct_openrouter_attempts').get().completed_at).toBeGreaterThan(0);
   });
 
-  it.each(['invalid_completion', 'generation_failed'])('a throwing diagnostic sink preserves %s and the unresolved attempt', async code => {
+  it.each(['invalid_completion', 'provider_unreachable'])('a throwing diagnostic sink preserves %s and the unresolved attempt', async code => {
     logged.mockImplementation(() => { throw new Error('private-log-sink-' + KEY); });
     if (code === 'invalid_completion') fetch.mockResolvedValueOnce(new Response(JSON.stringify(rejectedGraph(value => { value.nodes = []; })), { status: 200 }));
+    // A provider call that throws (here with a secret-bearing name) is named as unreachable, never echoed.
     else fetch.mockRejectedValueOnce(Object.assign(new Error('private-provider-' + KEY), { name: KEY, validationStage: KEY }));
     const response = await worker.fetch(request(), env), body = await response.json();
-    expect(response.status).toBe(code === 'invalid_completion' ? 502 : 503); expect(body.code).toBe(code);
-    expect(JSON.stringify(body)).not.toContain(KEY);
-    expect(logged.mock.calls).toEqual([['[openrouter] generation failed', { code,
-      validationStage: code === 'invalid_completion' ? 'graph_shape' : 'unknown' }]]);
+    expect(response.status).toBe(502); expect(body.code).toBe(code);
+    expect(JSON.stringify({ body, logs: logged.mock.calls })).not.toContain(KEY);
+    expect(logged.mock.calls).toEqual(code === 'invalid_completion'
+      ? [['[openrouter] generation failed', { code, validationStage: 'graph_shape' }]]
+      : [['[map] unexpected error', expect.objectContaining({ where: 'provider_call', name: 'unknown' })]]);
     expect(sqlite.prepare('SELECT completed_at FROM lct_openrouter_attempts').get().completed_at).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
   });

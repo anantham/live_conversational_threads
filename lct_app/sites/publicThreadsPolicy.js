@@ -1,7 +1,9 @@
 import { flattenThreadsGraph, validateThreadsArtifact } from '../src/services/threadsArtifact.js';
 import { StorageError } from './storagePolicy.js';
 
-export const PUBLIC_LIMITS = Object.freeze({ maxArtifactBytes: 512 * 1024, maxNodes: 2000, maxEdges: 8000, maxDaily: 20, minIntervalMs: 10_000 });
+// 1.5 MiB: fits a 90-minute call (about 640 KiB) and stays under Cloudflare D1's 2,000,000-byte value limit
+// (the database CHECK in migration 0020 matches).
+export const PUBLIC_LIMITS = Object.freeze({ maxArtifactBytes: 1.5 * 1024 * 1024, maxNodes: 2000, maxEdges: 8000, maxDaily: 20, minIntervalMs: 10_000 });
 export const REMOVAL_KEY = /^[0-9a-f]{64}$/;
 
 export function publicJSON(status, value) {
@@ -9,7 +11,8 @@ export function publicJSON(status, value) {
 }
 
 export function publicSummary(row) {
-  return { id: row.id, title: row.title, node_count: row.node_count, byte_size: row.byte_size, created_at: row.created_at, visibility: 'public' };
+  return { id: row.id, title: row.title, node_count: row.node_count, byte_size: row.byte_size, created_at: row.created_at,
+    visibility: row.listed === 0 ? 'unlisted' : 'public' };
 }
 
 export async function digest(value) {
@@ -31,7 +34,7 @@ export function publicArtifact(data) {
     for (const field of ['conversation_title', 'conversation_name', 'executive_summary', 'full_transcript']) if (data[field] != null && typeof data[field] !== 'string') throw new Error('Artifact text');
     const payload = JSON.stringify(data);
     const size = new TextEncoder().encode(payload).byteLength;
-    if (size > PUBLIC_LIMITS.maxArtifactBytes) throw new StorageError(413, 'public_size', 'Public preview files must be at most 512 KiB after JSON normalization.');
+    if (size > PUBLIC_LIMITS.maxArtifactBytes) throw new StorageError(413, 'public_size', 'Public preview files must be at most 1.5 MiB after JSON normalization.');
     const title = (data.conversation_title || data.conversation_name || 'Untitled conversation').trim().slice(0, 160);
     return { payload, size, title: title || 'Untitled conversation', nodeCount: nodes.length };
   } catch (error) {
@@ -43,7 +46,7 @@ export function publicArtifact(data) {
 export async function readPublicArtifact(request) {
   if ((request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase() !== 'application/json') throw new StorageError(415, 'public_type', 'Publish a JSON .threads artifact.');
   const declared = request.headers.get('content-length');
-  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > PUBLIC_LIMITS.maxArtifactBytes)) throw new StorageError(413, 'public_size', 'Public preview files must be at most 512 KiB.');
+  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > PUBLIC_LIMITS.maxArtifactBytes)) throw new StorageError(413, 'public_size', 'Public preview files must be at most 1.5 MiB.');
   const reader = request.body?.getReader();
   if (!reader) throw new StorageError(400, 'public_empty', 'Choose a nonempty .threads file.');
   const chunks = [];
@@ -59,7 +62,7 @@ export async function readPublicArtifact(request) {
       const part = await Promise.race([reader.read(), interrupted]);
       if (part.done) break;
       size += part.value.byteLength;
-      if (size > PUBLIC_LIMITS.maxArtifactBytes) throw new StorageError(413, 'public_size', 'Public preview files must be at most 512 KiB.');
+      if (size > PUBLIC_LIMITS.maxArtifactBytes) throw new StorageError(413, 'public_size', 'Public preview files must be at most 1.5 MiB.');
       chunks.push(part.value);
     }
   } catch (error) { void reader.cancel().catch(() => {}); throw error; }

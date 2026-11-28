@@ -60,6 +60,39 @@ describe('lifetime cap when no window is set', () => {
   });
 });
 
+describe('operator disables the shared attempt count', () => {
+  beforeEach(() => { env.LCT_GENERATION_ATTEMPT_LIMIT_ENABLED = 'false'; });
+
+  it('admits beyond the old cap, records the new attempt, and still enforces pacing', async () => {
+    seedCompleted(1000, 3);
+    expect(await status()).toMatchObject({ available: true, attempt_limit_enabled: false });
+    const mapStatus = await worker.fetch(new Request(SITE + '/api/cloud/map/status'), env);
+    expect(await mapStatus.json()).toMatchObject({ available: true, attempt_limit_enabled: false });
+    env.LCT_ANTHROPIC_ENABLED = env.LCT_ANTHROPIC_PROJECT_BUDGET_CONFIRMED = 'true';
+    env.LCT_ANTHROPIC_MODEL = 'claude-synthetic';
+    env.ANTHROPIC_API_KEY = 'synthetic-key';
+    const claudeStatus = await worker.fetch(new Request(SITE + '/api/cloud/anthropic/status'), env);
+    expect(await claudeStatus.json()).toMatchObject({ enabled: true, available: true, attempt_limit_enabled: false });
+    expect((await generate()).status).toBe(200);
+    expect(count()).toBe(4);
+    expect((await generate()).status).toBe(429);
+    expect(await health()).toMatchObject({ capacity: 'busy' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(count()).toBe(4);
+  });
+
+  it('still refuses when both concurrent slots are held', async () => {
+    const insert = sqlite.prepare('INSERT INTO lct_openrouter_attempts (id, created_at, max_output_tokens) VALUES (?, ?, 2048)');
+    insert.run('first-active', now - 60_000);
+    insert.run('second-active', now - 120_000);
+    expect(await status()).toMatchObject({ available: false, attempt_limit_enabled: false });
+    expect((await generate()).status).toBe(429);
+    expect(await health()).toMatchObject({ capacity: 'busy' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(count()).toBe(2);
+  });
+});
+
 describe('rolling attempt window', () => {
   beforeEach(() => { env.LCT_OPENROUTER_WINDOW_HOURS = '24'; });
 

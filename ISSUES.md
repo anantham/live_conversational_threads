@@ -1,3 +1,7 @@
+## 2026-11-26 — Graph level tabs change their names when "moments" is chosen
+
+Found while restyling the Graph view (critique issue 5, branch `fix/graph-calm`). In the Graph, the level tabs read "moments / ideas / topics / themes / arcs". Choosing "moments" switches the graph to its older grouped display, and the tabs become "nodes / sentences / topics / themes" (`MinimalGraphHud.jsx` holds two label sets; `MinimalGraph.jsx` `clusterViews` labels "sentences"). The same control changes its own vocabulary under the reader. Impact: confusing, not data-affecting. Not a blocker. Next step: decide whether the older grouped display should stay reachable from the Graph at all, then give both modes one set of level names; fix red-first with a Playwright check on the tab labels.
+
 ## 2026-10-27 — Runtime receives hosted secret with an unsupported length
 
 Refined diagnostics0b16467/nativef52e9e7 served62/env73 after32focused/1248combined/build/GooglePASS. Actual authenticated owner UI reaches length-outside20–512 message; unavailable binding, empty value and whitespace are not the observed branch. Actual value/length/source remains unknown and undisclosed. Published upstream generates32-character API keys, within the retained validator; hosted authentication still untested. Private existing-value correction is now supported by decisive field evidence, after dismissal of Chrome's settings-page extension UI. Do not create another key or relax validation by inference; if original one-time value is unavailable, get a specific replacement decision. No provider/bot/STT/map/reservation. Settings and trial remain open. See docs/reviews/2026-10-27-hosted-configuration.md.
@@ -3277,6 +3281,34 @@ Found while verifying CPU search: library get_pipeline_files/get_files do not fo
 
 Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received200/application-wasm and69,666correct prefix bytes, then curl56connection reset. Native deployed archive and exact local real-model proof pass; this is transport evidence, not a confirmed application cause. Impact: full served-binary hash and physical-browser runtime acceptance remain unverified. Blocker: no for completed native publication; yes for claiming complete browser/search-download acceptance. Full-download method is stopped, no deployment retry or paid generation. Recommended next step: verify the runtime in a functioning browser/connection within applicable authority. See docs/reviews/2026-11-05-sites-cpu-search-deployment.json; retain the explicit limit at handoff.
 
+## 2026-11-24 — Node 26 Web Storage shadows jsdom storage in Sites tests
+
+The existing public recording test fails in setup on Node 26.0.0 because `localStorage` is undefined without a Node storage file. The same test on `main` passes with `NODE_OPTIONS=--no-experimental-webstorage`, which lets jsdom supply its browser storage. The Sites CI workflow uses Node 24. This affects local test execution and does not block the Anthropic change. Use Node 24 for CI parity or the Node 26 flag for local runs.
+
+## 2026-11-24 — Anthropic rejected the first long-transcript map window
+
+The local preview received an upstream HTTP 400 on the first window and stopped before producing a map. The previous error response retained the HTTP status and discarded provider diagnostics, so the exact rejection remains unknown. Claude diagnostics now captures a bounded reason and validated Anthropic request ID. A live synthetic check with the same model and the user's personal key remains the next step. It blocks confirming the Claude path and does not block local transcript reading.
+
+## 2026-11-25 — Window halving can desynchronise local/global utterance IDs (pre-existing class, low priority)
+- Where: `lct_app/src/services/cloud/longTranscriptPipeline.js` `splitSourceIntoWindows` / `splitWindowInHalf`.
+- What: windows map local→global utterances by position, assuming one token per utterance. Consecutive same-speaker
+  utterances (long turns split by `recordingTranscript.js`) can re-merge inside a window source, shifting every later ID.
+- Impact: evidence attached to the wrong turns, silently. The import page now uses `glanceDetailPipeline.js`, which gives each
+  turn its own speaker label and asserts the count at merge; the old windowed path remains for other callers.
+- Next: apply the same unique-label + count assertion to `splitSourceIntoWindows`, or retire it. Found by Gemini review (ADR-073).
+
+## 2026-11-25 23:31 IST — Lower-tier findings from the two-day commit review (fix/review-top-tier)
+Found by five read-only reviewers over 9f047a1e..173f8f2c plus main/CI commits; spot-verified where marked [v]. Not fixed yet.
+- Costs undercount: rejected (max_tokens) and fallback calls are billed but recorded as 0 tokens (`openRouterClient.js` records only the accepted call's usage); the "Reported by provider" headline sums only OpenRouter `cost_usd` while Anthropic/Gemini report none. [v]
+- `PublishLinkPanel.test.jsx:36` double-click test cannot fail: both clicks in one `act()`, so "Publishing…" is not rendered yet. [v]
+- Pipeline: `halve()` copies `retryOf`/`admissionRetries` into both halves (wrong re-ask note, lost re-ask) [v]; a topic nested in another topic is dropped from segments, keeps overlapping evidence and is re-detailed; admission retries total 30 s vs a 300 s stale-slot hold; one bad `mergeDetail` drops later successes from partial maps.
+- `mapAudit.js:29` says "uncovered turns first" but slices the first 4 segments in timeline order, so an end-of-call gap is never audited. [v]
+- ADR-073 says higher-tier ranges are "ignored and counted"; the overview path refuses them, and an overview refusal ends the run.
+- Streaming: stream-read errors reported as provider_unreachable; abort turns a partial reply into a spurious rejected attempt; 2 MiB cap counts SSE wire bytes; no cancel() on the server stream.
+- Publish panel shows after a failed run (partial bundle publishable).
+- Tests: credential store (AES-GCM/IndexedDB) fully mocked; `runLongTranscriptPipeline` no longer used by the app but still tested; Privacy page says keys are "encrypted" while the wrapping key sits beside them.
+- Minor: e49764db broke ~4 links inside moved docs; `nightly-stt-e2e.yml` still `ubuntu-latest`; the post-deploy smoke may target the ChatGPT Site rather than the Vercel deploy; usage parsing duplicated in `sites/openRouter.js`; edge validation rules dropped from client messages; key-check endpoint has no rate limit; comments claim the model name stays private on server routes.
+- Environment: under Node 26, 243 frontend test lines fail identically before and after these fixes (Node's global localStorage shadows jsdom's); CI uses Node 24. The main checkout's node_modules lacks pdfjs-dist, so `build:sites` from a worktree symlinked to it fails until `npm ci`.
 
 ### 2026-11-25 — Unit suite attempts real network connections
 
@@ -3312,3 +3344,14 @@ Existing Site68 publishes the reviewed CPU search repair. Full WASM GET received
 
 ## 2026-11-27 — Resolved: the account panel has no Escape-to-close (entry of 2026-11-05)
 - **Fix:** branch `fix/panel-escape-share-credentials`. Escape pressed inside the panel closes it and returns focus as the × does; neither the map nor the node-detail drawer sees that Escape. See WORKLOG 2026-11-27.
+
+## 2026-11-27 — Lower-tier review findings: status after fix/review-lower-tier
+
+Follow-up to the 2026-11-25 lower-tier list. Fixed on `fix/review-lower-tier`, each with a test that failed first: cost undercount and the "Reported by provider" headline; the double-click publish test; `halve()` retry state, nested topics, admission retries vs the stale-slot hold, a bad `mergeDetail` dropping later successes; the map audit skipping end-of-call gaps; ADR-073 higher-tier overview ranges (now ignored and counted, as the ADR says); all four streaming items; publishing a partial map after a stopped run; the key store tested with real Web Crypto; the unused windowed pipeline removed; the Privacy wording on stored keys; moved-doc links; the nightly STT runner pin; duplicated usage parsing; edge refusals labelled `edge_field` instead of the catch-all; the model-privacy comment; Node 25+ localStorage in tests.
+
+Still open:
+- **Key-check endpoint has no rate limit** (`lct_app/sites/personalProviderCheck.js`). Needs state the Worker does not have yet (a table plus migration, or a Cloudflare rate-limit binding). Impact: a public Site can be used as a key-validation proxy; no provider spend. Owner's call on the mechanism.
+- **Post-deploy smoke target** is an owner decision already recorded above (2026-11-25 entries).
+- **A provider-reported cost covers only the accepted reply**; calls with other billed attempts are flagged partial, and per-model rows on the cost page do not yet say so.
+- **Nested non-core topics under `detail: 'core'`** are still not offered to the segment holding their turns (noted in the ADR-073 addendum).
+- Archived docs keep links to files deleted long before the move (`docs/archive/ZOOM_SYSTEM.md`, `GRAPH_GENERATION.md`, `NODE_DETAIL_PANEL.md`).

@@ -2225,20 +2225,21 @@ function MinimalGraphInner({
           Native <details> keeps it keyboard-accessible with no extra state. */}
       {!chromeless && placeGraphTools(<div className={toolbarMode
         ? "flex min-w-0 items-center gap-1"
-        : "absolute bottom-2 left-2 z-40 flex items-center gap-2 sm:bottom-4 sm:left-4 sm:gap-1"}>
+        // Floating over the canvas, the quiet pills need their own paper behind them.
+        : "absolute bottom-2 left-2 z-40 flex items-center gap-2 rounded-full border border-stone-200/70 bg-[#fbfaf7]/95 p-0.5 sm:bottom-4 sm:left-4 sm:gap-1"}>
         {ZOOM_PRESETS.map(({ label, action, hint }) => (
           <button
             key={label}
             onClick={action}
             title={hint || label}
-            className="min-h-11 rounded border border-gray-200 bg-white/90 px-3 py-1 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 sm:min-h-8 sm:px-2.5"
+            className="min-h-11 rounded-full px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-stone-200/60 hover:text-slate-900 sm:min-h-8 sm:px-2.5"
           >
             {label}
           </button>
         ))}
         <details className="relative">
           <summary
-            className="flex min-h-11 cursor-pointer list-none items-center gap-1 rounded border border-gray-200 bg-white/90 px-3 py-1 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 sm:min-h-8 sm:px-2.5"
+            className="flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-stone-200/60 hover:text-slate-900 sm:min-h-8 sm:px-2.5"
             title="Show display options (follow, motion, edges, time order, color)"
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
