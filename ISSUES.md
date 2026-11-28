@@ -3330,3 +3330,31 @@ The local preview received an upstream HTTP 400 on the first window and stopped 
 - **The M5 live session** was in no completed review, and has changed since the packet was built.
 - **Stored costs are re-read on every confirmed word** in `SitesNewConversation.jsx` (`liveMapMetrics`). No wrong result; move it behind the map-run state.
 - **Privacy link placement.** The reviewer noted it is no longer one click from every page. The owner asked for it to live in Settings; recorded here in case that changes.
+
+## 2026-11-27 — Left open by the round-2 review of the Gemini-written parts (non-blocking unless noted)
+
+- **M5 live slices lose audio at each 6 s boundary and can split words**; slice times are wall-clock and drift slowly. The fix is overlapping slices, or one continuous recorder for the saved audio with overlapping slices only for transcription. `m5TailnetLiveSession.js`.
+- **M5 live speaker labels are only meaningful within a slice** (now shown as "part N"). Real attribution needs the whole recording diarized at Stop with the file session, replacing the live labels. Owner's call whether to build that or drop live diarization.
+- **Files & export shows one player per 6 s M5 slice.** Merge slices for display, or use the continuous recorder above.
+- **The viewer plays only single-part recordings.** Paused recordings and meetings need each part's start offset saved and a playlist. `useLocalConversationAudio.js`.
+- **Every playback tick re-renders the whole viewer**; following does not notice when the reader scrolls back. `ThreadsViewer.jsx`, `TextSourcePanel.jsx`.
+- **Settings:** an edit that makes two model rows equal silently removes one; "+ Add model" can do nothing when every combination is used; an invalid upstream slug is dropped while the field still shows it; the whole provider card is draggable; row keys include the index; an invalid custom model id is discarded on Enter; two Settings tabs overwrite each other.
+- **Map panel:** a setup check started while a request is being cancelled can read "Another cloud operation is in progress" as unavailable (`useCloudTask`); download object URLs accumulate until the panel unmounts.
+- **Status numbers:** session cost is partial when providers that report no cost are mixed in; after a Soniox pause the speaker count treats resumed labels as new speakers.
+- **Owner decision, still open:** the localStorage cost ledger records model, tokens, node count and coverage for every map request, including for recordings the user chose not to save.
+- **Another session's uncommitted prompt-cache change** (`lct_app/sites/anthropic.js`, `openRouter.js`) fails 5 tests in `sitesTieredGeneration.test.js`, which expect string message content.
+
+## 2026-11-27 — Pushed commit `79573178` (prompt and transcript caching) needs fixes (MUST-FIX, owner: the session that wrote it)
+
+Found by a Claude review of the commit (receipt: `docs/reviews/2026-11-27-anthropic-sites-a054f2f2-gemini.md`, Round 3).
+- **Privacy:** `lct_app/src/services/cloud/audioTranscriptCache.js` keeps full transcripts in IndexedDB with no conversation id. Deleting the saved conversation does not remove them, nothing in the app clears them, and they are written even when saving the conversation failed. Write after the archive reports saved, delete with the conversation, and offer a clear control.
+- **Cost:** `lct_app/sites/anthropic.js` and `withOpenRouterPromptCache` in `lct_app/sites/openRouter.js` put a cache breakpoint on the per-request transcript, which is billed as a cache write and is not re-read; the system prompts are likely below the minimum cacheable length. Remove the user-block breakpoint and confirm `cache_read_input_tokens > 0` on two real consecutive calls before keeping any breakpoint.
+- **Reporting:** with caching, Anthropic `input_tokens` excludes cached tokens, so the cost ledger records near-zero input; the streaming parser drops the cache fields; one branch reads the same field on both sides.
+- **Tests:** 5 tests in `lct_app/src/services/serverless/sitesTieredGeneration.test.js` fail since this commit (they assume string message content; the new shape is valid). Update them without loosening what they check.
+- Also: the cache key ignores M5 endpoint or engine, model and language; the whole file is hashed before the 20 MiB check; a hung IndexedDB open blocks the import with no status; leaving during the hash step does not cancel the upload that follows.
+
+## 2026-11-27 — Left open by the round-3 review of the round-2 fixes (non-blocking)
+- M5 live slice uploads are serial; a stalled slice holds later ones for up to its 60 s deadline. Consider a short concurrency limit.
+- The source drawer does not pause its audio before unmounting (late events are now ignored).
+- With an empty full transcript, a controlled `sectionMode="gemini"` cannot be shown.
+- Settings: dragging text inside a field of a draggable row; preferences with a non-empty but invalid chain; a URL over 300 characters passes the address check but not the saved-preference check; the route-model test does not cover the status check; an empty route list while keys load.

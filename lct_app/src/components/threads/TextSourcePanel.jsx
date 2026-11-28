@@ -32,6 +32,7 @@ export default function TextSourcePanel({
   onToggleFollowPlayhead,
   onPlayheadTimeUpdate,
   audioSeekRequest = null,
+  onAudioSeekHandled,
 }) {
   const transcript = typeof bundle.full_transcript === "string" ? bundle.full_transcript : "";
   const utterances = useMemo(() => (Array.isArray(bundle.utterances) ? bundle.utterances : []), [bundle.utterances]);
@@ -48,21 +49,35 @@ export default function TextSourcePanel({
   const mode = !transcript && localMode !== "gemini" ? "utterances" : sectionMode || localMode;
   const setMode = (next) => { if (onSectionChange) onSectionChange(next); else setLocalMode(next); };
   const selectedRef = useRef(null);
-  const playheadRef = useRef(null);
+  const scrollRef = useRef(null);
   const audioRef = useRef(null);
   const activePlayheadUtterance = useMemo(
     () => activeUtteranceAtTime(utterances, playheadSeconds),
     [utterances, playheadSeconds],
   );
+  // A seek waits for the audio's metadata: setting the position earlier is ignored by some browsers.
+  // Once applied, the request is cleared so a reopened drawer does not jump back to it.
   useEffect(() => {
-    if (!audioSeekRequest || !Number.isFinite(audioSeekRequest.seconds) || !audioRef.current) return;
-    try { audioRef.current.currentTime = Math.max(0, audioSeekRequest.seconds); } catch { /* ignore unready media */ }
-  }, [audioSeekRequest]);
+    const element = audioRef.current;
+    if (!audioSeekRequest || !Number.isFinite(audioSeekRequest.seconds) || !element) return undefined;
+    const apply = () => {
+      try { element.currentTime = Math.max(0, audioSeekRequest.seconds); } catch { /* unready media */ }
+      onAudioSeekHandled?.();
+    };
+    if (element.readyState >= 1) { apply(); return undefined; }
+    element.addEventListener("loadedmetadata", apply, { once: true });
+    return () => element.removeEventListener("loadedmetadata", apply);
+  // audioUrl: a seek can be requested while the saved audio is still being read; apply it once the player exists.
+  }, [audioSeekRequest, onAudioSeekHandled, audioUrl]);
+  // The player lives in this drawer, so closing the drawer stops it; the page's playhead goes with it.
+  // A seek that never landed is dropped with the player, so a reopened drawer does not jump to it.
+  const playerAlive = useRef(false);
   useEffect(() => {
-    if (followPlayhead && activePlayheadUtterance?.id != null) {
-      playheadRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-    }
-  }, [followPlayhead, activePlayheadUtterance?.id]);
+    if (!audioUrl) return undefined;
+    playerAlive.current = true;
+    return () => { playerAlive.current = false; onPlayheadTimeUpdate?.(null); onAudioSeekHandled?.(); };
+  }, [audioUrl, onPlayheadTimeUpdate, onAudioSeekHandled]);
+  const reportTime = (event) => { if (playerAlive.current) onPlayheadTimeUpdate?.(event.currentTarget.currentTime); };
   useEffect(() => {
     if (sectionMode) return;
     if (selection?.kind === "utterance") setLocalMode("utterances");
@@ -77,6 +92,11 @@ export default function TextSourcePanel({
   useEffect(() => {
     selectedRef.current?.scrollIntoView?.({ block: "center" });
   }, [mode, range, selection?.utteranceId]);
+  // Declared after the selection scroll: when both run in one commit (Follow in passages), following wins.
+  useEffect(() => {
+    if (!followPlayhead || activePlayheadUtterance?.id == null) return;
+    scrollRef.current?.querySelector?.('[data-playhead-active="true"]')?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [followPlayhead, activePlayheadUtterance?.id, mode]);
 
   const renderRaw = (start, end) => {
     if (!range || end <= range.start || start >= range.end) return transcript.slice(start, end);
@@ -112,19 +132,21 @@ export default function TextSourcePanel({
           src={audioUrl}
           aria-label="Recorded conversation audio"
           className="h-9 w-full"
-          onTimeUpdate={(e) => onPlayheadTimeUpdate?.(e.currentTarget.currentTime)}
-          onSeeked={(e) => onPlayheadTimeUpdate?.(e.currentTarget.currentTime)}
+          onTimeUpdate={reportTime}
+          onSeeked={reportTime}
         />
         {onToggleFollowPlayhead && (
           <div className="flex items-center justify-between text-[11px] text-slate-600">
-            <button
+            {/* Only the passage list marks and follows the playing turn, so the full transcript offers a way there. */}
+            {mode === "utterances" ? <button
               type="button"
               aria-pressed={followPlayhead}
               onClick={onToggleFollowPlayhead}
               className={`rounded-full px-2 py-0.5 font-medium transition-colors ${followPlayhead ? "bg-emerald-100 text-emerald-900" : "bg-slate-200/70 text-slate-600"}`}
             >
               {followPlayhead ? "Following playback" : "Follow playback"}
-            </button>
+            </button> : utterances.length > 0 ? <button type="button" onClick={() => { setMode("utterances"); if (!followPlayhead) onToggleFollowPlayhead(); }}
+              className="rounded-full bg-slate-200/70 px-2 py-0.5 font-medium text-slate-600 transition-colors hover:bg-slate-200">Follow in passages</button> : <span />}
             {Number.isFinite(playheadSeconds) && <span className="font-mono tabular-nums text-slate-400">{mediaOffsetLabel(playheadSeconds) || "0:00"}</span>}
           </div>
         )}
@@ -136,14 +158,14 @@ export default function TextSourcePanel({
       {hasGeminiNotes && <button type="button" aria-pressed={mode === "gemini"} onClick={() => setMode("gemini")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Compare Gemini</button>}
     </div>}
     {onRenameSpeaker && mode !== "gemini" && <div className="max-h-[45dvh] shrink-0 overflow-y-auto"><SourceSpeakerEditor bundle={bundle} onRenameSpeaker={onRenameSpeaker} namesStayInView={namesStayInView} /></div>}
-    <div data-viewer-scroll="text-source" aria-label="Original source passages" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-100 bg-stone-50 p-2 leading-5">
+    <div ref={scrollRef} data-viewer-scroll="text-source" aria-label="Original source passages" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-100 bg-stone-50 p-2 leading-5">
       {mode === "transcript" && transcript && <pre className="whitespace-pre-wrap break-words font-sans">{renderedTranscript}</pre>}
       {mode === "utterances" && utterances.map((row) => {
         const selected = selection?.kind === "utterance" && String(row.id) === String(selection.utteranceId);
         const isPlaying = activePlayheadUtterance && String(row.id) === String(activePlayheadUtterance.id);
         const offset = mediaOffsetLabel(row.timestamp_start);
         const driveUrl = driveMediaRef ? buildMediaSeekUrl(driveMediaRef, row.timestamp_start) : null;
-        return <div key={row.id} ref={isPlaying ? playheadRef : selected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} data-playhead-active={isPlaying ? "true" : undefined} className={`mb-2 rounded border-l-2 p-2 transition-colors ${isPlaying ? "border-emerald-500 bg-emerald-50/80" : selected ? "border-amber-500 bg-amber-50" : "border-transparent bg-white"}`}>
+        return <div key={row.id} ref={selected ? selectedRef : undefined} aria-current={selected ? "true" : undefined} data-playhead-active={isPlaying ? "true" : undefined} className={`mb-2 rounded border-l-2 p-2 transition-colors ${isPlaying ? "border-emerald-500 bg-emerald-50/80" : selected ? "border-amber-500 bg-amber-50" : "border-transparent bg-white"}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium text-slate-700">{row.speaker_id ? speakerDisplayName(speakerNames, row.speaker_id) : row.speaker_name || row.speaker_display || "Source passage"}</span>
             {driveUrl && offset && (
@@ -187,4 +209,4 @@ export default function TextSourcePanel({
   </aside>;
 }
 
-TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances", "gemini"]), onSectionChange: PropTypes.func, audioUrl: PropTypes.string, playheadSeconds: PropTypes.number, followPlayhead: PropTypes.bool, onToggleFollowPlayhead: PropTypes.func, onPlayheadTimeUpdate: PropTypes.func, audioSeekRequest: PropTypes.object };
+TextSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, selection: PropTypes.object, compact: PropTypes.bool, onClose: PropTypes.func, onRenameSpeaker: PropTypes.func, namesStayInView: PropTypes.bool, sectionMode: PropTypes.oneOf(["transcript", "utterances", "gemini"]), onSectionChange: PropTypes.func, audioUrl: PropTypes.string, playheadSeconds: PropTypes.number, followPlayhead: PropTypes.bool, onToggleFollowPlayhead: PropTypes.func, onPlayheadTimeUpdate: PropTypes.func, audioSeekRequest: PropTypes.object , onAudioSeekHandled: PropTypes.func };

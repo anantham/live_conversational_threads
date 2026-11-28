@@ -48,6 +48,7 @@ function SpeechOrder() {
   const { preferences, save, keys } = useSitesRuntime();
   const [m5Draft, setM5Draft] = useState(null);
   const [m5Probe, setM5Probe] = useState({ testing: false, result: null });
+  const [m5Invalid, setM5Invalid] = useState(false);
   const probeRun = useRef(0);
   const [dragIndex, setDragIndex] = useState(null);
   const dragIndexRef = useRef(null);
@@ -102,7 +103,7 @@ function SpeechOrder() {
             if (!enabled) return;
             dragIndexRef.current = index;
             setDragIndex(index);
-            event.dataTransfer?.setData('text/plain', String(index));
+            event.dataTransfer?.setData('application/x-lct-provider-row', String(index));
             if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
           }}
           onDragOver={event => {
@@ -164,12 +165,14 @@ function SpeechOrder() {
                     placeholder={DEFAULT_M5_TAILNET_URL}
                     onChange={event => {
                       setM5Draft(event.target.value);
+                      setM5Invalid(false);
                       probeRun.current += 1;
                       if (m5Probe.result || m5Probe.testing) setM5Probe({ testing: false, result: null });
                     }}
                     onBlur={event => {
                       const val = event.target.value.trim();
-                      if (!val || isAllowedTailnetUrl(val)) save({ m5TailnetUrl: val });
+                      if (!val || isAllowedTailnetUrl(val)) { save({ m5TailnetUrl: val }); setM5Invalid(false); if (!val) setM5Draft(null); }
+                      else setM5Invalid(true);
                     }}
                   />
                   <button
@@ -182,6 +185,7 @@ function SpeechOrder() {
                   </button>
                 </div>
               </label>
+              {m5Invalid && !m5Probe.result && <p role="alert" className="text-xs text-rose-700">Enter an HTTPS address ending in .ts.net. This address was not saved.</p>}
               {m5Probe.result && (
                 <p
                   role="status"
@@ -414,7 +418,7 @@ function IntelligenceSettings() {
           onDragStart={event => {
             dragIndexRef.current = index;
             setDragIndex(index);
-            event.dataTransfer?.setData('text/plain', String(index));
+            event.dataTransfer?.setData('application/x-lct-provider-row', String(index));
             if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
           }}
           onDragOver={event => {

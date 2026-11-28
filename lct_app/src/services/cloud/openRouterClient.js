@@ -199,8 +199,10 @@ export function configuredMapRoutes(runtime) {
         model: preferences.models?.[backend] || '',
         ...(backend === 'openrouter' && preferences.openrouterProvider ? { provider: preferences.openrouterProvider } : {}),
       }));
-  return chain.map(({ backend, model, provider }) => keys[backend]
-    ? { backend, key: keys[backend], model: model || preferences.models?.[backend] || '',
+  // A personal key is used only with the model its own row names. A row on "Site default" uses the site's
+  // configuration for that step, as the Settings row says; it never borrows another row's model.
+  return chain.map(({ backend, model, provider }) => keys[backend] && model
+    ? { backend, key: keys[backend], model,
       ...(backend === 'openrouter' && provider ? { provider } : {}) }
     : { backend });
 }

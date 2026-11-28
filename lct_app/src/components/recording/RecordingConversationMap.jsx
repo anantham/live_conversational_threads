@@ -29,11 +29,19 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
   const userToggledAuto = useRef(false), autoStarted = useRef(false);
   const generateLatest = useRef(null), downloadURLs = useRef(new Set());
   const lastAttempt = useRef(0), lastText = useRef(''), mappedText = useRef(''), generating = useRef(false), attempts = useRef(0);
-  const [checkedStatus, setStatus] = useState(null), [consentedBackend, setConsent] = useState(null), [declined, setDeclined] = useState(null);
-  const routeSelection = routes || backend;
+  const [checkedStatus, setStatus] = useState(null), [consentedBackend, setConsent] = useState(null), [declined, setDeclined] = useState(false);
+  // Permission, the user's decline and the setup check are keyed on what the chain contains. The routes
+  // array is rebuilt whenever saved keys are re-read (any Settings tab refreshing a model list), and keying
+  // on its identity silently restored permission the user had just withdrawn.
+  const routeSelection = useMemo(() => routes
+    ? JSON.stringify(routes.map(route => [route.backend, route.model || '', route.provider || '', route.key || '']))
+    : backend, [routes, backend]);
+  const latestRoutes = useRef(routes), latestBackend = useRef(backend);
+  latestRoutes.current = routes; latestBackend.current = backend;
   const status = checkedStatus?.selection === routeSelection ? checkedStatus.data : null;
   // With personal keys only, permission is assumed until the user unticks the box; unticking always wins.
-  const consent = consentedBackend === routeSelection || (personalOnly && Boolean(status?.enabled) && declined !== routeSelection);
+  // Unticking holds for the whole recording: a later change of model or key in Settings does not undo it.
+  const consent = consentedBackend === routeSelection || (personalOnly && Boolean(status?.enabled) && !declined);
   const recipients = routes
     ? [...new Set(routes.map(({ backend }) => MAP_PROVIDERS[backend].recipient))].join(', ')
     : MAP_PROVIDERS[backend].recipient;
@@ -45,18 +53,20 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
   const checkStatus = useCallback(async () => {
     setError('');
     const epoch = ++statusEpoch.current;
-    const response = await run('load', signal => routes ? getOrderedMapStatus(signal, routes) : getRecordingMapStatus(signal, backend));
+    const current = latestRoutes.current;
+    const response = await run('load', signal => current ? getOrderedMapStatus(signal, current) : getRecordingMapStatus(signal, latestBackend.current));
     if (!alive.current || epoch !== statusEpoch.current) return;
     if (response.data) setStatus({ selection: routeSelection, data: response.data });
     else { setStatus(null); setError(response.outcome === 'cancelled' || response.outcome === 'timeout'
       ? 'Generation setup stopped or timed out. Keep the transcript and retry setup.' : 'Generation setup is unavailable. Recording and local downloads remain available. Retry generation setup.'); }
-  }, [run, backend, routes, routeSelection]);
+  }, [run, routeSelection]);
   useEffect(() => {
-    alive.current = true; setConsent(null); setDeclined(null); setStatus(null); void checkStatus();
+    alive.current = true; setConsent(null); setStatus(null); void checkStatus();
     return () => { alive.current = false; cancel(); };
   }, [source.recordingId, checkStatus, cancel]);
-  useEffect(() => { setResult(null); setServed(null); setAutomatic(false); userToggledAuto.current = false; autoStarted.current = false; attempts.current = 0; setAttemptCount(0); lastText.current = ''; mappedText.current = ''; lastAttempt.current = 0; }, [source.recordingId]);
-  useEffect(() => { setAutomatic(false); userToggledAuto.current = false; autoStarted.current = false; }, [routeSelection]);
+  useEffect(() => { setResult(null); setServed(null); setAutomatic(false); userToggledAuto.current = false; autoStarted.current = false; setDeclined(false); attempts.current = 0; setAttemptCount(0); lastText.current = ''; mappedText.current = ''; lastAttempt.current = 0; }, [source.recordingId]);
+  // A different chain means different recipients: automatic updates stop and do not start again by themselves.
+  useEffect(() => { setAutomatic(false); }, [routeSelection]);
   // Automatic updates start by themselves once per recording. After a failure, the attempt limit, or the
   // user switching them off, they stay off until the user switches them on again.
   useEffect(() => {
@@ -184,7 +194,7 @@ export default function RecordingConversationMap({ localOnly = false, source, sa
     {!activity && !status?.enabled && <p className="mt-3 text-sm leading-6 text-slate-600">Generation is waiting for provider setup and confirmed spending limits. Transcript download remains available.</p>}
     {status?.enabled && !status.available && <p className="mt-3 text-sm leading-6 text-slate-600">Shared generation capacity is unavailable. Check setup again before retrying; unresolved attempts may need owner review.</p>}
     {status?.audience === 'authenticated' && <p className="mt-3 text-sm text-slate-600">This generation test requires sign-in. <Link className="underline underline-offset-4" to="/private-files">Sign in from Private files</Link></p>}
-    <label className="mt-4 flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={consent} disabled={Boolean(activity) || saving || !status?.enabled} onChange={event => { const agreed = event.target.checked; setConsent(agreed ? routeSelection : null); setDeclined(agreed ? null : routeSelection); if (!agreed) { userToggledAuto.current = true; setAutomatic(false); } }} />I have permission to send these finalized words to {recipients} to generate a map. Their processing policies apply.</label>
+    <label className="mt-4 flex items-start gap-3 text-sm leading-6"><input type="checkbox" className="mt-1" checked={consent} disabled={Boolean(activity) || saving || !status?.enabled} onChange={event => { const agreed = event.target.checked; setConsent(agreed ? routeSelection : null); setDeclined(!agreed); if (!agreed) { userToggledAuto.current = true; setAutomatic(false); } }} />I have permission to send these finalized words to {recipients} to generate a map. Their processing policies apply.</label>
     <label className="mt-3 flex items-start gap-3 text-sm leading-6"><input type="checkbox" aria-label="Update map while I speak" className="mt-1" checked={automatic} disabled={!consent || !status?.available || attempts.current >= maxAutoAttempts} onChange={event => { userToggledAuto.current = true; if (event.target.checked) setError(''); setAutomatic(event.target.checked); }} />Update map while I speak</label>
     <p className="mt-1 text-xs leading-5 text-slate-500">Updates use new confirmed words, at most once every {Math.round(autoIntervalMs / 1000)} seconds. Automatic updates stop after {maxAutoAttempts} attempts per conversation. {attemptCount > 0 && `${attemptCount} attempts used.`}</p>
     {attemptCount >= maxAutoAttempts && <p role="status" className="mt-2 text-xs text-slate-600">Automatic updates have reached their limit. You can still request a map deliberately if shared capacity is available.</p>}

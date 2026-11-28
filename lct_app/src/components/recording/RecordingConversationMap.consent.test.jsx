@@ -113,4 +113,33 @@ describe('live map permission and automatic updates', () => {
     expect(schedule.mappedChars).toBe(bundle.full_transcript.length);
     expect(generateCalls()).toHaveLength(0);
   });
+
+  it('keeps a withdrawn permission when the saved keys are re-read and the same chain arrives as a new object', async () => {
+    generate.mockImplementation(() => new Promise(() => {}));
+    await mount(personal);
+    await act(async () => permission().click());
+    const reread = JSON.parse(JSON.stringify(personal));
+    await act(async () => root.render(<SitesRuntimeContext.Provider value={reread}><MemoryRouter>
+      <RecordingConversationMap source={source()} saving={false} liveActive onPrivateSave={() => {}} onGeneratingChange={() => {}} onScheduleChange={value => { schedule = value; }} />
+    </MemoryRouter></SitesRuntimeContext.Provider>));
+    await tick(120_000);
+    expect(permission().checked).toBe(false);
+    expect(automatic().checked).toBe(false);
+    expect(generateCalls()).toHaveLength(0);
+    expect(fetch.mock.calls.filter(([path]) => path === '/api/cloud/map/status')).toHaveLength(1);
+  });
+
+  it('keeps a withdrawn permission for the rest of the recording when the model is changed in Settings', async () => {
+    generate.mockImplementation(() => new Promise(() => {}));
+    await mount(personal);
+    await act(async () => permission().click());
+    const changed = { ...personal, preferences: { ...personal.preferences, mapChain: [{ backend: 'anthropic', model: 'claude-other' }] } };
+    await act(async () => root.render(<SitesRuntimeContext.Provider value={changed}><MemoryRouter>
+      <RecordingConversationMap source={source()} saving={false} liveActive onPrivateSave={() => {}} onGeneratingChange={() => {}} onScheduleChange={value => { schedule = value; }} />
+    </MemoryRouter></SitesRuntimeContext.Provider>));
+    await tick(120_000);
+    expect(permission().checked).toBe(false);
+    expect(automatic().checked).toBe(false);
+    expect(generateCalls()).toHaveLength(0);
+  });
 });

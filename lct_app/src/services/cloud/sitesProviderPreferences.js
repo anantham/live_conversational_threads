@@ -51,15 +51,18 @@ function normalizeMapChain(value) {
 
 export function normalizeProviderPreferences(value) {
   const mapChain = normalizeMapChain(value);
+  // models and openrouterProvider are derived from the chain. Reading them back from the input as well
+  // would keep a model alive after the user set its row to "Site default" or removed the row.
+  const hasChain = Array.isArray(value?.mapChain) && value.mapChain.length > 0;
   const map = [...new Set(mapChain.map(entry => entry.backend))];
   const models = Object.fromEntries(MAP_PROVIDER_IDS.flatMap(id => {
     const fromChain = mapChain.find(entry => entry.backend === id && entry.model)?.model;
-    const legacy = value?.models?.[id];
+    const legacy = hasChain ? undefined : value?.models?.[id];
     const model = fromChain || (typeof legacy === 'string' && modelPattern.test(legacy) ? legacy : '');
     return model ? [[id, model]] : [];
   }));
   const chainProvider = mapChain.find(entry => entry.backend === 'openrouter' && entry.provider)?.provider || '';
-  const openrouterProvider = chainProvider || (typeof value?.openrouterProvider === 'string' && providerPattern.test(value.openrouterProvider) ? value.openrouterProvider : '');
+  const openrouterProvider = chainProvider || (!hasChain && typeof value?.openrouterProvider === 'string' && providerPattern.test(value.openrouterProvider) ? value.openrouterProvider : '');
   const m5TailnetUrl = typeof value?.m5TailnetUrl === 'string' && value.m5TailnetUrl.trim().startsWith('https://') && value.m5TailnetUrl.trim().length <= 300
     ? value.m5TailnetUrl.trim() : '';
   return {

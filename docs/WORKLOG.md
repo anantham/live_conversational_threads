@@ -1,3 +1,17 @@
+## 2026-11-27 22:45 IST — Review of the round-2 fixes (Gemini) and of `79573178` (Claude), and fixes (Claude Code)
+
+- Gemini (`gemini-4-argon-high` via Antigravity) reviewed the uncommitted round-2 fixes in three packets: 12 must-fix in total, all confirmed and fixed with tests except three rejected with reasons; see "Round 3" in `docs/reviews/2026-11-27-anthropic-sites-a054f2f2-gemini.md`.
+- Files changed again: `lct_app/src/services/cloud/m5TailnetLiveSession.js` (late recorder events), `lct_app/src/pages/SitesNewConversation.jsx` (fallback follows the consent shown; clean state after fallback; recoverable errors), `lct_app/src/components/threads/playheadSyncModel.js`, `spatialLandscapeModel.js`, `TextSourcePanel.jsx`, `lct_app/src/hooks/useLocalConversationAudio.js`, `lct_app/src/components/recording/RecordingConversationMap.jsx` (decline per recording), `lct_app/src/services/cloud/openRouterClient.js` (Site-default rows use site configuration), `lct_app/src/components/settings/SitesProviderSettings.jsx`.
+- A Claude reviewer found 3 must-fix problems in the other session's pushed commit `79573178` (transcript cache outlives deleted conversations; cache breakpoints likely raise Claude cost; usage under-reported). Not fixed here; recorded in ISSUES.md for its owner.
+- Not committed.
+
+## 2026-11-27 16:30 IST — Second-family review of the Gemini-written parts, and fixes (Claude Code)
+
+- Five code-only packets from `1f900d2e`, reviewed by fresh Claude reviewers (Fable 5.2 for the viewer; Opus 5.5 for the rest after the Fable limit). 63 findings, 15 must-fix, all confirmed and fixed; about 46 fixed in total. Receipt section "Round 2": `docs/reviews/2026-11-27-anthropic-sites-a054f2f2-gemini.md`.
+- Files: `lct_app/src/services/cloud/m5TailnetLiveSession.js` (rewritten), `lct_app/src/pages/SitesNewConversation.jsx` (M5 to Soniox live fallback, metrics), `lct_app/src/components/recording/RecordingConsentDialog.jsx`, `RecordingConversationMap.jsx` (permission keyed on chain content), `ConversationServiceStatus.jsx`, `lct_app/src/components/settings/SitesProviderSettings.jsx`, `lct_app/src/services/cloud/sitesProviderPreferences.js`, `openRouterClient.js` (no model borrowing), `lct_app/src/components/threads/playheadSyncModel.js`, `spatialLandscapeModel.js` (visit end times), `TextSourcePanel.jsx`, `lct_app/src/pages/ThreadsViewer.jsx`, new `lct_app/src/hooks/useLocalConversationAudio.js`.
+- Tests: new or extended in the M5 live session, consent, map route models, playhead model, local audio hook, source drawer and recording page suites; 24 deliberate breakages each caught. Full suite: 196 of 197 files pass; the failing file (`sitesTieredGeneration.test.js`, 5 tests) is caused by the other session's uncommitted `lct_app/sites/anthropic.js` prompt-cache change, which this work does not touch.
+- Not committed. The other session's uncommitted transcript-cache and prompt-cache work (7 files) is in the same tree and is not part of this change.
+
 ## 2026-11-27 10:15 IST — Review of `eee89870..a054f2f2` and its fixes (Claude Code)
 
 - The owner asked for an independent review of `d6e34078`. Grok was chosen because Gemini and Claude both wrote the change; Grok refused with HTTP 402 (usage balance exhausted). Gemini (`gemini-4-argon-high` through Antigravity) reviewed four code-only packets instead; a Claude reviewer for the Gemini-written parts ended on a network error. Receipt, hashes and every decision: `docs/reviews/2026-11-27-anthropic-sites-a054f2f2-gemini.md`.

@@ -78,3 +78,69 @@ it("updates recognized speaker labels twice while selection and source bytes rem
   act(() => host.querySelector('button[aria-pressed="false"]').click());
   expect(host.querySelector("[aria-label='Original source passages']").textContent).toContain("A. RaoFirst  phrase");
 });
+
+// Test intent (review fixes, 2026-11-27): the recorded-audio player in the drawer seeks only once the audio
+// can take it and then clears the request; the playing turn is marked without stealing the selection's
+// scroll; the full transcript offers a way to the passages that follow playback; closing the drawer clears
+// the playhead.
+const timedBundle = { full_transcript: "A: one\nB: two", utterances: [
+  { id: "u1", speaker_id: "A", text: "one", timestamp_start: 0, timestamp_end: 5 },
+  { id: "u2", speaker_id: "B", text: "two", timestamp_start: 5, timestamp_end: 9 },
+] };
+const panel = (props) => <TextSourcePanel bundle={timedBundle} audioUrl="blob:synthetic" onToggleFollowPlayhead={() => {}} onPlayheadTimeUpdate={() => {}} {...props} />;
+
+it("waits for the audio's metadata before seeking, then clears the request", () => {
+  const handled = vi.fn();
+  act(() => root.render(panel({ audioSeekRequest: { seconds: 5, key: 1 }, onAudioSeekHandled: handled })));
+  const audio = host.querySelector("audio");
+  expect(handled).not.toHaveBeenCalled();
+  Object.defineProperty(audio, "readyState", { configurable: true, value: 1 });
+  act(() => { audio.dispatchEvent(new Event("loadedmetadata")); });
+  expect(audio.currentTime).toBe(5);
+  expect(handled).toHaveBeenCalledTimes(1);
+});
+
+it("marks the playing turn and still scrolls the selected passage into the centre", () => {
+  act(() => root.render(panel({ selection: { kind: "utterance", utteranceId: "u2" }, playheadSeconds: 5, followPlayhead: false })));
+  const row = host.querySelector('[data-playhead-active="true"]');
+  expect(row.getAttribute("aria-current")).toBe("true");
+  expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+});
+
+it("offers to follow in passages from the full transcript, where nothing is marked", () => {
+  const onSectionChange = vi.fn(), toggle = vi.fn();
+  act(() => root.render(panel({ sectionMode: "transcript", onSectionChange, followPlayhead: false, onToggleFollowPlayhead: toggle, playheadSeconds: 2 })));
+  expect(host.textContent).not.toContain("Following playback");
+  const button = [...host.querySelectorAll("button")].find((element) => element.textContent === "Follow in passages");
+  act(() => button.click());
+  expect(onSectionChange).toHaveBeenCalledWith("utterances");
+  expect(toggle).toHaveBeenCalledTimes(1);
+});
+
+it("clears the page's playhead when the drawer and its player close", () => {
+  const update = vi.fn();
+  act(() => root.render(panel({ onPlayheadTimeUpdate: update })));
+  act(() => root.render(<div />));
+  expect(update).toHaveBeenLastCalledWith(null);
+});
+
+it("applies a seek requested while the saved audio was still loading, once the player appears", () => {
+  const handled = vi.fn(), request = { seconds: 7, key: 2 }; // the same request object across both renders
+  act(() => root.render(panel({ audioUrl: "", audioSeekRequest: request, onAudioSeekHandled: handled })));
+  expect(handled).not.toHaveBeenCalled();
+  act(() => root.render(panel({ audioUrl: "blob:synthetic", audioSeekRequest: request, onAudioSeekHandled: handled })));
+  const audio = host.querySelector("audio");
+  Object.defineProperty(audio, "readyState", { configurable: true, value: 1 });
+  act(() => { audio.dispatchEvent(new Event("loadedmetadata")); });
+  expect(audio.currentTime).toBe(7);
+  expect(handled).toHaveBeenCalled();
+});
+
+it("scrolls to the playing turn, not the old selection, when asked to follow in passages", () => {
+  const calls = [];
+  HTMLElement.prototype.scrollIntoView = vi.fn(function record() { calls.push(this.getAttribute("data-playhead-active") ? "playing" : "selected"); });
+  act(() => root.render(panel({ sectionMode: "transcript", selection: { kind: "utterance", utteranceId: "u1" }, playheadSeconds: 6, followPlayhead: true })));
+  calls.length = 0;
+  act(() => root.render(panel({ sectionMode: "utterances", selection: { kind: "utterance", utteranceId: "u1" }, playheadSeconds: 6, followPlayhead: true })));
+  expect(calls.at(-1)).toBe("playing");
+});

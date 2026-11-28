@@ -4,7 +4,9 @@ import PropTypes from 'prop-types';
 const INTRO_KEY = 'lct.recording_intro.v1';
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:opacity-50';
 
-export default function RecordingConsentDialog({ transcribe, retention = 'ephemeral', maxSeconds, onCancel, onConfirm }) {
+export default function RecordingConsentDialog({ transcribe, retention = 'ephemeral', maxSeconds, voiceProvider = 'soniox', sonioxFallback = false, onCancel, onConfirm }) {
+  const viaM5 = transcribe && voiceProvider === 'm5_tailnet';
+  const recipients = viaM5 ? (sonioxFallback ? 'my M5 Tailnet speech server, or to Soniox if that server cannot be reached' : 'my M5 Tailnet speech server') : 'Soniox';
   const dialog = useRef(null), permission = useRef(null), submitting = useRef(false);
   const [consent, setConsent] = useState(false);
 
@@ -36,13 +38,14 @@ export default function RecordingConsentDialog({ transcribe, retention = 'epheme
       <h2 id="recording-consent-title" className="text-xl font-semibold tracking-tight">{transcribe ? 'Record and transcribe' : 'Record audio locally'}</h2>
       <div id="recording-consent-details" className="mt-3 space-y-3 text-sm leading-6 text-slate-600">
         <p>{retention === 'local' ? 'Your audio, transcript and maps save automatically in this browser. Nothing is uploaded unless you choose a cloud save or sharing action.' : 'Ephemeral: your recording stays in this tab until you download it or choose a private save.'}</p>
-        {transcribe && <p>Audio streams to Soniox for live transcription. The connection stops within {maxSeconds} seconds, including finalization. Pause closes the connection. Resume starts a new connection within the same conversation duration limit; shared session limits also apply.</p>}
-        <p>{transcribe ? 'Local audio is limited to 2 MiB.' : 'Local recording stops within 5 minutes or 2 MiB.'} {retention === 'local' ? 'Keep this tab open while recording.' : 'Keep this tab open until you download or save your audio.'}</p>
+        {viaM5 && <p>Audio goes to your M5 Tailnet speech server in 6-second parts for live transcription.{sonioxFallback ? ' If that server cannot be reached when you start, audio streams to Soniox instead, within its own duration limit.' : ''}</p>}
+        {transcribe && !viaM5 && <p>Audio streams to Soniox for live transcription. The connection stops within {maxSeconds} seconds, including finalization. Pause closes the connection. Resume starts a new connection within the same conversation duration limit; shared session limits also apply.</p>}
+        <p>{viaM5 ? '' : transcribe ? 'Local audio is limited to 2 MiB.' : 'Local recording stops within 5 minutes or 2 MiB.'} {retention === 'local' ? 'Keep this tab open while recording.' : 'Keep this tab open until you download or save your audio.'}</p>
         <a href="/privacy" target="_blank" rel="noreferrer" className="inline-block underline underline-offset-4">Privacy and data use</a>
       </div>
       <label className="mt-5 flex items-start gap-3 text-sm leading-6">
         <input ref={permission} className="mt-1.5" type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} />
-        {transcribe ? 'I have permission to record everyone in this conversation and send this audio to Soniox for transcription.' : 'I have permission to record everyone in this conversation.'}
+        {transcribe ? `I have permission to record everyone in this conversation and send this audio to ${recipients} for transcription.` : 'I have permission to record everyone in this conversation.'}
       </label>
       <div className="mt-6 flex flex-wrap justify-end gap-3">
         <button type="button" className={button} onClick={onCancel}>Cancel</button>
@@ -56,6 +59,8 @@ RecordingConsentDialog.propTypes = {
   retention: PropTypes.string,
   transcribe: PropTypes.bool.isRequired,
   maxSeconds: PropTypes.number,
+  voiceProvider: PropTypes.string,
+  sonioxFallback: PropTypes.bool,
   onCancel: PropTypes.func.isRequired,
   onConfirm: PropTypes.func.isRequired,
 };

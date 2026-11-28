@@ -1,3 +1,4 @@
+import { utteranceEndSeconds, utteranceStartSeconds } from "./playheadSyncModel";
 // Test intent:
 // - Unfiled ideas without parent_id never appear in root Arcs and are grouped under unfiledIds.
 // - Returning threads with cited turns separated by even 1 uncited turn produce separate visits (no gap merging).
@@ -51,6 +52,7 @@ export function computeNodeVisits(node, utterances, utteranceIndex) {
         endUtteranceId: null,
         turnCount: 0,
         startSeconds: node.timestamp_start,
+        endSeconds: Number.isFinite(node?.timestamp_end) ? node.timestamp_end : null,
         label: formatVisitClock(node.timestamp_start) || "00:00",
         excerpt: node.source_excerpt || "",
         speaker: node.speaker_display || node.speaker_name || node.speaker_id || "",
@@ -79,13 +81,21 @@ export function computeNodeVisits(node, utterances, utteranceIndex) {
 
   return runs.map((run) => {
     const first = utterances[run.firstIdx];
-    const startSeconds = Number.isFinite(first?.timestamp_start) ? first.timestamp_start : null;
+    const startSeconds = utteranceStartSeconds(first);
+    // Where the visit stops: its last turn's end, else when the next timed turn starts (untimed turns in
+    // between are skipped). If no timed turn follows, the visit runs to the end of the recording, as the
+    // final turn does for the transcript's playhead. Times may be seconds or milliseconds.
+    const lastEnd = utteranceEndSeconds(utterances[run.lastIdx]);
+    let nextStart = null;
+    for (let i = run.lastIdx + 1; i < utterances.length && nextStart == null; i += 1) nextStart = utteranceStartSeconds(utterances[i]);
+    const endSeconds = lastEnd ?? nextStart ?? (startSeconds != null ? Number.POSITIVE_INFINITY : null);
     const label = formatVisitClock(startSeconds) || `Turn ${run.firstIdx + 1}`;
     return {
       startUtteranceId: run.ids[0],
       endUtteranceId: run.ids.at(-1),
       turnCount: run.ids.length,
       startSeconds,
+      endSeconds,
       label,
       excerpt: String(first?.text || "").trim(),
       speaker: first?.speaker_name || first?.speaker_display || first?.speaker_id || "",

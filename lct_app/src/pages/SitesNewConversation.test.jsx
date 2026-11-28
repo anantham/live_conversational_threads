@@ -25,6 +25,7 @@ import SitesNewConversation from './SitesNewConversation.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
 import { readGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 import { MAP_CLIENT_DEADLINE_MS } from '../services/cloud/generationDeadlines.js';
+import { SitesRuntimeContext } from '../contexts/SitesRuntimeContext';
 
 let root, container, transcribe, privateUploads, generation, createURL, revokeURL;
 const dialogMethods = Object.fromEntries(['showModal', 'close'].map(name => [name, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name)]));
@@ -903,4 +904,41 @@ describe('Sites recording page: canvas map status, speaker names and Explore', (
     transcribe = true; await mount(); await record('Record and transcribe'); await deliverTranscript(); await click('Stop recording');
     expect(explore()).toBeNull();
   });
+});
+
+it('falls back to Soniox for live transcription when the M5 server cannot be reached, after naming both in the consent', async () => {
+  transcribe = true;
+  const base = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => String(path).includes('.ts.net') ? Promise.reject(new TypeError('Failed to fetch')) : base(path, options));
+  const runtime = { credentialsReady: true, keys: {}, preferences: { speech: ['m5_tailnet', 'soniox'], map: ['openrouter'], models: {},
+    mapChain: [{ backend: 'openrouter', model: '' }], guidance: '', m5TailnetUrl: '' } };
+  await act(async () => root.render(<MemoryRouter initialEntries={['/new']}><SitesRuntimeContext.Provider value={runtime}><SitesNewConversation /><LocationProbe /></SitesRuntimeContext.Provider></MemoryRouter>));
+  await click('Start session');
+  expect(container.querySelector('dialog').textContent).toContain('send this audio to my M5 Tailnet speech server, or to Soniox if that server cannot be reached');
+  expect(container.querySelector('dialog').textContent).not.toContain('2 MiB');
+  await consent(); await click('Start transcription');
+  await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+  expect(fixture.sessions).toHaveLength(1);
+  expect(fixture.sessions[0].options.transcribe).toBe(true);
+  expect(container.textContent).toContain('Using Soniox instead.');
+  expect(container.querySelector('[role=alert]')).toBeNull();
+  expect(button('Pause recording')).toBeTruthy();
+  expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+});
+
+it('does not fall back to Soniox when the consent dialog did not name it, even if Soniox becomes available before confirming', async () => {
+  transcribe = false; // Soniox is not available when the dialog opens
+  const base = fetch.getMockImplementation();
+  fetch.mockImplementation(async (path, options) => String(path).includes('.ts.net') ? Promise.reject(new TypeError('Failed to fetch')) : base(path, options));
+  const runtime = { credentialsReady: true, keys: {}, preferences: { speech: ['m5_tailnet', 'soniox'], map: ['openrouter'], models: {},
+    mapChain: [{ backend: 'openrouter', model: '' }], guidance: '', m5TailnetUrl: '' } };
+  await act(async () => root.render(<MemoryRouter initialEntries={['/new']}><SitesRuntimeContext.Provider value={runtime}><SitesNewConversation /><LocationProbe /></SitesRuntimeContext.Provider></MemoryRouter>));
+  await click('Start session');
+  expect(container.querySelector('dialog').textContent).toContain('send this audio to my M5 Tailnet speech server for transcription.');
+  transcribe = true; await click('Check connections'); // Soniox becomes available while the dialog is open
+  await consent(); await click('Start transcription');
+  await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+  expect(fixture.sessions).toHaveLength(0);
+  expect(container.textContent).not.toContain('Using Soniox instead.');
+  expect(container.querySelector('[role=alert]').textContent).toMatch(/reach/i);
 });

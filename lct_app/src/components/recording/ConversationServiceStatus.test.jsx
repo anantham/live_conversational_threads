@@ -101,7 +101,7 @@ it('displays M5 Tailnet readiness and live TTFT, latency, token, and cumulative 
   });
   const voice = host.querySelector('button[aria-label^="Live transcription"]');
   const map = host.querySelector('button[aria-label^="Map making"]');
-  expect(voice.getAttribute('aria-label')).toBe('Live transcription: M5 Tailnet ready');
+  expect(voice.getAttribute('aria-label')).toBe('Live transcription: M5 Tailnet selected');
   await act(async () => voice.focus());
   expect(host.textContent).toContain('1.4 s');
   expect(host.textContent).toContain('620 ms');

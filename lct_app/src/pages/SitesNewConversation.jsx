@@ -65,9 +65,11 @@ export default function SitesNewConversation() {
   const runtime = useSitesRuntime();
   const [chosenBackend, setBackend] = useState('openrouter'), [voiceHealth, setVoiceHealth] = useState(null), [inferenceHealth, setInferenceHealth] = useState(null);
   const [voiceMetrics, setVoiceMetrics] = useState(null), [mapMetrics, setMapMetrics] = useState(null);
+  // The provider actually transcribing this recording, which differs from the first choice after a fallback.
+  const [activeVoiceProvider, setActiveVoiceProvider] = useState(null);
   const backend = inferenceHealth?.ok && runtime?.preferences.map.includes(inferenceHealth.service)
     ? inferenceHealth.service : runtime?.preferences.map[0] || chosenBackend;
-  const voiceStarted = useRef(null), voiceFirst = useRef(false);
+  const voiceStarted = useRef(null), voiceFirst = useRef(false), recoverableError = useRef('');
 
   const handleInferenceHealth = useCallback(event => {
     setInferenceHealth(event);
@@ -185,10 +187,11 @@ export default function SitesNewConversation() {
     if (restoring || !supported || ACTIVE.has(activity?.stage) || saving || generating || (transcribe && !live)) return;
     if ((audio || transcript.finalTokens.length) && archive.status.state !== 'saved' && !window.confirm('Start another recording? Download or save the current audio and transcript first. Starting again replaces them in this tab.')) return;
     setTranscriptionChoice(transcribe);
-    setPendingRecording({ transcribe });
+    // What the dialog names is what may happen: the Soniox fallback is offered only if it was named.
+    setPendingRecording({ transcribe, sonioxFallback: transcribe && liveVoiceProvider === 'm5_tailnet' && sonioxLive });
   }
 
-  async function start(transcribe) {
+  async function start(transcribe, sonioxFallback = false) {
     if (restoring || !supported || ACTIVE.has(activity?.stage) || saving || generating || (transcribe && !live)) return;
     setPendingRecording(null);
     const id = globalThis.crypto?.randomUUID?.();
@@ -200,35 +203,50 @@ export default function SitesNewConversation() {
     navigate(archive.preference === 'local' ? `/new?local=${id}` : '/new', { replace: true });
     setVoiceHealth(null); setInferenceHealth(null); setVoiceMetrics(null); setMapMetrics(null); voiceStarted.current = Date.now(); voiceFirst.current = false;
     const useM5Live = transcribe && liveVoiceProvider === 'm5_tailnet';
-    const next = useM5Live ? new M5TailnetLiveSession({
+    const createM5 = () => { const m5 = new M5TailnetLiveSession({
       url: runtime?.preferences.m5TailnetUrl,
       token: runtime?.keys.m5_tailnet,
-      onStage: value => { if (alive.current && session.current === next) { setActivity(value); archive.update({ stage: value.stage }); } },
-      onAudio: value => { if (alive.current && session.current === next) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
-      onAudioChunk: chunk => { if (alive.current && session.current === next) archive.append(chunk); },
-      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const ttftMs = Math.max(0, Date.now() - voiceStarted.current); setVoiceHealth({ service: 'm5_tailnet', ok: true, at: Date.now(), detail: firstWords ? `First words received in ${(ttftMs / 1000).toFixed(1)} s via M5 Tailnet.` : 'Receiving diarized chunks from M5 Tailnet.' }); } } },
-      onMetrics: metrics => { if (alive.current && session.current === next) setVoiceMetrics({ ...metrics, lastWordAt: Date.now() }); },
-      onMicStream: value => { if (alive.current && session.current === next) setMicStream(value); },
-      onFailure: failure => { if (alive.current && session.current === next) { setError(failure.message); setVoiceHealth({ service: 'm5_tailnet', ok: false, at: Date.now(), detail: failure.message }); } },
-    }) : new CloudConversationSession({
-      onMicStream: value => { if (alive.current && session.current === next) setMicStream(value); },
-      onStage: value => { if (alive.current && session.current === next) { setActivity(value); archive.update({ stage: value.stage }); } },
-      onAudio: value => { if (alive.current && session.current === next) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
-      onAudioChunk: chunk => { if (alive.current && session.current === next) archive.append(chunk); },
-      onTranscript: value => { if (alive.current && session.current === next) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length || value.partialTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const now = Date.now(); const elapsedMs = Math.max(0, now - voiceStarted.current); const heardMs = heardAudioMs(value); setVoiceMetrics(prev => ({ provider: 'soniox', ttftMs: prev?.ttftMs ?? elapsedMs, lastLatencyMs: null, lastWordAt: now, audioSeconds: heardMs ? Math.round(heardMs / 1000) : prev?.audioSeconds ?? null, costUsd: heardMs ? (heardMs / 60_000) * 0.002 : prev?.costUsd ?? null })); setVoiceHealth({ service: 'soniox', ok: true, at: now, detail: firstWords ? `First words received after ${Math.round(elapsedMs / 1000)} s, including setup and waiting for speech.` : 'Transcript is receiving words from Soniox.' }); } } },
-      onFailure: failure => { if (alive.current && session.current === next) { setError(failure.message); if (transcribe && failure.message.includes('live transcription')) setVoiceHealth({ service: 'soniox', ok: false, at: Date.now(), detail: 'Transcription stopped with an error. Your captured audio remains available.' }); } },
-    });
+      onStage: value => { if (alive.current && session.current === m5) { setActivity(value); archive.update({ stage: value.stage }); if (value.stage === 'stopped' && recoverableError.current) { const cleared = recoverableError.current; recoverableError.current = ''; setError(current => current === cleared ? '' : current); setVoiceHealth(current => current?.ok === false && current.detail === cleared ? null : current); } } },
+      onAudio: value => { if (alive.current && session.current === m5) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
+      onAudioChunk: chunk => { if (alive.current && session.current === m5) archive.append(chunk); },
+      onTranscript: value => { if (alive.current && session.current === m5) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length) { setVoiceMetrics(prev => ({ ...prev, lastWordAt: Date.now() })); const firstWords = !voiceFirst.current; voiceFirst.current = true; const ttftMs = Math.max(0, Date.now() - voiceStarted.current); setVoiceHealth({ service: 'm5_tailnet', ok: true, at: Date.now(), detail: firstWords ? `First words received in ${(ttftMs / 1000).toFixed(1)} s via M5 Tailnet.` : 'Receiving diarized chunks from M5 Tailnet.' }); } } },
+      onMetrics: metrics => { if (alive.current && session.current === m5) setVoiceMetrics(prev => ({ ...metrics, lastWordAt: prev?.lastWordAt ?? null })); },
+      onMicStream: value => { if (alive.current && session.current === m5) setMicStream(value); },
+      onFailure: failure => { if (alive.current && session.current === m5) { recoverableError.current = failure.recoverable ? failure.message : ''; setError(failure.message); setVoiceHealth({ service: 'm5_tailnet', ok: false, at: Date.now(), detail: failure.message }); } },
+    }); return m5; };
+    const createCloud = () => { const cloud = new CloudConversationSession({
+      onMicStream: value => { if (alive.current && session.current === cloud) setMicStream(value); },
+      onStage: value => { if (alive.current && session.current === cloud) { setActivity(value); archive.update({ stage: value.stage }); } },
+      onAudio: value => { if (alive.current && session.current === cloud) { setAudio(value); archive.update({ segments: value.segments.map(({ number, mimeType, complete, blob }) => ({ number, mimeType, complete, bytes: blob.size })) }); } },
+      onAudioChunk: chunk => { if (alive.current && session.current === cloud) archive.append(chunk); },
+      onTranscript: value => { if (alive.current && session.current === cloud) { setTranscript(value); archive.update({ transcript: value }); if (value.finalTokens.length || value.partialTokens.length) { const firstWords = !voiceFirst.current; voiceFirst.current = true; const now = Date.now(); const elapsedMs = Math.max(0, now - voiceStarted.current); const heardMs = heardAudioMs(value); setVoiceMetrics(prev => ({ provider: 'soniox', ttftMs: prev?.ttftMs ?? elapsedMs, lastLatencyMs: null, lastWordAt: now, audioSeconds: heardMs ? Math.round(heardMs / 1000) : prev?.audioSeconds ?? null, costUsd: heardMs ? (heardMs / 60_000) * 0.002 : prev?.costUsd ?? null })); setVoiceHealth({ service: 'soniox', ok: true, at: now, detail: firstWords ? `First words received after ${Math.round(elapsedMs / 1000)} s, including setup and waiting for speech.` : 'Transcript is receiving words from Soniox.' }); } } },
+      onFailure: failure => { if (alive.current && session.current === cloud) { setError(failure.message); if (transcribe) setVoiceHealth({ service: 'soniox', ok: false, at: Date.now(), detail: failure.message }); } },
+    }); return cloud; };
+    const startCloud = cloud => {
+      const key = runtime?.keys.soniox;
+      return cloud.start({ transcribe, maxSessionSeconds: transcribe ? capabilities.transcription.max_session_seconds : 300,
+        ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+    };
+    const next = useM5Live ? createM5() : createCloud();
+    setActiveVoiceProvider(transcribe ? (useM5Live ? 'm5_tailnet' : 'soniox') : null);
     session.current = next;
     try {
-      if (useM5Live) {
-        await next.start();
-      } else {
-        const key = runtime?.keys.soniox;
-        await next.start({ transcribe, maxSessionSeconds: transcribe ? capabilities.transcription.max_session_seconds : 300,
-          ...(key ? { requestSession: ({ signal }) => requestTranscriptionSession({ signal, key }) } : {}) });
+      if (useM5Live) await next.start(); else await startCloud(next);
+    } catch (failure) {
+      if (!alive.current || session.current !== next) return;
+      // The M5 server could not be reached before anything was recorded. Settings lists the speech
+      // providers in order, so carry on with Soniox when it is set up (the consent dialog named it).
+      if (useM5Live && failure?.canTryNext && sonioxFallback && sonioxLive) {
+        setError(''); setNotice(`${failure.message} Using Soniox instead.`);
+        // Nothing from the M5 attempt may describe the Soniox session.
+        setVoiceHealth(null); setVoiceMetrics(null); voiceStarted.current = Date.now(); voiceFirst.current = false;
+        const cloud = createCloud();
+        session.current = cloud; setActiveVoiceProvider('soniox');
+        try { await startCloud(cloud); } catch (again) { if (alive.current && session.current === cloud) setError(again.message); }
+        return;
       }
+      setError(failure.message);
     }
-    catch (failure) { if (alive.current && session.current === next) setError(failure.message); }
   }
 
   async function savePrivate(file, subject) {
@@ -266,7 +284,7 @@ export default function SitesNewConversation() {
   useEffect(() => { if (activity?.stage === 'paused') resumeControl.current?.focus(); }, [activity?.stage]);
   const privateSaving = capabilities?.storage?.enabled && capabilities?.storage?.configured && !capabilities?.storage?.synthetic_only;
   const supported = Boolean(navigator.mediaDevices?.getUserMedia && globalThis.MediaRecorder);
-  const complete = Boolean(audio?.complete && activity?.stage === 'stopped');
+  const complete = Boolean(audio?.complete && !audio?.transcriptGaps && activity?.stage === 'stopped');
   const ready = Boolean(recording?.transcribe && transcript.finalTokens.length);
   const recordingArtifact = useMemo(() => {
     if (!ready) return null;
@@ -278,7 +296,7 @@ export default function SitesNewConversation() {
     const finalText = transcript.finalText || '';
     const words = finalText.trim() ? finalText.trim().split(/\s+/).length : 0;
     const speakers = new Set((transcript.finalTokens || []).map(t => t.speaker).filter(Boolean)).size;
-    const audioBytes = audio?.blob?.size || (audio?.segments || []).reduce((sum, s) => sum + (s.blob?.size || s.bytes || 0), 0);
+    const audioBytes = audio?.segments?.length ? audio.segments.reduce((sum, s) => sum + (s.blob?.size || s.bytes || 0), 0) : audio?.blob?.size || 0;
     // While recording, the page clock is the audio length; it excludes pauses. Afterwards, the last heard position.
     const secs = (activity?.stage === 'recording' ? elapsed : 0) || voiceMetrics?.audioSeconds || 0;
     const wpm = words >= 5 && secs >= 5 ? Math.round((words / secs) * 60) : null;
@@ -288,7 +306,7 @@ export default function SitesNewConversation() {
       ttftMs: voiceMetrics?.ttftMs ?? null,
       lastLatencyMs: voiceMetrics?.lastLatencyMs ?? null,
       words,
-      speakers: speakers || (words ? 1 : 0),
+      speakers: (voiceMetrics?.provider || activeVoiceProvider) === 'm5_tailnet' ? 0 : speakers || (words ? 1 : 0),
       wpm,
       lastWordAt: voiceMetrics?.lastWordAt ?? null,
       audioSeconds: secs || null,
@@ -377,7 +395,7 @@ export default function SitesNewConversation() {
         </div>
         <div hidden={panel !== 'map'}>
           {!recordingArtifact?.source && <p className="pt-12 text-sm text-slate-600">Start transcription to map your conversation. Confirmed words will be available here as you speak.</p>}
-          {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={backend} onBackendChange={setBackend} onHealthChange={handleInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} onScheduleChange={setMapSchedule} mapNowRequest={mapNowRequest} onExplore={exploreMap} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
+          {recordingArtifact?.source && <RecordingConversationMap savedBundle={map} retention={recording?.retention} backend={runtime?.preferences.map[0] || chosenBackend} onBackendChange={setBackend} onHealthChange={handleInferenceHealth} source={recordingArtifact.source} privateEnabled={privateSaving} saving={saving} onGeneratingChange={setGenerating} onMapChange={mapReady} onMapStatusChange={setMapError} onScheduleChange={setMapSchedule} mapNowRequest={mapNowRequest} onExplore={exploreMap} recordingBusy={active || activity?.stage === 'paused'} liveActive={activity?.stage === 'recording'} onPrivateSave={(file, subject) => void savePrivate(file, subject)} />}
         </div>
         <div hidden={panel !== 'files'}>
           {map && <button className="min-h-11 text-sm underline underline-offset-4" onClick={() => setPanel('map')}>Download or save your map</button>}
@@ -391,12 +409,12 @@ export default function SitesNewConversation() {
       <div className={active || activity?.stage === 'paused' ? "flex w-full items-center justify-between gap-2 max-[380px]:flex-col-reverse max-[380px]:items-stretch" : "grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2"}>
         <ConversationServiceStatus
           backend={backend}
-          voiceService={liveVoiceProvider}
+          voiceService={activeVoiceProvider || liveVoiceProvider}
           voice={voiceHealth}
           inference={inferenceHealth}
           voiceMetrics={liveVoiceMetrics}
           mapMetrics={liveMapMetrics}
-          personalVoice={Boolean(runtime?.keys.soniox || liveVoiceProvider === 'm5_tailnet')}
+          personalVoice={Boolean(runtime?.keys.soniox || (activeVoiceProvider || liveVoiceProvider) === 'm5_tailnet')}
           personalInference={Boolean(runtime?.keys[backend])}
           micStream={micStream}
           onMicSilentChange={setMicSilent}
@@ -410,6 +428,6 @@ export default function SitesNewConversation() {
         </div>}
       </div>
     </footer>
-    {pendingRecording && <RecordingConsentDialog retention={archive.preference} transcribe={pendingRecording.transcribe} maxSeconds={capabilities?.transcription?.max_session_seconds} onCancel={() => setPendingRecording(null)} onConfirm={() => void start(pendingRecording.transcribe)} />}
+    {pendingRecording && <RecordingConsentDialog retention={archive.preference} transcribe={pendingRecording.transcribe} voiceProvider={liveVoiceProvider} sonioxFallback={pendingRecording.sonioxFallback} maxSeconds={capabilities?.transcription?.max_session_seconds} onCancel={() => setPendingRecording(null)} onConfirm={() => void start(pendingRecording.transcribe, pendingRecording.sonioxFallback)} />}
   </main>;
 }

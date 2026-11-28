@@ -1,58 +1,57 @@
 // Test intent:
-// - Maps an audio playhead timestamp (seconds) to the active utterance in a conversation bundle
-//   and checks whether any visit range covers that playhead time.
-// - Handles timestamp_start / timestamp_end (seconds) as well as startMs / endMs (milliseconds),
-//   and safely returns null / false when timing is absent or invalid.
+// - Maps an audio playhead time (seconds) to the turn being spoken and tells whether a visit is playing.
+// - Reads timestamp_start / timestamp_end (seconds) or startMs / endMs (milliseconds). A null or missing
+//   time means "untimed": such a turn is skipped, never treated as 0:00. Turns may be out of order.
+// - Ranges are half-open, [start, end): at a shared boundary the later turn or visit is the playing one,
+//   which is exactly where a click-to-seek lands. A visit whose recorded end is not after its start covers
+//   nothing; only a visit with no end at all gets a short default window.
+
+const seconds = (value, scale = 1) => (typeof value === "number" && Number.isFinite(value) ? value / scale : null);
 
 export function utteranceStartSeconds(utterance) {
   if (!utterance || typeof utterance !== "object") return null;
-  if (Number.isFinite(Number(utterance.timestamp_start))) return Number(utterance.timestamp_start);
-  if (Number.isFinite(Number(utterance.startMs))) return Number(utterance.startMs) / 1000;
-  return null;
+  return seconds(utterance.timestamp_start) ?? seconds(utterance.startMs, 1000);
 }
 
 export function utteranceEndSeconds(utterance) {
   if (!utterance || typeof utterance !== "object") return null;
-  if (Number.isFinite(Number(utterance.timestamp_end))) return Number(utterance.timestamp_end);
-  if (Number.isFinite(Number(utterance.endMs))) return Number(utterance.endMs) / 1000;
-  return null;
+  return seconds(utterance.timestamp_end) ?? seconds(utterance.endMs, 1000);
 }
 
 /**
- * Returns the utterance active at `seconds` (inclusive of start, falling back to next utterance start
- * when end timestamp is missing), or null if no timed utterance covers `seconds`.
+ * The turn being spoken at `at`: the timed turn with the latest start at or before `at` (the later one in
+ * the list on a tie). A pause between turns keeps the previous turn. Before the first turn, or after the
+ * last turn's known end, nothing is playing.
  */
-export function activeUtteranceAtTime(utterances, seconds) {
-  if (!Array.isArray(utterances) || !utterances.length || !Number.isFinite(seconds) || seconds < 0) return null;
-  const timed = [];
+export function activeUtteranceAtTime(utterances, at) {
+  if (!Array.isArray(utterances) || !Number.isFinite(at) || at < 0) return null;
+  let active = null, activeStart = -Infinity, latestStart = -Infinity;
   for (const row of utterances) {
     const start = utteranceStartSeconds(row);
-    if (start != null) timed.push({ row, start, end: utteranceEndSeconds(row) });
+    if (start == null) continue;
+    latestStart = Math.max(latestStart, start);
+    if (start <= at && start >= activeStart) { active = row; activeStart = start; }
   }
-  if (!timed.length) return null;
-  for (let i = 0; i < timed.length; i += 1) {
-    const curr = timed[i];
-    const nextStart = timed[i + 1]?.start;
-    const end = curr.end != null && curr.end >= curr.start
-      ? curr.end
-      : nextStart != null && nextStart > curr.start
-        ? nextStart
-        : curr.start + 5;
-    if (seconds >= curr.start && seconds <= end) return curr.row;
-    if (nextStart != null && seconds > end && seconds < nextStart) return curr.row;
-  }
-  return null;
+  if (!active) return null;
+  const end = utteranceEndSeconds(active);
+  const isLast = activeStart === latestStart;
+  if (isLast && end != null && at >= end) return null;
+  return active;
 }
 
-/** Returns true if any visit in `visits` spans `seconds`. */
-export function visitCoversTime(visit, seconds) {
-  if (!visit || !Number.isFinite(seconds) || seconds < 0) return false;
-  const start = Number.isFinite(visit.startSeconds) ? visit.startSeconds : null;
-  const end = Number.isFinite(visit.endSeconds) ? visit.endSeconds : start;
+// A visit with no recorded end counts as playing for this long after it starts.
+const UNTIMED_VISIT_SECONDS = 5;
+
+/** True while `at` falls inside the visit, [startSeconds, endSeconds). */
+export function visitCoversTime(visit, at) {
+  if (!visit || !Number.isFinite(at) || at < 0) return false;
+  const start = seconds(visit.startSeconds);
   if (start == null) return false;
-  return seconds >= start && seconds <= Math.max(start, end);
+  const end = visit.endSeconds === Number.POSITIVE_INFINITY ? Number.POSITIVE_INFINITY
+    : seconds(visit.endSeconds) ?? start + UNTIMED_VISIT_SECONDS;
+  return at >= start && at < end;
 }
 
-export function anyVisitCoversTime(visits, seconds) {
-  return Array.isArray(visits) && visits.some((v) => visitCoversTime(v, seconds));
+export function anyVisitCoversTime(visits, at) {
+  return Array.isArray(visits) && visits.some((visit) => visitCoversTime(visit, at));
 }
