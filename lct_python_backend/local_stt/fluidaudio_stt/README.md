@@ -59,7 +59,14 @@ still send a plain multipart POST that the server runs.
 With `*`, any website open in a browser on the tailnet can call this server
 and read the reply. The server keeps no transcripts, so a reply only ever
 describes the audio that same page sent, but the page can use the M5's
-compute. Set the allowlist in the LaunchAgent to rule that out.
+compute. Set the allowlist in the LaunchAgent to restrict which browser
+origins can read replies. Preventing unwanted use of the M5 requires access
+control before transcription begins.
+
+Health responses use `Cache-Control: no-store` so an origin or a model-loading
+state on an earlier request cannot determine what a later health check sees.
+Check `/health` with and without an allowed Origin and confirm both responses
+carry this header.
 
 `FLUIDAUDIO_STT_PORT` overrides port 5096, to run a second copy beside the live
 service. Check a build with:

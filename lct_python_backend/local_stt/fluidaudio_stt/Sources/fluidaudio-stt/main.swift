@@ -237,6 +237,7 @@ func jsonResponse(_ code: Int, _ reason: String, _ obj: Any) -> HttpResponse {
 func jsonResponse(_ code: Int, _ reason: String, data: Data) -> HttpResponse {
     let headers = [
         "Content-Type": "application/json",
+        "Cache-Control": "no-store",
         "Content-Length": "\(data.count)",
         "Connection": "close",
     ]
