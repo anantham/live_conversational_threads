@@ -7,12 +7,20 @@ async function open() {
   if (!globalThis.indexedDB) throw failure();
   return new Promise((resolve, reject) => {
     let expired = false;
-    const request = indexedDB.open(DB, VERSION);
+    const request = indexedDB.open(DB, 2);
     const timer = setTimeout(() => { expired = true; reject(failure()); }, 5000);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = event => {
       const db = request.result;
-      db.createObjectStore('conversations', { keyPath: 'id' });
-      db.createObjectStore('chunks', { keyPath: ['recordingId', 'segment', 'index'] }).createIndex('recordingId', 'recordingId');
+      const records = event.oldVersion === 0
+        ? db.createObjectStore('conversations', { keyPath: 'id' })
+        : request.transaction.objectStore('conversations');
+      if (event.oldVersion === 0) {
+        db.createObjectStore('chunks', { keyPath: ['recordingId', 'segment', 'index'] }).createIndex('recordingId', 'recordingId');
+      }
+      records.createIndex('recentAudioImports', ['audioCacheTime', 'audioCacheKey']);
+      void removeLegacyTranscriptCache().catch(() => {
+        // An old tab can keep the cache open. Removal retries before reporting success.
+      });
     };
     request.onsuccess = () => { clearTimeout(timer); if (expired) request.result.close(); else resolve(request.result); };
     request.onerror = request.onblocked = () => { clearTimeout(timer); expired = true; reject(failure()); };
@@ -86,7 +94,35 @@ export async function readLocalConversation(id) {
   });
   return { ...result.record, revision: record.revision ?? record.updatedAt, map, mapUnreadable, audio: segments.length ? { ...segments.at(-1), segments, complete: segments.every(s => s.complete) && (record.segments || []).every(s => grouped.has(s.number)) } : null };
 }
+// The index holds only keys. Deleting a record also deletes its index entry in the same transaction.
+export async function readCachedAudioTranscript(key) {
+  if (!key) return null;
+  try {
+    return await transaction('readonly', records => {
+      const recent = records.index('recentAudioImports').openKeyCursor(null, 'prev');
+      let remaining = 24, record;
+      recent.onsuccess = () => {
+        const cursor = recent.result;
+        if (!cursor) return;
+        if (cursor.key[1] === key) record = records.get(cursor.primaryKey);
+        else if (--remaining > 0) cursor.continue();
+      };
+      return () => record?.result?.transcript ?? null;
+    });
+  } catch { return null; }
+}
+
+// Pre-release builds stored extra transcript copies without a conversation ID.
+function removeLegacyTranscriptCache() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase('lct_audio_transcript_cache_v1');
+    request.onsuccess = () => resolve();
+    request.onerror = request.onblocked = () => reject(Object.assign(
+      new Error('Close other LCT tabs and retry removal to clear the old transcript cache.'), { code: 'legacy_cache_busy' }));
+  });
+}
 export async function deleteLocalConversation(id) {
+  await removeLegacyTranscriptCache();
   return transaction('readwrite', (records, audio) => {
     records.delete(id);
     const request = audio.index('recordingId').openCursor(id);

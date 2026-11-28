@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   audioCacheKey,
   hashAudioFile,
-  readCachedAudioTranscript,
-  writeCachedAudioTranscript,
 } from './audioTranscriptCache.js';
+import { readCachedAudioTranscript } from './localConversationStore.js';
 
 describe('audioTranscriptCache', () => {
   it('hashes identical audio bytes deterministically and distinguishes different bytes', async () => {
@@ -26,9 +25,5 @@ describe('audioTranscriptCache', () => {
 
   it('degrades gracefully when IndexedDB is unavailable', async () => {
     expect(await readCachedAudioTranscript('abc:m5_tailnet:d1')).toBeNull();
-    expect(await writeCachedAudioTranscript('abc:m5_tailnet:d1', {
-      transcript: { finalTokens: [{ text: 'hi' }], finalText: 'hi', partialText: '', partialTokens: [] },
-      provider: 'm5_tailnet',
-    })).toBe(false);
   });
 });

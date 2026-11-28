@@ -40,10 +40,8 @@ test.describe('App Initialization', () => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
 
-    // Home page uses plain <button>s — no <nav>/<header> semantics, no role.
-    // Treat "New" and "Browse" as the canonical nav signals.
-    const newButton = page.getByRole('button', { name: /^New$/ });
-    const browseButton = page.getByRole('button', { name: /^Browse$/ });
+    const newButton = page.getByRole('button', { name: 'New recording', exact: true });
+    const browseButton = page.getByRole('button', { name: 'Browse library', exact: true });
     await expect(newButton).toBeVisible({ timeout: 10000 });
     await expect(browseButton).toBeVisible({ timeout: 10000 });
   });

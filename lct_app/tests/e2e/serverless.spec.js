@@ -37,7 +37,7 @@ test.describe('Serverless BYOK Mode', () => {
     
     // We expect to see "Live Conversational Threads" or a record button
     // (Assuming the default route is the Home page)
-    await expect(page.locator('text=New').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'New recording', exact: true })).toBeVisible({ timeout: 10000 });
     
     // 7. Verify the key was persisted in localStorage
     const storedKey = await page.evaluate(() => localStorage.getItem('lct_serverless_key'));

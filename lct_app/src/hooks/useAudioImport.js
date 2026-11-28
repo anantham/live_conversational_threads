@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AudioImportSession } from '../services/cloud/AudioImportSession.js';
 import { importFileType, importWait } from '../services/cloud/audioImportFile.js';
-import { audioCacheKey, hashAudioFile, isAudioCacheAvailable, readCachedAudioTranscript, writeCachedAudioTranscript } from '../services/cloud/audioTranscriptCache.js';
+import { audioCacheKey, hashAudioFile, isAudioCacheAvailable } from '../services/cloud/audioTranscriptCache.js';
 import { OpenAIFileSession } from '../services/cloud/openAiFileSession.js';
 import { DEFAULT_M5_TAILNET_URL, M5TailnetFileSession } from '../services/cloud/m5TailnetFileSession.js';
 import { SPEECH_PROVIDERS } from '../services/cloud/sitesProviderPreferences.js';
@@ -10,7 +10,7 @@ import { readEdgeConfig } from '../components/audio/edgeConfig.js';
 import { requestTranscriptionSession } from '../services/cloud/sonioxSessionClient.js';
 import { useSitesRuntime } from '../contexts/SitesRuntimeContext';
 import { getRecordingMapStatus, generateRecordingMap, configuredMapRoutes, getOrderedMapStatus, generateOrderedRecordingMap } from '../services/cloud/openRouterClient.js';
-import { readLocalConversation } from '../services/cloud/localConversationStore.js';
+import { readCachedAudioTranscript, readLocalConversation } from '../services/cloud/localConversationStore.js';
 import { useConversationArchive } from './useConversationArchive.js';
 import { useCloudTask } from './useCloudTask.js';
 const empty = () => ({ finalText: '', partialText: '', finalTokens: [], partialTokens: [] });
@@ -140,13 +140,14 @@ export function useAudioImport() {
         for (const provider of speechProviders) {
           const cached = await readCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }));
           if (!valid() || mapStop.current?.signal.aborted) return;
-          if (cached?.transcript?.finalTokens?.length) {
+          if (cached?.finalTokens?.length) {
             const mimeType = importFileType(file);
             const upload = file.type === mimeType ? file : new File([file], file.name, { type: mimeType });
             callbacks.onAudio({ blob: upload, mimeType, complete: true, segments: [{ number: 1, blob: upload, mimeType, complete: true }] });
-            callbacks.onTranscript(cached.transcript);
+            callbacks.onTranscript(cached);
+            archive.update({ audioCacheKey: audioCacheKey({ sha256: audioSha, provider }), audioCacheTime: Date.now() });
             setFallbackNotice(`Loaded cached ${SPEECH_PROVIDERS[provider]?.name || provider} transcript (skipped re-transcription).`);
-            words = cached.transcript;
+            words = cached;
             break;
           }
         }
@@ -172,8 +173,8 @@ export function useAudioImport() {
         try {
           words = await session.start({ file, maxSessionSeconds: capability?.max_session_seconds });
           if (failures.length && valid()) setFallbackNotice(`${failureText()} It was transcribed by ${providerName(provider)} instead, the next provider in the order you agreed to.`);
-          if (audioSha && allowLocalCache && words?.finalTokens?.length) {
-            void writeCachedAudioTranscript(audioCacheKey({ sha256: audioSha, provider, diarize: true }), { transcript: words, provider });
+          if (valid() && audioSha && words?.finalTokens?.length) {
+            archive.update({ transcript: words, audioCacheKey: audioCacheKey({ sha256: audioSha, provider }), audioCacheTime: Date.now() });
           }
           break;
         } catch (error) {

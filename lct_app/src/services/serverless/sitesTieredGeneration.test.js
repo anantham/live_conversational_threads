@@ -68,13 +68,13 @@ describe('tier-safe generation on the public Worker backend routes', () => {
     expect(schema.properties.hierarchy_format.enum).toEqual(['tiered-ranges-v3']);
     expect(wire.max_tokens).toBe(8192);
     const evidence = wire.messages.at(-1).content;
-    expect(JSON.parse(evidence)).toEqual({ transcription_complete: true,
+    expect(JSON.parse(directClaude ? evidence[0].text : evidence)).toEqual({ transcription_complete: true,
       utterances: [{ id: 'utterance-0001', text: source.finalTokens[0].text }] });
     if (directClaude) {
       expect(options).toMatchObject({ method: 'POST', redirect: 'manual',
         headers: { 'x-api-key': 'synthetic-anthropic-key', 'anthropic-version': '2026-10-21', 'Content-Type': 'application/json' } });
       expect(Object.keys(options.headers)).not.toContain('Authorization');
-      expect(wire).toMatchObject({ model: 'claude-synthetic', system: expect.stringContaining('untrusted evidence'), stream: false,
+      expect(wire).toMatchObject({ model: 'claude-synthetic', system: [{ type: 'text', text: expect.stringContaining('untrusted evidence'), cache_control: { type: 'ephemeral' } }], stream: false,
         output_config: { format: { type: 'json_schema' } }, messages: [{ role: 'user', content: evidence }] });
       expect(wire).not.toHaveProperty('provider');
       expect(wire).not.toHaveProperty('tools');
@@ -245,7 +245,7 @@ describe('ordered settings generation', () => {
     expect(payload).toMatchObject({ backend: 'gemini', model: env.LCT_GEMINI_MODEL, artifact: { full_transcript: source.finalTokens[0].text } });
     expect(fetch.mock.calls.map(([url]) => url)).toEqual(['https://api.anthropic.com/v1/messages', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions']);
     expect(fetch.mock.calls[0][1].headers['x-api-key']).toBe('personal-test-key');
-    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ model: 'claude-test-personal', system: expect.stringContaining('Follow changes of mind.') });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toMatchObject({ model: 'claude-test-personal', system: [{ type: 'text', text: expect.stringContaining('Follow changes of mind.') }] });
     expect(JSON.parse(fetch.mock.calls[1][1].body).messages[0].content).toContain('Follow changes of mind.');
     expect(JSON.stringify(payload)).not.toMatch(/personal-test-key|private refusal details/);
     expect(count()).toBe(1);
@@ -404,7 +404,7 @@ describe('Claude schema diagnostic', () => {
     expect(minimal.max_tokens).toBeLessThan(full.max_tokens);
     expect(full.max_tokens).toBe(12_000);
     expect(minimal.messages).toEqual(full.messages);
-    expect(JSON.parse(full.messages[0].content).utterances).toHaveLength(3);
+    expect(JSON.parse(full.messages[0].content[0].text).utterances).toHaveLength(3);
     expect(minimal.output_config.format.schema.properties).toHaveProperty('status');
     expect(full.output_config.format.schema.properties).toHaveProperty('nodes');
     expect(rows()).toEqual([{ max_output_tokens: 12_000, completed_at: expect.any(Number) }]);
@@ -504,7 +504,7 @@ it('runs a skeleton glance through the public Claude route with its own schema, 
   expect(body.artifact.graph_data).toEqual([expect.objectContaining({ id: '3:garden', salience: 'core',
     source_ref: { utterance_ids: ['utterance-0001'] } })]);
   const wire = JSON.parse(fetch.mock.calls[0][1].body);
-  expect(wire.system).toContain('Glance over the whole conversation');
+  expect(wire.system[0].text).toContain('Glance over the whole conversation');
   expect(wire.output_config.format.schema.properties.nodes.items.properties.semantic_level.enum).toEqual([3, 4, 5]);
 });
 
@@ -533,8 +533,8 @@ it('runs an audit task through the ordered route and returns findings, not a map
   expect(body).toMatchObject({ task: 'audit', findings: [{ kind: 'missed', point_kind: 'decision', utterance_ids: ['utterance-0001'] }] });
   expect(body.artifact).toBeUndefined();
   const wire = JSON.parse(fetch.mock.calls[0][1].body);
-  expect(JSON.parse(wire.messages[0].content).map_nodes[0].id).toBe('3:garden');
-  expect(wire.system).toContain('independently of the map');
+  expect(JSON.parse(wire.messages[0].content[0].text).map_nodes[0].id).toBe('3:garden');
+  expect(wire.system[0].text).toContain('independently of the map');
 });
 
 // Review findings 3, 6, 11.

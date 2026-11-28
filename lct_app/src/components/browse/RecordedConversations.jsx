@@ -8,7 +8,7 @@ export default function RecordedConversations() {
   async function remove(record) {
     if (!window.confirm(`Remove “${record.title}” and its audio from this device? This cannot be undone. Cloud copies are not affected.`)) return;
     try { await deleteLocalConversation(record.id); setRecords(rows => rows.filter(row => row.id !== record.id)); }
-    catch { setError('Could not remove this recording. Its saved copy may still be present.'); }
+    catch (failure) { setError(failure?.code === 'legacy_cache_busy' ? failure.message : 'Could not remove this recording. Its saved copy may still be present.'); }
   }
   return <section className="mx-auto mb-8 max-w-2xl" aria-label="Recorded on this device"><h2 className="text-base font-semibold text-slate-800">Recorded on this device</h2>
     <p className="mt-2 text-xs leading-5 text-slate-500">Audio, transcripts and maps saved in this browser. Clearing site data removes these copies; download anything you want to keep elsewhere.</p>
